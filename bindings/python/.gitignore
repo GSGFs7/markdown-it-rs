@@ -1,0 +1,9 @@
+Cargo.lock
+uv.lock
+
+.venv/
+dist/
+target/
+__pychache__/
+*.pyc
+*.so

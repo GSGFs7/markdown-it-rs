@@ -1,0 +1,15 @@
+[project]
+name = "markdown-it-rs-py"
+version = "0.1.0"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+
+[tool.maturin]
+python-source = "python"
+module-name = "markdown_it_rs_py._markdown_it_rs_py"

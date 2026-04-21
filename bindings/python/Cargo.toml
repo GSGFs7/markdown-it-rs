@@ -1,0 +1,12 @@
+[package]
+name = "markdown-it-rs-py"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "markdown_it_rs_py"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.28", features = ["extension-module"] }
+markdown-it = { path = "../.." }
