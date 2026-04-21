@@ -112,7 +112,7 @@ impl BlockParser {
         state.node
     }
 
-    pub fn add_rule<T: BlockRule>(&mut self) -> RuleBuilder<RuleFns> {
+    pub fn add_rule<T: BlockRule>(&mut self) -> RuleBuilder<'_, RuleFns> {
         let item = self.ruler.add(TypeKey::of::<T>(), (T::check, T::run));
         RuleBuilder::new(item)
     }

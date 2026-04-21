@@ -58,7 +58,7 @@ impl MarkdownIt {
         node
     }
 
-    pub fn add_rule<T: CoreRule>(&mut self) -> RuleBuilder<RuleFn> {
+    pub fn add_rule<T: CoreRule>(&mut self) -> RuleBuilder<'_, RuleFn> {
         let item = self.ruler.add(TypeKey::of::<T>(), T::run);
         RuleBuilder::new(item)
     }

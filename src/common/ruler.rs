@@ -80,7 +80,7 @@ impl<M: Eq + Hash + Copy + Debug, T: Clone> Ruler<M, T> {
 
     /// Ordered iteration through rules.
     #[inline]
-    pub fn iter(&self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
         self.compiled.get_or_init(|| self.compile()).1.iter()
     }
 

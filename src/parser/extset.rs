@@ -114,7 +114,6 @@ pub(crate) use extension_set;
 
 #[cfg(test)]
 mod tests {
-    use super::extension_set;
     use downcast_rs::{Downcast, impl_downcast};
     use std::fmt::Debug;
 

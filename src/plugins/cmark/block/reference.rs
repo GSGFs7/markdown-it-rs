@@ -342,7 +342,7 @@ impl BlockRule for ReferenceScanner {
         let mut chars = str[pos..].chars();
         loop {
             match chars.next() {
-                Some(' ' | '\t') => pos += 1,
+                Some(' ' | '\t') => {} // pos no longer used
                 Some('\n') | None => break,
                 Some(_) if title.is_some() => {
                     // garbage at the end of the line after title,

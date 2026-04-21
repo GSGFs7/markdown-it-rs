@@ -320,7 +320,7 @@ impl<
 /// Every entry in the `Vec` will produce an entry in the result, meaning that
 /// the index of a token in the resulting `Vec` will be the same as the index it
 /// would get during a `root.walk` call.
-fn all_text_tokens(root: &Node) -> Vec<FlatToken> {
+fn all_text_tokens(root: &Node) -> Vec<FlatToken<'_>> {
     let mut result = Vec::new();
     let mut walk_index = 0;
     root.walk(|node, nesting_level| {

@@ -91,7 +91,7 @@ fn replace_entity_pattern(str: &str) -> Option<String> {
 /// assert_eq!(unescape_all("&amp;"), "&");
 /// assert_eq!(unescape_all("\\&"), "&");
 /// ```
-pub fn unescape_all(str: &str) -> Cow<str> {
+pub fn unescape_all(str: &str) -> Cow<'_, str> {
     if !str.contains('\\') && !str.contains('&') { return Cow::Borrowed(str); }
 
     UNESCAPE_ALL_RE.replace_all(str, |captures: &regex::Captures| {
@@ -113,7 +113,7 @@ pub fn unescape_all(str: &str) -> Cow<str> {
 /// # use markdown_it::common::utils::escape_html;
 /// assert_eq!(escape_html("&\""), "&amp;&quot;");
 /// ```
-pub fn escape_html(str: &str) -> Cow<str> {
+pub fn escape_html(str: &str) -> Cow<'_, str> {
     html_escape::encode_double_quoted_attribute(str)
 }
 
@@ -228,7 +228,7 @@ pub fn find_indent_of(line: &str, mut pos: usize) -> (usize, usize) {
 /// # use markdown_it::common::utils::cut_right_whitespace_with_tabstops;
 /// assert_eq!(cut_right_whitespace_with_tabstops("\t\t", 6), "  \t");
 /// ```
-pub fn cut_right_whitespace_with_tabstops(source: &str, indent: i32) -> Cow<str> {
+pub fn cut_right_whitespace_with_tabstops(source: &str, indent: i32) -> Cow<'_, str> {
     let (num_spaces, start) = calc_right_whitespace_with_tabstops(source, indent);
 
     if num_spaces > 0 {
@@ -309,7 +309,9 @@ pub fn is_punct_char(ch: char) -> bool {
         // Z
         SpaceSeparator | LineSeparator | ParagraphSeparator |
         // C
-        Control | Format | Surrogate | PrivateUse | Unassigned => false
+        Control | Format | Surrogate | PrivateUse | Unassigned => false,
+
+        _ => false
     }
 }
 
