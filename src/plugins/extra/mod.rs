@@ -28,6 +28,7 @@ pub mod strikethrough;
 pub mod syntect;
 pub mod tables;
 pub mod typographer;
+pub mod math;
 
 use crate::MarkdownIt;
 
