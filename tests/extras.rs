@@ -189,6 +189,74 @@ r#"<blockquote>
             vec!["inline", "block", "core"],
         );
     }
+
+    #[cfg(feature = "syntect")]
+    #[test]
+    fn syntect_classed_mode_renders_language_class() {
+        let md = &mut markdown_it::MarkdownIt::new();
+        markdown_it::plugins::cmark::add(md);
+        markdown_it::plugins::extra::syntect::add(md);
+        markdown_it::plugins::extra::syntect::set_to_classed(md);
+
+        let html = md.parse("```rust ignore-me\nfn main() {}\n```").render();
+
+        assert!(html.contains(r#"<code class="syn-code language-rust">"#));
+    }
+
+    #[cfg(feature = "syntect")]
+    #[test]
+    fn syntect_classed_mode_escapes_language_class() {
+        let md = &mut markdown_it::MarkdownIt::new();
+        markdown_it::plugins::cmark::add(md);
+        markdown_it::plugins::extra::syntect::add(md);
+        markdown_it::plugins::extra::syntect::set_to_classed(md);
+
+        let html = md.parse("```rust&quot; onclick=&quot;alert(1)\nfn main() {}\n```").render();
+
+        assert!(html.contains("language-rust&quot;"));
+        assert!(!html.contains(r#"onclick="alert(1)""#));
+    }
+
+    #[cfg(feature = "syntect")]
+    #[test]
+    fn syntect_classed_mode_respects_custom_lang_prefix() {
+        let md = &mut markdown_it::MarkdownIt::new();
+        markdown_it::plugins::cmark::add(md);
+        markdown_it::plugins::cmark::block::fence::set_lang_prefix(md, "lang-");
+        markdown_it::plugins::extra::syntect::add(md);
+        markdown_it::plugins::extra::syntect::set_to_classed(md);
+
+        let html = md.parse("```rust\nfn main() {}\n```").render();
+
+        assert!(html.contains(r#"<code class="syn-code lang-rust">"#));
+    }
+
+    #[cfg(feature = "syntect")]
+    #[test]
+    fn syntect_theme_css_depends_on_mode() {
+        let md = &mut markdown_it::MarkdownIt::new();
+        markdown_it::plugins::extra::syntect::add(md);
+
+        assert_eq!(markdown_it::plugins::extra::syntect::theme_css(md), None);
+
+        markdown_it::plugins::extra::syntect::set_to_classed(md);
+        let css = markdown_it::plugins::extra::syntect::theme_css(md);
+
+        assert!(css.is_some());
+        assert!(css.unwrap().contains(".syn-code"));
+    }
+
+    #[cfg(feature = "syntect")]
+    #[test]
+    #[should_panic(expected = "unknown syntect theme: definitely-not-a-theme")]
+    fn syntect_invalid_theme_panics() {
+        let md = &mut markdown_it::MarkdownIt::new();
+        markdown_it::plugins::cmark::add(md);
+        markdown_it::plugins::extra::syntect::add(md);
+        markdown_it::plugins::extra::syntect::set_theme(md, "definitely-not-a-theme");
+
+        let _ = md.parse("```rust\nfn main() {}\n```").render();
+    }
 }
 
 mod examples {
@@ -199,4 +267,3 @@ mod examples {
         main();
     }
 }
-
