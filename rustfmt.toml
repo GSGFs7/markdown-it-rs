@@ -1,2 +1,4 @@
-merge_imports = true
 reorder_imports = true
+imports_layout = "HorizontalVertical"
+group_imports = "StdExternalCrate"
+imports_granularity = "Module"

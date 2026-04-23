@@ -200,7 +200,7 @@ r#"<blockquote>
 
         let html = md.parse("```rust ignore-me\nfn main() {}\n```").render();
 
-        assert!(html.contains(r#"<code class="syn-code language-rust">"#));
+        assert!(html.contains(r#"<code class="syntect-code language-rust">"#));
     }
 
     #[cfg(feature = "syntect")]
@@ -228,7 +228,20 @@ r#"<blockquote>
 
         let html = md.parse("```rust\nfn main() {}\n```").render();
 
-        assert!(html.contains(r#"<code class="syn-code lang-rust">"#));
+        assert!(html.contains(r#"<code class="syntect-code lang-rust">"#));
+    }
+
+    #[cfg(feature = "syntect")]
+    #[test]
+    fn syntect_parses_attached_line_spec_after_language() {
+        let md = &mut markdown_it::MarkdownIt::new();
+        markdown_it::plugins::cmark::add(md);
+        markdown_it::plugins::extra::syntect::add(md);
+
+        let html = md.parse("```rust{2}\nfn main() {\n    println!(\"hi\");\n}\n```").render();
+
+        assert!(html.contains(r#"<code class="language-rust">"#));
+        assert!(html.contains(r#"<span class="syntect-line syntect-line-highlighted">"#));
     }
 
     #[cfg(feature = "syntect")]
@@ -243,7 +256,7 @@ r#"<blockquote>
         let css = markdown_it::plugins::extra::syntect::theme_css(md);
 
         assert!(css.is_some());
-        assert!(css.unwrap().contains(".syn-code"));
+        assert!(css.unwrap().contains(".syntect-code"));
     }
 
     #[cfg(feature = "syntect")]
