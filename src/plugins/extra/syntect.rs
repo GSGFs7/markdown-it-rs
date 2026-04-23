@@ -1,4 +1,32 @@
-//! Syntax highlighting for code blocks
+//! Syntax highlighting for code blocks using `syntect`
+//!
+//! This plugin will highlight indented code blocks and fenced code blocks.
+//! Fenced block will read the first token as language, for example `` ```rust ``.
+//! unknown language and indented code blocks will be rendered as plain text.
+//!
+//! This plugin use `InspiredGitHub` theme and render inline styles by default.
+//! Use [`set_theme`] to select another built-in syntect theme.
+//! It will panic when get an unknown theme.
+//! Use [`available_themes`] to view all available themes.
+//!
+//! Use [`set_to_classed`] or [`set_to_classed_with_prefix`] to switch classed mode.
+//! In this mode, you need to provide yourself styles.
+//! You can also use [`theme_css`] get the CSS for selected built-in theme.
+//! In inline mode, it will return `None`.
+//!
+//! Fenced code blocks can mark highlighted lines with a `{...}` line spec in the info string,
+//! such as ` ```rust {1, 3-5} `.
+//! Line number started with 1.
+//!
+//! ```rust
+//! let mut md = markdown_it::MarkdownIt::new();
+//! markdown_it::plugins::cmark::add(&mut md);
+//! markdown_it::plugins::extra::syntect::add(&mut md);
+//! markdown_it::plugins::extra::syntect::set_theme(&mut md, "base16-ocean.dark");
+//!
+//! let html = md.parse("```rust\nfn main() {}\n```").render();
+//! assert!(html.contains(r#"class="language-rust""#));
+//! ```
 
 use std::collections::HashSet;
 
@@ -23,8 +51,13 @@ use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 // --- render ---
 
+/// Rendered HTML produced by the syntect plugin.
+///
+/// This node will replace parsed code block nodes.
+/// Its `html` field is emitted as raw HTML during rendering.
 #[derive(Debug)]
 pub struct SyntectSnippet {
+    /// Highlighted HTML
     pub html: String,
 }
 
@@ -64,7 +97,7 @@ impl Default for SyntectSettings {
 struct FenceMeta {
     language: Option<String>,
     // highlight some lines
-    // it seems like:
+    // it looks like:
     //
     // ```rust {1, 3-4}
     // fn main() {
@@ -139,6 +172,7 @@ impl FenceMeta {
 
 // --- behavior ---
 
+/// Replaces code blocks with syntect highlighted HTML.
 pub struct SyntectRule;
 
 impl CoreRule for SyntectRule {
@@ -205,10 +239,14 @@ impl CoreRule for SyntectRule {
 
 // --- public method ---
 
+/// Add the syntect highlighting rule.
+///
+/// The rule will replace [`CodeBlock`] and [`CodeFence`] nodes with syntect rendered HTML snippets.
 pub fn add(md: &mut MarkdownIt) {
     md.add_rule::<SyntectRule>();
 }
 
+/// Return the names of all built-in syntect themes available to this plugin.
 pub fn available_themes() -> Vec<String> {
     let ts = ThemeSet::load_defaults();
     let mut themes: Vec<_> = ts.themes.keys().cloned().collect();
@@ -216,26 +254,33 @@ pub fn available_themes() -> Vec<String> {
     themes
 }
 
+/// Set the theme used for syntax highlighting.
+///
+/// The names should match one of returned by [`available_themes`].
+/// If not, it will panic.
 pub fn set_theme(md: &mut MarkdownIt, theme: impl Into<String>) {
     update_syntect_settings(md, |settings| settings.theme = theme.into());
 }
 
-/// switch to classed mode
+/// switch to stylesheet-based highlighting mode with default `syntect-` prefix.
 ///
-/// use your own css file
-///
-/// example:
+/// In this mode, rendered code will use CSS class instead of inline styles.
+/// Use [`theme_css`] to generate CSS for the selected theme.
 ///
 /// ```rust
 /// let mut md = markdown_it::MarkdownIt::new();
 /// markdown_it::plugins::cmark::add(&mut md);
 /// markdown_it::plugins::extra::syntect::add(&mut md);
 /// markdown_it::plugins::extra::syntect::set_to_classed(&mut md);
+///
+/// let css = markdown_it::plugins::extra::syntect::theme_css(md);
+/// assert!(css.is_some())
 /// ```
 pub fn set_to_classed(md: &mut MarkdownIt) {
     set_to_classed_with_prefix(md, "syntect-");
 }
 
+/// Switch to stylesheet-based highlighting with a custom class prefix.
 pub fn set_to_classed_with_prefix(md: &mut MarkdownIt, prefix: &'static str) {
     update_syntect_settings(md, |settings| {
         settings.mode = SyntectMode::Classed;
@@ -243,10 +288,16 @@ pub fn set_to_classed_with_prefix(md: &mut MarkdownIt, prefix: &'static str) {
     });
 }
 
+/// Set the class prefix used for line highlighting and classed mode.
 pub fn set_prefix(md: &mut MarkdownIt, prefix: &'static str) {
     update_syntect_settings(md, |settings| settings.prefix = prefix);
 }
 
+/// Generate CSS for selected built-in theme
+///
+/// # Panics
+///
+/// Panics if the configured theme not found in built-in themes
 pub fn theme_css(md: &MarkdownIt) -> Option<String> {
     let ts = ThemeSet::load_defaults();
     let settings = load_syntect_settings(md);
@@ -304,7 +355,7 @@ fn render_inline_html(
         }
     }
 
-    // it seems `<pre><code>` or `<pre><code class="language-{lang}">`
+    // it look like `<pre><code>` or `<pre><code class="language-{lang}">`
     let mut html = String::from("<pre><code");
     if !class_attr.is_empty() {
         html.push_str(" class=\"");
@@ -313,7 +364,7 @@ fn render_inline_html(
     }
     html.push('>');
 
-    // it seems `<span class="syntect-line [syntect-line-highlighted]" style="...">{code}</span>`
+    // it looks like `<span class="syntect-line [syntect-line-highlighted]" style="...">{code}</span>`
     for (idx, line) in LinesWithEndings::from(content).enumerate() {
         let line_no = idx + 1;
         let regions = highlighter.highlight_line(line, ss).ok()?;
@@ -370,7 +421,7 @@ fn render_classed_html(
     }
 
     // splicing HTML
-    // head, it seems `<pre><code class="syntect-code language-rust">`
+    // head, it looks like `<pre><code class="syntect-code language-rust">`
     let mut html = String::from("<pre><code class=\"");
     html.push_str(&escape_html(&class_attr));
     html.push_str("\">");
@@ -379,7 +430,7 @@ fn render_classed_html(
         let line_no = idx + 1;
         let active_scopes = scope_stack.scopes.clone();
 
-        // it seems `<span class="syntect-line [syntect-line-highlighted]">`
+        // it looks like `<span class="syntect-line [syntect-line-highlighted]">`
         html.push_str("<span class=\"");
         html.push_str(prefix);
         html.push_str("line");
