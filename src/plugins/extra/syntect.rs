@@ -273,7 +273,7 @@ pub fn set_theme(md: &mut MarkdownIt, theme: impl Into<String>) {
 /// markdown_it::plugins::extra::syntect::add(&mut md);
 /// markdown_it::plugins::extra::syntect::set_to_classed(&mut md);
 ///
-/// let css = markdown_it::plugins::extra::syntect::theme_css(md);
+/// let css = markdown_it::plugins::extra::syntect::theme_css(&mut md);
 /// assert!(css.is_some())
 /// ```
 pub fn set_to_classed(md: &mut MarkdownIt) {
