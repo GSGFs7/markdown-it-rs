@@ -39,13 +39,14 @@ impl NodeValue for SyntectSnippet {
 #[derive(Debug, Clone, Copy)]
 enum SyntectMode {
     Inline,
-    Classed { prefix: &'static str },
+    Classed,
 }
 
 #[derive(Debug, Clone)]
 struct SyntectSettings {
     theme: String,
     mode: SyntectMode,
+    prefix: &'static str,
 }
 
 impl MarkdownItExt for SyntectSettings {}
@@ -55,6 +56,7 @@ impl Default for SyntectSettings {
         Self {
             theme: "InspiredGitHub".to_owned(),
             mode: SyntectMode::Inline,
+            prefix: "syntect-",
         }
     }
 }
@@ -179,15 +181,16 @@ impl CoreRule for SyntectRule {
                         theme,
                         language.as_deref(),
                         lang_prefix.unwrap_or("language-"),
+                        settings.prefix,
                         &highlighted_lines,
                     ),
-                    SyntectMode::Classed { prefix } => render_classed_html(
+                    SyntectMode::Classed => render_classed_html(
                         content,
                         &ss,
                         syntax,
                         language.as_deref(),
                         lang_prefix.unwrap_or("language-"),
-                        prefix,
+                        settings.prefix,
                         &highlighted_lines,
                     ),
                 };
@@ -235,8 +238,13 @@ pub fn set_to_classed(md: &mut MarkdownIt) {
 
 pub fn set_to_classed_with_prefix(md: &mut MarkdownIt, prefix: &'static str) {
     update_syntect_settings(md, |settings| {
-        settings.mode = SyntectMode::Classed { prefix };
+        settings.mode = SyntectMode::Classed;
+        settings.prefix = prefix;
     });
+}
+
+pub fn set_prefix(md: &mut MarkdownIt, prefix: &'static str) {
+    update_syntect_settings(md, |settings| settings.prefix = prefix);
 }
 
 pub fn theme_css(md: &MarkdownIt) -> Option<String> {
@@ -247,9 +255,13 @@ pub fn theme_css(md: &MarkdownIt) -> Option<String> {
 
     match settings.mode {
         SyntectMode::Inline => None,
-        SyntectMode::Classed { prefix } => {
-            css_for_theme_with_class_style(theme, ClassStyle::SpacedPrefixed { prefix }).ok()
-        }
+        SyntectMode::Classed => css_for_theme_with_class_style(
+            theme,
+            ClassStyle::SpacedPrefixed {
+                prefix: settings.prefix,
+            },
+        )
+        .ok(),
     }
 }
 
@@ -276,6 +288,7 @@ fn render_inline_html(
     theme: &Theme,
     language: Option<&str>,
     lang_prefix: &'static str,
+    prefix: &'static str,
     highlight_lines: &HashSet<usize>,
 ) -> Option<String> {
     let mut highlighter = HighlightLines::new(syntax, theme);
@@ -315,10 +328,14 @@ fn render_inline_html(
         .ok()?;
 
         // splicing HTML
-        html.push_str("<span class=\"syntect-line");
+        html.push_str("<span class=\"");
+        html.push_str(prefix);
+        html.push_str("line");
         if highlight_lines.contains(&line_no) {
             // mark as highlighted line. you may need to add styles to this class yourself
-            html.push_str(" syntect-line-highlighted");
+            html.push_str(" ");
+            html.push_str(prefix);
+            html.push_str("line-highlighted");
         }
         html.push_str("\">");
         html.push_str(&line_html);
