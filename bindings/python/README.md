@@ -4,7 +4,7 @@ For development, use [maturin](https://www.maturin.rs/):
 
 ```bash
 cd bindings/python
-pip install maturin
+uv tool install maturin # or `pip install maturin`
 maturin develop
 python -m unittest discover -s tests -v
 ```
