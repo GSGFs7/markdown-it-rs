@@ -7,6 +7,12 @@ edition = "2024"
 name = "markdown_it_rs_py"
 crate-type = ["cdylib"]
 
+[features]
+default = ["linkify", "syntect", "katex"]
+linkify = ["markdown-it/linkify"]
+syntect = ["markdown-it/syntect"]
+katex = ["markdown-it/katex"]
+
 [dependencies]
 pyo3 = { version = "0.28", features = ["extension-module"] }
-markdown-it = { path = "../.." }
+markdown-it = { path = "../..", default-features = false }
