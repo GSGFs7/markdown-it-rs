@@ -19,16 +19,17 @@
 //! assert_eq!(html.trim(), r#"<p>Markdown done “The Right Way™”</p>"#);
 //! ```
 pub mod beautify_links;
+pub mod front_matter;
 pub mod heading_anchors;
 #[cfg(feature = "linkify")]
 pub mod linkify;
+pub mod math;
 pub mod smartquotes;
 pub mod strikethrough;
 #[cfg(feature = "syntect")]
 pub mod syntect;
 pub mod tables;
 pub mod typographer;
-pub mod math;
 
 use crate::MarkdownIt;
 
@@ -42,4 +43,6 @@ pub fn add(md: &mut MarkdownIt) {
     syntect::add(md);
     typographer::add(md);
     smartquotes::add(md);
+    #[cfg(feature = "katex")]
+    math::add(md);
 }
