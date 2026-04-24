@@ -21,6 +21,9 @@ name = "markdown-it"
 path = "src/bin.rs"
 doc = false
 
+[workspace]
+members = ["crates/markdown-it-url", "bindings/python", "benchmarks", "demo"]
+
 [features]
 default = ["linkify", "syntect"]
 katex = ["dep:katex-rs"]
@@ -36,7 +39,7 @@ entities = ">= 0.1.0, < 2"
 html-escape = ">= 0.1.0, < 0.3"
 linkify = { version = ">= 0.5.0, < 0.12", optional = true }
 katex-rs = { version = "0.2.4", optional = true }
-mdurl = ">= 0.3.1, < 0.4"
+mdurl = { package = "markdown-it-url", path = "crates/markdown-it-url" }
 once_cell = ">= 1.0.1, < 2"
 readonly = ">= 0.2.0, < 0.3"
 regex = ">= 1.0.0, < 2"
