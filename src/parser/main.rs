@@ -1,5 +1,3 @@
-use derivative::Derivative;
-
 use crate::common::ruler::Ruler;
 use crate::common::sourcemap::SourcePos;
 use crate::common::TypeKey;
@@ -10,10 +8,8 @@ use crate::parser::inline::{self, InlineParser};
 use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
 use crate::Node;
 
-type RuleFn = fn (&mut Node, &MarkdownIt);
+type RuleFn = fn(&mut Node, &MarkdownIt);
 
-#[derive(Derivative)]
-#[derivative(Debug)]
 /// Main parser struct, created once and reused for parsing multiple documents.
 pub struct MarkdownIt {
     /// Block-level tokenizer.
@@ -42,6 +38,20 @@ pub struct MarkdownIt {
     ruler: Ruler<TypeKey, RuleFn>,
 }
 
+impl std::fmt::Debug for MarkdownIt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MarkdownIt")
+            .field("block", &self.block)
+            .field("inline", &self.inline)
+            .field("link_formatter", &self.link_formatter)
+            .field("ext", &self.ext)
+            .field("max_nesting", &self.max_nesting)
+            .field("max_indent", &self.max_indent)
+            .field("ruler", &self.ruler)
+            .finish()
+    }
+}
+
 impl MarkdownIt {
     pub fn new() -> Self {
         Self::default()
@@ -53,7 +63,10 @@ impl MarkdownIt {
 
         for rule in self.ruler.iter() {
             rule(&mut node, self);
-            debug_assert!(node.is::<Root>(), "root node of the AST must always be Root");
+            debug_assert!(
+                node.is::<Root>(),
+                "root node of the AST must always be Root"
+            );
         }
         node
     }
