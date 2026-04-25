@@ -1,53 +1,76 @@
-use markdown_it::parser::inline::{Text, TextSpecial};
 use std::io::{Read, Write};
+
+use clap::{Arg, ArgAction, Command};
+use markdown_it::parser::inline::{Text, TextSpecial};
 
 #[cfg(not(tarpaulin_include))]
 fn main() {
-    let mut input = "-".to_owned();
-    let mut output = "-".to_owned();
-    let mut no_html = false;
+    let cli = Command::new("markdown-it")
+        .version(env!("CARGO_PKG_VERSION"))
+        .disable_version_flag(true)
+        .arg(
+            Arg::new("version")
+                .short('v')
+                .long("version")
+                .help("Show version")
+                .action(ArgAction::Version),
+        )
+        .arg(
+            Arg::new("output")
+                .short('o')
+                .long("output")
+                .help("File to write")
+                .default_value("-"),
+        )
+        .arg(
+            Arg::new("sourcepos")
+                .long("sourcepos")
+                .help("Include source mappings in HTML attributes")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("no-html")
+                .long("no-html")
+                .help("Disable embedded HTML")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("typographer")
+                .short('t')
+                .long("typographer")
+                .help("Enable smartquotes and other typographic replacements")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("tree")
+                .long("tree")
+                .help("Print syntax tree for debugging")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(Arg::new("file").help("File to read").default_value("-"));
+
     #[cfg(feature = "linkify")]
-    let mut linkify = false;
-    let mut typographer = false;
-    let mut sourcepos = false;
-    let mut show_tree = false;
+    let cli = cli.arg(
+        Arg::new("linkify")
+            .short('l')
+            .long("linkify")
+            .help("Autolink text")
+            .action(ArgAction::SetTrue),
+    );
 
-    {
-        let mut cli = argparse::ArgumentParser::new();
-
-        cli.add_option(&["-v", "--version"], argparse::Print(env!("CARGO_PKG_VERSION").to_owned()), "Show version");
-
-        cli
-            .refer(&mut output)
-            .add_option(&["-o", "--output"], argparse::Store, "File to write");
-
-        cli
-            .refer(&mut sourcepos)
-            .add_option(&["--sourcepos"], argparse::StoreTrue, "Include source mappings in HTML attributes");
-
-        cli
-            .refer(&mut no_html)
-            .add_option(&["--no-html"], argparse::StoreTrue, "Disable embedded HTML");
-
-        #[cfg(feature = "linkify")]
-        cli
-            .refer(&mut linkify)
-            .add_option(&["-l", "--linkify"], argparse::StoreTrue, "Autolink text");
-
-        cli
-            .refer(&mut typographer)
-            .add_option(&["-t", "--typographer"], argparse::StoreTrue, "Enable smartquotes and other typographic replacements");
-
-        cli
-            .refer(&mut show_tree)
-            .add_option(&["--tree"], argparse::StoreTrue, "Print syntax tree for debugging");
-
-        cli
-            .refer(&mut input)
-            .add_argument("file", argparse::Store, "File to read");
-
-        cli.parse_args_or_exit();
-    }
+    let matches = cli.get_matches();
+    let input = matches
+        .get_one::<String>("file")
+        .expect("file has a default");
+    let output = matches
+        .get_one::<String>("output")
+        .expect("output has a default");
+    let no_html = matches.get_flag("no-html");
+    #[cfg(feature = "linkify")]
+    let linkify = matches.get_flag("linkify");
+    let typographer = matches.get_flag("typographer");
+    let sourcepos = matches.get_flag("sourcepos");
+    let show_tree = matches.get_flag("tree");
 
     let vec = if input == "-" {
         let mut vec = Vec::new();
@@ -85,7 +108,7 @@ fn main() {
     if show_tree {
         ast.walk(|node, depth| {
             print!("{}", "    ".repeat(depth as usize));
-            let name = &node.name()[node.name().rfind("::").map(|x| x+2).unwrap_or_default()..];
+            let name = &node.name()[node.name().rfind("::").map(|x| x + 2).unwrap_or_default()..];
             if let Some(data) = node.cast::<Text>() {
                 println!("{name}: {:?}", data.content);
             } else if let Some(data) = node.cast::<TextSpecial>() {
