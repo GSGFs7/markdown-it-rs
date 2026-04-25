@@ -21,14 +21,14 @@ jobs:
     strategy:
       matrix:
         rust:
-         - stable
+          - stable
     steps:
-     - uses: actions/checkout@v3
-     - run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && cd demo && yarn && yarn build
-     - name: Upload artifact
-       uses: actions/upload-pages-artifact@v1
-       with:
-         path: ./demo/build
+      - uses: actions/checkout@v6
+      - run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && cd demo && yarn && yarn build
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./demo/build
 
   deploy:
     environment:
@@ -39,4 +39,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v1
+        uses: actions/deploy-pages@v4

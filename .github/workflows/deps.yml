@@ -6,6 +6,8 @@ on:
   - push
   - pull_request
 
+permissions: read-all
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -13,9 +15,9 @@ jobs:
     strategy:
       matrix:
         rust:
-         - nightly
+          - nightly
 
     steps:
-     - uses: actions/checkout@v3
-     - uses: dtolnay/rust-toolchain@nightly
-     - run: cargo +nightly -Z minimal-versions update && cargo +nightly test --no-default-features --features linkify
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo +nightly -Z minimal-versions update && cargo +nightly test --no-default-features --features linkify
