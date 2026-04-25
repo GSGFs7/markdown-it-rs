@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 [dependencies]
 console_error_panic_hook = "0.1.7"
 js-sys = "0.3.59"
-markdown-it = { path = "../" }
+markdown-it-rs = { path = "../" }
 wasm-bindgen = "0.2.82"
 
 [dependencies.web-sys]

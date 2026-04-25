@@ -1,7 +1,14 @@
 [package]
-name = "markdown-it-url"
+name = "markdown-it-rs-url"
 version = "0.1.0"
+description = "URL parsing and normalization compatibility layer for markdown-it-rs"
+documentation = "https://docs.rs/markdown-it-rs-url"
+homepage = "https://github.com/GSGFs7/markdown-it-rs"
+repository = "https://github.com/GSGFs7/markdown-it-rs"
+readme = "README.md"
+keywords = ["url", "markdown"]
+license = "MIT"
 edition = "2024"
 
 [dependencies]
-idna = "1"
+idna = "1.1"

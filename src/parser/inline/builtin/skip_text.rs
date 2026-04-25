@@ -49,7 +49,7 @@ pub(crate) enum TextScannerImpl {
 /// !, ", #, $, %, &, ', (, ), *, +, ,, -, ., /, :, ;, <, =, >, ?, @, [, \, ], ^, _, `, {, |, }, or ~
 ///
 /// !!!! Don't confuse with "Markdown ASCII Punctuation" chars
-/// http://spec.commonmark.org/0.15/#ascii-punctuation-character
+/// <http://spec.commonmark.org/0.15/#ascii-punctuation-character>
 ///
 pub struct TextScanner;
 

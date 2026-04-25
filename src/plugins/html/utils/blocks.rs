@@ -1,5 +1,5 @@
 //! List of valid html blocks names, according to commonmark spec
-//! http://jgm.github.io/CommonMark/spec.html#html-blocks
+//! <http://jgm.github.io/CommonMark/spec.html#html-blocks>
 //!
 
 pub const HTML_BLOCKS: [&str; 62] = [

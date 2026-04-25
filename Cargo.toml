@@ -1,16 +1,16 @@
 [package]
-name = "markdown-it"
-version = "0.6.1"
-authors = ["Alex Kocharin <alex@kocharin.ru>"]
-description = "Rust port of popular markdown-it.js library."
-documentation = "https://docs.rs/markdown-it"
-homepage = "https://github.com/markdown-it-rust/markdown-it"
-repository = "https://github.com/markdown-it-rust/markdown-it"
+name = "markdown-it-rs"
+version = "0.6.2"
+authors = ["Alex Kocharin <alex@kocharin.ru>", "GSGFs7"]
+description = "Rust port of popular markdown-it.js library. Forked from markdown-it-rust/markdown-it"
+documentation = "https://docs.rs/markdown-it-rs"
+homepage = "https://github.com/GSGFs7/markdown-it-rs"
+repository = "https://github.com/GSGFs7/markdown-it-rs"
 readme = "README.md"
 keywords = ["markdown", "commonmark"]
 license = "MIT"
 categories = ["text-processing", "parsing"]
-edition = "2021"
+edition = "2024"
 
 [lib]
 name = "markdown_it"
@@ -21,8 +21,13 @@ name = "markdown-it"
 path = "src/bin.rs"
 doc = false
 # need enable the feature
-#  `cargo run -q -p markdown-it --features cli --bin markdown-it -- -v`
+#  `cargo run -q -p markdown-it-rs --features cli --bin markdown-it -- -v`
 required-features = ["cli"]
+
+[[example]]
+name = "syntect"
+path = "examples/syntect/main.rs"
+required-features = ["syntect"]
 
 [workspace]
 members = ["crates/markdown-it-url", "bindings/python", "benchmarks", "demo"]
@@ -42,7 +47,7 @@ entities = ">= 0.1.0, < 2"
 html-escape = ">= 0.1.0, < 0.3"
 linkify = { version = ">= 0.5.0, < 0.12", optional = true }
 katex-rs = { version = "0.2.4", optional = true }
-mdurl = { package = "markdown-it-url", path = "crates/markdown-it-url" }
+mdurl = { package = "markdown-it-rs-url", version = "0.1.0", path = "crates/markdown-it-url" }
 once_cell = ">= 1.0.1, < 2"
 readonly = ">= 0.2.0, < 0.3"
 regex = ">= 1.0.0, < 2"

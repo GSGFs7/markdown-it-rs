@@ -242,7 +242,7 @@ pub fn cut_right_whitespace_with_tabstops(source: &str, indent: i32) -> Cow<'_, 
 
 /// Calculate trailing whitespace with total length of `indent`.
 ///
-/// See [cut_right_whitespace_with_tabstops](cut_right_whitespace_with_tabstops)
+/// See [cut_right_whitespace_with_tabstops]
 /// for algorithm and details.
 ///
 /// Returns number of spaces + number of bytes to cut from the end.

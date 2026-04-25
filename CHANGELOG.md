@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.2 - 2026-04-25
+
+### Added
+
+ - added markdown math support
+ - added front matter support
+ - added Python bindings
+ - added syntect class-based highlighting mode, highlighted line support, and demo
+ - added `markdown-it-rs-url` compatibility crate to replace `mdurl`
+
+### Changed
+
+ - renamed the published crate to `markdown-it-rs`
+ - moved package manifests to Rust 2024 edition
+ - replaced `argparse` with `clap`
+ - removed the unmaintained `derivative` dependency
+ - updated dependencies for newer toolchains
+
+### Fixed
+
+ - fixed syntect custom prefix handling in inline mode
+ - fixed syntect doctest coverage
+
 ## 0.6.1 - 2024-07-07
 
 ### Fixed

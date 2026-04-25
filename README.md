@@ -1,4 +1,4 @@
-# markdown-it
+# markdown-it-rs
 
 > [!NOTE]
 > This is a personally maintained fork of
@@ -10,8 +10,6 @@ TL;DR:
  - if you want to get result *fast*, use [pulldown-cmark](https://github.com/raphlinus/pulldown-cmark)
  - if you want to render GFM exactly like github, use [comrak](https://github.com/kivikakk/comrak)
  - if you want to define your own syntax (like `@mentions`, `:emoji:`, custom html classes), use this library
-
-You can check a [demo](https://markdown-it-rust.github.io/markdown-it/) in your browser *(it's Rust compiled into WASM)*.
 
 ### Features
 

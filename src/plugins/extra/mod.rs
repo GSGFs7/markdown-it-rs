@@ -2,7 +2,7 @@
 //!
 //!  - strikethrough (~~xxx~~~)
 //!  - tables
-//!  - linkify (convert http://example.com to a link)
+//!  - linkify (convert <http://example.com> to a link)
 //!  - beautify links (cut "http://" from links and shorten paths)
 //!  - smartquotes and typographer
 //!  - code block highlighting using `syntect`
