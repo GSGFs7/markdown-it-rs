@@ -10,11 +10,12 @@
         "@wasm-tool/wasm-pack-plugin": "^1.7.0",
         "css-loader": "^7.1.2",
         "pug": "^3.0.3",
-        "pug-plugin": "^5.3.0",
-        "stylus": "^0.63.0",
+        "pug-plugin": "^6.1.0",
+        "stylus": "^0.64.0",
         "stylus-loader": "^8.1.0",
+        "tslib": "^2.8.1",
         "webpack": "^5.92.0",
-        "webpack-cli": "^5.1.4",
+        "webpack-cli": "^7.0.2",
         "webpack-dev-server": "^5.0.4"
     }
 }
