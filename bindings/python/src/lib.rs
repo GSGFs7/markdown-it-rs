@@ -4,6 +4,7 @@ use markdown_it::plugins::extra::front_matter::{FrontMatter, FrontMatterKind};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+#[allow(clippy::too_many_arguments)]
 fn build(
     enable_html: bool,
     enable_linkify: bool,
@@ -150,6 +151,7 @@ impl PyMarkdownIt {
         syntax_theme = None,
         syntax_classed = false
     ))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         html: bool,
         linkify: bool,
