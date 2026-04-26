@@ -1,7 +1,8 @@
 name: coverage
 
 on:
-  - push
+  #- push
+  - workflow_dispatch
 
 permissions: read-all
 
