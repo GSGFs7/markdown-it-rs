@@ -123,6 +123,7 @@ impl TextScanner {
 
 impl InlineRule for TextScanner {
     const MARKER: char = '\0';
+    const NAMES: &'static [&'static str] = &["text"];
 
     fn check(state: &mut InlineState) -> Option<usize> {
         let len = Self::find_text_length(state);

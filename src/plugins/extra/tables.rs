@@ -292,6 +292,8 @@ impl TableScanner {
 }
 
 impl BlockRule for TableScanner {
+    const NAMES: &'static [&'static str] = &["table", "tables"];
+
     fn check(state: &mut BlockState) -> Option<()> {
         if state.node.is::<TableBody>() { return None; }
 

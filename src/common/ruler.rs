@@ -71,6 +71,7 @@ impl<M: Eq + Hash + Clone + Debug, T: Clone> Ruler<M, T> {
 
     /// Remove all rules identified by `mark`.
     pub fn remove(&mut self, mark: M) {
+        self.compiled = OnceCell::new();
         self.deps.retain(|dep| !dep.marks.contains(&mark));
     }
 
@@ -383,6 +384,8 @@ enum RuleItemPriority {
 
 #[cfg(test)]
 mod tests {
+    use crate::common::RuleMark;
+
     use super::Ruler;
 
     #[test]
@@ -418,5 +421,30 @@ mod tests {
         r.add("B", ()).require("A");
         r.add("C", ()).require("Z");
         r.compile();
+    }
+
+    #[test]
+    fn named_mark_can_target_typed_rule_alias() {
+        struct TypedRule;
+
+        let mut r = Ruler::new();
+        r.add(RuleMark::of::<TypedRule>(), "typed")
+            .alias(RuleMark::named("typed"));
+        r.add(RuleMark::named("dynamic"), "dynamic")
+            .before(RuleMark::named("typed"));
+
+        let result = r.iter().copied().collect::<Vec<_>>();
+        assert_eq!(result, vec!["dynamic", "typed"]);
+    }
+
+    #[test]
+    fn remove_invalidates_compiled_cache() {
+        let mut r = Ruler::new();
+        r.add("A", "A");
+
+        assert_eq!(r.iter().copied().collect::<Vec<_>>(), vec!["A"]);
+
+        r.remove("A");
+        assert!(r.iter().next().is_none());
     }
 }

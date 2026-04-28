@@ -22,6 +22,8 @@ pub fn add(md: &mut MarkdownIt) {
 #[doc(hidden)]
 pub struct SyntaxPosRule;
 impl CoreRule for SyntaxPosRule {
+    const NAMES: &'static [&'static str] = &["sourcepos", "source_pos"];
+
     fn run(root: &mut Node, _: &MarkdownIt) {
         let source = root.cast::<Root>().unwrap().content.as_str();
         let mapping = SourceWithLineStarts::new(source);

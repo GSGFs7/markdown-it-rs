@@ -32,6 +32,8 @@ pub fn add(md: &mut MarkdownIt) {
 #[doc(hidden)]
 pub struct HeadingScanner;
 impl BlockRule for HeadingScanner {
+    const NAMES: &'static [&'static str] = &["heading"];
+
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
 
         if state.line_indent(state.line) >= state.md.max_indent { return None; }

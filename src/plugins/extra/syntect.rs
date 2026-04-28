@@ -176,6 +176,8 @@ impl FenceMeta {
 pub struct SyntectRule;
 
 impl CoreRule for SyntectRule {
+    const NAMES: &'static [&'static str] = &["syntect"];
+
     fn run(root: &mut Node, md: &MarkdownIt) {
         let ss = SyntaxSet::load_defaults_newlines();
         let ts = ThemeSet::load_defaults();

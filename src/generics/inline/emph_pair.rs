@@ -93,7 +93,12 @@ pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool
 
     if !pair_config.inserted {
         pair_config.inserted = true;
-        md.inline.add_rule::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>();
+        let builder = md.inline.add_rule::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>();
+        if MARKER == '*' || MARKER == '_' {
+            builder.alias_named("emphasis");
+        } else if MARKER == '~' {
+            builder.alias_named("strikethrough");
+        }
     }
 
     if !md.has_rule::<FragmentsJoin>() {
@@ -107,6 +112,7 @@ pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool
 pub struct EmphPairScanner<const MARKER: char, const CAN_SPLIT_WORD: bool>;
 impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule for EmphPairScanner<MARKER, CAN_SPLIT_WORD> {
     const MARKER: char = MARKER;
+    const NAMES: &'static [&'static str] = &["emph_pair"];
 
     // this rule works on a closing marker, so for technical reasons any rules trying to skip it
     // should see just plain text
@@ -264,6 +270,8 @@ fn is_odd_match(opener: &EmphMarker, closer: &EmphMarker) -> bool {
 #[doc(hidden)]
 pub struct FragmentsJoin;
 impl CoreRule for FragmentsJoin {
+    const NAMES: &'static [&'static str] = &["fragments_join"];
+
     fn run(node: &mut Node, _: &MarkdownIt) {
         node.walk_mut(|node, _| fragments_join(node));
     }

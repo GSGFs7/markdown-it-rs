@@ -80,6 +80,8 @@ pub fn add(md: &mut MarkdownIt) {
 pub struct TypographerRule;
 
 impl CoreRule for TypographerRule {
+    const NAMES: &'static [&'static str] = &["typographer"];
+
     fn run(root: &mut Node, _: &MarkdownIt) {
         root.walk_mut(|node, _| {
             let Some(text_node) = node.cast_mut::<Text>() else { return; };

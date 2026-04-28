@@ -33,6 +33,8 @@ pub fn add(md: &mut MarkdownIt) {
 #[doc(hidden)]
 pub struct CodeScanner;
 impl BlockRule for CodeScanner {
+    const NAMES: &'static [&'static str] = &["code"];
+
     fn check(_: &mut BlockState) -> Option<()> {
         None
     }

@@ -87,6 +87,8 @@ impl FenceScanner {
 }
 
 impl BlockRule for FenceScanner {
+    const NAMES: &'static [&'static str] = &["fence"];
+
     fn check(state: &mut BlockState) -> Option<()> {
         Self::get_header(state).map(|_| ())
     }

@@ -41,6 +41,7 @@ static EMAIL_RE : Lazy<Regex> = Lazy::new(|| {
 pub struct AutolinkScanner;
 impl InlineRule for AutolinkScanner {
     const MARKER: char = '<';
+    const NAMES: &'static [&'static str] = &["autolink"];
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();

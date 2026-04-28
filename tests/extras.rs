@@ -190,6 +190,40 @@ r#"<blockquote>
         );
     }
 
+    #[test]
+    fn named_rule_aliases_interoperate_with_builtin_core_rules() {
+        use markdown_it::parser::core::CoreRule;
+        use markdown_it::parser::extset::NodeExt;
+        use markdown_it::parser::inline::InlineRoot;
+        use markdown_it::{MarkdownIt, Node};
+
+        #[derive(Debug)]
+        struct SawBlockBeforeInline(bool);
+        impl NodeExt for SawBlockBeforeInline {}
+
+        struct BetweenBlockAndInline;
+        impl CoreRule for BetweenBlockAndInline {
+            fn run(root: &mut Node, _md: &MarkdownIt) {
+                let saw_inline_root = root.children.iter().any(|node| {
+                    node.children.iter().any(|child| child.is::<InlineRoot>())
+                });
+                root.ext.insert(SawBlockBeforeInline(saw_inline_root));
+            }
+        }
+
+        let md = &mut markdown_it::MarkdownIt::new();
+        markdown_it::plugins::cmark::add(md);
+
+        md.add_rule::<BetweenBlockAndInline>()
+            .after_named("block")
+            .before_named("inline")
+            .require_named("block")
+            .require_named("inline");
+
+        let ast = md.parse("# heading");
+        assert!(ast.ext.get::<SawBlockBeforeInline>().unwrap().0);
+    }
+
     #[cfg(feature = "syntect")]
     #[test]
     fn syntect_classed_mode_renders_language_class() {

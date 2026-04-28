@@ -16,6 +16,7 @@ pub fn add(md: &mut MarkdownIt) {
 pub struct EscapeScanner;
 impl InlineRule for EscapeScanner {
     const MARKER: char = '\\';
+    const NAMES: &'static [&'static str] = &["escape"];
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();

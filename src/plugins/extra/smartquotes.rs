@@ -143,6 +143,8 @@ impl<
         CLOSE_DOUBLE_QUOTE,
     >
 {
+    const NAMES: &'static [&'static str] = &["smartquotes"];
+
     fn run(root: &mut Node, _: &MarkdownIt) {
         let text_tokens = all_text_tokens(root);
 

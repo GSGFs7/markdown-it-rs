@@ -27,6 +27,8 @@ pub fn add(md: &mut MarkdownIt) {
 #[doc(hidden)]
 pub struct HrScanner;
 impl BlockRule for HrScanner {
+    const NAMES: &'static [&'static str] = &["hr"];
+
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
 
         if state.line_indent(state.line) >= state.md.max_indent { return None; }

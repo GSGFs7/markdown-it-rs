@@ -40,6 +40,8 @@ impl MarkdownItExt for FrontMatterSettings {}
 pub struct FrontMatterScanner;
 
 impl BlockRule for FrontMatterScanner {
+    const NAMES: &'static [&'static str] = &["front_matter", "frontmatter"];
+
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
         if state.line != 0 {
             return None;

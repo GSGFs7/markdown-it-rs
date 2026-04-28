@@ -117,6 +117,9 @@ impl BlockParser {
 
     pub fn add_rule<T: BlockRule>(&mut self) -> RuleBuilder<'_, RuleFns> {
         let item = self.ruler.add(RuleMark::of::<T>(), (T::check, T::run));
+        for name in T::NAMES {
+            item.alias(RuleMark::named(*name));
+        }
         RuleBuilder::new(item)
     }
 

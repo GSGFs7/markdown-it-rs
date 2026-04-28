@@ -24,6 +24,7 @@ pub fn add(md: &mut MarkdownIt) {
 pub struct HtmlInlineScanner;
 impl InlineRule for HtmlInlineScanner {
     const MARKER: char = '<';
+    const NAMES: &'static [&'static str] = &["html_inline"];
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         // Check start

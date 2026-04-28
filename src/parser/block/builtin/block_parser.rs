@@ -8,6 +8,8 @@ pub fn add(md: &mut MarkdownIt) {
 
 pub struct BlockParserRule;
 impl CoreRule for BlockParserRule {
+    const NAMES: &'static [&'static str] = &["block"];
+
     fn run(root: &mut Node, md: &MarkdownIt) {
         let mut node = std::mem::take(root);
         let data = node.cast_mut::<Root>().unwrap();

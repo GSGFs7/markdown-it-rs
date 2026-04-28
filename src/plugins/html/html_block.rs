@@ -114,6 +114,8 @@ impl HtmlBlockScanner {
 }
 
 impl BlockRule for HtmlBlockScanner {
+    const NAMES: &'static [&'static str] = &["html_block"];
+
     fn check(state: &mut BlockState) -> Option<()> {
         let sequence = Self::get_sequence(state)?;
         if !sequence.can_terminate_paragraph { return None; }

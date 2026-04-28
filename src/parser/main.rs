@@ -73,6 +73,9 @@ impl MarkdownIt {
 
     pub fn add_rule<T: CoreRule>(&mut self) -> RuleBuilder<'_, RuleFn> {
         let item = self.ruler.add(RuleMark::of::<T>(), T::run);
+        for name in T::NAMES {
+            item.alias(RuleMark::named(*name));
+        }
         RuleBuilder::new(item)
     }
 

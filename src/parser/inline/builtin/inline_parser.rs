@@ -29,6 +29,8 @@ pub fn add(md: &mut MarkdownIt) {
 
 pub struct InlineParserRule;
 impl CoreRule for InlineParserRule {
+    const NAMES: &'static [&'static str] = &["inline"];
+
     fn run(root: &mut Node, md: &MarkdownIt) {
         fn walk_recursive(node: &mut Node, md: &MarkdownIt, root_ext: &mut RootExtSet) {
             let mut idx = 0;

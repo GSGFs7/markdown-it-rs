@@ -3,6 +3,8 @@ use crate::Node;
 
 /// Each member of block rule chain must implement this trait
 pub trait BlockRule : 'static {
+    const NAMES: &'static [&'static str] = &[];
+
     fn check(state: &mut super::BlockState) -> Option<()> {
         Self::run(state).map(|_| ())
     }

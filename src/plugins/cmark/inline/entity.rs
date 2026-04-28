@@ -71,6 +71,7 @@ impl EntityScanner {
 
 impl InlineRule for EntityScanner {
     const MARKER: char = '&';
+    const NAMES: &'static [&'static str] = &["entity"];
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();

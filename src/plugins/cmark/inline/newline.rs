@@ -34,6 +34,7 @@ pub fn add(md: &mut MarkdownIt) {
 pub struct NewlineScanner;
 impl InlineRule for NewlineScanner {
     const MARKER: char = '\n';
+    const NAMES: &'static [&'static str] = &["newline"];
 
     fn check(state: &mut InlineState) -> Option<usize> {
         // check rule is required because run() modifies trailing text

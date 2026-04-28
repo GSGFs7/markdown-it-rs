@@ -29,6 +29,8 @@ pub fn add(md: &mut MarkdownIt) {
 #[doc(hidden)]
 pub struct BlockquoteScanner;
 impl BlockRule for BlockquoteScanner {
+    const NAMES: &'static [&'static str] = &["blockquote"];
+
     fn check(state: &mut BlockState) -> Option<()> {
 
         if state.line_indent(state.line) >= state.md.max_indent { return None; }

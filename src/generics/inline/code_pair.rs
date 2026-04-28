@@ -60,13 +60,17 @@ impl<const MARKER: char> MarkdownItExt for CodePairConfig<MARKER> {}
 pub fn add_with<const MARKER: char>(md: &mut MarkdownIt, f: fn (length: usize) -> Node) {
     md.ext.insert(CodePairConfig::<MARKER>(f));
 
-    md.inline.add_rule::<CodePairScanner<MARKER>>();
+    let builder = md.inline.add_rule::<CodePairScanner<MARKER>>();
+    if MARKER == '`' {
+        builder.alias_named("backticks");
+    }
 }
 
 #[doc(hidden)]
 pub struct CodePairScanner<const MARKER: char>;
 impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
     const MARKER: char = MARKER;
+    const NAMES: &'static [&'static str] = &["code_pair"];
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();

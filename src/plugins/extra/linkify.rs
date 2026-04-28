@@ -51,6 +51,8 @@ struct LinkifyPosition {
 #[doc(hidden)]
 pub struct LinkifyPrescan;
 impl CoreRule for LinkifyPrescan {
+    const NAMES: &'static [&'static str] = &["linkify_prescan"];
+
     fn run(root: &mut Node, _: &MarkdownIt) {
         let root_data = root.cast_mut::<Root>().unwrap();
         let source = root_data.content.as_str();
@@ -74,6 +76,7 @@ impl CoreRule for LinkifyPrescan {
 pub struct LinkifyScanner;
 impl InlineRule for LinkifyScanner {
     const MARKER: char = ':';
+    const NAMES: &'static [&'static str] = &["linkify"];
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();

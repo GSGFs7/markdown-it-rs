@@ -68,6 +68,8 @@ impl MathBlockScanner {
 }
 
 impl BlockRule for MathBlockScanner {
+    const NAMES: &'static [&'static str] = &["math_block"];
+
     fn check(state: &mut BlockState) -> Option<()> {
         Self::get_header(state).map(|_| ())
     }
@@ -147,6 +149,7 @@ pub struct MathInlineScanner;
 
 impl InlineRule for MathInlineScanner {
     const MARKER: char = '$';
+    const NAMES: &'static [&'static str] = &["math_inline"];
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let mut char = state.src[state.pos..state.pos_max].chars();

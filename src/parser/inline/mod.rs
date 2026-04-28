@@ -138,11 +138,15 @@ impl InlineParser {
 
     pub fn add_rule<T: InlineRule>(&mut self) -> RuleBuilder<'_, RuleFns> {
         if T::MARKER != '\0' {
+            self.text_impl = OnceCell::new();
             let charvec = self.text_charmap.entry(T::MARKER).or_default();
             charvec.push(RuleMark::of::<T>());
         }
 
         let item = self.ruler.add(RuleMark::of::<T>(), (T::check, T::run));
+        for name in T::NAMES {
+            item.alias(RuleMark::named(*name));
+        }
         RuleBuilder::new(item)
     }
 
@@ -152,9 +156,12 @@ impl InlineParser {
 
     pub fn remove_rule<T: InlineRule>(&mut self) {
         if T::MARKER != '\0' {
+            self.text_impl = OnceCell::new();
             let mut charvec = self.text_charmap.remove(&T::MARKER).unwrap_or_default();
             charvec.retain(|x| *x != RuleMark::of::<T>());
-            self.text_charmap.insert(T::MARKER, charvec);
+            if !charvec.is_empty() {
+                self.text_charmap.insert(T::MARKER, charvec);
+            }
         }
 
         self.ruler.remove(RuleMark::of::<T>());

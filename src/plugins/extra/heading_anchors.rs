@@ -57,6 +57,8 @@ impl Debug for SlugifyFunction {
 
 pub struct AddHeadingAnchors;
 impl CoreRule for AddHeadingAnchors {
+    const NAMES: &'static [&'static str] = &["heading_anchors", "heading-anchors"];
+
     fn run(root: &mut Node, md: &MarkdownIt) {
         let slugify = md.ext.get::<SlugifyFunction>().copied().unwrap_or_default().0;
 

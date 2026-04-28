@@ -36,6 +36,8 @@ pub fn add(md: &mut MarkdownIt) {
 #[doc(hidden)]
 pub struct LHeadingScanner;
 impl BlockRule for LHeadingScanner {
+    const NAMES: &'static [&'static str] = &["lheading"];
+
     fn check(_: &mut BlockState) -> Option<()> {
         None // can't interrupt any tags
     }

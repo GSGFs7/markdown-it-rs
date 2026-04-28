@@ -43,7 +43,10 @@ pub fn add_prefix<const PREFIX: char, const ENABLE_NESTED: bool>(
     f: fn (url: Option<String>, title: Option<String>) -> Node
 ) {
     md.ext.insert(LinkCfg::<PREFIX>(f));
-    md.inline.add_rule::<LinkPrefixScanner<PREFIX, ENABLE_NESTED>>();
+    let builder = md.inline.add_rule::<LinkPrefixScanner<PREFIX, ENABLE_NESTED>>();
+    if PREFIX == '!' {
+        builder.alias_named("image");
+    }
     if !md.inline.has_rule::<LinkScannerEnd>() {
         md.inline.add_rule::<LinkScannerEnd>();
     }
@@ -53,6 +56,7 @@ pub fn add_prefix<const PREFIX: char, const ENABLE_NESTED: bool>(
 pub struct LinkScanner<const ENABLE_NESTED: bool>;
 impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
     const MARKER: char = '[';
+    const NAMES: &'static [&'static str] = &["link"];
 
     fn check(state: &mut InlineState) -> Option<usize> {
         let mut chars = state.src[state.pos..state.pos_max].chars();
@@ -72,6 +76,7 @@ impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
 pub struct LinkPrefixScanner<const PREFIX: char, const ENABLE_NESTED: bool>;
 impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule for LinkPrefixScanner<PREFIX, ENABLE_NESTED> {
     const MARKER: char = PREFIX;
+    const NAMES: &'static [&'static str] = &["link_prefix"];
 
     fn check(state: &mut InlineState) -> Option<usize> {
         let mut chars = state.src[state.pos..state.pos_max].chars();
@@ -95,6 +100,7 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule for LinkPrefixSca
 pub struct LinkScannerEnd;
 impl InlineRule for LinkScannerEnd {
     const MARKER: char = ']';
+    const NAMES: &'static [&'static str] = &["link_end"];
 
     fn check(_: &mut InlineState) -> Option<usize> { None }
     fn run(_: &mut InlineState) -> Option<(Node, usize)> { None }

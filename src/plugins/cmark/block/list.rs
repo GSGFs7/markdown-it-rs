@@ -206,6 +206,8 @@ impl ListScanner {
 }
 
 impl BlockRule for ListScanner {
+    const NAMES: &'static [&'static str] = &["list"];
+
     fn check(state: &mut BlockState) -> Option<()> {
         if state.node.is::<BulletList>() || state.node.is::<OrderedList>() { return None; }
 

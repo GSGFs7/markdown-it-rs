@@ -28,6 +28,8 @@ impl NodeValue for Paragraph {
 #[doc(hidden)]
 pub struct ParagraphScanner;
 impl BlockRule for ParagraphScanner {
+    const NAMES: &'static [&'static str] = &["paragraph"];
+
     fn check(_: &mut BlockState) -> Option<()> {
         None // can't interrupt anything
     }
