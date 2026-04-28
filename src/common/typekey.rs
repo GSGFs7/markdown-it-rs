@@ -1,6 +1,7 @@
-use std::any::{self, TypeId};
-use std::fmt::{self, Debug};
+use std::any::{TypeId, type_name};
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 #[readonly::make]
 #[derive(Clone, Copy)]
@@ -23,17 +24,20 @@ use std::hash::{Hash, Hasher};
 /// ```
 pub struct TypeKey {
     /// type id (read only)
-    pub id:   TypeId,
+    pub id: TypeId,
     /// type name (read only)
     pub name: &'static str,
 }
 
 impl TypeKey {
     #[must_use]
-    /// Similar to [TypeId::of](std::any::TypeId::of), returns `TypeKey`
+    /// Similar to [TypeId::of](TypeId::of), returns `TypeKey`
     /// of the type this generic function has been instantiated with.
     pub fn of<T: ?Sized + 'static>() -> Self {
-        Self { id: TypeId::of::<T>(), name: any::type_name::<T>() }
+        Self {
+            id: TypeId::of::<T>(),
+            name: type_name::<T>(),
+        }
     }
 }
 
@@ -52,7 +56,7 @@ impl PartialEq for TypeKey {
 impl Eq for TypeKey {}
 
 impl Debug for TypeKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{}", self.name)
     }
 }
@@ -65,10 +69,26 @@ mod tests {
     fn typekey_eq() {
         struct A;
         struct B;
-        assert_eq!(TypeKey { id: std::any::TypeId::of::<A>(), name: "foo" },
-                   TypeKey { id: std::any::TypeId::of::<A>(), name: "bar" });
-        assert_ne!(TypeKey { id: std::any::TypeId::of::<A>(), name: "foo" },
-                   TypeKey { id: std::any::TypeId::of::<B>(), name: "foo" });
+        assert_eq!(
+            TypeKey {
+                id: std::any::TypeId::of::<A>(),
+                name: "foo"
+            },
+            TypeKey {
+                id: std::any::TypeId::of::<A>(),
+                name: "bar"
+            }
+        );
+        assert_ne!(
+            TypeKey {
+                id: std::any::TypeId::of::<A>(),
+                name: "foo"
+            },
+            TypeKey {
+                id: std::any::TypeId::of::<B>(),
+                name: "foo"
+            }
+        );
     }
 
     #[test]
@@ -77,5 +97,30 @@ mod tests {
         struct B;
         assert_eq!(TypeKey::of::<A>(), TypeKey::of::<A>());
         assert_ne!(TypeKey::of::<A>(), TypeKey::of::<B>());
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub enum RuleMark {
+    Type(TypeKey),  // rust or static rule
+    Name(Arc<str>), // python or dynamic rule
+}
+
+impl RuleMark {
+    pub fn of<T: 'static>() -> Self {
+        Self::Type(TypeKey::of::<T>())
+    }
+
+    pub fn named(name: impl Into<Arc<str>>) -> Self {
+        Self::Name(name.into())
+    }
+}
+
+impl Debug for RuleMark {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            RuleMark::Type(key) => key.fmt(f),
+            RuleMark::Name(name) => write!(f, "{name:?}"),
+        }
     }
 }

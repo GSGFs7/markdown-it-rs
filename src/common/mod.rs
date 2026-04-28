@@ -5,7 +5,7 @@
 
 pub mod ruler;
 pub mod sourcemap;
+pub mod typekey;
 pub mod utils;
 
-mod typekey;
-pub use typekey::TypeKey;
+pub use typekey::{RuleMark, TypeKey};

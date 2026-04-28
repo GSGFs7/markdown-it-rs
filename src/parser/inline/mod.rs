@@ -1,37 +1,35 @@
 //! Inline rule chain
-use once_cell::sync::OnceCell;
-use std::collections::HashMap;
-
-mod state;
-pub use state::*;
-
-mod rule;
-pub use rule::*;
 
 #[doc(hidden)]
 pub mod builtin;
+mod rule;
+mod state;
 
-pub use builtin::inline_parser::InlineRoot;
-pub use builtin::skip_text::{Text, TextSpecial};
-use builtin::skip_text::TextScannerImpl;
+use std::collections::HashMap;
 
-use crate::{MarkdownIt, Node};
-use crate::common::TypeKey;
+use once_cell::sync::OnceCell;
+
+pub use self::builtin::inline_parser::InlineRoot;
+pub use self::builtin::skip_text::{Text, TextSpecial};
+pub use self::rule::*;
+pub use self::state::*;
+use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::parser::extset::{InlineRootExtSet, RootExtSet};
-
-use super::node::NodeEmpty;
+use crate::parser::inline::builtin::skip_text::TextScannerImpl;
+use crate::parser::node::NodeEmpty;
+use crate::{MarkdownIt, Node};
 
 type RuleFns = (
-    fn (&mut InlineState) -> Option<usize>,
-    fn (&mut InlineState) -> Option<(Node, usize)>,
+    fn(&mut InlineState) -> Option<usize>,
+    fn(&mut InlineState) -> Option<(Node, usize)>,
 );
 
 #[derive(Debug, Default)]
 /// Inline-level tokenizer.
 pub struct InlineParser {
-    ruler: Ruler<TypeKey, RuleFns>,
-    text_charmap: HashMap<char, Vec<TypeKey>>,
+    ruler: Ruler<RuleMark, RuleFns>,
+    text_charmap: HashMap<char, Vec<RuleMark>>,
     text_impl: OnceCell<TextScannerImpl>,
 }
 
@@ -44,7 +42,7 @@ impl InlineParser {
     /// returns `true` if any rule reported success
     ///
     pub fn skip_token(&self, state: &mut InlineState) {
-        stacker::maybe_grow(64*1024, 1024*1024, || {
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
             let mut ok = None;
 
             if state.level < state.md.max_nesting {
@@ -81,7 +79,7 @@ impl InlineParser {
     /// Generate tokens for input range
     ///
     pub fn tokenize(&self, state: &mut InlineState) {
-        stacker::maybe_grow(64*1024, 1024*1024, || {
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
             let end = state.pos_max;
 
             while state.pos < end {
@@ -107,7 +105,9 @@ impl InlineParser {
                     if !node.is::<NodeEmpty>() {
                         node.srcmap = state.get_map(state.pos - len, state.pos);
                         state.node.children.push(node);
-                        if state.pos >= end { break; }
+                        if state.pos >= end {
+                            break;
+                        }
                     }
                     continue;
                 }
@@ -139,24 +139,24 @@ impl InlineParser {
     pub fn add_rule<T: InlineRule>(&mut self) -> RuleBuilder<'_, RuleFns> {
         if T::MARKER != '\0' {
             let charvec = self.text_charmap.entry(T::MARKER).or_default();
-            charvec.push(TypeKey::of::<T>());
+            charvec.push(RuleMark::of::<T>());
         }
 
-        let item = self.ruler.add(TypeKey::of::<T>(), (T::check, T::run));
+        let item = self.ruler.add(RuleMark::of::<T>(), (T::check, T::run));
         RuleBuilder::new(item)
     }
 
     pub fn has_rule<T: InlineRule>(&mut self) -> bool {
-        self.ruler.contains(TypeKey::of::<T>())
+        self.ruler.contains(RuleMark::of::<T>())
     }
 
     pub fn remove_rule<T: InlineRule>(&mut self) {
         if T::MARKER != '\0' {
             let mut charvec = self.text_charmap.remove(&T::MARKER).unwrap_or_default();
-            charvec.retain(|x| *x != TypeKey::of::<T>());
+            charvec.retain(|x| *x != RuleMark::of::<T>());
             self.text_charmap.insert(T::MARKER, charvec);
         }
 
-        self.ruler.remove(TypeKey::of::<T>());
+        self.ruler.remove(RuleMark::of::<T>());
     }
 }

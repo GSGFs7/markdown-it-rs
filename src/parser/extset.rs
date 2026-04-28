@@ -2,31 +2,33 @@
 //!
 //! These things allow you to put custom data inside internal markdown-it structures.
 //!
-use downcast_rs::{impl_downcast, Downcast};
+
 use std::fmt::Debug;
 
+use downcast_rs::{Downcast, impl_downcast};
+
 /// Extension set member for the entire parser (only writable at init).
-pub trait MarkdownItExt : Debug + Downcast + Send + Sync {}
+pub trait MarkdownItExt: Debug + Downcast + Send + Sync {}
 impl_downcast!(MarkdownItExt);
 extension_set!(MarkdownItExtSet, MarkdownItExt);
 
 /// Extension set member for an arbitrary AST node.
-pub trait NodeExt : Debug + Downcast + Send + Sync {}
+pub trait NodeExt: Debug + Downcast + Send + Sync {}
 impl_downcast!(NodeExt);
 extension_set!(NodeExtSet, NodeExt);
 
 /// Extension set member for an inline context.
-pub trait InlineRootExt : Debug + Downcast + Send + Sync {}
+pub trait InlineRootExt: Debug + Downcast + Send + Sync {}
 impl_downcast!(InlineRootExt);
 extension_set!(InlineRootExtSet, InlineRootExt);
 
 /// Extension set member for a block context.
-pub trait RootExt : Debug + Downcast + Send + Sync {}
+pub trait RootExt: Debug + Downcast + Send + Sync {}
 impl_downcast!(RootExt);
 extension_set!(RootExtSet, RootExt);
 
 /// Extension set member for a renderer context.
-pub trait RenderExt : Debug + Downcast + Send + Sync {}
+pub trait RenderExt: Debug + Downcast + Send + Sync {}
 impl_downcast!(RenderExt);
 extension_set!(RenderExtSet, RenderExt);
 
@@ -107,17 +109,18 @@ macro_rules! extension_set {
                 Some(*result.downcast::<T>().unwrap())
             }
         }
-    }
+    };
 }
 
 pub(crate) use extension_set;
 
 #[cfg(test)]
 mod tests {
-    use downcast_rs::{Downcast, impl_downcast};
     use std::fmt::Debug;
 
-    pub trait TestExt : Debug + Downcast + Send + Sync {}
+    use downcast_rs::{Downcast, impl_downcast};
+
+    pub trait TestExt: Debug + Downcast + Send + Sync {}
     impl_downcast!(TestExt);
 
     extension_set!(TestExtSet, TestExt);
@@ -225,7 +228,9 @@ mod tests {
         set.insert("test");
         let str = format!("{:?}", set);
         // there are no guarantees about field order, so check both
-        assert!(str == "TestExtSet({i32: 42, &str: \"test\"})" ||
-                str == "TestExtSet({&str: \"test\", i32: 42})");
+        assert!(
+            str == "TestExtSet({i32: 42, &str: \"test\"})"
+                || str == "TestExtSet({&str: \"test\", i32: 42})"
+        );
     }
 }

@@ -219,7 +219,7 @@ impl TableScanner {
         let mut has_delimiter = false;
         for ch in line.chars() {
             match ch {
-                '|'| ':' => { has_delimiter = true },      
+                '|'| ':' => { has_delimiter = true },
                 '-' | ' ' | '\t' => (),
                 _ => return None,
             }

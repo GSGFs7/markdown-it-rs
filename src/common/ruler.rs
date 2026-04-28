@@ -42,9 +42,10 @@ use once_cell::sync::OnceCell;
 /// This data structure contains any number of elements (M, T), where T is any type and
 /// M (mark) is its identifier.
 ///
-///  - `M` is used for ordering and dependency checking, it must implement `Eq + Copy + Hash + Debug`
-/// . Common choices for `M` are `u32`, `&'static str`, or a special `Symbol` type
-/// designed for this purpose.
+///  - `M` is used for ordering and dependency checking,
+///    it must implement `Eq + Clone + Hash + Debug`.
+///    Common choices for `M` are `u32`, `&'static str`,
+///    or a special `Symbol` type designed for this purpose.
 ///
 ///  - `T` is any user-defined type. It's usually a function or boxed trait.
 ///
@@ -59,7 +60,7 @@ impl<M, T> Ruler<M, T> {
     }
 }
 
-impl<M: Eq + Hash + Copy + Debug, T: Clone> Ruler<M, T> {
+impl<M: Eq + Hash + Clone + Debug, T: Clone> Ruler<M, T> {
     /// Add a new rule identified by `mark` with payload `value`.
     pub fn add(&mut self, mark: M, value: T) -> &mut RuleItem<M, T> {
         self.compiled = OnceCell::new();
@@ -85,6 +86,8 @@ impl<M: Eq + Hash + Copy + Debug, T: Clone> Ruler<M, T> {
     }
 
     fn compile(&self) -> (Vec<usize>, Vec<T>) {
+        // Topological Sort
+
         // ID -> [RuleItem index]
         let mut idhash = HashMap::<M, Vec<usize>>::new();
 
@@ -119,7 +122,7 @@ impl<M: Eq + Hash + Copy + Debug, T: Clone> Ruler<M, T> {
                 }
             }
             for mark in &dep.marks {
-                idhash.entry(*mark).or_default().push(idx);
+                idhash.entry(mark.clone()).or_default().push(idx);
             }
         }
 
@@ -130,12 +133,12 @@ impl<M: Eq + Hash + Copy + Debug, T: Clone> Ruler<M, T> {
             for constraint in &dep.cons {
                 match constraint {
                     RuleItemConstraint::Before(v) => {
-                        for depidx in idhash.entry(*v).or_default().iter() {
+                        for depidx in idhash.entry(v.clone()).or_default().iter() {
                             deps_graph.get_mut(*depidx).unwrap().insert(idx);
                         }
                     }
                     RuleItemConstraint::After(v) => {
-                        for depidx in idhash.entry(*v).or_default().iter() {
+                        for depidx in idhash.entry(v.clone()).or_default().iter() {
                             deps_graph.get_mut(idx).unwrap().insert(*depidx);
                         }
                     }
@@ -223,14 +226,19 @@ impl<M: Eq + Hash + Copy + Debug, T: Clone> Ruler<M, T> {
     }
 }
 
-impl<M: Eq + Hash + Copy + Debug, T: Clone> Debug for Ruler<M, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<M: Eq + Hash + Clone + Debug, T: Clone> Debug for Ruler<M, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let vec: Vec<(usize, M)> = self
             .compiled
             .get_or_init(|| self.compile())
             .0
             .iter()
-            .map(|idx| (*idx, *self.deps.get(*idx).unwrap().marks.first().unwrap()))
+            .map(|idx| {
+                (
+                    *idx,
+                    self.deps.get(*idx).unwrap().marks.first().unwrap().clone(),
+                )
+            })
             .collect();
 
         f.debug_struct("Ruler")
@@ -280,7 +288,7 @@ impl<M, T> RuleItem<M, T> {
     }
 }
 
-impl<M: Copy, T> RuleItem<M, T> {
+impl<M: Clone, T> RuleItem<M, T> {
     /// Make sure this rule will be inserted before any rule defined by `mark` (if such rule exists).
     /// ```
     /// use markdown_it::common::ruler::Ruler;

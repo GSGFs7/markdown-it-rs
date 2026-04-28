@@ -1,12 +1,12 @@
+use crate::Node;
+use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::common::sourcemap::SourcePos;
-use crate::common::TypeKey;
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::{Root, *};
 use crate::parser::extset::MarkdownItExtSet;
 use crate::parser::inline::{self, InlineParser};
 use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
-use crate::Node;
 
 type RuleFn = fn(&mut Node, &MarkdownIt);
 
@@ -35,7 +35,7 @@ pub struct MarkdownIt {
     /// default i32::MAX, indented code blocks will set this to 4
     pub max_indent: i32,
 
-    ruler: Ruler<TypeKey, RuleFn>,
+    ruler: Ruler<RuleMark, RuleFn>,
 }
 
 impl std::fmt::Debug for MarkdownIt {
@@ -72,16 +72,16 @@ impl MarkdownIt {
     }
 
     pub fn add_rule<T: CoreRule>(&mut self) -> RuleBuilder<'_, RuleFn> {
-        let item = self.ruler.add(TypeKey::of::<T>(), T::run);
+        let item = self.ruler.add(RuleMark::of::<T>(), T::run);
         RuleBuilder::new(item)
     }
 
     pub fn has_rule<T: CoreRule>(&mut self) -> bool {
-        self.ruler.contains(TypeKey::of::<T>())
+        self.ruler.contains(RuleMark::of::<T>())
     }
 
     pub fn remove_rule<T: CoreRule>(&mut self) {
-        self.ruler.remove(TypeKey::of::<T>());
+        self.ruler.remove(RuleMark::of::<T>());
     }
 }
 

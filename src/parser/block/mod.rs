@@ -1,29 +1,28 @@
 //! Block rule chain
-mod state;
-pub use state::*;
-
-mod rule;
-pub use rule::*;
 
 #[doc(hidden)]
 pub mod builtin;
+mod rule;
+mod state;
 
+pub use self::rule::*;
+pub use self::state::*;
+use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
-use crate::common::TypeKey;
 use crate::parser::extset::RootExtSet;
 use crate::parser::inline::InlineRoot;
 use crate::parser::node::NodeEmpty;
 use crate::{MarkdownIt, Node};
 
 type RuleFns = (
-    fn (&mut BlockState) -> Option<()>,
-    fn (&mut BlockState) -> Option<(Node, usize)>,
+    fn(&mut BlockState) -> Option<()>,
+    fn(&mut BlockState) -> Option<(Node, usize)>,
 );
 
 #[derive(Debug, Default)]
 /// Block-level tokenizer.
 pub struct BlockParser {
-    ruler: Ruler<TypeKey, RuleFns>,
+    ruler: Ruler<RuleMark, RuleFns>,
 }
 
 impl BlockParser {
@@ -34,16 +33,20 @@ impl BlockParser {
     /// Generate tokens for input range
     ///
     pub fn tokenize(&self, state: &mut BlockState) {
-        stacker::maybe_grow(64*1024, 1024*1024, || {
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
             let mut has_empty_lines = false;
 
             while state.line < state.line_max {
                 state.line = state.skip_empty_lines(state.line);
-                if state.line >= state.line_max { break; }
+                if state.line >= state.line_max {
+                    break;
+                }
 
                 // Termination condition for nested calls.
                 // Nested calls currently used for blockquotes & lists
-                if state.line_indent(state.line) < 0 { break; }
+                if state.line_indent(state.line) < 0 {
+                    break;
+                }
 
                 // If nesting level exceeded - skip tail to the end. That's not ordinary
                 // situation and we should not care about content.
@@ -113,15 +116,15 @@ impl BlockParser {
     }
 
     pub fn add_rule<T: BlockRule>(&mut self) -> RuleBuilder<'_, RuleFns> {
-        let item = self.ruler.add(TypeKey::of::<T>(), (T::check, T::run));
+        let item = self.ruler.add(RuleMark::of::<T>(), (T::check, T::run));
         RuleBuilder::new(item)
     }
 
     pub fn has_rule<T: BlockRule>(&mut self) -> bool {
-        self.ruler.contains(TypeKey::of::<T>())
+        self.ruler.contains(RuleMark::of::<T>())
     }
 
     pub fn remove_rule<T: BlockRule>(&mut self) {
-        self.ruler.remove(TypeKey::of::<T>());
+        self.ruler.remove(RuleMark::of::<T>());
     }
 }
