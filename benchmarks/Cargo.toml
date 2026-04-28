@@ -6,10 +6,10 @@ edition = "2021"
 publish = false
 
 [dependencies]
-comrak = "0.18.0"
-criterion = "0.5.0"
+comrak = "0.52"
+criterion = "0.8"
 markdown-it-rs = { path = "../" }
-markdown-it-v5 = { package = "markdown-it", version = "0.5" }
+markdown-it-v6 = { package = "markdown-it", version = "0.6" }
 
 [[bench]]
 name = "test-file"
