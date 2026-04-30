@@ -1,7 +1,7 @@
 //! Pretty-print all urls and fit them into N characters
 
-use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
 use crate::MarkdownIt;
+use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
 
 #[derive(Debug)]
 struct LinkBeautifier {
@@ -23,7 +23,6 @@ impl LinkFormatter for LinkBeautifier {
     }
 }
 
-
 /// Add beautifier plugin, limiting urls to default 50 characters
 pub fn add(md: &mut MarkdownIt) {
     add_with_char_limit(md, 50);
@@ -32,8 +31,5 @@ pub fn add(md: &mut MarkdownIt) {
 /// Add beautifier plugin, limiting urls to `max_length` characters
 pub fn add_with_char_limit(md: &mut MarkdownIt, max_length: usize) {
     let parent = std::mem::replace(&mut md.link_formatter, Box::new(MDLinkFormatter::new()));
-    md.link_formatter = Box::new(LinkBeautifier {
-        max_length,
-        parent,
-    });
+    md.link_formatter = Box::new(LinkBeautifier { max_length, parent });
 }

@@ -1,6 +1,9 @@
-
 fn run(input: &str, output: &str) {
-    let output = if output.is_empty() { "".to_owned() } else { output.to_owned() + "\n" };
+    let output = if output.is_empty() {
+        "".to_owned()
+    } else {
+        output.to_owned() + "\n"
+    };
     let md = &mut markdown_it::MarkdownIt::new();
     markdown_it::plugins::cmark::add(md);
     markdown_it::plugins::html::add(md);

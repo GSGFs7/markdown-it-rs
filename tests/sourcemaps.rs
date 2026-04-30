@@ -1,7 +1,7 @@
 use markdown_it::Node;
 use markdown_it::common::sourcemap::SourceWithLineStarts;
 
-fn run(input: &str, f: fn (&Node, SourceWithLineStarts)) {
+fn run(input: &str, f: fn(&Node, SourceWithLineStarts)) {
     let md = &mut markdown_it::MarkdownIt::new();
     markdown_it::plugins::cmark::add(md);
     markdown_it::plugins::html::add(md);
@@ -17,30 +17,21 @@ fn getmap(node: &Node, map: &SourceWithLineStarts) -> ((u32, u32), (u32, u32)) {
 #[test]
 fn paragraph() {
     // same as commonmark.js
-    run("foo   \n     \n     \n\n  barbaz\n\tquux   \n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 1), (1, 6)),
-        );
-        assert_eq!(
-            getmap(&node.children[1], &map),
-            ((5, 3), (6, 8)),
-        );
-    });
+    run(
+        "foo   \n     \n     \n\n  barbaz\n\tquux   \n",
+        |node, map| {
+            assert_eq!(getmap(&node.children[0], &map), ((1, 1), (1, 6)),);
+            assert_eq!(getmap(&node.children[1], &map), ((5, 3), (6, 8)),);
+        },
+    );
 }
 
 #[test]
 fn hr() {
     // same as commonmark.js
     run(" ---  \n\n  * * *\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 2), (1, 6)),
-        );
-        assert_eq!(
-            getmap(&node.children[1], &map),
-            ((3, 3), (3, 7)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 2), (1, 6)),);
+        assert_eq!(getmap(&node.children[1], &map), ((3, 3), (3, 7)),);
     });
 }
 
@@ -48,17 +39,11 @@ fn hr() {
 fn heading() {
     // same as commonmark.js
     run("  \n  ### foo ###  \n\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((2, 3), (2, 15)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((2, 3), (2, 15)),);
     });
 
     run("  #\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 3), (1, 3)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 3), (1, 3)),);
     });
 }
 
@@ -66,10 +51,7 @@ fn heading() {
 fn lheading() {
     // same as commonmark.js
     run("  foo\n bar\n ----\n\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 3), (3, 5)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 3), (3, 5)),);
     });
 }
 
@@ -77,31 +59,19 @@ fn lheading() {
 fn fence() {
     // same as commonmark.js
     run("  ~~~ foo ~~~\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 3), (1, 13)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 3), (1, 13)),);
     });
 
     run("  ```\n 12\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 3), (2, 3)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 3), (2, 3)),);
     });
 
     run("```\n\n\n\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 1), (4, 0)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 1), (4, 0)),);
     });
 
     run("~~~\na\nb\n~~~  \nc\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 1), (4, 5)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 1), (4, 5)),);
     });
 }
 
@@ -109,17 +79,11 @@ fn fence() {
 fn html_block() {
     // same as commonmark.js
     run("  <div>\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 3), (1, 7)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 3), (1, 7)),);
     });
 
     run("<div>\n</div>  \n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 1), (2, 8)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 1), (2, 8)),);
     });
 }
 
@@ -129,26 +93,17 @@ fn code_block() {
     // for simplicity, we point source maps for block tags to first
     // nonspace character, but it isn't quite correct for code blocks
     run("      foo\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 7), (1, 9)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 7), (1, 9)),);
     });
 
     run("   a\n    b\n     c\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 4), (3, 6)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 4), (3, 6)),);
     });
 
     // this I believe to be error in commonmark, code block
     // only have 1 line as per spec, but cmark reports 3 lines
     run("    foobar  \n    \n    \n\nbar\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 5), (1, 12)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 5), (1, 12)),);
     });
 }
 
@@ -156,17 +111,11 @@ fn code_block() {
 fn blockquotes() {
     // same as commonmark.js
     run("  > foo  \n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 3), (1, 9)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 3), (1, 9)),);
     });
 
     run("> foo\nbar\n\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 1), (2, 3)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 1), (2, 3)),);
     });
 }
 
@@ -174,10 +123,7 @@ fn blockquotes() {
 fn lists() {
     // same as commonmark.js
     run(" 1. foo\n 2. bar\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 2), (2, 7)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 2), (2, 7)),);
 
         assert_eq!(
             getmap(&node.children[0].children[0], &map),
@@ -186,10 +132,7 @@ fn lists() {
     });
 
     run(" - foo\n\n - bar\n", |node, map| {
-        assert_eq!(
-            getmap(&node.children[0], &map),
-            ((1, 2), (3, 6)),
-        );
+        assert_eq!(getmap(&node.children[0], &map), ((1, 2), (3, 6)),);
 
         assert_eq!(
             getmap(&node.children[0].children[0], &map),
@@ -373,4 +316,3 @@ fn imglink() {
         );
     });
 }
-

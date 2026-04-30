@@ -16,7 +16,7 @@ pub struct SetextHeader {
 
 impl NodeValue for SetextHeader {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        static TAG : [&str; 2] = [ "h1", "h2" ];
+        static TAG: [&str; 2] = ["h1", "h2"];
         debug_assert!(self.level >= 1 && self.level <= 2);
 
         fmt.cr();
@@ -28,7 +28,8 @@ impl NodeValue for SetextHeader {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    md.block.add_rule::<LHeadingScanner>()
+    md.block
+        .add_rule::<LHeadingScanner>()
         .before::<ParagraphScanner>()
         .after_all();
 }
@@ -43,8 +44,9 @@ impl BlockRule for LHeadingScanner {
     }
 
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-
-        if state.line_indent(state.line) >= state.md.max_indent { return None; }
+        if state.line_indent(state.line) >= state.md.max_indent {
+            return None;
+        }
 
         let start_line = state.line;
         let mut next_line = start_line;
@@ -53,11 +55,15 @@ impl BlockRule for LHeadingScanner {
         'outer: loop {
             next_line += 1;
 
-            if next_line >= state.line_max || state.is_empty(next_line) { break; }
+            if next_line >= state.line_max || state.is_empty(next_line) {
+                break;
+            }
 
             // this may be a code block normally, but after paragraph
             // it's considered a lazy continuation regardless of what's there
-            if state.line_indent(next_line) >= state.md.max_indent { continue; }
+            if state.line_indent(next_line) >= state.md.max_indent {
+                continue;
+            }
 
             //
             // Check for underline in setext header
@@ -65,8 +71,12 @@ impl BlockRule for LHeadingScanner {
             if state.line_indent(next_line) >= 0 {
                 let mut chars = state.get_line(next_line).chars().peekable();
                 if let Some(marker @ ('-' | '=')) = chars.next() {
-                    while Some(&marker) == chars.peek() { chars.next(); }
-                    while let Some(' ' | '\t') = chars.peek() { chars.next(); }
+                    while Some(&marker) == chars.peek() {
+                        chars.next();
+                    }
+                    while let Some(' ' | '\t') = chars.peek() {
+                        chars.next();
+                    }
                     if chars.next().is_none() {
                         level = if marker == '=' { 1 } else { 2 };
                         break 'outer;
@@ -75,7 +85,9 @@ impl BlockRule for LHeadingScanner {
             }
 
             // quirk for blockquotes, this line should already be checked by that rule
-            if state.line_offsets[next_line].indent_nonspace < 0 { continue; }
+            if state.line_offsets[next_line].indent_nonspace < 0 {
+                continue;
+            }
 
             // Some tags can terminate paragraph without empty line.
             let old_state_line = state.line;
@@ -87,7 +99,6 @@ impl BlockRule for LHeadingScanner {
             state.line = old_state_line;
         }
 
-
         if level == 0 {
             // Didn't find valid underline
             return None;
@@ -97,9 +108,10 @@ impl BlockRule for LHeadingScanner {
 
         let mut node = Node::new(SetextHeader {
             level,
-            marker: if level == 2 { '-' } else { '=' }
+            marker: if level == 2 { '-' } else { '=' },
         });
-        node.children.push(Node::new(InlineRoot::new(content, mapping)));
+        node.children
+            .push(Node::new(InlineRoot::new(content, mapping)));
 
         Some((node, next_line + 1 - start_line))
     }

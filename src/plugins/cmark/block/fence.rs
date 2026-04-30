@@ -32,9 +32,9 @@ impl NodeValue for CodeFence {
 
         fmt.cr();
         fmt.open("pre", &[]);
-            fmt.open("code", &attrs);
-            fmt.text(&self.content);
-            fmt.close("code");
+        fmt.open("code", &attrs);
+        fmt.text(&self.content);
+        fmt.close("code");
         fmt.close("pre");
         fmt.cr();
     }
@@ -63,24 +63,33 @@ pub struct FenceScanner;
 
 impl FenceScanner {
     fn get_header<'a>(state: &'a mut BlockState) -> Option<(char, usize, &'a str)> {
-
-        if state.line_indent(state.line) >= state.md.max_indent { return None; }
+        if state.line_indent(state.line) >= state.md.max_indent {
+            return None;
+        }
 
         let line = state.get_line(state.line);
         let mut chars = line.chars();
 
         let marker = chars.next()?;
-        if marker != '~' && marker != '`' { return None; }
+        if marker != '~' && marker != '`' {
+            return None;
+        }
 
         // scan marker length
         let mut len = 1;
-        while Some(marker) == chars.next() { len += 1; }
+        while Some(marker) == chars.next() {
+            len += 1;
+        }
 
-        if len < 3 { return None; }
+        if len < 3 {
+            return None;
+        }
 
         let params = &line[len..];
 
-        if marker == '`' && params.contains(marker) { return None; }
+        if marker == '`' && params.contains(marker) {
+            return None;
+        }
 
         Some((marker, len, params))
     }
@@ -120,7 +129,9 @@ impl BlockRule for FenceScanner {
 
             let mut chars = line.chars().peekable();
 
-            if Some(marker) != chars.next() { continue; }
+            if Some(marker) != chars.next() {
+                continue;
+            }
 
             if state.line_indent(next_line) >= state.md.max_indent {
                 continue;
@@ -134,12 +145,14 @@ impl BlockRule for FenceScanner {
             }
 
             // closing code fence must be at least as long as the opening one
-            if len_end < len { continue; }
+            if len_end < len {
+                continue;
+            }
 
             // make sure tail has spaces only
             loop {
                 match chars.next() {
-                    Some(' ' | '\t') => {},
+                    Some(' ' | '\t') => {}
                     Some(_) => continue 'outer,
                     None => {
                         have_end_marker = true;
@@ -153,7 +166,13 @@ impl BlockRule for FenceScanner {
         let indent = state.line_offsets[state.line].indent_nonspace;
         let (content, _) = state.get_lines(state.line + 1, next_line, indent as usize, true);
 
-        let lang_prefix = state.md.ext.get::<FenceSettings>().copied().unwrap_or_default().0;
+        let lang_prefix = state
+            .md
+            .ext
+            .get::<FenceSettings>()
+            .copied()
+            .unwrap_or_default()
+            .0;
         let node = Node::new(CodeFence {
             info: params,
             marker,
@@ -161,6 +180,9 @@ impl BlockRule for FenceScanner {
             content,
             lang_prefix,
         });
-        Some((node, next_line - state.line + if have_end_marker { 1 } else { 0 }))
+        Some((
+            node,
+            next_line - state.line + if have_end_marker { 1 } else { 0 },
+        ))
     }
 }

@@ -30,9 +30,10 @@
 //! - Reserved: `(r)` to `®`
 //! - Trademark: `(tm)` to `™`
 
+use std::borrow::Cow;
+
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::borrow::Cow;
 
 use crate::parser::core::CoreRule;
 use crate::parser::inline::Text;
@@ -84,7 +85,9 @@ impl CoreRule for TypographerRule {
 
     fn run(root: &mut Node, _: &MarkdownIt) {
         root.walk_mut(|node, _| {
-            let Some(text_node) = node.cast_mut::<Text>() else { return; };
+            let Some(text_node) = node.cast_mut::<Text>() else {
+                return;
+            };
 
             if SCOPED_RE.is_match(&text_node.content) {
                 text_node.content = SCOPED_RE

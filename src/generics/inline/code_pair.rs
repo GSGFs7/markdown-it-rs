@@ -34,11 +34,11 @@
 //! This generic structure follows exact rules of code span in CommonMark:
 //!
 //! 1. Literal marker character sequence can be used inside of structure if its length
-//! doesn't match length of the opening/closing sequence (e.g. with `%` defined
-//! as a marker, `%%foo%bar%%` gets parsed as `Node("foo%bar")`).
+//!    doesn't match length of the opening/closing sequence (e.g. with `%` defined
+//!    as a marker, `%%foo%bar%%` gets parsed as `Node("foo%bar")`).
 //!
 //! 2. Single space inside is trimmed to allow you to write `% %%foo %` to be parsed as
-//! `Node("%%foo")`.
+//!    `Node("%%foo")`.
 //!
 //! If you define two structures with the same marker, only the first one will work.
 //!
@@ -54,10 +54,10 @@ struct CodePairCache<const MARKER: char> {
 impl<const MARKER: char> InlineRootExt for CodePairCache<MARKER> {}
 
 #[derive(Debug)]
-struct CodePairConfig<const MARKER: char>(fn (usize) -> Node);
+struct CodePairConfig<const MARKER: char>(fn(usize) -> Node);
 impl<const MARKER: char> MarkdownItExt for CodePairConfig<MARKER> {}
 
-pub fn add_with<const MARKER: char>(md: &mut MarkdownIt, f: fn (length: usize) -> Node) {
+pub fn add_with<const MARKER: char>(md: &mut MarkdownIt, f: fn(length: usize) -> Node) {
     md.ext.insert(CodePairConfig::<MARKER>(f));
 
     let builder = md.inline.add_rule::<CodePairScanner<MARKER>>();
@@ -74,8 +74,12 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next().unwrap() != MARKER { return None; }
-        if state.trailing_text_get().ends_with(MARKER) { return None; }
+        if chars.next().unwrap() != MARKER {
+            return None;
+        }
+        if state.trailing_text_get().ends_with(MARKER) {
+            return None;
+        }
 
         let mut pos = state.pos + 1;
 
@@ -85,7 +89,9 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
         }
 
         // backtick length => last seen position
-        let backticks = state.inline_ext.get_or_insert_default::<CodePairCache<MARKER>>();
+        let backticks = state
+            .inline_ext
+            .get_or_insert_default::<CodePairCache<MARKER>>();
         let opener_len = pos - state.pos;
 
         if backticks.scanned && backticks.max.get(opener_len).copied().unwrap_or(0) <= state.pos {
@@ -116,7 +122,9 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
                 // Found matching closer length.
                 let mut content = state.src[pos..match_start].to_owned().replace('\n', " ");
                 if content.starts_with(' ') && content.ends_with(' ') && content.len() > 2 {
-                    content[1..content.len() - 1].to_owned().clone_into(&mut content);
+                    content[1..content.len() - 1]
+                        .to_owned()
+                        .clone_into(&mut content);
                     pos += 1;
                     match_start -= 1;
                 }
@@ -133,7 +141,9 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
 
             // Some different length found, put it in cache as upper limit of where closer can be found
             let backticks = state.inline_ext.get_mut::<CodePairCache<MARKER>>().unwrap();
-            while backticks.max.len() <= closer_len { backticks.max.push(0); }
+            while backticks.max.len() <= closer_len {
+                backticks.max.push(0);
+            }
             backticks.max[closer_len] = match_start;
         }
 

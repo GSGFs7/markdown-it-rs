@@ -8,7 +8,10 @@ use crate::{MarkdownIt, Node};
 #[derive(Debug)]
 #[readonly::make]
 /// Sandbox object containing data required to parse block structures.
-pub struct BlockState<'a, 'b> where 'b: 'a {
+pub struct BlockState<'a, 'b>
+where
+    'b: 'a,
+{
     /// Markdown source.
     #[readonly]
     pub src: &'b str,
@@ -224,7 +227,13 @@ impl<'a, 'b> BlockState<'a, 'b> {
 
     /// Cut a range of lines begin..end (not including end) from the source without preceding indent.
     /// Returns a string (lines) plus a mapping (start of each line in result -> start of each line in source).
-    pub fn get_lines(&self, begin: usize, end: usize, indent: usize, keep_last_lf: bool) -> (String, Vec<(usize, usize)>) {
+    pub fn get_lines(
+        &self,
+        begin: usize,
+        end: usize,
+        indent: usize,
+        keep_last_lf: bool,
+    ) -> (String, Vec<(usize, usize)>) {
         debug_assert!(begin <= end);
 
         let mut line = begin;
@@ -238,17 +247,19 @@ impl<'a, 'b> BlockState<'a, 'b> {
 
             let (num_spaces, first) = calc_right_whitespace_with_tabstops(
                 &self.src[offsets.line_start..offsets.first_nonspace],
-                offsets.indent_nonspace - indent as i32
+                offsets.indent_nonspace - indent as i32,
             );
 
-            mapping.push(( result.len(), offsets.line_start+first ));
+            mapping.push((result.len(), offsets.line_start + first));
             result += &" ".repeat(num_spaces);
-            result += &self.src[offsets.line_start+first..last];
-            if add_last_lf { result.push('\n'); }
+            result += &self.src[offsets.line_start + first..last];
+            if add_last_lf {
+                result.push('\n');
+            }
             line += 1;
         }
 
-        ( result, mapping )
+        (result, mapping)
     }
 
     #[must_use]
@@ -258,7 +269,7 @@ impl<'a, 'b> BlockState<'a, 'b> {
 
         Some(SourcePos::new(
             self.line_offsets[start_line].first_nonspace,
-            self.line_offsets[end_line].line_end
+            self.line_offsets[end_line].line_end,
         ))
     }
 

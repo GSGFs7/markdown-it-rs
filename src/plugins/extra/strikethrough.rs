@@ -4,7 +4,7 @@ use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 #[derive(Debug)]
 pub struct Strikethrough {
-    pub marker: char
+    pub marker: char,
 }
 
 impl NodeValue for Strikethrough {

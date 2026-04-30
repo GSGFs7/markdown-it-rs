@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use derive_more::{Deref, DerefMut};
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 
 use crate::common::utils::normalize_reference;
 use crate::generics::inline::full_link;
@@ -177,7 +177,7 @@ impl Eq for ReferenceMapKey {}
 
 impl std::hash::Hash for ReferenceMapKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.normalized.hash(state)
+        self.normalized.hash(state);
     }
 }
 
@@ -335,7 +335,8 @@ impl BlockRule for ReferenceScanner {
         // [label]:   destination   'title'
         //            ^^^^^^^^^^^ parse this
         let href;
-        if let Some(res) = full_link::parse_link_destination(str, pos, str.len()) {
+        {
+            let res = full_link::parse_link_destination(str, pos, str.len())?;
             if pos == res.pos {
                 return None;
             }
@@ -343,8 +344,6 @@ impl BlockRule for ReferenceScanner {
             state.md.link_formatter.validate_link(&href)?;
             pos = res.pos;
             lines += res.lines;
-        } else {
-            return None;
         }
 
         // save cursor state, we could require to rollback later

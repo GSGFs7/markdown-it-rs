@@ -384,9 +384,8 @@ enum RuleItemPriority {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::RuleMark;
-
     use super::Ruler;
+    use crate::common::RuleMark;
 
     #[test]
     #[should_panic(expected = r#"cyclic dependency: "A" < "B" < "C" < "D" < "E" < "F" < "A""#)]

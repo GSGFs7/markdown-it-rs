@@ -1,6 +1,5 @@
 use once_cell::sync::Lazy;
 
-
 #[test]
 fn title_example() {
     let parser = &mut markdown_it::MarkdownIt::new();
@@ -14,7 +13,7 @@ fn title_example() {
 
 #[test]
 fn lazy_singleton() {
-    static MD : Lazy<markdown_it::MarkdownIt> = Lazy::new(|| {
+    static MD: Lazy<markdown_it::MarkdownIt> = Lazy::new(|| {
         let mut parser = markdown_it::MarkdownIt::new();
         markdown_it::plugins::cmark::add(&mut parser);
         parser
@@ -45,7 +44,6 @@ fn no_max_indent() {
     assert_eq!(result, "<p>paragraph</p>\n<ul>\n<li>item</li>\n</ul>\n");
 }
 
-
 /*#[test]
 fn no_block_parser() {
     let md = &mut markdown_it::MarkdownIt::new();
@@ -57,7 +55,11 @@ fn no_block_parser() {
 }*/
 
 fn run(input: &str, output: &str) {
-    let output = if output.is_empty() { "".to_owned() } else { output.to_owned() + "\n" };
+    let output = if output.is_empty() {
+        "".to_owned()
+    } else {
+        output.to_owned() + "\n"
+    };
     let md = &mut markdown_it::MarkdownIt::new();
     markdown_it::plugins::cmark::add(md);
     markdown_it::plugins::html::add(md);
@@ -85,8 +87,9 @@ mod markdown_it_rs_extras {
 
     #[test]
     fn tab_offset_in_lists() {
-        run("   > -\tfoo\n   >\n   >         foo\n",
-r#"<blockquote>
+        run(
+            "   > -\tfoo\n   >\n   >         foo\n",
+            r#"<blockquote>
 <ul>
 <li>
 <p>foo</p>
@@ -94,7 +97,8 @@ r#"<blockquote>
 </code></pre>
 </li>
 </ul>
-</blockquote>"#);
+</blockquote>"#,
+        );
     }
 
     #[test]
@@ -117,14 +121,18 @@ r#"<blockquote>
 
     #[test]
     fn beautify_links() {
-        run("<https://www.reddit.com/r/programming/comments/vxttiq/comment/ifyqsqt/?utm_source=reddit&utm_medium=web2x&context=3>",
-            "<p><a href=\"https://www.reddit.com/r/programming/comments/vxttiq/comment/ifyqsqt/?utm_source=reddit&amp;utm_medium=web2x&amp;context=3\">www.reddit.com/r/programming/comments/…/ifyqsqt/?…</a></p>");
+        run(
+            "<https://www.reddit.com/r/programming/comments/vxttiq/comment/ifyqsqt/?utm_source=reddit&utm_medium=web2x&context=3>",
+            "<p><a href=\"https://www.reddit.com/r/programming/comments/vxttiq/comment/ifyqsqt/?utm_source=reddit&amp;utm_medium=web2x&amp;context=3\">www.reddit.com/r/programming/comments/…/ifyqsqt/?…</a></p>",
+        );
     }
 
     #[test]
     fn regression_test_newlines_with_images() {
-        run("There is a newline in this image  ![here\nit is](https://github.com/executablebooks/)",
-            "<p>There is a newline in this image  <img src=\"https://github.com/executablebooks/\" alt=\"here\nit is\"></p>");
+        run(
+            "There is a newline in this image  ![here\nit is](https://github.com/executablebooks/)",
+            "<p>There is a newline in this image  <img src=\"https://github.com/executablebooks/\" alt=\"here\nit is\"></p>",
+        );
     }
 
     #[test]
@@ -184,10 +192,7 @@ r#"<blockquote>
             }
         });
 
-        assert_eq!(
-            collected,
-            vec!["inline", "block", "core"],
-        );
+        assert_eq!(collected, vec!["inline", "block", "core"],);
     }
 
     #[test]
@@ -204,9 +209,10 @@ r#"<blockquote>
         struct BetweenBlockAndInline;
         impl CoreRule for BetweenBlockAndInline {
             fn run(root: &mut Node, _md: &MarkdownIt) {
-                let saw_inline_root = root.children.iter().any(|node| {
-                    node.children.iter().any(|child| child.is::<InlineRoot>())
-                });
+                let saw_inline_root = root
+                    .children
+                    .iter()
+                    .any(|node| node.children.iter().any(|child| child.is::<InlineRoot>()));
                 root.ext.insert(SawBlockBeforeInline(saw_inline_root));
             }
         }
@@ -245,7 +251,9 @@ r#"<blockquote>
         markdown_it::plugins::extra::syntect::add(md);
         markdown_it::plugins::extra::syntect::set_to_classed(md);
 
-        let html = md.parse("```rust&quot; onclick=&quot;alert(1)\nfn main() {}\n```").render();
+        let html = md
+            .parse("```rust&quot; onclick=&quot;alert(1)\nfn main() {}\n```")
+            .render();
 
         assert!(html.contains("language-rust&quot;"));
         assert!(!html.contains(r#"onclick="alert(1)""#));
@@ -272,7 +280,9 @@ r#"<blockquote>
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::extra::syntect::add(md);
 
-        let html = md.parse("```rust{2}\nfn main() {\n    println!(\"hi\");\n}\n```").render();
+        let html = md
+            .parse("```rust{2}\nfn main() {\n    println!(\"hi\");\n}\n```")
+            .render();
 
         assert!(html.contains(r#"<code class="language-rust">"#));
         assert!(html.contains(r#"<span class="syntect-line syntect-line-highlighted">"#));

@@ -33,11 +33,11 @@ use std::collections::HashSet;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Theme, ThemeSet};
 use syntect::html::{
+    ClassStyle,
+    IncludeBackground,
     append_highlighted_html_for_styled_line,
     css_for_theme_with_class_style,
     line_tokens_to_classed_spans,
-    ClassStyle,
-    IncludeBackground,
 };
 use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
@@ -386,7 +386,7 @@ fn render_inline_html(
         html.push_str("line");
         if highlight_lines.contains(&line_no) {
             // mark as highlighted line. you may need to add styles to this class yourself
-            html.push_str(" ");
+            html.push(' ');
             html.push_str(prefix);
             html.push_str("line-highlighted");
         }

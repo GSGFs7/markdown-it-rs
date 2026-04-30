@@ -34,14 +34,18 @@ struct HTMLSequence {
 
 impl HTMLSequence {
     pub fn new(open: Regex, close: Regex, can_terminate_paragraph: bool) -> Self {
-        Self { open, close, can_terminate_paragraph }
+        Self {
+            open,
+            close,
+            can_terminate_paragraph,
+        }
     }
 }
 
 // An array of opening and corresponding closing sequences for html tags,
 // last argument defines whether it can terminate a paragraph or not
 //
-static HTML_SEQUENCES : Lazy<[HTMLSequence; 7]> = Lazy::new(|| {
+static HTML_SEQUENCES: Lazy<[HTMLSequence; 7]> = Lazy::new(|| {
     let block_names = HTML_BLOCKS.join("|");
     let open_close_tag_re = HTML_OPEN_CLOSE_TAG_RE.as_str();
 
@@ -49,43 +53,37 @@ static HTML_SEQUENCES : Lazy<[HTMLSequence; 7]> = Lazy::new(|| {
         HTMLSequence::new(
             Regex::new(r#"(?i)^<(script|pre|style|textarea)(\s|>|$)"#).unwrap(),
             Regex::new(r#"(?i)</(script|pre|style|textarea)>"#).unwrap(),
-            true
+            true,
         ),
-
         HTMLSequence::new(
             Regex::new(r#"^<!--"#).unwrap(),
             Regex::new(r#"-->"#).unwrap(),
-            true
+            true,
         ),
-
         HTMLSequence::new(
             Regex::new(r#"^<\?"#).unwrap(),
             Regex::new(r#"\?>"#).unwrap(),
-            true
+            true,
         ),
-
         HTMLSequence::new(
             Regex::new(r#"^<![A-Z]"#).unwrap(),
             Regex::new(r#">"#).unwrap(),
-            true
+            true,
         ),
-
         HTMLSequence::new(
             Regex::new(r#"^<!\[CDATA\["#).unwrap(),
             Regex::new(r#"\]\]>"#).unwrap(),
-            true
+            true,
         ),
-
         HTMLSequence::new(
             Regex::new(&format!("(?i)^</?({block_names})(\\s|/?>|$)")).unwrap(),
             Regex::new(r#"^$"#).unwrap(),
-            true
+            true,
         ),
-
         HTMLSequence::new(
             Regex::new(&format!("{open_close_tag_re}\\s*$")).unwrap(),
             Regex::new(r#"^$"#).unwrap(),
-            false
+            false,
         ),
     ]
 });
@@ -95,11 +93,14 @@ pub struct HtmlBlockScanner;
 
 impl HtmlBlockScanner {
     fn get_sequence(state: &mut BlockState) -> Option<&'static HTMLSequence> {
-
-        if state.line_indent(state.line) >= state.md.max_indent { return None; }
+        if state.line_indent(state.line) >= state.md.max_indent {
+            return None;
+        }
 
         let line_text = state.get_line(state.line);
-        let Some('<') = line_text.chars().next() else { return None; };
+        let Some('<') = line_text.chars().next() else {
+            return None;
+        };
 
         let mut sequence = None;
         for seq in HTML_SEQUENCES.iter() {
@@ -118,7 +119,9 @@ impl BlockRule for HtmlBlockScanner {
 
     fn check(state: &mut BlockState) -> Option<()> {
         let sequence = Self::get_sequence(state)?;
-        if !sequence.can_terminate_paragraph { return None; }
+        if !sequence.can_terminate_paragraph {
+            return None;
+        }
         Some(())
     }
 
@@ -133,12 +136,16 @@ impl BlockRule for HtmlBlockScanner {
         // Let's roll down till block end.
         if !sequence.close.is_match(line_text) {
             while next_line < state.line_max {
-                if state.line_indent(next_line) < 0 { break; }
+                if state.line_indent(next_line) < 0 {
+                    break;
+                }
 
                 let line_text = state.get_line(next_line);
 
                 if sequence.close.is_match(line_text) {
-                    if !line_text.is_empty() { next_line += 1; }
+                    if !line_text.is_empty() {
+                        next_line += 1;
+                    }
                     break;
                 }
 

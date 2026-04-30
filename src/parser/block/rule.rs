@@ -1,8 +1,8 @@
-use crate::parser::core::rule_builder;
 use crate::Node;
+use crate::parser::core::rule_builder;
 
 /// Each member of block rule chain must implement this trait
-pub trait BlockRule : 'static {
+pub trait BlockRule: 'static {
     const NAMES: &'static [&'static str] = &[];
 
     fn check(state: &mut super::BlockState) -> Option<()> {

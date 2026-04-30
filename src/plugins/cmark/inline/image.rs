@@ -27,8 +27,10 @@ impl NodeValue for Image {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    full_link::add_prefix::<'!', true>(md, |href, title| Node::new(Image {
-        url: href.unwrap_or_default(),
-        title,
-    }));
+    full_link::add_prefix::<'!', true>(md, |href, title| {
+        Node::new(Image {
+            url: href.unwrap_or_default(),
+            title,
+        })
+    });
 }

@@ -17,9 +17,9 @@ impl NodeValue for CodeBlock {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         fmt.cr();
         fmt.open("pre", &[]);
-            fmt.open("code", &node.attrs);
-            fmt.text(&self.content);
-            fmt.close("code");
+        fmt.open("code", &node.attrs);
+        fmt.text(&self.content);
+        fmt.close("code");
         fmt.close("pre");
         fmt.cr();
     }
@@ -40,7 +40,9 @@ impl BlockRule for CodeScanner {
     }
 
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        if state.line_indent(state.line) < CODE_INDENT { return None; }
+        if state.line_indent(state.line) < CODE_INDENT {
+            return None;
+        }
 
         let mut next_line = state.line + 1;
         let mut last = next_line;
@@ -60,7 +62,12 @@ impl BlockRule for CodeScanner {
             break;
         }
 
-        let (mut content, _mapping) = state.get_lines(state.line, last, CODE_INDENT as usize + state.blk_indent, false);
+        let (mut content, _mapping) = state.get_lines(
+            state.line,
+            last,
+            CODE_INDENT as usize + state.blk_indent,
+            false,
+        );
         content += "\n";
 
         let node = Node::new(CodeBlock { content });

@@ -3,7 +3,7 @@
 use markdown_it::parser::inline::{InlineRule, InlineState};
 use markdown_it::{MarkdownIt, Node, NodeValue, Renderer};
 
-const CRAB_CLAW : &str = r#"(\/)"#;
+const CRAB_CLAW: &str = r#"(\/)"#;
 
 #[derive(Debug)]
 // This is a structure that represents your custom Node in AST.
@@ -45,13 +45,12 @@ impl InlineRule for FerrisInlineScanner {
     //
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let input = &state.src[state.pos..state.pos_max]; // look for stuff at state.pos
-        if !input.starts_with(CRAB_CLAW) { return None; } // return None if it's not found
+        if !input.starts_with(CRAB_CLAW) {
+            return None;
+        } // return None if it's not found
 
         // return new node and length of this structure
-        Some((
-            Node::new(InlineFerris),
-            CRAB_CLAW.len(),
-        ))
+        Some((Node::new(InlineFerris), CRAB_CLAW.len()))
     }
 }
 

@@ -29,12 +29,20 @@ impl InlineRule for HtmlInlineScanner {
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         // Check start
         let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next().unwrap() != '<' { return None; }
+        if chars.next().unwrap() != '<' {
+            return None;
+        }
 
         // Quick fail on second char
-        let Some('!' | '?' | '/' | 'A'..='Z' | 'a'..='z') = chars.next() else { return None; };
+        let Some('!' | '?' | '/' | 'A'..='Z' | 'a'..='z') = chars.next() else {
+            return None;
+        };
 
-        let capture = HTML_TAG_RE.captures(&state.src[state.pos..state.pos_max])?.get(0).unwrap().as_str();
+        let capture = HTML_TAG_RE
+            .captures(&state.src[state.pos..state.pos_max])?
+            .get(0)
+            .unwrap()
+            .as_str();
         let capture_len = capture.len();
 
         let content = capture.to_owned();

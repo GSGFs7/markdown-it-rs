@@ -16,10 +16,14 @@ fn main() {
     core_rule::add(md);
 
     // and now you can use it
-    let html = md.parse(r#"
+    let html = md
+        .parse(
+            r#"
 (\/) hello world (\/)
 (\/)-------------(\/)
-    "#).render();
+    "#,
+        )
+        .render();
 
     print!("{html}");
 

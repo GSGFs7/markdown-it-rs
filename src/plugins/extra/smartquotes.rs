@@ -131,11 +131,11 @@ pub struct SmartQuotesRule<
 >;
 
 impl<
-        const OPEN_SINGLE_QUOTE: char,
-        const CLOSE_SINGLE_QUOTE: char,
-        const OPEN_DOUBLE_QUOTE: char,
-        const CLOSE_DOUBLE_QUOTE: char,
-    > CoreRule
+    const OPEN_SINGLE_QUOTE: char,
+    const CLOSE_SINGLE_QUOTE: char,
+    const OPEN_DOUBLE_QUOTE: char,
+    const CLOSE_DOUBLE_QUOTE: char,
+> CoreRule
     for SmartQuotesRule<
         OPEN_SINGLE_QUOTE,
         CLOSE_SINGLE_QUOTE,
@@ -165,12 +165,11 @@ impl<
 }
 
 impl<
-        const OPEN_SINGLE_QUOTE: char,
-        const CLOSE_SINGLE_QUOTE: char,
-        const OPEN_DOUBLE_QUOTE: char,
-        const CLOSE_DOUBLE_QUOTE: char,
-    >
-    SmartQuotesRule<OPEN_SINGLE_QUOTE, CLOSE_SINGLE_QUOTE, OPEN_DOUBLE_QUOTE, CLOSE_DOUBLE_QUOTE>
+    const OPEN_SINGLE_QUOTE: char,
+    const CLOSE_SINGLE_QUOTE: char,
+    const OPEN_DOUBLE_QUOTE: char,
+    const CLOSE_DOUBLE_QUOTE: char,
+> SmartQuotesRule<OPEN_SINGLE_QUOTE, CLOSE_SINGLE_QUOTE, OPEN_DOUBLE_QUOTE, CLOSE_DOUBLE_QUOTE>
 {
     /// Walk the list of tokens to figure out what needs replacing where. to do
     /// this, we need to search back and forth over the nodes to find matching
@@ -464,9 +463,7 @@ fn find_first_char_after(
                 content,
                 nesting_level: _,
             } => content,
-            FlatToken::HtmlInline {
-                content,
-            } => content,
+            FlatToken::HtmlInline { content } => content,
             FlatToken::Irrelevant => continue,
         };
         let start_index = if idx_t == token_index {
@@ -504,9 +501,7 @@ fn find_last_char_before(
                 content,
                 nesting_level: _,
             } => content,
-            FlatToken::HtmlInline {
-                content,
-            } => content,
+            FlatToken::HtmlInline { content } => content,
             FlatToken::Irrelevant => continue,
         };
 
@@ -532,7 +527,6 @@ fn find_last_char_before(
     // this will be hit if we find a quote in the first position of the first token
     SPACE
 }
-
 
 #[cfg(test)]
 mod tests {

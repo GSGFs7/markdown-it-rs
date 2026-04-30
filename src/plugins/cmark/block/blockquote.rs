@@ -32,11 +32,14 @@ impl BlockRule for BlockquoteScanner {
     const NAMES: &'static [&'static str] = &["blockquote"];
 
     fn check(state: &mut BlockState) -> Option<()> {
-
-        if state.line_indent(state.line) >= state.md.max_indent { return None; }
+        if state.line_indent(state.line) >= state.md.max_indent {
+            return None;
+        }
 
         // check the block quote marker
-        let Some('>') = state.get_line(state.line).chars().next() else { return None; };
+        let Some('>') = state.get_line(state.line).chars().next() else {
+            return None;
+        };
 
         Some(())
     }
@@ -94,9 +97,10 @@ impl BlockRule for BlockquoteScanner {
 
                     old_line_offsets.push(state.line_offsets[next_line].clone());
 
-                    let ( mut indent_after_marker, first_nonspace ) = find_indent_of(
+                    let (mut indent_after_marker, first_nonspace) = find_indent_of(
                         &state.src[offsets.line_start..offsets.line_end],
-                        pos_after_marker - offsets.line_start);
+                        pos_after_marker - offsets.line_start,
+                    );
 
                     last_line_empty = first_nonspace == offsets.line_end - offsets.line_start;
 
@@ -106,7 +110,8 @@ impl BlockRule for BlockquoteScanner {
                     }
 
                     state.line_offsets[next_line].indent_nonspace = indent_after_marker as i32;
-                    state.line_offsets[next_line].first_nonspace = first_nonspace + state.line_offsets[next_line].line_start;
+                    state.line_offsets[next_line].first_nonspace =
+                        first_nonspace + state.line_offsets[next_line].line_start;
                     next_line += 1;
                     continue;
                 }
@@ -114,7 +119,9 @@ impl BlockRule for BlockquoteScanner {
             }
 
             // Case 2: line is not inside the blockquote, and the last line was empty.
-            if last_line_empty { break; }
+            if last_line_empty {
+                break;
+            }
 
             // Case 3: another tag found.
             state.line = next_line;

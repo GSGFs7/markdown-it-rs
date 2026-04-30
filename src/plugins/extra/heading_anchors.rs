@@ -22,7 +22,7 @@ use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
 use crate::{MarkdownIt, Node};
 
-pub fn add(md: &mut MarkdownIt, slugify: fn (&str) -> String) {
+pub fn add(md: &mut MarkdownIt, slugify: fn(&str) -> String) {
     md.ext.insert(SlugifyFunction(slugify));
     md.add_rule::<AddHeadingAnchors>();
 }
@@ -30,17 +30,19 @@ pub fn add(md: &mut MarkdownIt, slugify: fn (&str) -> String) {
 /// Simple built-in slugify function. It is added for testing and demonstration
 /// purposes only, you should be using `slug`/`slugify` crate instead or your own impl.
 pub fn simple_slugify_fn(s: &str) -> String {
-    s.chars().map(|x| {
-        if x.is_alphanumeric() {
-            x.to_ascii_lowercase()
-        } else {
-            '-'
-        }
-    }).collect()
+    s.chars()
+        .map(|x| {
+            if x.is_alphanumeric() {
+                x.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect()
 }
 
 #[derive(Clone, Copy)]
-struct SlugifyFunction(fn (&str) -> String);
+struct SlugifyFunction(fn(&str) -> String);
 impl MarkdownItExt for SlugifyFunction {}
 
 impl Default for SlugifyFunction {
@@ -60,7 +62,12 @@ impl CoreRule for AddHeadingAnchors {
     const NAMES: &'static [&'static str] = &["heading_anchors", "heading-anchors"];
 
     fn run(root: &mut Node, md: &MarkdownIt) {
-        let slugify = md.ext.get::<SlugifyFunction>().copied().unwrap_or_default().0;
+        let slugify = md
+            .ext
+            .get::<SlugifyFunction>()
+            .copied()
+            .unwrap_or_default()
+            .0;
 
         root.walk_mut(|node, _| {
             if node.is::<ATXHeading>() || node.is::<SetextHeader>() {

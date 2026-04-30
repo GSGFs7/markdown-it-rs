@@ -21,8 +21,10 @@ impl NodeValue for CodeInline {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    code_pair::add_with::<'`'>(md, |len| Node::new(CodeInline {
-        marker: '`',
-        marker_len: len,
-    }));
+    code_pair::add_with::<'`'>(md, |len| {
+        Node::new(CodeInline {
+            marker: '`',
+            marker_len: len,
+        })
+    });
 }

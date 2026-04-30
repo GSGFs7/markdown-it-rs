@@ -20,7 +20,9 @@ impl InlineRule for EscapeScanner {
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next().unwrap() != '\\' { return None; }
+        if chars.next().unwrap() != '\\' {
+            return None;
+        }
 
         match chars.next() {
             Some('\n') => {
@@ -39,10 +41,10 @@ impl InlineRule for EscapeScanner {
                 orig_str.push(chr);
 
                 let content_str = match chr {
-                    '\\' | '!' | '"' | '#' | '$' | '%' | '&' | '\'' | '(' | ')' |
-                    '*' | '+' | ',' | '.' | '/' | ':' | ';' | '<' | '=' | '>' | '?' |
-                    '@' | '[' | ']' | '^' | '_' | '`' | '{' | '|' | '}' | '~' | '-' => chr.into(),
-                    _ => orig_str.clone()
+                    '\\' | '!' | '"' | '#' | '$' | '%' | '&' | '\'' | '(' | ')' | '*' | '+'
+                    | ',' | '.' | '/' | ':' | ';' | '<' | '=' | '>' | '?' | '@' | '[' | ']'
+                    | '^' | '_' | '`' | '{' | '|' | '}' | '~' | '-' => chr.into(),
+                    _ => orig_str.clone(),
                 };
 
                 let node = Node::new(TextSpecial {
@@ -52,7 +54,7 @@ impl InlineRule for EscapeScanner {
                 });
                 Some((node, end - start))
             }
-            None => None
+            None => None,
         }
     }
 }

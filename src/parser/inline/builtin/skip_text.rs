@@ -9,7 +9,7 @@ use crate::{MarkdownIt, Node, NodeValue, Renderer};
 #[derive(Debug)]
 /// Plain text AST node.
 pub struct Text {
-    pub content: String
+    pub content: String,
 }
 
 impl NodeValue for Text {
@@ -33,8 +33,7 @@ impl NodeValue for TextSpecial {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_rule::<TextScanner>()
-        .before_all();
+    md.inline.add_rule::<TextScanner>().before_all();
 }
 
 #[derive(Debug)]
@@ -58,9 +57,8 @@ impl TextScanner {
         let mut can_use_punct = true;
         for ch in charmap.iter() {
             match ch {
-                '\n' | '!' | '#' | '$' | '%' | '&' | '*' | '+' | '-' |
-                ':' | '<' | '=' | '>' | '@' | '[' | '\\' | ']' | '^' |
-                '_' | '`' | '{' | '}' | '~' => {},
+                '\n' | '!' | '#' | '$' | '%' | '&' | '*' | '+' | '-' | ':' | '<' | '=' | '>'
+                | '@' | '[' | '\\' | ']' | '^' | '_' | '`' | '{' | '}' | '~' => {}
                 _ => {
                     can_use_punct = false;
                     break;
@@ -75,18 +73,23 @@ impl TextScanner {
                 Regex::new(
                     // [] panics on "unclosed character class", but it cannot happen here
                     // (we'd use punct rule instead)
-                    &format!("^[^{}]+", charmap.into_iter().map(
-                        |c| regex::escape(&c.to_string())
-                    ).collect::<String>())
-                ).unwrap()
+                    &format!(
+                        "^[^{}]+",
+                        charmap
+                            .into_iter()
+                            .map(|c| regex::escape(&c.to_string()))
+                            .collect::<String>()
+                    ),
+                )
+                .unwrap(),
             )
         }
     }
 
     fn find_text_length(state: &mut InlineState) -> usize {
-        let text_impl = state.md.inline.text_impl.get_or_init(
-            || Self::choose_text_impl(state.md.inline.text_charmap.keys().copied().collect())
-        );
+        let text_impl = state.md.inline.text_impl.get_or_init(|| {
+            Self::choose_text_impl(state.md.inline.text_charmap.keys().copied().collect())
+        });
 
         let mut len = 0;
 
@@ -97,16 +100,17 @@ impl TextScanner {
                 loop {
                     match chars.next() {
                         Some(
-                            '\n' | '!' | '#' | '$' | '%' | '&' | '*' | '+' | '-' |
-                            ':' | '<' | '=' | '>' | '@' | '[' | '\\' | ']' | '^' |
-                            '_' | '`' | '{' | '}' | '~'
+                            '\n' | '!' | '#' | '$' | '%' | '&' | '*' | '+' | '-' | ':' | '<' | '='
+                            | '>' | '@' | '[' | '\\' | ']' | '^' | '_' | '`' | '{' | '}' | '~',
                         ) => {
                             break;
                         }
                         Some(chr) => {
                             len += chr.len_utf8();
                         }
-                        None => { break; }
+                        None => {
+                            break;
+                        }
                     }
                 }
             }
@@ -127,13 +131,17 @@ impl InlineRule for TextScanner {
 
     fn check(state: &mut InlineState) -> Option<usize> {
         let len = Self::find_text_length(state);
-        if len == 0 { return None; }
+        if len == 0 {
+            return None;
+        }
         Some(len)
     }
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let len = Self::find_text_length(state);
-        if len == 0 { return None; }
+        if len == 0 {
+            return None;
+        }
         state.trailing_text_push(state.pos, state.pos + len);
         state.pos += len;
         Some((Node::default(), 0))

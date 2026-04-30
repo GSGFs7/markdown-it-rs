@@ -58,42 +58,47 @@ use crate::{MarkdownIt, Node, NodeValue};
 #[derive(Debug, Default)]
 struct PairConfig<const MARKER: char> {
     inserted: bool,
-    fns: [Option<fn () -> Node>; 3],
+    fns: [Option<fn() -> Node>; 3],
 }
 impl<const MARKER: char> MarkdownItExt for PairConfig<MARKER> {}
 
 #[derive(Debug, Default)]
-struct OpenersBottom<const MARKER: char>([ usize; 6 ]);
+struct OpenersBottom<const MARKER: char>([usize; 6]);
 impl<const MARKER: char> NodeExt for OpenersBottom<MARKER> {}
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]
 pub struct EmphMarker {
     // Starting marker
-    pub marker:    char,
+    pub marker: char,
 
     // Total length of these series of delimiters.
-    pub length:    usize,
+    pub length: usize,
 
     // Remaining length that's not already matched to other delimiters.
     pub remaining: usize,
 
     // Boolean flags that determine if this delimiter could open or close
     // an emphasis.
-    pub open:      bool,
-    pub close:     bool,
+    pub open: bool,
+    pub close: bool,
 }
 
 // this node is supposed to be replaced by actual emph or text node
 impl NodeValue for EmphMarker {}
 
-pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool>(md: &mut MarkdownIt, f: fn () -> Node) {
+pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool>(
+    md: &mut MarkdownIt,
+    f: fn() -> Node,
+) {
     let pair_config = md.ext.get_or_insert_default::<PairConfig<MARKER>>();
     pair_config.fns[LENGTH as usize - 1] = Some(f);
 
     if !pair_config.inserted {
         pair_config.inserted = true;
-        let builder = md.inline.add_rule::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>();
+        let builder = md
+            .inline
+            .add_rule::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>();
         if MARKER == '*' || MARKER == '_' {
             builder.alias_named("emphasis");
         } else if MARKER == '~' {
@@ -110,25 +115,31 @@ pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool
 
 #[doc(hidden)]
 pub struct EmphPairScanner<const MARKER: char, const CAN_SPLIT_WORD: bool>;
-impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule for EmphPairScanner<MARKER, CAN_SPLIT_WORD> {
+impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
+    for EmphPairScanner<MARKER, CAN_SPLIT_WORD>
+{
     const MARKER: char = MARKER;
     const NAMES: &'static [&'static str] = &["emph_pair"];
 
     // this rule works on a closing marker, so for technical reasons any rules trying to skip it
     // should see just plain text
-    fn check(_: &mut InlineState) -> Option<usize> { None }
+    fn check(_: &mut InlineState) -> Option<usize> {
+        None
+    }
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next().unwrap() != MARKER { return None; }
+        if chars.next().unwrap() != MARKER {
+            return None;
+        }
 
         let scanned = state.scan_delims(state.pos, CAN_SPLIT_WORD);
         let mut node = Node::new(EmphMarker {
-            marker:    MARKER,
-            length:    scanned.length,
+            marker: MARKER,
+            length: scanned.length,
             remaining: scanned.length,
-            open:      scanned.can_open,
-            close:     scanned.can_close,
+            open: scanned.can_open,
+            close: scanned.can_close,
         });
         node.srcmap = state.get_map(state.pos, state.pos + scanned.length);
         node = scan_and_match_delimiters::<MARKER>(state, node);
@@ -143,17 +154,27 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule for EmphPairScan
 
 /// Assuming last token is a closing delimiter we just inserted,
 /// try to find opener(s). If any are found, move stuff to nested emph node.
-fn scan_and_match_delimiters<const MARKER: char>(state: &mut InlineState, mut closer_token: Node) -> Node {
-    if state.node.children.is_empty() { return closer_token; } // must have at least opener and closer
+fn scan_and_match_delimiters<const MARKER: char>(
+    state: &mut InlineState,
+    mut closer_token: Node,
+) -> Node {
+    if state.node.children.is_empty() {
+        return closer_token;
+    } // must have at least opener and closer
 
     let mut closer = closer_token.cast_mut::<EmphMarker>().unwrap().clone();
-    if !closer.close { return closer_token; }
+    if !closer.close {
+        return closer_token;
+    }
 
     // Previously calculated lower bounds (previous fails)
     // for each marker, each delimiter length modulo 3,
     // and for whether this closer can be an opener;
     // https://github.com/commonmark/cmark/commit/34250e12ccebdc6372b8b49c44fab57c72443460
-    let openers_for_marker = state.node.ext.get_or_insert_default::<OpenersBottom<MARKER>>();
+    let openers_for_marker = state
+        .node
+        .ext
+        .get_or_insert_default::<OpenersBottom<MARKER>>();
     let openers_parameter = (closer.open as usize) * 3 + closer.length % 3;
 
     let min_opener_idx = openers_for_marker.0[openers_parameter];
@@ -163,7 +184,9 @@ fn scan_and_match_delimiters<const MARKER: char>(state: &mut InlineState, mut cl
     while idx > min_opener_idx {
         idx -= 1;
 
-        let Some(opener) = state.node.children[idx].cast::<EmphMarker>() else { continue; };
+        let Some(opener) = state.node.children[idx].cast::<EmphMarker>() else {
+            continue;
+        };
 
         let mut opener = opener.clone();
         if opener.open && opener.marker == closer.marker && !is_odd_match(&opener, &closer) {
@@ -172,7 +195,7 @@ fn scan_and_match_delimiters<const MARKER: char>(state: &mut InlineState, mut cl
                 let mut matched_rule = None;
                 let fns = &state.md.ext.get::<PairConfig<MARKER>>().unwrap().fns;
                 for marker_len in (1..=max_marker_len).rev() {
-                    if let Some(f) = fns[marker_len-1] {
+                    if let Some(f) = fns[marker_len - 1] {
                         matched_rule = Some((marker_len, f));
                         break;
                     }
@@ -181,7 +204,9 @@ fn scan_and_match_delimiters<const MARKER: char>(state: &mut InlineState, mut cl
                 // If matched_fn isn't found, it can only mean that function is defined for larger marker
                 // than we have (e.g. function defined for **, we have *).
                 // Treat this as "marker not found".
-                if matched_rule.is_none() { break; }
+                if matched_rule.is_none() {
+                    break;
+                }
 
                 let (marker_len, marker_fn) = matched_rule.unwrap();
 
@@ -211,11 +236,12 @@ fn scan_and_match_delimiters<const MARKER: char>(state: &mut InlineState, mut cl
                 new_token.srcmap = state.get_map(start_map_pos, end_map_pos);
 
                 // remove empty node as a small optimization so we can do less work later
-                if opener.remaining == 0 { state.node.children.pop(); }
+                if opener.remaining == 0 {
+                    state.node.children.pop();
+                }
 
                 new_min_opener_idx = 0;
                 state.node.children.push(new_token);
-
             }
         }
 
@@ -232,7 +258,10 @@ fn scan_and_match_delimiters<const MARKER: char>(state: &mut InlineState, mut cl
         // See details here:
         // https://github.com/commonmark/cmark/issues/178#issuecomment-270417442
         //
-        let openers_for_marker = state.node.ext.get_or_insert_default::<OpenersBottom<MARKER>>();
+        let openers_for_marker = state
+            .node
+            .ext
+            .get_or_insert_default::<OpenersBottom<MARKER>>();
         openers_for_marker.0[openers_parameter] = new_min_opener_idx;
     }
 
@@ -245,7 +274,6 @@ fn scan_and_match_delimiters<const MARKER: char>(state: &mut InlineState, mut cl
     }
 }
 
-
 fn is_odd_match(opener: &EmphMarker, closer: &EmphMarker) -> bool {
     // from spec:
     //
@@ -256,8 +284,8 @@ fn is_odd_match(opener: &EmphMarker, closer: &EmphMarker) -> bool {
     //
     #[allow(clippy::collapsible_if)]
     if opener.close || closer.open {
-        if (opener.length + closer.length) % 3 == 0 {
-            if opener.length % 3 != 0 || closer.length % 3 != 0 {
+        if (opener.length + closer.length).is_multiple_of(3) {
+            if !opener.length.is_multiple_of(3) || !closer.length.is_multiple_of(3) {
                 return true;
             }
         }
@@ -265,7 +293,6 @@ fn is_odd_match(opener: &EmphMarker, closer: &EmphMarker) -> bool {
 
     false
 }
-
 
 #[doc(hidden)]
 pub struct FragmentsJoin;
@@ -276,7 +303,6 @@ impl CoreRule for FragmentsJoin {
         node.walk_mut(|node, _| fragments_join(node));
     }
 }
-
 
 /// Clean up tokens after emphasis and strikethrough postprocessing:
 /// merge adjacent text nodes into one and re-calculate all token levels
@@ -297,13 +323,17 @@ fn fragments_join(node: &mut Node) {
 
     // collapse adjacent text tokens
     for idx in 1..node.children.len() {
-        let ( tokens1, tokens2 ) = node.children.split_at_mut(idx);
+        let (tokens1, tokens2) = node.children.split_at_mut(idx);
 
         let token1 = tokens1.last_mut().unwrap();
-        let Some(t1_data) = token1.cast_mut::<Text>() else { continue; };
+        let Some(t1_data) = token1.cast_mut::<Text>() else {
+            continue;
+        };
 
         let token2 = tokens2.first_mut().unwrap();
-        let Some(t2_data) = token2.cast_mut::<Text>() else { continue; };
+        let Some(t2_data) = token2.cast_mut::<Text>() else {
+            continue;
+        };
 
         // concat contents
         let t2_content = std::mem::take(&mut t2_data.content);
@@ -314,7 +344,7 @@ fn fragments_join(node: &mut Node) {
             if let Some(map2) = token2.srcmap {
                 token1.srcmap = Some(SourcePos::new(
                     map1.get_byte_offsets().0,
-                    map2.get_byte_offsets().1
+                    map2.get_byte_offsets().1,
                 ));
             }
         }

@@ -8,7 +8,7 @@ use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 #[derive(Debug)]
 pub struct Em {
-    pub marker: char
+    pub marker: char,
 }
 
 impl NodeValue for Em {
@@ -21,7 +21,7 @@ impl NodeValue for Em {
 
 #[derive(Debug)]
 pub struct Strong {
-    pub marker: char
+    pub marker: char,
 }
 
 impl NodeValue for Strong {
@@ -33,8 +33,8 @@ impl NodeValue for Strong {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    emph_pair::add_with::<'*', 1, true>  (md, || Node::new(Em     { marker: '*' }));
-    emph_pair::add_with::<'_', 1, false> (md, || Node::new(Em     { marker: '_' }));
-    emph_pair::add_with::<'*', 2, true>  (md, || Node::new(Strong { marker: '*' }));
-    emph_pair::add_with::<'_', 2, false> (md, || Node::new(Strong { marker: '_' }));
+    emph_pair::add_with::<'*', 1, true>(md, || Node::new(Em { marker: '*' }));
+    emph_pair::add_with::<'_', 1, false>(md, || Node::new(Em { marker: '_' }));
+    emph_pair::add_with::<'*', 2, true>(md, || Node::new(Strong { marker: '*' }));
+    emph_pair::add_with::<'_', 2, false>(md, || Node::new(Strong { marker: '_' }));
 }

@@ -30,14 +30,17 @@ impl BlockRule for HrScanner {
     const NAMES: &'static [&'static str] = &["hr"];
 
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-
-        if state.line_indent(state.line) >= state.md.max_indent { return None; }
+        if state.line_indent(state.line) >= state.md.max_indent {
+            return None;
+        }
 
         let mut chars = state.get_line(state.line).chars();
 
         // Check hr marker
         let marker = chars.next()?;
-        if marker != '*' && marker != '-' && marker != '_' { return None; }
+        if marker != '*' && marker != '-' && marker != '_' {
+            return None;
+        }
 
         // markers can be mixed with spaces, but there should be at least 3 of them
         let mut cnt = 1;
@@ -49,9 +52,14 @@ impl BlockRule for HrScanner {
             }
         }
 
-        if cnt < 3 { return None; }
+        if cnt < 3 {
+            return None;
+        }
 
-        let node = Node::new(ThematicBreak { marker, marker_len: cnt });
+        let node = Node::new(ThematicBreak {
+            marker,
+            marker_len: cnt,
+        });
         Some((node, 1))
     }
 }

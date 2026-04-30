@@ -1,12 +1,8 @@
 // reference to exist CodeFence & CodeSpan rule in the code base
 
-use crate::{
-    parser::{
-        block::{BlockRule, BlockState},
-        inline::{InlineRule, InlineState},
-    },
-    MarkdownIt, Node, NodeValue, Renderer,
-};
+use crate::parser::block::{BlockRule, BlockState};
+use crate::parser::inline::{InlineRule, InlineState};
+use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 #[derive(Debug)]
 struct MathBlock {

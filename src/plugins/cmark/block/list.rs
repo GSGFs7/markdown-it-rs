@@ -66,8 +66,7 @@ impl NodeValue for ListItem {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    md.block.add_rule::<ListScanner>()
-        .after::<HrScanner>();
+    md.block.add_rule::<ListScanner>().after::<HrScanner>();
 }
 
 #[doc(hidden)]
@@ -79,7 +78,9 @@ impl ListScanner {
     fn skip_bullet_list_marker(src: &str) -> Option<usize> {
         let mut chars = src.chars();
 
-        let Some('*' | '-' | '+') = chars.next() else { return None; };
+        let Some('*' | '-' | '+') = chars.next() else {
+            return None;
+        };
 
         match chars.next() {
             Some(' ' | '\t') | None => Some(1),
@@ -91,7 +92,9 @@ impl ListScanner {
     // or -1 on fail.
     fn skip_ordered_list_marker(src: &str) -> Option<usize> {
         let mut chars = src.chars();
-        let Some('0'..='9') = chars.next() else { return None; };
+        let Some('0'..='9') = chars.next() else {
+            return None;
+        };
 
         let mut pos = 1;
         loop {
@@ -100,13 +103,17 @@ impl ListScanner {
                 Some('0'..='9') => {
                     // List marker should have no more than 9 digits
                     // (prevents integer overflow in browsers)
-                    if pos >= 10 { return None; }
+                    if pos >= 10 {
+                        return None;
+                    }
                 }
                 Some(')' | '.') => {
                     // found valid marker
                     break;
                 }
-                Some(_) | None => { return None; }
+                Some(_) | None => {
+                    return None;
+                }
             }
         }
 
@@ -122,7 +129,7 @@ impl ListScanner {
             if nodes[idx].is::<Paragraph>() {
                 let children = std::mem::take(&mut nodes[idx].children);
                 let len = children.len();
-                nodes.splice(idx..idx+1, children);
+                nodes.splice(idx..idx + 1, children);
                 idx += len;
             } else {
                 idx += 1;
@@ -131,8 +138,9 @@ impl ListScanner {
     }
 
     fn find_marker(state: &mut BlockState, silent: bool) -> Option<(usize, Option<u32>, char)> {
-
-        if state.line_indent(state.line) >= state.md.max_indent { return None; }
+        if state.line_indent(state.line) >= state.md.max_indent {
+            return None;
+        }
 
         // Special case:
         //  - item 1
@@ -142,8 +150,9 @@ impl ListScanner {
         //      - this one is a paragraph continuation
         if let Some(list_indent) = state.list_indent {
             let indent_nonspace = state.line_offsets[state.line].indent_nonspace;
-            if indent_nonspace - list_indent as i32 >= state.md.max_indent &&
-            indent_nonspace < state.blk_indent as i32 {
+            if indent_nonspace - list_indent as i32 >= state.md.max_indent
+                && indent_nonspace < state.blk_indent as i32
+            {
                 return None;
             }
         }
@@ -176,13 +185,13 @@ impl ListScanner {
 
             // If we're starting a new ordered list right after
             // a paragraph, it should start with 1.
-            if is_terminating_paragraph && int != 1 { return None; }
-
-        } else if let Some(p) = Self::skip_bullet_list_marker(current_line) {
+            if is_terminating_paragraph && int != 1 {
+                return None;
+            }
+        } else {
+            let p = Self::skip_bullet_list_marker(current_line)?;
             pos_after_marker = p;
             marker_value = None;
-        } else {
-            return None;
         }
 
         // If we're starting a new unordered list right after
@@ -191,7 +200,7 @@ impl ListScanner {
             let mut chars = current_line[pos_after_marker..].chars();
             loop {
                 match chars.next() {
-                    Some(' ' | '\t') => {},
+                    Some(' ' | '\t') => {}
                     Some(_) => break,
                     None => return None,
                 }
@@ -199,7 +208,10 @@ impl ListScanner {
         }
 
         // We should terminate list on style change. Remember first one to compare.
-        let marker_char = current_line[..pos_after_marker].chars().next_back().unwrap();
+        let marker_char = current_line[..pos_after_marker]
+            .chars()
+            .next_back()
+            .unwrap();
 
         Some((pos_after_marker, marker_value, marker_char))
     }
@@ -209,7 +221,9 @@ impl BlockRule for ListScanner {
     const NAMES: &'static [&'static str] = &["list"];
 
     fn check(state: &mut BlockState) -> Option<()> {
-        if state.node.is::<BulletList>() || state.node.is::<OrderedList>() { return None; }
+        if state.node.is::<BulletList>() || state.node.is::<OrderedList>() {
+            return None;
+        }
 
         Self::find_marker(state, true).map(|_| ())
     }
@@ -220,11 +234,11 @@ impl BlockRule for ListScanner {
         let new_node = if let Some(int) = marker_value {
             Node::new(OrderedList {
                 start: int,
-                marker: marker_char
+                marker: marker_char,
             })
         } else {
             Node::new(BulletList {
-                marker: marker_char
+                marker: marker_char,
             })
         };
 
@@ -244,9 +258,10 @@ impl BlockRule for ListScanner {
             let offsets = &state.line_offsets[next_line];
             let initial = offsets.indent_nonspace as usize + pos_after_marker;
 
-            let ( mut indent_after_marker, first_nonspace ) = find_indent_of(
+            let (mut indent_after_marker, first_nonspace) = find_indent_of(
                 &state.src[offsets.line_start..offsets.line_end],
-                pos_after_marker + offsets.first_nonspace - offsets.line_start);
+                pos_after_marker + offsets.first_nonspace - offsets.line_start,
+            );
 
             let reached_end_of_line = first_nonspace == offsets.line_end - offsets.line_start;
             let indent_nonspace = initial + indent_after_marker;
@@ -281,7 +296,8 @@ impl BlockRule for ListScanner {
             state.blk_indent = indent;
 
             state.tight = true;
-            state.line_offsets[next_line].first_nonspace = first_nonspace + state.line_offsets[next_line].line_start;
+            state.line_offsets[next_line].first_nonspace =
+                first_nonspace + state.line_offsets[next_line].line_start;
             state.line_offsets[next_line].indent_nonspace = indent_nonspace as i32;
 
             if reached_end_of_line && state.is_empty(next_line + 1) {
@@ -322,17 +338,25 @@ impl BlockRule for ListScanner {
             state.node.children.push(node);
             next_line = state.line;
 
-            if next_line >= state.line_max { break; }
+            if next_line >= state.line_max {
+                break;
+            }
 
             //
             // Try to check if list is terminated or continued.
             //
-            if state.line_indent(next_line) < 0 { break; }
+            if state.line_indent(next_line) < 0 {
+                break;
+            }
 
-            if state.line_indent(next_line) >= state.md.max_indent { break; }
+            if state.line_indent(next_line) >= state.md.max_indent {
+                break;
+            }
 
             // fail if terminating block found
-            if state.test_rules_at_line() { break; }
+            if state.test_rules_at_line() {
+                break;
+            }
 
             current_line = state.get_line(state.line).to_owned();
 
@@ -352,8 +376,13 @@ impl BlockRule for ListScanner {
                 }
             }
 
-            let next_marker_char = current_line[..pos_after_marker].chars().next_back().unwrap();
-            if next_marker_char != marker_char { break; }
+            let next_marker_char = current_line[..pos_after_marker]
+                .chars()
+                .next_back()
+                .unwrap();
+            if next_marker_char != marker_char {
+                break;
+            }
         }
 
         // mark paragraphs tight if needed

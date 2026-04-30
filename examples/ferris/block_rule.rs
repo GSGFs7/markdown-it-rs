@@ -3,8 +3,8 @@
 use markdown_it::parser::block::{BlockRule, BlockState};
 use markdown_it::{MarkdownIt, Node, NodeValue, Renderer};
 
-const CRAB_CLAW : &str = r#"(\/)"#;
-const CRAB_URL  : &str = "https://upload.wikimedia.org/wikipedia/commons/0/0f/Original_Ferris.svg";
+const CRAB_CLAW: &str = r#"(\/)"#;
+const CRAB_URL: &str = "https://upload.wikimedia.org/wikipedia/commons/0/0f/Original_Ferris.svg";
 
 #[derive(Debug)]
 // This is a structure that represents your custom Node in AST.
@@ -48,21 +48,26 @@ impl BlockRule for FerrisBlockScanner {
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
         // get contents of a line number `state.line` and check it
         let line = state.get_line(state.line).trim();
-        if !line.starts_with(CRAB_CLAW) { return None; }
-        if !line.ends_with(CRAB_CLAW)   { return None; }
+        if !line.starts_with(CRAB_CLAW) {
+            return None;
+        }
+        if !line.ends_with(CRAB_CLAW) {
+            return None;
+        }
 
         // require any number of `-` in between, but no less than 4
-        if line.len() < CRAB_CLAW.len() * 2 + 4 { return None; }
+        if line.len() < CRAB_CLAW.len() * 2 + 4 {
+            return None;
+        }
 
         // and make sure no other characters are present there
-        let dashes = &line[CRAB_CLAW.len()..line.len()-CRAB_CLAW.len()];
-        if dashes.chars().any(|c| c != '-') { return None; }
+        let dashes = &line[CRAB_CLAW.len()..line.len() - CRAB_CLAW.len()];
+        if dashes.chars().any(|c| c != '-') {
+            return None;
+        }
 
         // return new node and number of lines it occupies
-        Some((
-            Node::new(BlockFerris),
-            1,
-        ))
+        Some((Node::new(BlockFerris), 1))
     }
 }
 

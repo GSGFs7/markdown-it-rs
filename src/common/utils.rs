@@ -1,20 +1,19 @@
 //! Random assortment of functions that's used internally to write plugins.
 
-use entities;
-use once_cell::sync::Lazy;
-use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-const UNESCAPE_MD_RE : &str = r##"\\([!"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])"##;
-const ENTITY_RE      : &str = r##"&([A-Za-z#][A-Za-z0-9]{1,31});"##;
+use entities;
+use once_cell::sync::Lazy;
+use regex::Regex;
 
-static DIGITAL_ENTITY_TEST_RE : Lazy<Regex> = Lazy::new(||
-    Regex::new(r#"(?i)^&#(x[a-f0-9]{1,8}|[0-9]{1,8});$"#).unwrap()
-);
-static UNESCAPE_ALL_RE        : Lazy<Regex> = Lazy::new(||
-    Regex::new(&format!("{UNESCAPE_MD_RE}|{ENTITY_RE}")).unwrap()
-);
+const UNESCAPE_MD_RE: &str = r##"\\([!"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])"##;
+const ENTITY_RE: &str = r##"&([A-Za-z#][A-Za-z0-9]{1,31});"##;
+
+static DIGITAL_ENTITY_TEST_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)^&#(x[a-f0-9]{1,8}|[0-9]{1,8});$"#).unwrap());
+static UNESCAPE_ALL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(&format!("{UNESCAPE_MD_RE}|{ENTITY_RE}")).unwrap());
 
 #[allow(clippy::manual_range_contains)]
 /// Return true if a `code` you got from `&#xHHHH;` entity is a valid charcode.
@@ -29,17 +28,33 @@ static UNESCAPE_ALL_RE        : Lazy<Regex> = Lazy::new(||
 /// ```
 pub fn is_valid_entity_code(code: u32) -> bool {
     // broken sequence
-    if code >= 0xD800 && code <= 0xDFFF { return false; }
+    if code >= 0xD800 && code <= 0xDFFF {
+        return false;
+    }
     // never used
-    if code >= 0xFDD0 && code <= 0xFDEF { return false; }
-    if (code & 0xFFFF) == 0xFFFF || (code & 0xFFFF) == 0xFFFE { return false; }
+    if code >= 0xFDD0 && code <= 0xFDEF {
+        return false;
+    }
+    if (code & 0xFFFF) == 0xFFFF || (code & 0xFFFF) == 0xFFFE {
+        return false;
+    }
     // control codes
-    if code <= 0x08 { return false; }
-    if code == 0x0B { return false; }
-    if code >= 0x0E && code <= 0x1F { return false; }
-    if code >= 0x7F && code <= 0x9F { return false; }
+    if code <= 0x08 {
+        return false;
+    }
+    if code == 0x0B {
+        return false;
+    }
+    if code >= 0x0E && code <= 0x1F {
+        return false;
+    }
+    if code >= 0x7F && code <= 0x9F {
+        return false;
+    }
     // out of range
-    if code > 0x10FFFF { return false; }
+    if code > 0x10FFFF {
+        return false;
+    }
     true
 }
 
@@ -50,7 +65,7 @@ pub fn is_valid_entity_code(code: u32) -> bool {
 /// assert_eq!(get_entity_from_str("&xxx;"), None);
 /// ```
 pub fn get_entity_from_str(str: &str) -> Option<&'static str> {
-    pub static ENTITIES_HASH : Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
+    pub static ENTITIES_HASH: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
         let mut mapping = HashMap::new();
         for e in &entities::ENTITIES {
             if e.entity.ends_with(';') {
@@ -92,7 +107,9 @@ fn replace_entity_pattern(str: &str) -> Option<String> {
 /// assert_eq!(unescape_all("\\&"), "&");
 /// ```
 pub fn unescape_all(str: &str) -> Cow<'_, str> {
-    if !str.contains('\\') && !str.contains('&') { return Cow::Borrowed(str); }
+    if !str.contains('\\') && !str.contains('&') {
+        return Cow::Borrowed(str);
+    }
 
     UNESCAPE_ALL_RE.replace_all(str, |captures: &regex::Captures| {
         let s = captures.get(0).unwrap().as_str();
@@ -127,7 +144,7 @@ pub fn escape_html(str: &str) -> Cow<'_, str> {
 /// assert_eq!(normalize_reference("a   b"), normalize_reference("a b"));
 /// ```
 pub fn normalize_reference(str: &str) -> String {
-    static SPACE_RE : Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
+    static SPACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
 
     // Trim and collapse whitespace
     //
@@ -181,7 +198,9 @@ pub fn normalize_reference(str: &str) -> String {
 pub fn rfind_and_count(source: &str, char: char) -> usize {
     let mut result = 0;
     for c in source.chars().rev() {
-        if c == char { break; }
+        if c == char {
+            break;
+        }
         result += 1;
     }
     result
@@ -210,7 +229,7 @@ pub fn find_indent_of(line: &str, mut pos: usize) -> (usize, usize) {
                 indent += 1;
                 pos += 1;
             }
-            _ => return ( indent, pos ),
+            _ => return (indent, pos),
         }
     }
 }
@@ -263,7 +282,7 @@ pub fn calc_right_whitespace_with_tabstops(source: &str, mut indent: i32) -> (us
                 let tab_width = 4 - indent_from_start as i32 % 4;
 
                 if indent < tab_width {
-                    return ( indent as usize, start );
+                    return (indent as usize, start);
                 }
 
                 indent -= tab_width;
@@ -280,7 +299,7 @@ pub fn calc_right_whitespace_with_tabstops(source: &str, mut indent: i32) -> (us
         }
     }
 
-    ( 0, start )
+    (0, start)
 }
 
 /// Checks whether a given character should count as punctuation
@@ -290,8 +309,8 @@ pub fn calc_right_whitespace_with_tabstops(source: &str, mut indent: i32) -> (us
 /// This is currently implemented as a `match`, but might be simplified as a
 /// regex if benchmarking shows this to be beneficient.
 pub fn is_punct_char(ch: char) -> bool {
-    use unicode_general_category::get_general_category;
     use unicode_general_category::GeneralCategory::*;
+    use unicode_general_category::get_general_category;
 
     match get_general_category(ch) {
         // P
@@ -317,11 +336,13 @@ pub fn is_punct_char(ch: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::cut_right_whitespace_with_tabstops as cut_ws;
-    use super::rfind_and_count;
-    use super::find_indent_of;
-    use super::replace_entity_pattern;
-    use super::unescape_all;
+    use super::{
+        cut_right_whitespace_with_tabstops as cut_ws,
+        find_indent_of,
+        replace_entity_pattern,
+        rfind_and_count,
+        unescape_all,
+    };
 
     #[test]
     fn rfind_and_count_test() {
@@ -448,22 +469,29 @@ mod tests {
     fn test_unescape_all_xss() {
         assert_eq!(
             unescape_all(r#"javascript&#x3A;alert(1)"#),
-            r#"javascript:alert(1)"#);
+            r#"javascript:alert(1)"#
+        );
 
         assert_eq!(
             unescape_all(r#"&#74;avascript:alert(1)"#),
-            r#"Javascript:alert(1)"#);
+            r#"Javascript:alert(1)"#
+        );
 
         assert_eq!(
             unescape_all(r#"&#x26;#74;avascript:alert(1)"#),
-            r#"&#74;avascript:alert(1)"#);
+            r#"&#74;avascript:alert(1)"#
+        );
 
         assert_eq!(
             unescape_all(r#"\&#74;avascript:alert(1)"#),
-            r#"&#74;avascript:alert(1)"#);
+            r#"&#74;avascript:alert(1)"#
+        );
 
         assert_eq!(
-            unescape_all(r#"&#34;&#62;&#60;script&#62;alert&#40;&#34;xss&#34;&#41;&#60;/script&#62;"#),
-            r#""><script>alert("xss")</script>"#);
+            unescape_all(
+                r#"&#34;&#62;&#60;script&#62;alert&#40;&#34;xss&#34;&#41;&#60;/script&#62;"#
+            ),
+            r#""><script>alert("xss")</script>"#
+        );
     }
 }

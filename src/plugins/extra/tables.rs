@@ -17,7 +17,11 @@ pub struct Table {
 impl NodeValue for Table {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         let old_context = fmt.ext().remove::<TableRenderContext>();
-        fmt.ext().insert(TableRenderContext { head: false, alignments: self.alignments.clone(), index: 0 });
+        fmt.ext().insert(TableRenderContext {
+            head: false,
+            alignments: self.alignments.clone(),
+            index: 0,
+        });
 
         fmt.cr();
         fmt.open("table", &node.attrs);
@@ -121,7 +125,8 @@ impl NodeValue for TableCell {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    md.block.add_rule::<TableScanner>()
+    md.block
+        .add_rule::<TableScanner>()
         .before::<ListScanner>()
         .before::<HeadingScanner>();
 }
@@ -136,16 +141,15 @@ struct RowContent {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[derive(Default)]
 pub enum ColumnAlignment {
+    #[default]
     None,
     Left,
     Right,
     Center,
 }
 
-impl Default for ColumnAlignment {
-    fn default() -> Self { Self::None }
-}
 
 impl TableScanner {
     fn scan_row(line: &str) -> Vec<RowContent> {
@@ -163,7 +167,7 @@ impl TableScanner {
                 '|' => {
                     is_leading = false;
                     if is_escaped {
-                        str.push_str(&line[srcmap.last().unwrap().1..pos-1]);
+                        str.push_str(&line[srcmap.last().unwrap().1..pos - 1]);
                         srcmap.push((str.len(), pos));
                     } else {
                         str.push_str(&line[srcmap.last().unwrap().1..pos]);
@@ -188,26 +192,27 @@ impl TableScanner {
         }
 
         str.push_str(&line[srcmap.last().unwrap().1..]);
-        result.push(RowContent {
-            str,
-            srcmap,
-        });
+        result.push(RowContent { str, srcmap });
 
         // trim trailing spaces
         for content in result.iter_mut() {
-            while content.str.ends_with([ ' ', '\t' ]) {
+            while content.str.ends_with([' ', '\t']) {
                 content.str.pop();
             }
         }
 
         // remove last cell if empty
         if let Some(RowContent { str, srcmap: _ }) = result.last() {
-            if str.is_empty() { result.pop(); }
+            if str.is_empty() {
+                result.pop();
+            }
         }
 
         // remove first cell if empty
         if let Some(RowContent { str, srcmap: _ }) = result.first() {
-            if str.is_empty() { result.remove(0); }
+            if str.is_empty() {
+                result.remove(0);
+            }
         }
 
         result
@@ -219,21 +224,25 @@ impl TableScanner {
         let mut has_delimiter = false;
         for ch in line.chars() {
             match ch {
-                '|'| ':' => { has_delimiter = true },
+                '|' | ':' => has_delimiter = true,
                 '-' | ' ' | '\t' => (),
                 _ => return None,
             }
         }
-        if !has_delimiter { return None; }
+        if !has_delimiter {
+            return None;
+        }
 
         // if first character is '-', then second character must not be a space
         // (due to parsing ambiguity with list)
-        if line.starts_with("- ") { return None; }
+        if line.starts_with("- ") {
+            return None;
+        }
 
         let mut result = Vec::new();
 
         for RowContent { str, srcmap: _ } in Self::scan_row(line) {
-            let mut alignment : u8 = 0;
+            let mut alignment: u8 = 0;
             let mut cell = str.as_str();
 
             if cell.starts_with(':') {
@@ -243,7 +252,7 @@ impl TableScanner {
 
             if cell.ends_with(':') {
                 alignment |= 2;
-                cell = &cell[..cell.len()-1];
+                cell = &cell[..cell.len() - 1];
             }
 
             // only allow '-----' in the remainder
@@ -265,14 +274,22 @@ impl TableScanner {
 
     fn scan_header(state: &BlockState) -> Option<(Vec<RowContent>, Vec<ColumnAlignment>)> {
         // should have at least two lines
-        if state.line + 2 > state.line_max { return None; }
+        if state.line + 2 > state.line_max {
+            return None;
+        }
 
-        if state.line_indent(state.line) >= state.md.max_indent { return None; }
+        if state.line_indent(state.line) >= state.md.max_indent {
+            return None;
+        }
 
         let next_line = state.line + 1;
-        if state.line_indent(next_line) < 0 { return None; }
+        if state.line_indent(next_line) < 0 {
+            return None;
+        }
 
-        if state.line_indent(next_line) >= state.md.max_indent { return None; }
+        if state.line_indent(next_line) >= state.md.max_indent {
+            return None;
+        }
 
         let alignments = Self::scan_alignment_row(state.get_line(next_line))?;
         let header_row = Self::scan_row(state.get_line(state.line));
@@ -287,7 +304,7 @@ impl TableScanner {
             return None;
         }
 
-        Some(( header_row, alignments ))
+        Some((header_row, alignments))
     }
 }
 
@@ -295,13 +312,15 @@ impl BlockRule for TableScanner {
     const NAMES: &'static [&'static str] = &["table", "tables"];
 
     fn check(state: &mut BlockState) -> Option<()> {
-        if state.node.is::<TableBody>() { return None; }
+        if state.node.is::<TableBody>() {
+            return None;
+        }
 
         Self::scan_header(state).map(|_| ())
     }
 
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        let ( header_row, alignments ) = Self::scan_header(state)?;
+        let (header_row, alignments) = Self::scan_header(state)?;
         let table_cell_count = header_row.len();
         let mut table_node = Node::new(Table { alignments });
 
@@ -319,8 +338,13 @@ impl BlockRule for TableScanner {
                 start + srcmap.last().unwrap().1 + cell.len() - srcmap.last().unwrap().0,
             ));
             if !cell.is_empty() {
-                let mapping = srcmap.into_iter().map(|(dstpos, srcpos)| (dstpos, srcpos + start)).collect();
-                cell_node.children.push(Node::new(InlineRoot::new(cell, mapping)));
+                let mapping = srcmap
+                    .into_iter()
+                    .map(|(dstpos, srcpos)| (dstpos, srcpos + start))
+                    .collect();
+                cell_node
+                    .children
+                    .push(Node::new(InlineRoot::new(cell, mapping)));
             }
             row_node.children.push(cell_node);
         }
@@ -346,25 +370,37 @@ impl BlockRule for TableScanner {
             //
             // Try to check if table is terminated or continued.
             //
-            if state.line_indent(state.line) < 0 { break; }
+            if state.line_indent(state.line) < 0 {
+                break;
+            }
 
-            if state.line_indent(state.line) >= state.md.max_indent { break; }
+            if state.line_indent(state.line) >= state.md.max_indent {
+                break;
+            }
 
             // stop if the line is empty
-            if state.is_empty(state.line) { break; }
+            if state.is_empty(state.line) {
+                break;
+            }
 
             // fail if terminating block found
-            if state.test_rules_at_line() { break; }
+            if state.test_rules_at_line() {
+                break;
+            }
 
             let mut row_node = Node::new(TableRow);
             row_node.srcmap = state.get_map(state.line, state.line);
             let line = state.get_line(state.line);
 
             let mut body_row = Self::scan_row(line);
-            let mut end_of_line = RowContent { str: String::new(), srcmap: vec![(0, line.len())] };
+            let mut end_of_line = RowContent {
+                str: String::new(),
+                srcmap: vec![(0, line.len())],
+            };
 
             for index in 0..table_cell_count {
-                let RowContent { str: cell, srcmap } = body_row.get_mut(index).unwrap_or(&mut end_of_line);
+                let RowContent { str: cell, srcmap } =
+                    body_row.get_mut(index).unwrap_or(&mut end_of_line);
                 add_cell(&mut row_node, cell.clone(), srcmap.clone());
             }
 
@@ -384,7 +420,6 @@ impl BlockRule for TableScanner {
         Some((table_node, line_count))
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -419,11 +454,26 @@ mod tests {
 
     #[test]
     fn should_process_backslash_escapes() {
-        assert_eq!(TableScanner::scan_row(r#"| foo\bar |"#)[0].str, r#"foo\bar"#);
-        assert_eq!(TableScanner::scan_row(r#"| foo\|bar |"#)[0].str, r#"foo|bar"#);
-        assert_eq!(TableScanner::scan_row(r#"| foo\\|bar |"#)[0].str, r#"foo\|bar"#);
-        assert_eq!(TableScanner::scan_row(r#"| foo\\\|bar |"#)[0].str, r#"foo\\|bar"#);
-        assert_eq!(TableScanner::scan_row(r#"| foo\\\\|bar |"#)[0].str, r#"foo\\\|bar"#);
+        assert_eq!(
+            TableScanner::scan_row(r#"| foo\bar |"#)[0].str,
+            r#"foo\bar"#
+        );
+        assert_eq!(
+            TableScanner::scan_row(r#"| foo\|bar |"#)[0].str,
+            r#"foo|bar"#
+        );
+        assert_eq!(
+            TableScanner::scan_row(r#"| foo\\|bar |"#)[0].str,
+            r#"foo\|bar"#
+        );
+        assert_eq!(
+            TableScanner::scan_row(r#"| foo\\\|bar |"#)[0].str,
+            r#"foo\\|bar"#
+        );
+        assert_eq!(
+            TableScanner::scan_row(r#"| foo\\\\|bar |"#)[0].str,
+            r#"foo\\\|bar"#
+        );
     }
 
     #[test]

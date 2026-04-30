@@ -8,8 +8,7 @@ use crate::parser::inline::InlineRoot;
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 pub fn add(md: &mut MarkdownIt) {
-    md.block.add_rule::<ParagraphScanner>()
-        .after_all();
+    md.block.add_rule::<ParagraphScanner>().after_all();
 }
 
 #[derive(Debug)]
@@ -42,14 +41,20 @@ impl BlockRule for ParagraphScanner {
         'outer: loop {
             next_line += 1;
 
-            if next_line >= state.line_max || state.is_empty(next_line) { break; }
+            if next_line >= state.line_max || state.is_empty(next_line) {
+                break;
+            }
 
             // this may be a code block normally, but after paragraph
             // it's considered a lazy continuation regardless of what's there
-            if state.line_indent(next_line) >= state.md.max_indent { continue; }
+            if state.line_indent(next_line) >= state.md.max_indent {
+                continue;
+            }
 
             // quirk for blockquotes, this line should already be checked by that rule
-            if state.line_offsets[next_line].indent_nonspace < 0 { continue; }
+            if state.line_offsets[next_line].indent_nonspace < 0 {
+                continue;
+            }
 
             // Some tags can terminate paragraph without empty line.
             let old_state_line = state.line;
@@ -64,7 +69,8 @@ impl BlockRule for ParagraphScanner {
         let (content, mapping) = state.get_lines(start_line, next_line, state.blk_indent, false);
 
         let mut node = Node::new(Paragraph);
-        node.children.push(Node::new(InlineRoot::new(content, mapping)));
+        node.children
+            .push(Node::new(InlineRoot::new(content, mapping)));
         Some((node, next_line - start_line))
     }
 }

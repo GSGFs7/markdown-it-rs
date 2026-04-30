@@ -10,7 +10,10 @@ pub struct Root {
 
 impl Root {
     pub fn new(content: String) -> Self {
-        Self { content, ext: RootExtSet::new() }
+        Self {
+            content,
+            ext: RootExtSet::new(),
+        }
     }
 }
 

@@ -1,10 +1,11 @@
 //! Link validator and formatter
 
-use once_cell::sync::Lazy;
-use regex::Regex;
 use std::fmt::Debug;
 
-pub trait LinkFormatter : Debug + Send + Sync {
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+pub trait LinkFormatter: Debug + Send + Sync {
     /// Validate link url, return `Some(())` if it is allowed
     /// and `None` if it is a security risk.
     fn validate_link(&self, url: &str) -> Option<()>;
@@ -37,13 +38,11 @@ impl MDLinkFormatter {
 impl LinkFormatter for MDLinkFormatter {
     fn validate_link(&self, url: &str) -> Option<()> {
         // url should be normalized at this point, and existing entities are decoded
-        static BAD_PROTO_RE : Lazy<Regex> = Lazy::new(||
-            Regex::new(r#"(?i)^(vbscript|javascript|file|data):"#).unwrap()
-        );
+        static BAD_PROTO_RE: Lazy<Regex> =
+            Lazy::new(|| Regex::new(r#"(?i)^(vbscript|javascript|file|data):"#).unwrap());
 
-        static GOOD_DATA_RE : Lazy<Regex> = Lazy::new(||
-            Regex::new(r#"(?i)^data:image/(gif|png|jpeg|webp);"#).unwrap()
-        );
+        static GOOD_DATA_RE: Lazy<Regex> =
+            Lazy::new(|| Regex::new(r#"(?i)^data:image/(gif|png|jpeg|webp);"#).unwrap());
 
         if !BAD_PROTO_RE.is_match(url) || GOOD_DATA_RE.is_match(url) {
             Some(())
@@ -61,11 +60,9 @@ impl LinkFormatter for MDLinkFormatter {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::LinkFormatter;
-    use super::MDLinkFormatter;
+    use super::{LinkFormatter, MDLinkFormatter};
 
     #[test]
     fn should_allow_normal_urls() {
@@ -94,7 +91,15 @@ mod tests {
     #[test]
     fn should_not_allow_data_url_except_whitelisted() {
         let fmt = MDLinkFormatter::new();
-        assert!(fmt.validate_link("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7").is_some());
-        assert!(fmt.validate_link("data:text/html;base64,PHNjcmlwdD5hbGVydCgnWFNTJyk8L3NjcmlwdD4K").is_none());
+        assert!(
+            fmt.validate_link(
+                "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+            )
+            .is_some()
+        );
+        assert!(
+            fmt.validate_link("data:text/html;base64,PHNjcmlwdD5hbGVydCgnWFNTJyk8L3NjcmlwdD4K")
+                .is_none()
+        );
     }
 }
