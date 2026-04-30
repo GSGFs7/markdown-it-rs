@@ -1,4 +1,6 @@
 from ._markdown_it_rs_py import (
+    Ast,
+    Node,
     FrontMatter,
     MarkdownIt,
     MarkdownOutput,
@@ -6,6 +8,8 @@ from ._markdown_it_rs_py import (
 )
 
 __all__ = [
+    "Ast",
+    "Node",
     "FrontMatter",
     "MarkdownIt",
     "MarkdownOutput",

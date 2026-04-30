@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use markdown_it::MarkdownIt;
 use markdown_it::parser::core::Root;
 use markdown_it::plugins::extra::front_matter::FrontMatter;
@@ -5,6 +7,7 @@ use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyTuple, PyTupleMethods};
 
+use crate::ast::PyAst;
 use crate::builder::build;
 use crate::plugin_registry;
 use crate::plugin_state::PluginState;
@@ -66,6 +69,15 @@ impl PyMarkdownIt {
 
     fn render(&self, src: &str) -> String {
         self.inner.parse(src).render()
+    }
+
+    fn parse(&self, py: Python<'_>, src: &str) -> PyResult<Py<PyAst>> {
+        Py::new(
+            py,
+            PyAst {
+                root: RefCell::new(self.inner.parse(src)),
+            },
+        )
     }
 
     fn parse_frontmatter(&self, src: &str) -> Option<PyFrontMatter> {

@@ -209,6 +209,14 @@ class MarkdownItTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown syntect theme"):
             MarkdownIt(syntax_highlighting=True, syntax_theme="a invalid theme")
 
+    def test_parse_ast(self):
+        ast = MarkdownIt().parse("# heading")
+        root = ast.root
+
+        self.assertEqual(len(root.children), 1)
+        self.assertTrue(root.type_name.endswith("Root"))
+        self.assertEqual(root.children[0].render(), "<h1>heading</h1>\n")
+
 
 if __name__ == "__main__":
     unittest.main()
