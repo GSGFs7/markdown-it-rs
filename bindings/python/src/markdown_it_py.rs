@@ -5,18 +5,20 @@ use markdown_it::parser::core::Root;
 use markdown_it::plugins::extra::front_matter::FrontMatter;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyTuple, PyTupleMethods};
+use pyo3::types::{PyDict, PyTuple};
 
-use crate::ast::PyAst;
+use crate::ast::{PyAst, PyNode};
 use crate::builder::build;
 use crate::plugin_registry;
 use crate::plugin_state::PluginState;
+use crate::rules::PyCoreRule;
 use crate::types::{PyFrontMatter, PyMarkdownOutput};
 
 #[pyclass(name = "MarkdownIt", dict)]
 pub(crate) struct PyMarkdownIt {
-    inner: MarkdownIt,
+    pub(crate) inner: MarkdownIt,
     plugins: PluginState,
+    pub(crate) core_rules: Vec<PyCoreRule>,
 }
 
 #[pymethods]
@@ -64,20 +66,25 @@ impl PyMarkdownIt {
         Ok(Self {
             inner: built.inner,
             plugins: built.plugins,
+            core_rules: Vec::new(),
         })
     }
 
-    fn render(&self, src: &str) -> String {
-        self.inner.parse(src).render()
+    fn render(&self, py: Python<'_>, src: &str) -> PyResult<String> {
+        let ast = self.parse(py, src)?;
+        let ast_ref = ast.borrow(py);
+        Ok(ast_ref.root.borrow().render())
     }
 
     fn parse(&self, py: Python<'_>, src: &str) -> PyResult<Py<PyAst>> {
-        Py::new(
+        let ast = Py::new(
             py,
             PyAst {
                 root: RefCell::new(self.inner.parse(src)),
             },
-        )
+        )?;
+        self.run_python_core_rules(py, &ast)?;
+        Ok(ast)
     }
 
     fn parse_frontmatter(&self, src: &str) -> Option<PyFrontMatter> {
@@ -86,15 +93,17 @@ impl PyMarkdownIt {
         root.ext.get::<FrontMatter>().map(PyFrontMatter::from)
     }
 
-    fn render_with_frontmatter(&self, src: &str) -> PyMarkdownOutput {
-        let ast = self.inner.parse(src);
-        let frontmatter = ast
+    fn render_with_frontmatter(&self, py: Python<'_>, src: &str) -> PyResult<PyMarkdownOutput> {
+        let ast = self.parse(py, src)?;
+        let ast_ref = ast.borrow(py);
+        let root = ast_ref.root.borrow();
+        let frontmatter = root
             .cast::<Root>()
             .and_then(|root| root.ext.get::<FrontMatter>())
             .map(PyFrontMatter::from);
-        let html = ast.render();
+        let html = root.render();
 
-        PyMarkdownOutput { html, frontmatter }
+        Ok(PyMarkdownOutput { html, frontmatter })
     }
 
     fn syntax_theme_css(&self) -> Option<String> {
@@ -144,5 +153,36 @@ impl PyMarkdownIt {
         // chained calls.
         // md.use(...).use(...).use(...).render()
         Ok(slf)
+    }
+
+    #[pyo3(signature = (name, callback))]
+    fn add_core_rule(&mut self, py: Python<'_>, name: &str, callback: Py<PyAny>) -> PyResult<()> {
+        if !callback.bind(py).is_callable() {
+            return Err(PyTypeError::new_err("core rule must be callable"));
+        }
+
+        self.core_rules.push(PyCoreRule {
+            name: name.to_owned(),
+            callback,
+        });
+
+        Ok(())
+    }
+}
+
+impl PyMarkdownIt {
+    fn run_python_core_rules(&self, py: Python<'_>, ast: &Py<PyAst>) -> PyResult<()> {
+        let root = Py::new(
+            py,
+            PyNode {
+                ast: ast.clone_ref(py),
+                path: Vec::new(),
+            },
+        )?;
+        for rule in &self.core_rules {
+            let _rule_name = rule.name.as_str();
+            rule.callback.call1(py, (root.clone_ref(py),))?;
+        }
+        Ok(())
     }
 }

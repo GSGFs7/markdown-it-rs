@@ -5,6 +5,7 @@ pub(crate) mod options;
 pub(crate) mod plugin_registry;
 pub(crate) mod plugin_state;
 pub(crate) mod plugins;
+pub(crate) mod rules;
 pub(crate) mod types;
 
 use pyo3::prelude::*;
