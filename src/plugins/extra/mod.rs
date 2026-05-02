@@ -18,7 +18,9 @@
 //! let html = md.parse(r#"Markdown done "The Right Way(TM)""#).render();
 //! assert_eq!(html.trim(), r#"<p>Markdown done “The Right Way™”</p>"#);
 //! ```
+
 pub mod beautify_links;
+pub mod directives;
 pub mod front_matter;
 pub mod heading_anchors;
 #[cfg(feature = "linkify")]
