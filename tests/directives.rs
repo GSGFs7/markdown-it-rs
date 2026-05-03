@@ -140,10 +140,7 @@ fn container_directive_nested_with_longer_marker() {
 #[test]
 fn container_directive_closed_by_longer_marker() {
     let html = render(":::name\nhello\n::::");
-    assert_eq!(
-        html,
-        "<div class=\"directive name\">\n<p>hello</p>\n</div>"
-    );
+    assert_eq!(html, "<div class=\"directive name\">\n<p>hello</p>\n</div>");
 }
 
 #[test]

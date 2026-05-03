@@ -267,7 +267,7 @@ pub fn parse_link_destination(
                 Some('\\') => {
                     let x = chars.next()?;
                     pos += 1 + x.len_utf8();
-                },
+                }
                 Some(x) => {
                     pos += x.len_utf8();
                 }
@@ -347,7 +347,7 @@ pub fn parse_link_title(str: &str, start: usize, max: usize) -> Option<ParseLink
             Some('\\') => {
                 let x = chars.next()?;
                 pos += 1 + x.len_utf8();
-            },
+            }
             Some(x) => {
                 pos += x.len_utf8();
             }
