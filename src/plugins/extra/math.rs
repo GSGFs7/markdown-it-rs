@@ -32,7 +32,9 @@ impl NodeValue for MathBlock {
 
             // render katex
             let ctx = katex::KatexContext::default();
-            let setting = katex::Settings::default();
+            let setting = katex::Settings::builder()
+                .display_mode(true)
+                .build();
             match katex::render_to_string(&ctx, &self.content, &setting) {
                 Ok(html) => fmt.text_raw(&html),
                 Err(_) => fmt.text(&self.content),
@@ -128,8 +130,9 @@ impl NodeValue for MathInline {
             fmt.open("span", &attrs);
 
             let ctx = katex::KatexContext::default();
-            let mut setting = katex::Settings::default();
-            setting.display_mode = false;
+            let setting = katex::Settings::builder()
+                .display_mode(false)
+                .build();
             match katex::render_to_string(&ctx, &self.content, &setting) {
                 Ok(html) => fmt.text_raw(&html),
                 Err(_) => fmt.text(&self.content),
