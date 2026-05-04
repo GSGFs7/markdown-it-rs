@@ -21,6 +21,7 @@
 
 pub mod beautify_links;
 pub mod directives;
+pub mod footnote;
 pub mod front_matter;
 pub mod heading_anchors;
 #[cfg(feature = "linkify")]
@@ -47,4 +48,5 @@ pub fn add(md: &mut MarkdownIt) {
     smartquotes::add(md);
     #[cfg(feature = "katex")]
     math::add(md);
+    footnote::add(md);
 }
