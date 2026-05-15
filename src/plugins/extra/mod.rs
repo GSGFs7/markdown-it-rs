@@ -2,6 +2,7 @@
 //!
 //!  - strikethrough (~~xxx~~~)
 //!  - tables
+//!  - task lists (`- [ ] todo`, `- [x] done`)
 //!  - linkify (convert <http://example.com> to a link)
 //!  - beautify links (cut "http://" from links and shorten paths)
 //!  - smartquotes and typographer
@@ -32,6 +33,7 @@ pub mod strikethrough;
 #[cfg(feature = "syntect")]
 pub mod syntect;
 pub mod tables;
+pub mod tasklist;
 pub mod typographer;
 
 use crate::MarkdownIt;
@@ -42,6 +44,7 @@ pub fn add(md: &mut MarkdownIt) {
     #[cfg(feature = "linkify")]
     linkify::add(md);
     tables::add(md);
+    tasklist::add(md);
     #[cfg(feature = "syntect")]
     syntect::add(md);
     typographer::add(md);
