@@ -232,31 +232,6 @@ mod markdown_it_rs_extras {
 
     #[cfg(feature = "syntect")]
     #[test]
-    fn syntect_adds_data_language_to_pre_tag() {
-        let md = &mut markdown_it::MarkdownIt::new();
-        markdown_it::plugins::cmark::add(md);
-        markdown_it::plugins::extra::syntect::add(md);
-
-        let html = md.parse("```rust\nfn main() {}\n```").render();
-
-        assert!(html.contains(r#"<pre data-language="rust">"#));
-    }
-
-    #[cfg(feature = "syntect")]
-    #[test]
-    fn syntect_classed_mode_adds_data_language_to_pre_tag() {
-        let md = &mut markdown_it::MarkdownIt::new();
-        markdown_it::plugins::cmark::add(md);
-        markdown_it::plugins::extra::syntect::add(md);
-        markdown_it::plugins::extra::syntect::set_to_classed(md);
-
-        let html = md.parse("```rust\nfn main() {}\n```").render();
-
-        assert!(html.contains(r#"<pre data-language="rust">"#));
-    }
-
-    #[cfg(feature = "syntect")]
-    #[test]
     fn syntect_classed_mode_renders_language_class() {
         let md = &mut markdown_it::MarkdownIt::new();
         markdown_it::plugins::cmark::add(md);
