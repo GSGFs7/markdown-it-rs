@@ -25,6 +25,7 @@
 //! markdown_it::plugins::extra::syntect::set_theme(&mut md, "base16-ocean.dark");
 //!
 //! let html = md.parse("```rust\nfn main() {}\n```").render();
+//! assert!(html.contains(r#"data-language="rust""#));
 //! assert!(html.contains(r#"class="language-rust""#));
 //! ```
 
@@ -358,7 +359,15 @@ fn render_inline_html(
     }
 
     // it look like `<pre><code>` or `<pre><code class="language-{lang}">`
-    let mut html = String::from("<pre><code");
+    let mut html = String::from("<pre");
+    if let Some(lang) = language {
+        if !lang.is_empty() {
+            html.push_str(" data-language=\"");
+            html.push_str(&escape_html(lang));
+            html.push('"');
+        }
+    }
+    html.push_str("><code");
     if !class_attr.is_empty() {
         html.push_str(" class=\"");
         html.push_str(&escape_html(&class_attr));
@@ -424,7 +433,15 @@ fn render_classed_html(
 
     // splicing HTML
     // head, it looks like `<pre><code class="syntect-code language-rust">`
-    let mut html = String::from("<pre><code class=\"");
+    let mut html = String::from("<pre");
+    if let Some(lang) = language {
+        if !lang.is_empty() {
+            html.push_str(" data-language=\"");
+            html.push_str(&escape_html(lang));
+            html.push('"');
+        }
+    }
+    html.push_str("><code class=\"");
     html.push_str(&escape_html(&class_attr));
     html.push_str("\">");
 
