@@ -197,6 +197,25 @@ class MarkdownItTests(unittest.TestCase):
             '<div class="directive name" cia="llo">\n<p>world</p>\n</div>\n',
         )
 
+    def test_enable_directives_from_constructor(self):
+        md = MarkdownIt(directives=True)
+
+        self.assertEqual(
+            md.render("hello :name{a=\"b\"} world"),
+            '<p>hello <span class="directive name" a="b"></span> world</p>\n',
+        )
+
+    def test_enable_tasklist_and_footnote_from_constructor(self):
+        md = MarkdownIt(tasklist=True, footnote=True)
+
+        tasklist_html = md.render("- [x] done")
+        footnote_html = md.render("Here is a footnote.[^a]\n\n[^a]: Footnote text.")
+
+        self.assertIn('class="contains-task-list"', tasklist_html)
+        self.assertIn('type="checkbox" checked=""', tasklist_html)
+        self.assertIn('class="footnote-ref"', footnote_html)
+        self.assertIn('href="#fn1"', footnote_html)
+
     def test_disable_syntax_highlighting(self):
         md = MarkdownIt()
         self.assertEqual(

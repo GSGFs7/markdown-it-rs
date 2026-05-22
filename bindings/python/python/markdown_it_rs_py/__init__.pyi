@@ -1,4 +1,32 @@
-from typing import Any, Callable
+from typing import Any, Callable, Literal, TypeAlias
+
+BuiltinPlugin: TypeAlias = Literal[
+    "commonmark",
+    "cmark",
+    "html",
+    "tables",
+    "table",
+    "strikethrough",
+    "beautify-links",
+    "directives",
+    "directive",
+    "tasklist",
+    "task-list",
+    "footnote",
+    "footnotes",
+    "frontmatter",
+    "front-matter",
+    "heading-anchors",
+    "heading-anchor",
+    "linkify",
+    "math",
+    "smartquotes",
+    "sourcepos",
+    "source-pos",
+    "typographer",
+    "syntect",
+    "syntax-highlighting",
+]
 
 class Ast:
     @property
@@ -41,12 +69,15 @@ class MarkdownIt:
         typographer: bool = False,
         sourcepos: bool = False,
         heading_anchors: bool = False,
+        directives: bool = False,
+        tasklist: bool = False,
+        footnote: bool = False,
         syntax_highlighting: bool = False,
         syntax_theme: str | None = None,
         syntax_classed: bool = False,
     ) -> None: ...
     def use(
-        self, plugin: str | Callable[..., Any], *args: Any, **kwargs: Any
+        self, plugin: BuiltinPlugin | str | Callable[..., Any], *args: Any, **kwargs: Any
     ) -> "MarkdownIt": ...
     def add_core_rule(self, name: str, callback: Callable[[Node], Any]) -> None: ...
     def render(self, src: str) -> str: ...

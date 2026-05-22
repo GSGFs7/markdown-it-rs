@@ -18,6 +18,9 @@ pub(crate) fn build(
     enable_typographer: bool,
     enable_sourcepos: bool,
     enable_heading_anchors: bool,
+    enable_directives: bool,
+    enable_tasklist: bool,
+    enable_footnote: bool,
     enable_syntax_highlighting: bool,
     syntax_theme: Option<&str>,
     syntax_classed: bool,
@@ -36,6 +39,15 @@ pub(crate) fn build(
     plugins::builtin::tables(&mut inner, &mut state, "tables", None)?;
     plugins::builtin::strikethrough(&mut inner, &mut state, "strikethrough", None)?;
     plugins::builtin::beautify_links(&mut inner, &mut state, "beautify-links", None)?;
+    if enable_directives {
+        plugins::builtin::directives(&mut inner, &mut state, "directives", None)?;
+    }
+    if enable_tasklist {
+        plugins::builtin::tasklist(&mut inner, &mut state, "tasklist", None)?;
+    }
+    if enable_footnote {
+        plugins::builtin::footnote(&mut inner, &mut state, "footnote", None)?;
+    }
     if enable_heading_anchors {
         plugins::builtin::heading_anchors(&mut inner, &mut state, "heading-anchors", None)?;
     }
