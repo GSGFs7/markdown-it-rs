@@ -162,6 +162,41 @@ class MarkdownItTests(unittest.TestCase):
         self.assertIn('<h2 id="ciallo', html)
         self.assertIn("Ciallo ～(∠・ω&lt; )⌒★!", html)
 
+    def test_enable_tasklist_plugin(self):
+        md = MarkdownIt().use("tasklist")
+        html = md.render("- [x] done")
+
+        self.assertIn('class="contains-task-list"', html)
+        self.assertIn('class="task-list-item"', html)
+        self.assertIn('type="checkbox" checked=""', html)
+        self.assertNotIn("[x]", html)
+
+    def test_enable_footnote_plugin(self):
+        md = MarkdownIt().use("footnote")
+        html = md.render("Here is a footnote.[^a]\n\n[^a]: Footnote text.")
+
+        self.assertIn('class="footnote-ref"', html)
+        self.assertIn('href="#fn1"', html)
+        self.assertIn('id="fn1"', html)
+        self.assertIn("Footnote text.", html)
+        self.assertNotIn("[^a]:", html)
+
+    def test_enable_directives_plugin(self):
+        md = MarkdownIt().use("directives")
+
+        self.assertEqual(
+            md.render("hello :name{a=\"b\"} world"),
+            '<p>hello <span class="directive name" a="b"></span> world</p>\n',
+        )
+        self.assertEqual(
+            md.render("::name{cia=\"llo\"}"),
+            '<div class="directive name" cia="llo"></div>\n',
+        )
+        self.assertEqual(
+            md.render(":::name{cia=\"llo\"}\nworld\n:::"),
+            '<div class="directive name" cia="llo">\n<p>world</p>\n</div>\n',
+        )
+
     def test_disable_syntax_highlighting(self):
         md = MarkdownIt()
         self.assertEqual(

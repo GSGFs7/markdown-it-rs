@@ -19,6 +19,9 @@ pub(crate) fn enable(
         "tables" | "table" => plugins::builtin::tables(md, state, plugin, options),
         "strikethrough" => plugins::builtin::strikethrough(md, state, plugin, options),
         "beautify-links" => plugins::builtin::beautify_links(md, state, plugin, options),
+        "directives" | "directive" => plugins::builtin::directives(md, state, plugin, options),
+        "tasklist" | "task-list" => plugins::builtin::tasklist(md, state, plugin, options),
+        "footnote" | "footnotes" => plugins::builtin::footnote(md, state, plugin, options),
         "frontmatter" | "front-matter" => plugins::frontmatter::enable(md, state, options),
         "heading-anchors" | "heading-anchor" => {
             plugins::builtin::heading_anchors(md, state, plugin, options)

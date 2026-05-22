@@ -70,6 +70,45 @@ pub(crate) fn beautify_links(
     })
 }
 
+pub(crate) fn directives(
+    md: &mut MarkdownIt,
+    state: &mut PluginState,
+    plugin: &str,
+    options: Option<&Bound<'_, PyDict>>,
+) -> PyResult<()> {
+    options::require_no_options(plugin, options)?;
+    state.add_once("directives", md, |md| {
+        markdown_it::plugins::extra::directives::add(md);
+        Ok(())
+    })
+}
+
+pub(crate) fn tasklist(
+    md: &mut MarkdownIt,
+    state: &mut PluginState,
+    plugin: &str,
+    options: Option<&Bound<'_, PyDict>>,
+) -> PyResult<()> {
+    options::require_no_options(plugin, options)?;
+    state.add_once("tasklist", md, |md| {
+        markdown_it::plugins::extra::tasklist::add(md);
+        Ok(())
+    })
+}
+
+pub(crate) fn footnote(
+    md: &mut MarkdownIt,
+    state: &mut PluginState,
+    plugin: &str,
+    options: Option<&Bound<'_, PyDict>>,
+) -> PyResult<()> {
+    options::require_no_options(plugin, options)?;
+    state.add_once("footnote", md, |md| {
+        markdown_it::plugins::extra::footnote::add(md);
+        Ok(())
+    })
+}
+
 pub(crate) fn heading_anchors(
     md: &mut MarkdownIt,
     state: &mut PluginState,

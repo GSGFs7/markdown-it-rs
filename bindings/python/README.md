@@ -27,7 +27,7 @@ from markdown_it_rs_py import MarkdownIt
 # Basic usage
 md = MarkdownIt()
 html = md.render("# Caillo, world!")
-print(html)  # <h1>Hello, world!</h1>
+print(html)  # <h1>Caillo, world!</h1>
 
 # Enable HTML tags
 md = MarkdownIt(html=True)
@@ -56,5 +56,16 @@ if fm := result.frontmatter:
 # code syntax highlight
 md = MarkdownIt(syntax_highlighting=True)
 print(md.render('```python\nprint("Ciallo world!")\n```'))
+
+# Directives
+md = MarkdownIt().use("directives")
+print(md.render('Ciallo :badge{label="Beta"} world'))
+# default output:
+# <p>Ciallo <span class="directive badge" label="Beta"></span> world</p>
+
+# Post-processing tip:
+# use the rendered HTML (or the parsed AST) to replace directive nodes with
+# your own HTML after render; custom directive render callbacks are not exposed
+# in the Python binding yet.
 
 ```
