@@ -98,7 +98,9 @@ fn footnote_definition_allows_tab_indented_multiple_paragraphs() {
     let html = render("Text[^a]\n\n[^a]: first paragraph\n\n\tsecond paragraph");
 
     assert!(html.contains("<p>first paragraph</p>"));
-    assert!(html.contains("<p>second paragraph</p>"));
+    assert!(html.contains(
+        r##"<p>second paragraph <a href="#fnref1" class="footnote-backref">&#8617;</a></p>"##
+    ));
     assert!(!html.contains("[^a]:"));
 }
 
@@ -107,7 +109,9 @@ fn footnote_definition_allows_multiple_paragraphs() {
     let html = render("Text[^a]\n\n[^a]: first paragraph\n\n    second paragraph");
 
     assert!(html.contains("<p>first paragraph</p>"));
-    assert!(html.contains("<p>second paragraph</p>"));
+    assert!(html.contains(
+        r##"<p>second paragraph <a href="#fnref1" class="footnote-backref">&#8617;</a></p>"##
+    ));
     assert!(!html.contains("[^a]:"));
 }
 
@@ -117,7 +121,9 @@ fn inline_footnote_creates_footnote_item() {
 
     assert!(html.contains(r##"href="#fn1""##));
     assert!(html.contains(r#"id="fn1""#));
-    assert!(html.contains("<p>inline footnote</p>"));
+    assert!(html.contains(
+        r##"<p>inline footnote <a href="#fnref1" class="footnote-backref">&#8617;</a></p>"##
+    ));
     assert!(!html.contains("^[inline footnote]"));
 }
 
@@ -125,7 +131,7 @@ fn inline_footnote_creates_footnote_item() {
 fn inline_footnote_parses_inline_markdown() {
     let html = render("Text^[inline **strong** note].");
 
-    assert!(html.contains("<p>inline <strong>strong</strong> note</p>"));
+    assert!(html.contains(r##"<p>inline <strong>strong</strong> note <a href="#fnref1" class="footnote-backref">&#8617;</a></p>"##));
 }
 
 #[test]
@@ -134,8 +140,8 @@ fn inline_and_reference_footnotes_share_reference_order() {
 
     let named_ref = html.find(r##"href="#fn1""##).unwrap();
     let inline_ref = html.find(r##"href="#fn2""##).unwrap();
-    let named_definition = html.find("<p>named</p>").unwrap();
-    let inline_definition = html.find("<p>inline</p>").unwrap();
+    let named_definition = html.find("<p>named ").unwrap();
+    let inline_definition = html.find("<p>inline ").unwrap();
 
     assert!(named_ref < inline_ref);
     assert!(named_definition < inline_definition);
@@ -147,8 +153,8 @@ fn inline_footnote_before_reference_gets_first_number() {
 
     let inline_ref = html.find(r##"href="#fn1""##).unwrap();
     let named_ref = html.find(r##"href="#fn2""##).unwrap();
-    let inline_definition = html.find("<p>inline</p>").unwrap();
-    let named_definition = html.find("<p>named</p>").unwrap();
+    let inline_definition = html.find("<p>inline ").unwrap();
+    let named_definition = html.find("<p>named ").unwrap();
 
     assert!(inline_ref < named_ref);
     assert!(inline_definition < named_definition);
@@ -158,7 +164,7 @@ fn inline_footnote_before_reference_gets_first_number() {
 fn inline_footnote_allows_nested_brackets() {
     let html = render("Text^[literal [nested] brackets].");
 
-    assert!(html.contains("<p>literal [nested] brackets</p>"));
+    assert!(html.contains(r##"<p>literal [nested] brackets <a href="#fnref1" class="footnote-backref">&#8617;</a></p>"##));
     assert!(!html.contains("^[literal"));
 }
 
@@ -166,7 +172,9 @@ fn inline_footnote_allows_nested_brackets() {
 fn inline_footnote_allows_escaped_closing_bracket() {
     let html = render(r"Text^[escaped \] bracket].");
 
-    assert!(html.contains("<p>escaped ] bracket</p>"));
+    assert!(html.contains(
+        r##"<p>escaped ] bracket <a href="#fnref1" class="footnote-backref">&#8617;</a></p>"##
+    ));
     assert!(!html.contains(r"^[escaped \] bracket]"));
 }
 
@@ -174,7 +182,7 @@ fn inline_footnote_allows_escaped_closing_bracket() {
 fn inline_footnote_allows_links_in_content() {
     let html = render("Text^[see [Rust](https://www.rust-lang.org/)].");
 
-    assert!(html.contains(r#"<p>see <a href="https://www.rust-lang.org/">Rust</a></p>"#));
+    assert!(html.contains(r##"<p>see <a href="https://www.rust-lang.org/">Rust</a> <a href="#fnref1" class="footnote-backref">&#8617;</a></p>"##));
 }
 
 #[test]
@@ -185,8 +193,19 @@ fn footnote_definition_can_contain_inline_footnote() {
     assert!(html.contains(r##"href="#fn2""##));
 
     let outer_definition = html.find("<p>outer").unwrap();
-    let inner_definition = html.find("<p>inner</p>").unwrap();
+    let inner_definition = html.find("<p>inner ").unwrap();
     assert!(outer_definition < inner_definition);
+}
+
+#[test]
+fn single_paragraph_backref_renders_inside_paragraph() {
+    let html = render("Text[^a]\n\n[^a]: see [Rust](https://www.rust-lang.org/)");
+
+    assert!(html.contains(r##"<p>see <a href="https://www.rust-lang.org/">Rust</a> <a href="#fnref1" class="footnote-backref">&#8617;</a></p>"##));
+    assert!(!html.contains(
+        r##"</p>
+ <a href="#fnref1" class="footnote-backref">"##
+    ));
 }
 
 #[test]

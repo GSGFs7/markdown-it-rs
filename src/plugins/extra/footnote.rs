@@ -121,7 +121,6 @@ impl NodeValue for FootnoteSection {
 #[derive(Debug)]
 struct FootnoteItem {
     number: usize,
-    refs: usize,
 }
 
 impl NodeValue for FootnoteItem {
@@ -133,23 +132,33 @@ impl NodeValue for FootnoteItem {
 
         fmt.open("li", &attrs);
         fmt.contents(&node.children);
-
-        for sub_id in 1..=self.refs {
-            fmt.text(" ");
-            fmt.open(
-                "a",
-                &[
-                    ("href", format!("#{}", footnote_ref_id(self.number, sub_id))),
-                    ("class", "footnote-backref".into()),
-                ],
-            );
-            // a arrow
-            fmt.text_raw("&#8617;");
-            fmt.close("a");
-        }
-
         fmt.close("li");
         fmt.cr();
+    }
+}
+
+#[derive(Debug)]
+struct FootnoteBackref {
+    number: usize,
+    sub_id: usize,
+}
+
+impl NodeValue for FootnoteBackref {
+    fn render(&self, _node: &Node, fmt: &mut dyn Renderer) {
+        fmt.text(" ");
+        fmt.open(
+            "a",
+            &[
+                (
+                    "href",
+                    format!("#{}", footnote_ref_id(self.number, self.sub_id)),
+                ),
+                ("class", "footnote-backref".into()),
+            ],
+        );
+        // a arrow
+        fmt.text_raw("&#8617;");
+        fmt.close("a");
     }
 }
 
@@ -312,8 +321,9 @@ impl CoreRule for FootnoteFinalizeRule {
             };
             let refs = ref_counts.get(&normalized).copied().unwrap_or(1);
 
-            let mut item = Node::new(FootnoteItem { number, refs });
+            let mut item = Node::new(FootnoteItem { number });
             item.children = children;
+            add_backrefs(&mut item, number, refs);
             section.children.push(item);
         }
 
@@ -558,6 +568,25 @@ fn footnote_ref_id(number: usize, sub_id: usize) -> String {
         format!("fnref{}", number)
     } else {
         format!("fnref{}:{}", number, sub_id)
+    }
+}
+
+fn add_backrefs(item: &mut Node, number: usize, refs: usize) {
+    let last_child_is_paragraph = item
+        .children
+        .last()
+        .is_some_and(|node| node.is::<crate::plugins::cmark::block::paragraph::Paragraph>());
+
+    if last_child_is_paragraph {
+        let container = &mut item.children.last_mut().unwrap().children;
+        for sub_id in 1..=refs {
+            container.push(Node::new(FootnoteBackref { number, sub_id }));
+        }
+    } else {
+        for sub_id in 1..=refs {
+            item.children
+                .push(Node::new(FootnoteBackref { number, sub_id }));
+        }
     }
 }
 
