@@ -13,23 +13,33 @@ fn run(input: &str, output: &str) {
     let node = md.parse(&(input.to_owned() + "\n"));
     node.walk(|node, _| assert!(node.srcmap.is_some()));
 
-    // fix 'style' attrs order in katex
-    fn normalize_styles(html: &str) -> String {
-        let re = regex::Regex::new(r#"style="([^"]+)""#).unwrap();
-        re.replace_all(html, |caps: &regex::Captures| {
-            let mut styles: Vec<&str> = caps[1]
-                .split(';')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .collect();
-            styles.sort();
-            format!(r#"style="{}""#, styles.join("; ") + ";")
-        })
-        .into_owned()
+    // fix attrs order in katex
+    fn normalize_katex_attrs(html: &str) -> String {
+        let style_re = regex::Regex::new(r#"style="([^"]+)""#).unwrap();
+        let html = style_re
+            .replace_all(html, |caps: &regex::Captures| {
+                let mut styles: Vec<&str> = caps[1]
+                    .split(';')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                styles.sort();
+                format!(r#"style="{}""#, styles.join("; ") + ";")
+            })
+            .into_owned();
+
+        let math_re = regex::Regex::new(r#"<math ([^>]+)>"#).unwrap();
+        math_re
+            .replace_all(&html, |caps: &regex::Captures| {
+                let mut attrs: Vec<&str> = caps[1].split_whitespace().collect();
+                attrs.sort();
+                format!("<math {}>", attrs.join(" "))
+            })
+            .into_owned()
     }
 
-    let actual = normalize_styles(&node.render());
-    let expected = normalize_styles(&output);
+    let actual = normalize_katex_attrs(&node.render());
+    let expected = normalize_katex_attrs(&output);
     assert_eq!(actual, expected);
 
     let _ = md.parse(input.trim_end());
