@@ -38,6 +38,7 @@ pub(crate) fn build(
     plugins::builtin::commonmark(&mut inner, &mut state, "commonmark", None)?;
     plugins::builtin::tables(&mut inner, &mut state, "tables", None)?;
     plugins::builtin::strikethrough(&mut inner, &mut state, "strikethrough", None)?;
+    plugins::builtin::mark(&mut inner, &mut state, "mark", None)?;
     plugins::builtin::beautify_links(&mut inner, &mut state, "beautify-links", None)?;
     if enable_directives {
         plugins::builtin::directives(&mut inner, &mut state, "directives", None)?;

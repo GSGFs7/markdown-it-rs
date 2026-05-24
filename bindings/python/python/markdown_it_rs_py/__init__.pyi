@@ -7,6 +7,7 @@ BuiltinPlugin: TypeAlias = Literal[
     "tables",
     "table",
     "strikethrough",
+    "mark",
     "beautify-links",
     "directives",
     "directive",

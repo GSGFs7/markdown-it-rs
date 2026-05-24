@@ -18,6 +18,7 @@ pub(crate) fn enable(
         "html" => plugins::builtin::html(md, state, plugin, options),
         "tables" | "table" => plugins::builtin::tables(md, state, plugin, options),
         "strikethrough" => plugins::builtin::strikethrough(md, state, plugin, options),
+        "mark" => plugins::builtin::mark(md, state, plugin, options),
         "beautify-links" => plugins::builtin::beautify_links(md, state, plugin, options),
         "directives" | "directive" => plugins::builtin::directives(md, state, plugin, options),
         "tasklist" | "task-list" => plugins::builtin::tasklist(md, state, plugin, options),

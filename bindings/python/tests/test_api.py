@@ -19,6 +19,14 @@ class MarkdownItTests(unittest.TestCase):
         md = MarkdownIt()
         self.assertEqual(md.render("~~114~~514"), "<p><s>114</s>514</p>\n")
 
+    def test_mark(self):
+        md = MarkdownIt()
+        self.assertEqual(md.render("==highlighted=="), "<p><mark>highlighted</mark></p>\n")
+
+    def test_enable_mark_plugin(self):
+        md = MarkdownIt().use("mark")
+        self.assertEqual(md.render("==highlighted=="), "<p><mark>highlighted</mark></p>\n")
+
     def test_disable_html(self):
         md = MarkdownIt()
         self.assertEqual(md.render("hello<br>world"), "<p>hello&lt;br&gt;world</p>\n")

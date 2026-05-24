@@ -57,6 +57,19 @@ pub(crate) fn strikethrough(
     })
 }
 
+pub(crate) fn mark(
+    md: &mut MarkdownIt,
+    state: &mut PluginState,
+    plugin: &str,
+    options: Option<&Bound<'_, PyDict>>,
+) -> PyResult<()> {
+    options::require_no_options(plugin, options)?;
+    state.add_once("mark", md, |md| {
+        markdown_it::plugins::extra::mark::add(md);
+        Ok(())
+    })
+}
+
 pub(crate) fn beautify_links(
     md: &mut MarkdownIt,
     state: &mut PluginState,
