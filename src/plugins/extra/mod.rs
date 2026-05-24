@@ -1,6 +1,7 @@
 //! Frequently used markdown extensions and stuff from GFM.
 //!
 //!  - strikethrough (~~xxx~~~)
+//!  - highlight (==xxx==)
 //!  - tables
 //!  - task lists (`- [ ] todo`, `- [x] done`)
 //!  - linkify (convert <http://example.com> to a link)
@@ -27,6 +28,7 @@ pub mod front_matter;
 pub mod heading_anchors;
 #[cfg(feature = "linkify")]
 pub mod linkify;
+pub mod mark;
 pub mod math;
 pub mod smartquotes;
 pub mod strikethrough;
@@ -40,6 +42,7 @@ use crate::MarkdownIt;
 
 pub fn add(md: &mut MarkdownIt) {
     strikethrough::add(md);
+    mark::add(md);
     beautify_links::add(md);
     #[cfg(feature = "linkify")]
     linkify::add(md);
