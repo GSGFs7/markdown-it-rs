@@ -16,15 +16,24 @@ fn mark_simple() {
 
 #[test]
 fn mark_nested() {
-    run("==**bold** highlight==", "<p><mark><strong>bold</strong> highlight</mark></p>");
+    run(
+        "==**bold** highlight==",
+        "<p><mark><strong>bold</strong> highlight</mark></p>",
+    );
 }
 
 #[test]
 fn mark_multiple() {
-    run("==one== and ==two==", "<p><mark>one</mark> and <mark>two</mark></p>");
+    run(
+        "==one== and ==two==",
+        "<p><mark>one</mark> and <mark>two</mark></p>",
+    );
 }
 
 #[test]
 fn mark_mixed() {
-    run("==mark ~~strike~~==", "<p><mark>mark <s>strike</s></mark></p>");
+    run(
+        "==mark ~~strike~~==",
+        "<p><mark>mark <s>strike</s></mark></p>",
+    );
 }

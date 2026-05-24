@@ -1,8 +1,8 @@
 //! Task list syntax, like `- [ ] todo` and `- [x] done`.
 
 use crate::parser::core::CoreRule;
-use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::inline::Text;
+use crate::parser::inline::builtin::InlineParserRule;
 use crate::plugins::cmark::block::list::{BulletList, ListItem, OrderedList};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::{MarkdownIt, Node, NodeValue};
