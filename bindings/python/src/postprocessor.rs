@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -7,14 +7,12 @@ pub(crate) struct PostProcessor {
     pub(crate) name: String,
     pub(crate) callback: Py<PyAny>,
     pub(crate) after: Vec<String>,
-    pub(crate) _order: usize, // registration order
     pub(crate) enabled: bool,
 }
 
 pub(crate) struct PostProcessorManager {
     postprocessors: Vec<PostProcessor>,
     sorted_processors: Vec<usize>,
-    next_postprocessor_order: usize,
 }
 
 impl PostProcessorManager {
@@ -22,7 +20,6 @@ impl PostProcessorManager {
         PostProcessorManager {
             postprocessors: Vec::new(),
             sorted_processors: Vec::new(),
-            next_postprocessor_order: 1,
         }
     }
 
@@ -45,7 +42,6 @@ impl PostProcessorManager {
         ))
     }
 
-    // TODO: optimize here. O(N^2)
     fn sort(&mut self) -> PyResult<()> {
         // collect all active plugins
         let active: Vec<usize> = self
@@ -62,8 +58,9 @@ impl PostProcessorManager {
             names.insert(p.name.as_str(), idx);
         }
 
-        // add to deps array
+        // build graph (in-degree)
         let mut deps: Vec<Vec<usize>> = vec![Vec::new(); self.postprocessors.len()];
+        let mut in_degree: Vec<usize> = vec![0; self.postprocessors.len()];
         for &idx in &active {
             let p = &self.postprocessors[idx];
             for after_name in &p.after {
@@ -74,43 +71,51 @@ impl PostProcessorManager {
                     )));
                 };
 
-                deps[idx].push(after_idx);
+                deps[after_idx].push(idx);
+                in_degree[idx] += 1;
             }
         }
 
-        // topo sort
-        let mut inserted: Vec<bool> = vec![false; self.postprocessors.len()];
+        // topo sort (kahn)
+        // a queue store 0 in-degree node
+        let mut queue: VecDeque<usize> = active
+            .iter()
+            .copied()
+            // put all 0 in-degree to queue
+            .filter(|&idx| in_degree[idx] == 0)
+            .collect();
         let mut result: Vec<usize> = Vec::with_capacity(active.len());
-        while result.len() < active.len() {
-            let mut progressed = false;
-            for &idx in &active {
-                if inserted[idx] {
-                    continue;
-                }
-
-                if deps[idx].iter().all(|dep_idx| inserted[*dep_idx]) {
-                    result.push(idx);
-                    inserted[idx] = true;
-                    progressed = true;
+        while let Some(idx) = queue.pop_front() {
+            // push 0 in-degree to result
+            result.push(idx);
+            
+            // reduce in-degree
+            for &dep_idx in &deps[idx] {
+                in_degree[dep_idx] -= 1;
+                // push to queue
+                if in_degree[dep_idx] == 0 {
+                    queue.push_back(dep_idx);
                 }
             }
+        }
 
-            if !progressed {
-                let remaining = active
-                    .iter()
-                    .filter(|idx| !inserted[**idx])
-                    .map(|idx| self.postprocessors[*idx].name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                return Err(PyValueError::new_err(format!(
-                    "cyclic postprocessor dependency involving: {remaining}"
-                )));
-            }
+        // cycle detection
+        if result.len() != active.len() {
+            let remaining = active
+                .iter()
+                .filter(|idx| in_degree[**idx] > 0)
+                .map(|idx| self.postprocessors[*idx].name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(PyValueError::new_err(format!(
+                "cyclic postprocessor dependency involving: {remaining}"
+            )));
         }
 
         self.sorted_processors = result;
         Ok(())
     }
+
     pub(crate) fn add(
         &mut self,
         py: Python<'_>,
@@ -134,12 +139,10 @@ impl PostProcessorManager {
         let after = Self::parse_after(after)?;
 
         // push
-        let order = self.next_postprocessor_order;
         self.postprocessors.push(PostProcessor {
             name: name.to_owned(),
             callback,
             after,
-            _order: order,
             enabled: true,
         });
 
@@ -149,18 +152,13 @@ impl PostProcessorManager {
             return Err(err);
         }
 
-        self.next_postprocessor_order += 1;
-
         Ok(())
     }
 
     pub(crate) fn run(&self, py: Python<'_>, mut html: String) -> PyResult<String> {
         for &idx in &self.sorted_processors {
-            let postprocessor = &self.postprocessors[idx];
-            html = postprocessor
-                .callback
-                .call1(py, (html,))?
-                .extract::<String>(py)?;
+            let p = &self.postprocessors[idx];
+            html = p.callback.call1(py, (html,))?.extract::<String>(py)?;
         }
         Ok(html)
     }
