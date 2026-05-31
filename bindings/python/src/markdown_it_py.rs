@@ -11,6 +11,7 @@ use crate::ast::{PyAst, PyNode};
 use crate::builder::build;
 use crate::plugin_registry;
 use crate::plugin_state::PluginState;
+use crate::postprocessor::PostProcessorManager;
 use crate::rules::PyCoreRule;
 use crate::types::{PyFrontMatter, PyMarkdownOutput};
 
@@ -19,6 +20,7 @@ pub(crate) struct PyMarkdownIt {
     pub(crate) inner: MarkdownIt,
     plugins: PluginState,
     pub(crate) core_rules: Vec<PyCoreRule>,
+    pub(crate) postprocessors: PostProcessorManager,
 }
 
 #[pymethods]
@@ -76,13 +78,15 @@ impl PyMarkdownIt {
             inner: built.inner,
             plugins: built.plugins,
             core_rules: Vec::new(),
+            postprocessors: PostProcessorManager::new(),
         })
     }
 
     fn render(&self, py: Python<'_>, src: &str) -> PyResult<String> {
         let ast = self.parse(py, src)?;
         let ast_ref = ast.borrow(py);
-        Ok(ast_ref.root.borrow().render())
+        let html = ast_ref.root.borrow().render();
+        self.run_postprocessors(py, html)
     }
 
     fn parse(&self, py: Python<'_>, src: &str) -> PyResult<Py<PyAst>> {
@@ -111,6 +115,7 @@ impl PyMarkdownIt {
             .and_then(|root| root.ext.get::<FrontMatter>())
             .map(PyFrontMatter::from);
         let html = root.render();
+        let html = self.run_postprocessors(py, html)?;
 
         Ok(PyMarkdownOutput { html, frontmatter })
     }
@@ -177,6 +182,17 @@ impl PyMarkdownIt {
 
         Ok(())
     }
+
+    #[pyo3(signature = (name, callback, after = None))]
+    fn add_postprocessor(
+        &mut self,
+        py: Python<'_>,
+        name: &str,
+        callback: Py<PyAny>,
+        after: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<()> {
+        self.postprocessors.add(py, name, callback, after)
+    }
 }
 
 impl PyMarkdownIt {
@@ -193,5 +209,9 @@ impl PyMarkdownIt {
             rule.callback.call1(py, (root.clone_ref(py),))?;
         }
         Ok(())
+    }
+
+    fn run_postprocessors(&self, py: Python<'_>, html: String) -> PyResult<String> {
+        self.postprocessors.run(py, html)
     }
 }

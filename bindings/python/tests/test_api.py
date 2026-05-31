@@ -21,11 +21,15 @@ class MarkdownItTests(unittest.TestCase):
 
     def test_mark(self):
         md = MarkdownIt()
-        self.assertEqual(md.render("==highlighted=="), "<p><mark>highlighted</mark></p>\n")
+        self.assertEqual(
+            md.render("==highlighted=="), "<p><mark>highlighted</mark></p>\n"
+        )
 
     def test_enable_mark_plugin(self):
         md = MarkdownIt().use("mark")
-        self.assertEqual(md.render("==highlighted=="), "<p><mark>highlighted</mark></p>\n")
+        self.assertEqual(
+            md.render("==highlighted=="), "<p><mark>highlighted</mark></p>\n"
+        )
 
     def test_disable_html(self):
         md = MarkdownIt()
@@ -193,15 +197,15 @@ class MarkdownItTests(unittest.TestCase):
         md = MarkdownIt().use("directives")
 
         self.assertEqual(
-            md.render("hello :name{a=\"b\"} world"),
+            md.render('hello :name{a="b"} world'),
             '<p>hello <span class="directive name" a="b"></span> world</p>\n',
         )
         self.assertEqual(
-            md.render("::name{cia=\"llo\"}"),
+            md.render('::name{cia="llo"}'),
             '<div class="directive name" cia="llo"></div>\n',
         )
         self.assertEqual(
-            md.render(":::name{cia=\"llo\"}\nworld\n:::"),
+            md.render(':::name{cia="llo"}\nworld\n:::'),
             '<div class="directive name" cia="llo">\n<p>world</p>\n</div>\n',
         )
 
@@ -209,7 +213,7 @@ class MarkdownItTests(unittest.TestCase):
         md = MarkdownIt(directives=True)
 
         self.assertEqual(
-            md.render("hello :name{a=\"b\"} world"),
+            md.render('hello :name{a="b"} world'),
             '<p>hello <span class="directive name" a="b"></span> world</p>\n',
         )
 
@@ -301,14 +305,20 @@ class MarkdownItTests(unittest.TestCase):
 
             md.add_core_rule("replace", replace)
 
-        self.assertEqual(MarkdownIt().use(plugin).render("# heading"), "plain &lt;text&gt;")
+        self.assertEqual(
+            MarkdownIt().use(plugin).render("# heading"), "plain &lt;text&gt;"
+        )
 
     def test_python_core_rule_applies_to_render_with_frontmatter(self):
         def plugin(md):
-            md.add_core_rule("footer", lambda root: root.append_html("<footer>generated</footer>\n"))
+            md.add_core_rule(
+                "footer", lambda root: root.append_html("<footer>generated</footer>\n")
+            )
 
-        result = MarkdownIt(frontmatter=True).use(plugin).render_with_frontmatter(
-            self.YAML_FRONTMATTER_INPUT
+        result = (
+            MarkdownIt(frontmatter=True)
+            .use(plugin)
+            .render_with_frontmatter(self.YAML_FRONTMATTER_INPUT)
         )
 
         self.assertEqual(result.html, "<h1>heading</h1>\n<footer>generated</footer>\n")
@@ -318,6 +328,22 @@ class MarkdownItTests(unittest.TestCase):
     def test_python_core_rule_requires_callable(self):
         with self.assertRaisesRegex(TypeError, "core rule must be callable"):
             MarkdownIt().add_core_rule("invalid", None)
+
+    def test_python_postprocessor_failed_add_rolls_back(self):
+        md = MarkdownIt()
+        md.add_postprocessor("first", lambda html: html + "<!--first-->")
+
+        with self.assertRaisesRegex(ValueError, "unknown postprocessor dependency"):
+            md.add_postprocessor(
+                "bad", lambda html: html + "<!--bad-->", after="missing"
+            )
+
+        md.add_postprocessor("bad", lambda html: html + "<!--bad-->")
+
+        self.assertEqual(
+            md.render("# heading"),
+            "<h1>heading</h1>\n<!--first--><!--bad-->",
+        )
 
 
 if __name__ == "__main__":
