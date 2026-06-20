@@ -33,8 +33,9 @@ pub fn add_with_options(md: &mut MarkdownIt, options: HeadingAnchorsOptions) {
 
 // --- config ---
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub enum SlugStrategy {
+    #[default]
     Simple,
     GitHub,
     Custom(fn(&str) -> String),
@@ -50,39 +51,30 @@ impl SlugStrategy {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub enum ExistingIdPolicy {
+    #[default]
     Keep,
     Override,
 }
 
 /// how to process empty slug. such as "# !!!"
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum EmptySlugPolicy {
     /// not add id attr
+    #[default]
     Skip,
     /// use a string as a default slug. such as "section"
     Use(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct HeadingAnchorsOptions {
     pub strategy: SlugStrategy,
     pub existing_id: ExistingIdPolicy,
     pub empty_slug: EmptySlugPolicy,
     /// add a prefix? if set "doc-": "# hello" -> `id="doc-hello"`
     pub prefix: Option<String>,
-}
-
-impl Default for HeadingAnchorsOptions {
-    fn default() -> Self {
-        Self {
-            strategy: SlugStrategy::Simple,
-            existing_id: ExistingIdPolicy::Keep,
-            empty_slug: EmptySlugPolicy::Skip,
-            prefix: None,
-        }
-    }
 }
 
 impl MarkdownItExt for HeadingAnchorsOptions {}
@@ -154,11 +146,11 @@ pub fn github_slugify_fn(s: &str) -> String {
 
 // --- helper method ---
 
-fn is_heading(node: &Node) -> bool {
+pub fn is_heading(node: &Node) -> bool {
     node.is::<ATXHeading>() || node.is::<SetextHeader>()
 }
 
-fn unique_slug(
+pub fn unique_slug(
     slug: String,
     used_ids: &mut HashSet<String>,
     next_suffix: &mut HashMap<String, usize>,

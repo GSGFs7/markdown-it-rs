@@ -1,4 +1,4 @@
-from typing import Any, Callable, Literal, TypeAlias
+from typing import Any, Callable, Literal, TypeAlias, overload
 
 BuiltinPlugin: TypeAlias = Literal[
     "commonmark",
@@ -77,6 +77,17 @@ class MarkdownIt:
         syntax_theme: str | None = None,
         syntax_classed: bool = False,
     ) -> None: ...
+    @overload
+    def use(
+        self,
+        plugin: Literal["heading-anchors", "heading-anchor"],
+        *,
+        strategy: Literal["simple", "github"] = "simple",
+        existing_id: Literal["keep", "override"] = "keep",
+        empty_slug: str | None = None,
+        prefix: str | None = None,
+    ) -> "MarkdownIt": ...
+    @overload
     def use(
         self,
         plugin: BuiltinPlugin | str | Callable[..., Any],

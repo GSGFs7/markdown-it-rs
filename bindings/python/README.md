@@ -15,8 +15,8 @@ For development, use [maturin](https://www.maturin.rs/):
 ```bash
 cd bindings/python
 uv tool install maturin # or `pip install maturin`
-maturin develop
-python -m unittest discover -s tests -v
+uv run maturin develop
+uv run python -m unittest discover -s tests -v
 ```
 
 ## Usage
@@ -45,6 +45,16 @@ print(md.render("$$\nE=mc^2\n$$"))
 # Typographic replacements
 md = MarkdownIt(typographer=True)
 print(md.render("Something(TM)..."))  # <p>Something™…</p>
+
+# Heading anchors (strategy: "simple" or "github")
+md = MarkdownIt().use(
+    "heading-anchors",
+    strategy="github",
+    existing_id="keep",       # or "override"
+    empty_slug="section",     # None skips headings with an empty slug
+    prefix="doc-",
+)
+print(md.render("# Hello, world!"))  # <h1 id="doc-hello-world">...</h1>
 
 # Front matter (YAML/TOML)
 md = MarkdownIt(frontmatter=True)

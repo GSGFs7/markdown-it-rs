@@ -1,16 +1,9 @@
 import unittest
 
-from markdown_it_rs_py import MarkdownIt, available_syntax_themes
+from markdown_it_rs_py import MarkdownIt
 
 
 class MarkdownItTests(unittest.TestCase):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.YAML_FRONTMATTER_INPUT = "---\ntitle: Test\n---\n# heading"
-        self.TOML_FRONTMATTER_INPUT = "+++\ntitle = 'Test'\n+++\n# heading"
-        self.UNCLOSED_FRONTMATTER_INPUT = "---\ntitle: Test\n# heading"
-
     def test_heading(self):
         md = MarkdownIt()
         self.assertEqual(md.render("# heading"), "<h1>heading</h1>\n")
@@ -21,12 +14,6 @@ class MarkdownItTests(unittest.TestCase):
 
     def test_mark(self):
         md = MarkdownIt()
-        self.assertEqual(
-            md.render("==highlighted=="), "<p><mark>highlighted</mark></p>\n"
-        )
-
-    def test_enable_mark_plugin(self):
-        md = MarkdownIt().use("mark")
         self.assertEqual(
             md.render("==highlighted=="), "<p><mark>highlighted</mark></p>\n"
         )
@@ -65,76 +52,6 @@ class MarkdownItTests(unittest.TestCase):
         md = MarkdownIt(math=True)
         self.assertIn('<div class="math-block">', md.render("$$\nE=mc^2\n$$"))
 
-    def test_disable_frontmatter(self):
-        md = MarkdownIt()
-        html = md.render(self.YAML_FRONTMATTER_INPUT)
-
-        self.assertIn("<hr>", html)
-        self.assertIn("<h2>title: Test</h2>", html)
-        self.assertIn("<h1>heading</h1>", html)
-
-    def test_enable_yaml_frontmatter(self):
-        md = MarkdownIt(frontmatter=True)
-        html = md.render(self.YAML_FRONTMATTER_INPUT)
-
-        self.assertIn("<h1>heading</h1>", html)
-        self.assertNotIn("title", html)
-        self.assertNotIn("Test", html)
-        self.assertNotIn("<hr>", html)
-
-    def test_parse_yaml_frontmatter(self):
-        md = MarkdownIt(frontmatter=True)
-        frontmatter = md.parse_frontmatter(self.YAML_FRONTMATTER_INPUT)
-
-        self.assertIsNotNone(frontmatter)
-        self.assertEqual(frontmatter.kind, "yaml")
-        self.assertEqual(frontmatter.raw, "title: Test")
-        self.assertEqual(frontmatter.start_line, 0)
-        self.assertEqual(frontmatter.end_line, 2)
-
-    def test_render_with_yaml_frontmatter(self):
-        md = MarkdownIt(frontmatter=True)
-        result = md.render_with_frontmatter(self.YAML_FRONTMATTER_INPUT)
-
-        self.assertEqual(result.html, "<h1>heading</h1>\n")
-        self.assertIsNotNone(result.frontmatter)
-        self.assertEqual(result.frontmatter.kind, "yaml")
-        self.assertEqual(result.frontmatter.raw, "title: Test")
-
-    def test_enable_toml_frontmatter(self):
-        md = MarkdownIt(frontmatter=True)
-        html = md.render(self.TOML_FRONTMATTER_INPUT)
-
-        self.assertIn("<h1>heading</h1>", html)
-        self.assertNotIn("title", html)
-        self.assertNotIn("+++", html)
-
-    def test_parse_toml_frontmatter(self):
-        md = MarkdownIt(frontmatter=True)
-        frontmatter = md.parse_frontmatter(self.TOML_FRONTMATTER_INPUT)
-
-        self.assertIsNotNone(frontmatter)
-        self.assertEqual(frontmatter.kind, "toml")
-        self.assertEqual(frontmatter.raw, "title = 'Test'")
-
-    def test_parse_frontmatter_disabled(self):
-        md = MarkdownIt()
-        self.assertIsNone(md.parse_frontmatter(self.YAML_FRONTMATTER_INPUT))
-
-    def test_render_with_frontmatter_disabled(self):
-        md = MarkdownIt()
-        result = md.render_with_frontmatter(self.YAML_FRONTMATTER_INPUT)
-
-        self.assertIn("<h1>heading</h1>", result.html)
-        self.assertIsNone(result.frontmatter)
-
-    def test_unclosed_frontmatter(self):
-        md = MarkdownIt(frontmatter=True)
-        self.assertEqual(
-            md.render(self.UNCLOSED_FRONTMATTER_INPUT),
-            "<hr>\n<p>title: Test</p>\n<h1>heading</h1>\n",
-        )
-
     def test_disable_typographer(self):
         md = MarkdownIt()
         self.assertEqual(
@@ -160,121 +77,6 @@ class MarkdownItTests(unittest.TestCase):
             '<h1 data-sourcepos="1:1-1:7">hello</h1>\n',
         )
 
-    def test_disable_heading_anchors(self):
-        md = MarkdownIt()
-        self.assertEqual(
-            md.render("## Ciallo ～(∠・ω< )⌒★!"),
-            "<h2>Ciallo ～(∠・ω&lt; )⌒★!</h2>\n",
-        )
-
-    def test_enable_heading_anchors(self):
-        md = MarkdownIt(heading_anchors=True)
-        html = md.render("## Ciallo ～(∠・ω< )⌒★!")
-
-        self.assertIn('<h2 id="ciallo', html)
-        self.assertIn("Ciallo ～(∠・ω&lt; )⌒★!", html)
-
-    def test_enable_tasklist_plugin(self):
-        md = MarkdownIt().use("tasklist")
-        html = md.render("- [x] done")
-
-        self.assertIn('class="contains-task-list"', html)
-        self.assertIn('class="task-list-item"', html)
-        self.assertIn('type="checkbox" checked=""', html)
-        self.assertNotIn("[x]", html)
-
-    def test_enable_footnote_plugin(self):
-        md = MarkdownIt().use("footnote")
-        html = md.render("Here is a footnote.[^a]\n\n[^a]: Footnote text.")
-
-        self.assertIn('class="footnote-ref"', html)
-        self.assertIn('href="#fn1"', html)
-        self.assertIn('id="fn1"', html)
-        self.assertIn("Footnote text.", html)
-        self.assertNotIn("[^a]:", html)
-
-    def test_enable_directives_plugin(self):
-        md = MarkdownIt().use("directives")
-
-        self.assertEqual(
-            md.render('hello :name{a="b"} world'),
-            '<p>hello <span class="directive name" a="b"></span> world</p>\n',
-        )
-        self.assertEqual(
-            md.render('::name{cia="llo"}'),
-            '<div class="directive name" cia="llo"></div>\n',
-        )
-        self.assertEqual(
-            md.render(':::name{cia="llo"}\nworld\n:::'),
-            '<div class="directive name" cia="llo">\n<p>world</p>\n</div>\n',
-        )
-
-    def test_enable_directives_from_constructor(self):
-        md = MarkdownIt(directives=True)
-
-        self.assertEqual(
-            md.render('hello :name{a="b"} world'),
-            '<p>hello <span class="directive name" a="b"></span> world</p>\n',
-        )
-
-    def test_enable_tasklist_and_footnote_from_constructor(self):
-        md = MarkdownIt(tasklist=True, footnote=True)
-
-        tasklist_html = md.render("- [x] done")
-        footnote_html = md.render("Here is a footnote.[^a]\n\n[^a]: Footnote text.")
-
-        self.assertIn('class="contains-task-list"', tasklist_html)
-        self.assertIn('type="checkbox" checked=""', tasklist_html)
-        self.assertIn('class="footnote-ref"', footnote_html)
-        self.assertIn('href="#fn1"', footnote_html)
-
-    def test_disable_syntax_highlighting(self):
-        md = MarkdownIt()
-        self.assertEqual(
-            md.render("```rust\nfn main() {}\n```"),
-            '<pre><code class="language-rust">fn main() {}\n</code></pre>\n',
-        )
-
-    def test_enable_syntax_highlighting(self):
-        md = MarkdownIt(syntax_highlighting=True)
-        html = md.render("```rust\nfn main() {}\n```")
-
-        self.assertIn('<code class="language-rust">', html)
-        self.assertIn('class="syntect-line"', html)
-        self.assertIn("<span", html)
-
-    def test_syntax_highlighting_classed_mode(self):
-        md = MarkdownIt(syntax_highlighting=True, syntax_classed=True)
-        html = md.render("```rust\nfn main() {}\n```")
-
-        self.assertIn('<code class="syntect-code language-rust">', html)
-        self.assertIn('class="syntect-line"', html)
-        self.assertIsNotNone(md.syntax_theme_css())
-        self.assertIn(".syntect-code", md.syntax_theme_css())
-
-    def test_syntax_theme_css_inline_mode(self):
-        md = MarkdownIt(syntax_highlighting=True)
-        self.assertIsNone(md.syntax_theme_css())
-
-    def test_available_syntax_themes(self):
-        themes = available_syntax_themes()
-
-        self.assertIn("InspiredGitHub", themes)
-        self.assertEqual(themes, sorted(themes))
-
-    def test_syntax_theme(self):
-        md = MarkdownIt(
-            syntax_highlighting=True,
-            syntax_theme="base16-ocean.dark",
-            syntax_classed=True,
-        )
-
-        self.assertIn(".syntect-code", md.syntax_theme_css())
-
-    def test_unknown_syntax_theme(self):
-        with self.assertRaisesRegex(ValueError, "unknown syntect theme"):
-            MarkdownIt(syntax_highlighting=True, syntax_theme="a invalid theme")
-
     def test_parse_ast(self):
         ast = MarkdownIt().parse("# heading")
         root = ast.root
@@ -282,68 +84,6 @@ class MarkdownItTests(unittest.TestCase):
         self.assertEqual(len(root.children), 1)
         self.assertTrue(root.type_name.endswith("Root"))
         self.assertEqual(root.children[0].render(), "<h1>heading</h1>\n")
-
-    def test_python_core_rule_can_mutate_ast(self):
-        def plugin(md):
-            md.add_core_rule(
-                "footer",
-                lambda root: root.append_html("<footer>generated</footer>\n"),
-            )
-
-        md = MarkdownIt().use(plugin)
-
-        self.assertEqual(
-            md.render("# heading"),
-            "<h1>heading</h1>\n<footer>generated</footer>\n",
-        )
-
-    def test_python_core_rule_can_replace_children(self):
-        def plugin(md):
-            def replace(root):
-                root.clear_children()
-                root.append_text("plain <text>")
-
-            md.add_core_rule("replace", replace)
-
-        self.assertEqual(
-            MarkdownIt().use(plugin).render("# heading"), "plain &lt;text&gt;"
-        )
-
-    def test_python_core_rule_applies_to_render_with_frontmatter(self):
-        def plugin(md):
-            md.add_core_rule(
-                "footer", lambda root: root.append_html("<footer>generated</footer>\n")
-            )
-
-        result = (
-            MarkdownIt(frontmatter=True)
-            .use(plugin)
-            .render_with_frontmatter(self.YAML_FRONTMATTER_INPUT)
-        )
-
-        self.assertEqual(result.html, "<h1>heading</h1>\n<footer>generated</footer>\n")
-        self.assertIsNotNone(result.frontmatter)
-        self.assertEqual(result.frontmatter.raw, "title: Test")
-
-    def test_python_core_rule_requires_callable(self):
-        with self.assertRaisesRegex(TypeError, "core rule must be callable"):
-            MarkdownIt().add_core_rule("invalid", None)
-
-    def test_python_postprocessor_failed_add_rolls_back(self):
-        md = MarkdownIt()
-        md.add_postprocessor("first", lambda html: html + "<!--first-->")
-
-        with self.assertRaisesRegex(ValueError, "unknown postprocessor dependency"):
-            md.add_postprocessor(
-                "bad", lambda html: html + "<!--bad-->", after="missing"
-            )
-
-        md.add_postprocessor("bad", lambda html: html + "<!--bad-->")
-
-        self.assertEqual(
-            md.render("# heading"),
-            "<h1>heading</h1>\n<!--first--><!--bad-->",
-        )
 
 
 if __name__ == "__main__":

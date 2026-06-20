@@ -96,6 +96,12 @@ impl PyMarkdownIt {
                 root: RefCell::new(self.inner.parse(src)),
             },
         )?;
+
+        // parse slug
+        if let Some(ref ha) = self.plugins.heading_anchors {
+            ha.apply(py, &mut ast.borrow(py).root.borrow_mut())?;
+        }
+
         self.run_python_core_rules(py, &ast)?;
         Ok(ast)
     }

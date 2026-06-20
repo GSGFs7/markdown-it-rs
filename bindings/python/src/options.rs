@@ -48,7 +48,6 @@ pub(crate) fn get_bool(options: Option<&Bound<'_, PyDict>>, key: &str) -> PyResu
         .transpose()
 }
 
-#[cfg(feature = "syntect")]
 pub(crate) fn get_string(
     options: Option<&Bound<'_, PyDict>>,
     key: &str,
@@ -60,6 +59,23 @@ pub(crate) fn get_string(
         .get_item(key)?
         .map(|value| value.extract::<String>())
         .transpose()
+}
+
+pub(crate) fn get_optional_string(
+    options: Option<&Bound<'_, PyDict>>,
+    key: &str,
+) -> PyResult<Option<String>> {
+    let Some(options) = options else {
+        return Ok(None);
+    };
+    let Some(value) = options.get_item(key)? else {
+        return Ok(None);
+    };
+    if value.is_none() {
+        Ok(None)
+    } else {
+        value.extract::<String>().map(Some)
+    }
 }
 
 pub(crate) fn get_usize(options: Option<&Bound<'_, PyDict>>, key: &str) -> PyResult<Option<usize>> {
