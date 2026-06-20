@@ -15,5 +15,5 @@ syntect = ["markdown-it-rs/syntect"]
 katex = ["markdown-it-rs/katex"]
 
 [dependencies]
-pyo3 = { version = "0.28", features = ["extension-module"] }
+pyo3 = { version = "0.29", features = ["extension-module"] }
 markdown-it-rs = { path = "../..", default-features = false }
