@@ -130,10 +130,7 @@ pub(crate) fn heading_anchors(
 ) -> PyResult<()> {
     options::require_no_options(plugin, options)?;
     state.add_once("heading-anchors", md, |md| {
-        markdown_it::plugins::extra::heading_anchors::add(
-            md,
-            markdown_it::plugins::extra::heading_anchors::simple_slugify_fn,
-        );
+        markdown_it::plugins::extra::heading_anchors::add(md);
         Ok(())
     })
 }

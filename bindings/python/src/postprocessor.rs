@@ -88,7 +88,7 @@ impl PostProcessorManager {
         while let Some(idx) = queue.pop_front() {
             // push 0 in-degree to result
             result.push(idx);
-            
+
             // reduce in-degree
             for &dep_idx in &deps[idx] {
                 in_degree[dep_idx] -= 1;
