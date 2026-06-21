@@ -14,7 +14,7 @@ path = "src/bin/uniffi-bindgen.rs"
 required-features = ["bindgen"]
 
 [features]
-default = ["linkify"]
+default = ["katex", "linkify", "syntect"]
 bindgen = ["uniffi/cli"]
 katex = ["markdown-it-rs/katex"]
 linkify = ["markdown-it-rs/linkify"]
