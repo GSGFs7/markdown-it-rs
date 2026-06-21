@@ -1,0 +1,3 @@
+[bindings.kotlin]
+package_name = "moe.gsgfs.markdownit.internal"
+cdylib_name = "markdown_it_rs_kt"

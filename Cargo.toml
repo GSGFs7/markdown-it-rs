@@ -30,7 +30,13 @@ path = "examples/syntect/main.rs"
 required-features = ["syntect"]
 
 [workspace]
-members = ["crates/markdown-it-url", "bindings/python", "benchmarks", "demo"]
+members = [
+    "crates/markdown-it-url",
+    "bindings/kotlin",
+    "bindings/python",
+    "benchmarks",
+    "demo",
+]
 
 [features]
 default = ["linkify", "syntect"]

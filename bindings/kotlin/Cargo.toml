@@ -1,0 +1,26 @@
+[package]
+name = "markdown-it-rs-kt"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "markdown_it_rs_kt"
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+default = ["linkify"]
+bindgen = ["uniffi/cli"]
+katex = ["markdown-it-rs/katex"]
+linkify = ["markdown-it-rs/linkify"]
+syntect = ["markdown-it-rs/syntect"]
+
+[dependencies]
+markdown-it-rs = { path = "../..", default-features = false }
+thiserror = "2"
+uniffi = "=0.31.2"
