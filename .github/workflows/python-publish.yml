@@ -20,6 +20,7 @@ permissions:
 jobs:
   linux:
     name: Linux ${{ matrix.target }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v') }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -46,12 +47,13 @@ jobs:
           path: bindings/python/dist
 
   macos:
-    name: macOS ${{ matrix.target }} Python ${{ matrix.python-version }}
-    runs-on: ${{ matrix.runner }}
+    name: macOS ${{ matrix.platform.target }} Python ${{ matrix.python-version }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v') }}
+    runs-on: ${{ matrix.platform.runner }}
     strategy:
       fail-fast: false
       matrix:
-        include:
+        platform:
           - runner: macos-15-intel
             target: x86_64
           - runner: macos-latest
@@ -62,25 +64,31 @@ jobs:
           - "3.12"
           - "3.13"
           - "3.14"
+          - "3.14t"
+          - "3.15"
+          - "3.15t"
+          - "pypy3.11-nightly"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
           working-directory: bindings/python
-          target: ${{ matrix.target }}
+          target: ${{ matrix.platform.target }}
           args: --release --out dist --interpreter python
       - name: Upload wheel
         uses: actions/upload-artifact@v7
         with:
-          name: wheels-macos-${{ matrix.target }}-py${{ matrix.python-version }}
+          name: wheels-macos-${{ matrix.platform.target }}-py${{ matrix.python-version }}
           path: bindings/python/dist
 
   windows:
     name: Windows ${{ matrix.target }} Python ${{ matrix.python-version }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v') }}
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -93,11 +101,16 @@ jobs:
           - "3.12"
           - "3.13"
           - "3.14"
+          - "3.14t"
+          - "3.15"
+          - "3.15t"
+          - "pypy3.11-nightly"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
       - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
@@ -112,6 +125,7 @@ jobs:
 
   sdist:
     name: Source distribution
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -155,7 +169,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.repository == 'pypi') }}
+    if: ${{ (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')) || (github.event_name == 'workflow_dispatch' && inputs.repository == 'pypi') }}
     needs:
       - linux
       - macos
