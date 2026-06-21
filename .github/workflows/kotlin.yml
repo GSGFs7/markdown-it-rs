@@ -76,7 +76,7 @@ jobs:
         if: matrix.is-android
         run: |
           cargo install cargo-ndk
-          cargo ndk -t aarch64-linux-android -t armv7-linux-androideabi -t i686-linux-android -t x86_64-linux-android -p 21 -- build --release -p markdown-it-rs-kt
+          cargo ndk -t aarch64-linux-android -t armv7-linux-androideabi -t i686-linux-android -t x86_64-linux-android -P 21 -- build --release -p markdown-it-rs-kt
           
           mkdir -p target/android-release/aarch64
           mkdir -p target/android-release/armv7
