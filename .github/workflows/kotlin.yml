@@ -1,0 +1,163 @@
+name: Build and Package Multi-Platform Kotlin Binding
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build-native:
+    name: Build Native (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact-name: libmarkdown_it_rs_kt.so
+            cross: false
+            is-android: false
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact-name: libmarkdown_it_rs_kt.so
+            cross: true
+            is-android: false
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact-name: markdown_it_rs_kt.dll
+            cross: false
+            is-android: false
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact-name: libmarkdown_it_rs_kt.dylib
+            cross: false
+            is-android: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact-name: libmarkdown_it_rs_kt.dylib
+            cross: false
+            is-android: false
+          - target: android
+            os: ubuntu-latest
+            artifact-name: ""
+            cross: false
+            is-android: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.is-android && 'aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android' || matrix.target }}
+
+      - name: Cache Cargo dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install Cross (if cross compiling)
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build Native Library (standard)
+        if: ${{ !matrix.cross && !matrix.is-android }}
+        run: cargo build --release --target ${{ matrix.target }} -p markdown-it-rs-kt
+
+      - name: Build Native Library (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }} -p markdown-it-rs-kt
+
+      - name: Build Android Native Libraries
+        if: matrix.is-android
+        run: |
+          cargo install cargo-ndk
+          cargo ndk -t aarch64-linux-android -t armv7-linux-androideabi -t i686-linux-android -t x86_64-linux-android -p 21 -- build --release -p markdown-it-rs-kt
+          
+          mkdir -p target/android-release/aarch64
+          mkdir -p target/android-release/armv7
+          mkdir -p target/android-release/i686
+          mkdir -p target/android-release/x86_64
+          
+          cp target/aarch64-linux-android/release/libmarkdown_it_rs_kt.so target/android-release/aarch64/
+          cp target/armv7-linux-androideabi/release/libmarkdown_it_rs_kt.so target/android-release/armv7/
+          cp target/i686-linux-android/release/libmarkdown_it_rs_kt.so target/android-release/i686/
+          cp target/x86_64-linux-android/release/libmarkdown_it_rs_kt.so target/android-release/x86_64/
+
+      - name: Upload native library artifact
+        if: ${{ !matrix.is-android }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-binary
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact-name }}
+          retention-days: 1
+
+      - name: Upload Android native libraries
+        if: matrix.is-android
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-binaries
+          path: target/android-release/
+          retention-days: 1
+
+  package-jvm:
+    name: Package JVM JAR
+    needs: build-native
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Rust (needed for uniffi-bindgen execution)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Download all native binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: native-libs
+
+      - name: Organize Native Libraries into JNA Resource paths
+        run: |
+          RESOURCE_DIR="bindings/kotlin/src/main/resources/com/sun/jna"
+          mkdir -p "$RESOURCE_DIR/linux-x86-64"
+          mkdir -p "$RESOURCE_DIR/linux-aarch64"
+          mkdir -p "$RESOURCE_DIR/win32-x86-64"
+          mkdir -p "$RESOURCE_DIR/darwin-x86-64"
+          mkdir -p "$RESOURCE_DIR/darwin-aarch64"
+          mkdir -p "$RESOURCE_DIR/android-aarch64"
+          mkdir -p "$RESOURCE_DIR/android-arm"
+          mkdir -p "$RESOURCE_DIR/android-x86"
+          mkdir -p "$RESOURCE_DIR/android-x86-64"
+
+          cp native-libs/x86_64-unknown-linux-gnu-binary/libmarkdown_it_rs_kt.so "$RESOURCE_DIR/linux-x86-64/libmarkdown_it_rs_kt.so"
+          cp native-libs/aarch64-unknown-linux-gnu-binary/libmarkdown_it_rs_kt.so "$RESOURCE_DIR/linux-aarch64/libmarkdown_it_rs_kt.so"
+          cp native-libs/x86_64-pc-windows-msvc-binary/markdown_it_rs_kt.dll "$RESOURCE_DIR/win32-x86-64/markdown_it_rs_kt.dll"
+          cp native-libs/x86_64-apple-darwin-binary/libmarkdown_it_rs_kt.dylib "$RESOURCE_DIR/darwin-x86-64/libmarkdown_it_rs_kt.dylib"
+          cp native-libs/aarch64-apple-darwin-binary/libmarkdown_it_rs_kt.dylib "$RESOURCE_DIR/darwin-aarch64/libmarkdown_it_rs_kt.dylib"
+
+          cp native-libs/android-binaries/aarch64/libmarkdown_it_rs_kt.so "$RESOURCE_DIR/android-aarch64/libmarkdown_it_rs_kt.so"
+          cp native-libs/android-binaries/armv7/libmarkdown_it_rs_kt.so "$RESOURCE_DIR/android-arm/libmarkdown_it_rs_kt.so"
+          cp native-libs/android-binaries/i686/libmarkdown_it_rs_kt.so "$RESOURCE_DIR/android-x86/libmarkdown_it_rs_kt.so"
+          cp native-libs/android-binaries/x86_64/libmarkdown_it_rs_kt.so "$RESOURCE_DIR/android-x86-64/libmarkdown_it_rs_kt.so"
+
+      - name: Build JAR with Gradle
+        run: |
+          cd bindings/kotlin
+          ./gradlew jar
+
+      - name: Upload completed JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: markdown-it-rs-kt-jar
+          path: bindings/kotlin/build/libs/*.jar
