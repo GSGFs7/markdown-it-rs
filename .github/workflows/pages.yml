@@ -23,8 +23,20 @@ jobs:
         rust:
           - stable
     steps:
-      - uses: actions/checkout@v6
-      - run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh && cd demo && yarn && yarn build
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2.82.2
+        with:
+          tool: wasm-pack@0.15.0
+
+      - name: Build demo
+        working-directory: demo
+        run: |
+          yarn --frozen-lockfile
+          yarn build
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
