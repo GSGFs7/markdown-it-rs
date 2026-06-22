@@ -20,7 +20,7 @@ permissions:
 jobs:
   linux:
     name: Linux ${{ matrix.target }}
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'pypi-v') }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -48,7 +48,7 @@ jobs:
 
   macos:
     name: macOS ${{ matrix.platform.target }} Python ${{ matrix.python-version }}
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'pypi-v') }}
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       fail-fast: false
@@ -88,7 +88,7 @@ jobs:
 
   windows:
     name: Windows ${{ matrix.target }} Python ${{ matrix.python-version }}
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'pypi-v') }}
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -125,7 +125,7 @@ jobs:
 
   sdist:
     name: Source distribution
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'pypi-v') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -169,7 +169,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    if: ${{ (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')) || (github.event_name == 'workflow_dispatch' && inputs.repository == 'pypi') }}
+    if: ${{ (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'pypi-v')) || (github.event_name == 'workflow_dispatch' && inputs.repository == 'pypi') }}
     needs:
       - linux
       - macos

@@ -1,0 +1,25 @@
+[package]
+name = "markdown-it-rs-wasm"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+
+extras = []
+linkify = ["extras", "markdown-it-rs/linkify"]
+syntect = ["extras", "markdown-it-rs/syntect"]
+katex = ["extras", "markdown-it-rs/katex"]
+
+full = ["extras", "linkify", "syntect", "katex"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+markdown-it-rs = { path = "../..", default-features = false }
+
+[profile.release]
+opt-level = "s"

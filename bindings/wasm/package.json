@@ -1,0 +1,33 @@
+{
+  "name": "@gsgfs/markdown-it-rs-wasm",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "pkg"
+  ],
+  "main": "./pkg/basic/basic.js",
+  "types": "./pkg/basic/basic.d.ts",
+  "exports": {
+    ".": {
+      "types": "./pkg/basic/basic.d.ts",
+      "import": "./pkg/basic/basic.js"
+    },
+    "./full": {
+      "types": "./pkg/full/full.d.ts",
+      "import": "./pkg/full/full.js"
+    }
+  },
+  "sideEffects": [
+    "./pkg/basic/basic.js",
+    "./pkg/full/full.js"
+  ],
+  "scripts": {
+    "clean": "rm -rf ./pkg",
+    "build:basic": "wasm-pack build . --release --target bundler --out-dir pkg/basic --out-name basic --no-pack -- --no-default-features",
+    "build:full": "wasm-pack build . --release --target bundler --out-dir pkg/full --out-name full --no-pack -- --no-default-features --features full",
+    "build": "npm run clean && npm run build:basic && npm run build:full",
+    "postbuild": "rm ./pkg/basic/.gitignore ./pkg/full/.gitignore",
+    "prepack": "npm run build"
+  }
+}

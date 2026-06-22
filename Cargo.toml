@@ -34,6 +34,7 @@ members = [
     "crates/markdown-it-url",
     "bindings/kotlin",
     "bindings/python",
+    "bindings/wasm",
     "benchmarks",
     "demo",
 ]

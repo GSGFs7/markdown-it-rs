@@ -149,7 +149,6 @@ jobs:
           cp native-libs/x86_64-pc-windows-msvc-binary/markdown_it_rs_kt.dll "$RESOURCE_DIR/win32-x86-64/markdown_it_rs_kt.dll"
           cp native-libs/x86_64-apple-darwin-binary/libmarkdown_it_rs_kt.dylib "$RESOURCE_DIR/darwin-x86-64/libmarkdown_it_rs_kt.dylib"
           cp native-libs/aarch64-apple-darwin-binary/libmarkdown_it_rs_kt.dylib "$RESOURCE_DIR/darwin-aarch64/libmarkdown_it_rs_kt.dylib"
-
           cp native-libs/android-binaries/aarch64/libmarkdown_it_rs_kt.so "$RESOURCE_DIR/android-aarch64/libmarkdown_it_rs_kt.so"
           cp native-libs/android-binaries/armv7/libmarkdown_it_rs_kt.so "$RESOURCE_DIR/android-arm/libmarkdown_it_rs_kt.so"
           cp native-libs/android-binaries/i686/libmarkdown_it_rs_kt.so "$RESOURCE_DIR/android-x86/libmarkdown_it_rs_kt.so"
