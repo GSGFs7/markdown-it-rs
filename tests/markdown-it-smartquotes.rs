@@ -7,7 +7,6 @@ fn run(input: &str, output: &str) {
     let md = &mut markdown_it::MarkdownIt::new();
     markdown_it::plugins::cmark::add(md);
     markdown_it::plugins::html::add(md);
-    markdown_it::plugins::extra::linkify::add(md);
     markdown_it::plugins::extra::typographer::add(md);
     markdown_it::plugins::extra::smartquotes::add(md);
     let node = md.parse(&(input.to_owned() + "\n"));

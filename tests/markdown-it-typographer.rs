@@ -1,4 +1,4 @@
-fn run(input: &str, output: &str) {
+fn run_with(input: &str, output: &str, configure: impl FnOnce(&mut markdown_it::MarkdownIt)) {
     let output = if output.is_empty() {
         "".to_owned()
     } else {
@@ -7,7 +7,7 @@ fn run(input: &str, output: &str) {
     let md = &mut markdown_it::MarkdownIt::new();
     markdown_it::plugins::cmark::add(md);
     markdown_it::plugins::html::add(md);
-    markdown_it::plugins::extra::linkify::add(md);
+    configure(md);
     markdown_it::plugins::extra::typographer::add(md);
     let node = md.parse(&(input.to_owned() + "\n"));
 
@@ -20,6 +20,21 @@ fn run(input: &str, output: &str) {
     // make sure it doesn't crash without trailing \n
     let _ = md.parse(input.trim_end());
 }
+
+fn run(input: &str, output: &str) {
+    run_with(input, output, |_| {});
+}
+
+#[cfg(feature = "linkify")]
+#[test]
+fn typographer_does_not_touch_text_in_linkified_urls() {
+    let input = r#"URL with (C) (c) (R) (r) (TM) (tm): https://example.com/(c)(r)(tm)/(C)(R)(TM) what do you think?"#;
+    let output = r#"<p>URL with © © ® ® ™ ™: <a href="https://example.com/(c)(r)(tm)/(C)(R)(TM)">https://example.com/(c)(r)(tm)/(C)(R)(TM)</a> what do you think?</p>"#;
+
+    run_with(input, output, |md| {
+        markdown_it::plugins::extra::linkify::add(md);
+    });
+}
 ///////////////////////////////////////////////////////////////////////////
 // TESTGEN: fixtures/markdown-it/typographer-extra.txt
 #[rustfmt::skip]
@@ -27,13 +42,6 @@ mod fixtures_markdown_it_typographer_extra_txt {
 use super::run;
 // this part of the file is auto-generated
 // don't edit it, otherwise your changes might be lost
-#[test]
-fn don_t_touch_text_in_autolinks() {
-    let input = r#"URL with (C) (c) (R) (r) (TM) (tm): https://example.com/(c)(r)(tm)/(C)(R)(TM) what do you think?"#;
-    let output = r#"<p>URL with © © ® ® ™ ™: <a href="https://example.com/(c)(r)(tm)/(C)(R)(TM)">https://example.com/(c)(r)(tm)/(C)(R)(TM)</a> what do you think?</p>"#;
-    run(input, output);
-}
-
 #[test]
 fn replacements_for_tm_should_allow_mixed_case_tm_and_tm() {
     let input = r#"These two should both end up the same as (TM) and (tm): (tM), (Tm)."#;
