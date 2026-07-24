@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>markdown-it-rs demo</title>
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css"
+        >
+    </head>
+    <body>
+        <div class="gh-ribbon">
+            <a href="https://github.com/GSGFs7/markdown-it-rs">Fork me on GitHub</a>
+        </div>
+
+        <main class="container">
+            <div class="row">
+                <section class="col-md-6">
+                    <div class="header">
+                        <a href="https://github.com/GSGFs7/markdown-it-rs">markdown-it-rs demo</a>
+                    </div>
+                    <textarea id="source" class="form-control"></textarea>
+                </section>
+
+                <section class="col-md-6">
+                    <ul id="tabs-toggle" class="nav nav-tabs">
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-toggle="result-preview">Preview</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-toggle="result-html">HTML</a>
+                        </li>
+                    </ul>
+
+                    <div id="result-preview" class="tab-content form-control"></div>
+                    <div id="result-html" class="tab-content form-control"></div>
+                    <div id="result-loading" class="tab-content">
+                        <div class="loading-banner">Loading...</div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <script type="module" src="/src/index.js"></script>
+    </body>
+</html>

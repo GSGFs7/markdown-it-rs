@@ -36,7 +36,6 @@ members = [
     "bindings/python",
     "bindings/wasm",
     "benchmarks",
-    "demo",
 ]
 
 [features]

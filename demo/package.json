@@ -2,20 +2,19 @@
     "type": "module",
     "license": "MIT",
     "private": true,
+    "packageManager": "pnpm@11.3.0",
     "scripts": {
-        "serve": "webpack serve",
-        "build": "webpack"
+        "build:wasm": "pnpm --dir ../bindings/wasm run build:full",
+        "dev": "pnpm run build:wasm && vite",
+        "serve": "pnpm run dev",
+        "build": "pnpm run build:wasm && vite build",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "@gsgfs/markdown-it-rs-wasm": "link:../bindings/wasm"
     },
     "devDependencies": {
-        "@wasm-tool/wasm-pack-plugin": "^1.7.0",
-        "css-loader": "^7.1.2",
-        "pug": "^3.0.3",
-        "pug-plugin": "^6.1.0",
-        "stylus": "^0.64.0",
-        "stylus-loader": "^9.0.0",
-        "tslib": "^2.8.1",
-        "webpack": "^5.92.0",
-        "webpack-cli": "^7.0.2",
-        "webpack-dev-server": "^5.0.4"
+        "vite": "^8.0.0",
+        "vite-plugin-wasm": "^3.5.0"
     }
 }
