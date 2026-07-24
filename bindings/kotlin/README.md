@@ -16,6 +16,10 @@ low-level JNA binding before compiling the public Kotlin wrapper.
 The Rust AST and foreign-language plugin callbacks are intentionally not part
 of this first version.
 
+Directive attributes are HTML-escaped but are not sanitized. Enable directives
+only for trusted Markdown, or sanitize the final HTML with an appropriate
+policy before displaying it.
+
 ## Development
 
 JDK 17 or newer and the Rust toolchain are required. Run both the Rust and

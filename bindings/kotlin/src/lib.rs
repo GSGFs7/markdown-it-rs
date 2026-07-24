@@ -158,7 +158,7 @@ fn build_parser(options: &MarkdownOptions) -> MarkdownIt {
     markdown_it::plugins::extra::beautify_links::add(&mut parser);
 
     if options.directives {
-        markdown_it::plugins::extra::directives::add(&mut parser);
+        markdown_it::plugins::directives::add(&mut parser);
     }
     if options.task_list {
         markdown_it::plugins::extra::tasklist::add(&mut parser);
@@ -263,6 +263,20 @@ mod tests {
         let html = parser.render("# Hello Kotlin\n\n- [x] bound".to_owned());
         assert!(html.contains("<h1 id=\"hello-kotlin\">"));
         assert!(html.contains("task-list-item"));
+    }
+
+    #[test]
+    fn renders_directive_attributes_without_sanitizing() {
+        let parser = MarkdownParser::new(MarkdownOptions {
+            directives: true,
+            ..MarkdownOptions::default()
+        })
+        .unwrap();
+
+        assert_eq!(
+            parser.render(r#"hello :badge{label="Beta" onclick="alert(1)"} world"#.to_owned()),
+            "<p>hello <span class=\"directive badge\" label=\"Beta\" onclick=\"alert(1)\"></span> world</p>\n"
+        );
     }
 
     #[cfg(not(feature = "linkify"))]

@@ -45,6 +45,14 @@ class PluginTests(unittest.TestCase):
             '<div class="directive name" cia="llo">\n<p>world</p>\n</div>\n',
         )
 
+    def test_directive_attributes_are_not_sanitized(self):
+        md = MarkdownIt().use("directives")
+
+        self.assertEqual(
+            md.render(':name{onclick="alert(1)"}'),
+            '<p><span class="directive name" onclick="alert(1)"></span></p>\n',
+        )
+
     def test_enable_directives_from_constructor(self):
         md = MarkdownIt(directives=True)
 

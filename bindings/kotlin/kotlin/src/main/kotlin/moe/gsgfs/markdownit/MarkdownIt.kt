@@ -16,6 +16,7 @@ data class MarkdownOptions(
     val typographer: Boolean = false,
     val sourcePosition: Boolean = false,
     val headingAnchors: Boolean = false,
+    /** Parses directives without sanitizing their rendered HTML attributes. */
     val directives: Boolean = false,
     val taskList: Boolean = false,
     val footnote: Boolean = false,

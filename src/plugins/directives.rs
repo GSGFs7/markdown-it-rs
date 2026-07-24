@@ -18,8 +18,20 @@
 //! directive kind and directive name, and receive the parsed attributes plus
 //! the parsed node so they can render their own HTML.
 //!
+//! # Security
+//!
+//! This plugin does not sanitize directive attributes. Attribute names and
+//! values are copied to the rendered HTML element after HTML escaping. Event
+//! handlers, CSS, URLs, and other active attributes are not validated.
+//!
+//! Enable this plugin only for trusted input, or sanitize the final HTML with
+//! a policy appropriate for your application. Custom renderers have the same
+//! trust boundary: use [`Renderer::text`] for user-provided text, validate
+//! URL-bearing attributes separately, and reserve [`Renderer::text_raw`] for
+//! trusted HTML.
+//!
 //! ```rust
-//! use markdown_it::plugins::extra::directives::{self, DirectiveKind};
+//! use markdown_it::plugins::directives::{self, DirectiveKind};
 //! use markdown_it::{MarkdownIt, Node, Renderer};
 //!
 //! fn render_badge(
@@ -574,7 +586,8 @@ pub fn add(md: &mut MarkdownIt) {
 /// Register a custom renderer for directives matching `kind` and `name`.
 ///
 /// If no custom renderer is registered for a directive, the default HTML
-/// renderer is used.
+/// renderer is used. Neither renderer path performs sanitization; use trusted
+/// input or sanitize the final HTML.
 pub fn add_render(
     md: &mut MarkdownIt,
     kind: DirectiveKind,

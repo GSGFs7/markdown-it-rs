@@ -9,12 +9,14 @@
 //! ```rust
 //! let md = &mut markdown_it::MarkdownIt::new();
 //! markdown_it::plugins::cmark::add(md);
+//! markdown_it::plugins::directives::add(md);
 //! markdown_it::plugins::extra::add(md);
 //! markdown_it::plugins::html::add(md);
 //! markdown_it::plugins::sourcepos::add(md);
 //! // ...
 //! ```
 pub mod cmark;
+pub mod directives;
 pub mod extra;
 pub mod html;
 pub mod sourcepos;

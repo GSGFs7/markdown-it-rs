@@ -1,4 +1,4 @@
-use markdown_it::plugins::extra::directives::{self, DirectiveKind};
+use markdown_it::plugins::directives::{self, Attrs, DirectiveKind, TextDirective};
 use markdown_it::{MarkdownIt, Node, Renderer};
 
 fn render(src: &str) -> String {
@@ -213,4 +213,87 @@ fn container_directive_uses_registered_custom_render_and_children() {
         html,
         "<section data-title=\"Intro\">\n<p>Ciallo <strong>world</strong></p>\n</section>"
     );
+}
+
+#[test]
+fn default_renderer_passes_user_attributes_through_without_sanitizing() {
+    let cases = [
+        (
+            r#":name{title="safe" class="admin" id="root" onclick="alert(1)" style="color:red" data-directive-kind="evil" data-directive-name="evil"}"#,
+            r#"<p><span class="directive name admin" title="safe" id="root" onclick="alert(1)" style="color:red" data-directive-kind="evil" data-directive-name="evil"></span></p>"#,
+        ),
+        (
+            r#"::name{title="safe" onclick="alert(1)" style="color:red"}"#,
+            r#"<div class="directive name" title="safe" onclick="alert(1)" style="color:red"></div>"#,
+        ),
+        (
+            r#":::name{title="safe" onclick="alert(1)" style="color:red"}
+body
+:::"#,
+            r#"<div class="directive name" title="safe" onclick="alert(1)" style="color:red">
+<p>body</p>
+</div>"#,
+        ),
+    ];
+    for (source, expected) in cases {
+        assert_eq!(render(source), expected, "source: {source}");
+    }
+}
+
+#[test]
+fn default_renderer_preserves_node_attributes() {
+    let html = render_with(":name", markdown_it::plugins::sourcepos::add);
+
+    assert!(html.contains(r#"<span data-sourcepos=""#));
+    assert!(html.contains(r#"class="directive name""#));
+}
+
+#[test]
+fn directive_attribute_values_are_html_escaped() {
+    assert_eq!(
+        render(r#":name{title="&<>\""}"#),
+        r#"<p><span class="directive name" title="&amp;&lt;&gt;&quot;"></span></p>"#
+    );
+}
+
+fn parse_text_attrs(source: &str) -> Attrs {
+    let mut md = MarkdownIt::new();
+    markdown_it::plugins::cmark::add(&mut md);
+    directives::add(&mut md);
+
+    let ast = md.parse(source);
+    let mut result = None;
+    ast.walk(|node, _| {
+        if result.is_none()
+            && let Some(directives) = node.cast::<TextDirective>()
+        {
+            result = Some(directives.attrs.clone());
+        }
+    });
+
+    result.expect("expected a text directive")
+}
+
+#[test]
+fn directive_attributes_remain_available_in_ast() {
+    assert_eq!(
+        parse_text_attrs(r#":badge{label="Beta" onclick="alert(1)"}"#),
+        vec![
+            ("label".to_owned(), "Beta".to_owned()),
+            ("onclick".to_owned(), "alert(1)".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn registered_renderer_escapes_text_and_ignores_unknown_attributes() {
+    let html = render_with(
+        r#":badge{label="<img src=x onerror=alert(1)>" tone="new" onclick="alert(1)"}"#,
+        |md| directives::add_render(md, DirectiveKind::Text, "badge", render_badge),
+    );
+
+    assert_eq!(
+        html,
+        r#"<p><mark data-kind="Text" data-tone="new">&lt;img src=x onerror=alert(1)&gt;</mark></p>"#,
+    )
 }

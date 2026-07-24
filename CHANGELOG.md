@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+ - changed parser rule identifiers from `TypeKey` to `RuleMark`, which supports
+   both Rust types (`RuleMark::of::<T>()`) and string names
+   (`RuleMark::named("name")`). This enables Python and other dynamic plugins
+   to locate and order parser rules. Integrations that depend on the concrete
+   identifier type of parser rule chains must migrate to `RuleMark`; existing
+   typed `RuleBuilder` ordering methods remain available
+
+### Added
+
+ - added an opt-in directives plugin at `plugins::directives`, with text, leaf,
+   and container directives plus custom renderers; directive attributes are
+   HTML-escaped but are not sanitized
+ - added footnote, task list, and mark plugins to `plugins::extra`
+ - added string aliases through the `NAMES` constant on core, block, and inline
+   rules, plus the `before_named`, `after_named`, `alias_named`, and
+   `require_named` rule-builder methods
+ - expanded the Python bindings with `.use()`, mutable AST and node access,
+   Python core-rule callbacks, ordered postprocessors, and bindings for
+   directives, task lists, footnotes, mark, and configurable heading anchors
+ - added an initial Kotlin/JVM binding built with UniFFI
+ - added WebAssembly/npm bindings
+
+### Changed
+
+ - improved heading anchor slugification and uniqueness, with configurable slug
+   strategies, existing-ID behavior, empty-slug handling, and prefixes
+ - upgraded the Python bindings to PyO3 0.29
+ - rebuilt the browser demo with Vite and pnpm on top of the WebAssembly binding
+
+### Fixed
+
+ - fixed block math rendering so block expressions use display mode
+ - fixed Python constructor options for directives, task lists, and footnotes
+ - fixed the Rust test suite when running with `--no-default-features`
+
 ## 0.6.2 - 2026-04-25
 
 ### Added

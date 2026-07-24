@@ -43,4 +43,15 @@ class MarkdownParserTest {
             assertTrue(html.contains("task-list-item"))
         }
     }
+
+    @Test
+    fun rendersDirectiveAttributesWithoutSanitizing() {
+        MarkdownParser(MarkdownOptions(directives = true)).use { parser ->
+            assertEquals(
+                "<p>hello <span class=\"directive badge\" label=\"Beta\" " +
+                    "onclick=\"alert(1)\"></span> world</p>\n",
+                parser.render("hello :badge{label=\"Beta\" onclick=\"alert(1)\"} world"),
+            )
+        }
+    }
 }

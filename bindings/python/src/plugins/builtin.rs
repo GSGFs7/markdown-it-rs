@@ -100,7 +100,7 @@ pub(crate) fn directives(
 ) -> PyResult<()> {
     options::require_no_options(plugin, options)?;
     state.add_once("directives", md, |md| {
-        markdown_it::plugins::extra::directives::add(md);
+        markdown_it::plugins::directives::add(md);
         Ok(())
     })
 }

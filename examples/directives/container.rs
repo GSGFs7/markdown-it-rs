@@ -1,4 +1,4 @@
-use markdown_it::plugins::extra::directives::DirectiveKind;
+use markdown_it::plugins::directives::DirectiveKind;
 use markdown_it::{Node, Renderer};
 
 pub fn render_alert(

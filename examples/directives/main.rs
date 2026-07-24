@@ -4,7 +4,7 @@ mod leaf;
 mod text;
 
 use markdown_it::MarkdownIt;
-use markdown_it::plugins::extra::directives::{self, DirectiveKind};
+use markdown_it::plugins::directives::{self, DirectiveKind};
 
 fn main() {
     let mut md = MarkdownIt::new();
@@ -88,5 +88,5 @@ Advises about risks or negative outcomes of certain actions.
 
     let path = "examples/directives/demo.html";
     std::fs::write(path, html).expect("write file failed");
-    println!("Successfully generated '{path}' using modular structure.");
+    println!("Successfully generated '{path}'.");
 }
