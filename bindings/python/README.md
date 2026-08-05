@@ -72,12 +72,9 @@ md = MarkdownIt().use("directives")
 print(md.render('Ciallo :badge{label="Beta"} world'))
 # default output:
 # <p>Ciallo <span class="directive badge" label="Beta"></span> world</p>
-
-# Post-processing tip:
-# use the rendered HTML (or the parsed AST) to replace directive nodes with
-# your own HTML after render; custom directive render callbacks are not exposed
-# in the Python binding yet.
-#
-# Security: directive attributes are HTML-escaped but are not sanitized.
-# Use trusted Markdown or sanitize the final HTML before displaying it.
 ```
+
+## Security
+
+The Python binding renders Markdown to HTML, but it does **not** sanitize the
+result.
