@@ -38,6 +38,9 @@ members = [
     "benchmarks",
 ]
 
+[profile.release.package."markdown-it-rs-wasm"]
+opt-level = "s"
+
 [features]
 default = ["linkify", "syntect"]
 cli = ["dep:clap"]
