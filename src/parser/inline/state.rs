@@ -215,16 +215,14 @@ impl<'a, 'b> InlineState<'a, 'b> {
             }
         }
 
-        let can_open;
-        let can_close;
+        
+        
 
-        if !can_split_word {
-            can_open = left_flanking && (!right_flanking || is_last_punct_char);
-            can_close = right_flanking && (!left_flanking || is_next_punct_char);
+        let (can_open, can_close) = if !can_split_word {
+            (left_flanking && (!right_flanking || is_last_punct_char), right_flanking && (!left_flanking || is_next_punct_char))
         } else {
-            can_open = left_flanking;
-            can_close = right_flanking;
-        }
+            (left_flanking, right_flanking)
+        };
 
         DelimiterRun {
             marker,
