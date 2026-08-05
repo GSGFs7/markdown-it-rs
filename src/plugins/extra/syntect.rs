@@ -30,6 +30,7 @@
 
 use std::collections::HashSet;
 
+use once_cell::sync::Lazy;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Theme, ThemeSet};
 use syntect::html::{
@@ -48,6 +49,10 @@ use crate::parser::extset::MarkdownItExt;
 use crate::plugins::cmark::block::code::CodeBlock;
 use crate::plugins::cmark::block::fence::CodeFence;
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
+
+// lazy load themes. it wast a lot of performance
+static SYNTAX_SET: Lazy<SyntaxSet> = Lazy::new(SyntaxSet::load_defaults_newlines);
+static THEME_SET: Lazy<ThemeSet> = Lazy::new(ThemeSet::load_defaults);
 
 // --- render ---
 
@@ -179,61 +184,59 @@ impl CoreRule for SyntectRule {
     const NAMES: &'static [&'static str] = &["syntect"];
 
     fn run(root: &mut Node, md: &MarkdownIt) {
-        let ss = SyntaxSet::load_defaults_newlines();
-        let ts = ThemeSet::load_defaults();
         let settings = load_syntect_settings(md);
-        // why panic here? avoid change original behavior
-        // `let theme = &ts.themes[md.ext.get::<SyntectSettings>().copied().unwrap_or_default().0];`
-        let theme = resolve_theme(&ts, &settings)
-            .unwrap_or_else(|| panic!("unknown syntect theme: {}", settings.theme));
 
         root.walk_mut(|node, _| {
-            let mut content = None;
-            let mut language = None::<String>;
-            let mut lang_prefix = None::<&'static str>;
-            let mut highlighted_lines = HashSet::new();
-
+            let (content, highlighted_lines, lang_prefix, language);
             if let Some(data) = node.cast::<CodeBlock>() {
-                content = Some(data.content.as_str());
+                content = data.content.as_str();
+                highlighted_lines = HashSet::new();
+                lang_prefix = None;
+                language = None;
             } else if let Some(data) = node.cast::<CodeFence>() {
                 let meta = FenceMeta::parse_fence_meta(data);
-                language = meta.language;
+                content = data.content.as_str();
                 highlighted_lines = meta.highlighted_lines;
-                content = Some(data.content.as_str());
                 lang_prefix = Some(data.lang_prefix);
+                language = meta.language;
+            } else {
+                return;
             }
 
-            if let Some(content) = content {
-                let syntax = language
-                    .as_deref()
-                    .and_then(|lang| ss.find_syntax_by_token(lang))
-                    .unwrap_or_else(|| ss.find_syntax_plain_text());
+            let ss = &*SYNTAX_SET;
+            let language = language.as_deref();
+            let syntax = language
+                .and_then(|lang| ss.find_syntax_by_token(lang))
+                .unwrap_or_else(|| ss.find_syntax_plain_text());
 
-                let html = match settings.mode {
-                    SyntectMode::Inline => render_inline_html(
+            let html = match settings.mode {
+                SyntectMode::Inline => {
+                    let theme = resolve_theme(&THEME_SET, &settings)
+                        .unwrap_or_else(|| panic!("unknown syntect theme: {}", settings.theme));
+                    render_inline_html(
                         content,
-                        &ss,
+                        ss,
                         syntax,
                         theme,
-                        language.as_deref(),
+                        language,
                         lang_prefix.unwrap_or("language-"),
                         settings.prefix,
                         &highlighted_lines,
-                    ),
-                    SyntectMode::Classed => render_classed_html(
-                        content,
-                        &ss,
-                        syntax,
-                        language.as_deref(),
-                        lang_prefix.unwrap_or("language-"),
-                        settings.prefix,
-                        &highlighted_lines,
-                    ),
-                };
-
-                if let Some(html) = html {
-                    node.replace(SyntectSnippet { html });
+                    )
                 }
+                SyntectMode::Classed => render_classed_html(
+                    content,
+                    ss,
+                    syntax,
+                    language,
+                    lang_prefix.unwrap_or("language-"),
+                    settings.prefix,
+                    &highlighted_lines,
+                ),
+            };
+
+            if let Some(html) = html {
+                node.replace(SyntectSnippet { html });
             }
         });
     }
@@ -250,8 +253,7 @@ pub fn add(md: &mut MarkdownIt) {
 
 /// Return the names of all built-in syntect themes available to this plugin.
 pub fn available_themes() -> Vec<String> {
-    let ts = ThemeSet::load_defaults();
-    let mut themes: Vec<_> = ts.themes.keys().cloned().collect();
+    let mut themes: Vec<String> = THEME_SET.themes.keys().cloned().collect();
     themes.sort();
     themes
 }
@@ -301,9 +303,8 @@ pub fn set_prefix(md: &mut MarkdownIt, prefix: &'static str) {
 ///
 /// Panics if the configured theme not found in built-in themes
 pub fn theme_css(md: &MarkdownIt) -> Option<String> {
-    let ts = ThemeSet::load_defaults();
     let settings = load_syntect_settings(md);
-    let theme = resolve_theme(&ts, &settings)
+    let theme = resolve_theme(&THEME_SET, &settings)
         .unwrap_or_else(|| panic!("unknown syntect theme: {}", settings.theme));
 
     match settings.mode {
