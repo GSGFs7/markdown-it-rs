@@ -38,6 +38,7 @@
  - fixed block math rendering so block expressions use display mode
  - fixed Python constructor options for directives, task lists, and footnotes
  - fixed the Rust test suite when running with `--no-default-features`
+ - deferred syntax highlighting theme loading until it is needed
 
 ## 0.6.2 - 2026-04-25
 

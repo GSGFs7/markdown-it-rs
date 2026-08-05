@@ -28,9 +28,10 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          maturin-version: v1.14.1
           working-directory: bindings/python
           target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --locked --out dist --find-interpreter
           sccache: "true"
           manylinux: auto
 
@@ -69,9 +70,10 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          maturin-version: v1.14.1
           working-directory: bindings/python
           target: ${{ matrix.target }}
-          args: --release --out dist --interpreter python
+          args: --release --locked --out dist --interpreter python
           sccache: "true"
 
       - name: Upload wheels
@@ -113,9 +115,10 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          maturin-version: v1.14.1
           working-directory: bindings/python
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --interpreter python
+          args: --release --locked --out dist --interpreter python
           sccache: "true"
 
       - name: Upload wheels
@@ -133,6 +136,7 @@ jobs:
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
+          maturin-version: v1.14.1
           working-directory: bindings/python
           command: sdist
           args: --out dist

@@ -49,7 +49,7 @@ For a guide on how to extend it, see `examples` folder.
 2. math
     ```rust
     // enable katex feature first
-    // markdown-it-rs = { version = "0.6.2", features = ["katex"] }
+    // markdown-it-rs = { version = "0.7.0", features = ["katex"] }
     let mut md = markdown_it::MarkdownIt::new();
     markdown_it::plugins::cmark::add(&mut md);
     markdown_it::plugins::extra::math::add(&mut md);

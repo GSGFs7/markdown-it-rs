@@ -53,7 +53,7 @@ jobs:
         run: |
           NPM_VERSION="$(node -p "require('./bindings/wasm/package.json').version")"
           CARGO_VERSION="$(
-            cargo metadata --no-deps --format-version 1 |
+            cargo metadata --no-deps --locked --format-version 1 |
               jq -r '.packages[] | select(.name == "markdown-it-rs-wasm") | .version'
           )"
 

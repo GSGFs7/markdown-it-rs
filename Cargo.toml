@@ -1,6 +1,6 @@
 [package]
 name = "markdown-it-rs"
-version = "0.6.2"
+version = "0.7.0"
 authors = ["Alex Kocharin <alex@kocharin.ru>", "GSGFs7"]
 description = "Rust port of popular markdown-it.js library. Forked from markdown-it-rust/markdown-it"
 documentation = "https://docs.rs/markdown-it-rs"
