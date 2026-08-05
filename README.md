@@ -7,23 +7,17 @@
 
 Rust port of popular [markdown-it.js](https://github.com/markdown-it/markdown-it) library.
 
-TL;DR:
-
-- if you want to get result *fast*, use [pulldown-cmark](https://github.com/raphlinus/pulldown-cmark)
-- if you want to render GFM exactly like GitHub, use [comrak](https://github.com/kivikakk/comrak)
-- if you want to define your own syntax (like `@mentions`, `:emoji:`, custom html classes), use this library
-
 You can check a [demo](https://gsgfs7.github.io/markdown-it-rs/) in your browser *(it's Rust compiled into WASM)*.
 
-### Features
+## Features
 
-- 100% CommonMark compatibility
+- CommonMark test-suite coverage
 - AST
-- Source maps (full support, not just on block tags like cmark)
-- Ability to write your own syntax of arbitrary complexity
-    - to prove this point, CommonMark syntax itself is written as a plugin
+- Source maps
+- Easy to expand
+- Python, and WebAssembly support
 
-### Usage
+## Usage
 
 ```rust
 let parser = &mut markdown_it::MarkdownIt::new();
@@ -39,36 +33,17 @@ print!("{html}");
 
 For a guide on how to extend it, see `examples` folder.
 
-### Differences with original
+## Security
 
-1. python binding
-    ```bash
-    uv add markdown-it-rs-py
-    ```
-   
-2. math
-    ```rust
-    // enable katex feature first
-    // markdown-it-rs = { version = "0.7.0", features = ["katex"] }
-    let mut md = markdown_it::MarkdownIt::new();
-    markdown_it::plugins::cmark::add(&mut md);
-    markdown_it::plugins::extra::math::add(&mut md);
-    ```
-   
-3. frontmatter
-    ```rust
-    use markdown_it::parser::core::Root;
-    use markdown_it::plugins::extra::front_matter::FrontMatter;
+This lib does **not** sanitize or filter any HTML output.
+You should add a sanitizer before rendering untrusted content.
 
-    // extract frontmatter as a string
-    let mut md = markdown_it::MarkdownIt::new();
-    markdown_it::plugins::cmark::add(&mut md);
-    markdown_it::plugins::extra::front_matter::add(&mut md);
+There are two plugins should be careful:
 
-    let input = "---\ntitle: Hello\n---\n# Post";
-    let ast = md.parse(input);
-    let root = ast.cast::<Root>().unwrap();
-    if let Some(fm) = root.ext.get::<FrontMatter>() {
-        println!("frontmatter: {}", fm.raw);
-    }
-    ```
+- **`html`** - enable raw inline/block HTML.
+  By default `plugins::cmark` does not enable raw HTML.
+  Add `markdown_it::plugins::html::add(parser)` to enable it.
+
+- **`directives`** - allows custom directives like `:name{key=value}` that are
+  rendered by user provided content. The default renderers simply emit `<span>`/`<div>`
+  wrappers. But it might be used like `:name{onclink=...}`.
