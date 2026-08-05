@@ -3,6 +3,11 @@
   "version": "0.1.1",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GSGFs7/markdown-it-rs.git",
+    "directory": "bindings/wasm"
+  },
   "files": [
     "pkg"
   ],
