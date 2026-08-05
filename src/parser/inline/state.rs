@@ -215,11 +215,11 @@ impl<'a, 'b> InlineState<'a, 'b> {
             }
         }
 
-        
-        
-
         let (can_open, can_close) = if !can_split_word {
-            (left_flanking && (!right_flanking || is_last_punct_char), right_flanking && (!left_flanking || is_next_punct_char))
+            (
+                left_flanking && (!right_flanking || is_last_punct_char),
+                right_flanking && (!left_flanking || is_next_punct_char),
+            )
         } else {
             (left_flanking, right_flanking)
         };
