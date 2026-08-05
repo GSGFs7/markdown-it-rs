@@ -27,6 +27,8 @@
     "build:basic": "wasm-pack build . --release --target bundler --out-dir pkg/basic --out-name basic --no-pack -- --locked --no-default-features",
     "build:full": "wasm-pack build . --release --target bundler --out-dir pkg/full --out-name full --no-pack -- --locked --no-default-features --features full",
     "build": "npm run clean && npm run build:basic && npm run build:full",
+    "test": "npm run build && npm run test:js",
+    "test:js": "node --test",
     "postbuild": "rm ./pkg/basic/.gitignore ./pkg/full/.gitignore",
     "prepack": "npm run build"
   }
