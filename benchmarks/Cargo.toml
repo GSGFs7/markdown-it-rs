@@ -15,3 +15,5 @@ markdown-it-v6 = { package = "markdown-it", version = "0.6" }
 name = "test-file"
 path = "test-file.rs"
 harness = false
+
+[workspace]

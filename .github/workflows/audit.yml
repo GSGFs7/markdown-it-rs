@@ -1,0 +1,32 @@
+name: Dependency audit
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-audit:
+    name: Audit release workspace dependencies
+    runs-on: ubuntu-latest
+    env:
+      CARGO_NET_RETRY: "3"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2.82.2
+        with:
+          tool: cargo-audit@0.22.2
+
+      - name: Audit Cargo.lock
+        # The release workspace lockfile excludes the legacy benchmark workspace.
+        # Skip the flaky crates.io yanked-package lookup; RustSec advisories are still checked.
+        run: cargo audit --file Cargo.lock --no-yanked
