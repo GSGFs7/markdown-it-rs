@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.0 - 2026-08-05
+
 ### Breaking changes
 
  - changed parser rule identifiers from `TypeKey` to `RuleMark`, which supports
