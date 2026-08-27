@@ -32,7 +32,9 @@ impl NodeValue for Linkified {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    md.add_rule::<LinkifyPrescan>().before::<InlineParserRule>();
+    md.add_rule::<LinkifyPrescan>()
+        .before::<InlineParserRule>()
+        .before_all();
 
     md.inline.add_rule::<LinkifyScanner>();
 }
@@ -148,5 +150,22 @@ impl InlineRule for LinkifyScanner {
         state.trailing_text_pop(proto_size);
         state.pos -= proto_size;
         Some((node, url_end - url_start))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn prescan_does_not_run_inline_postprocessors_too_early() {
+        use crate::plugins::cmark;
+        use crate::plugins::extra::*;
+
+        let md = &mut MarkdownIt::new();
+        cmark::add(md);
+        typographer::add(md);
+        smartquotes::add(md);
+        linkify::add(md);
+
+        assert_eq!(md.parse(r#"a~~"foo"~~"#).render(), "<p>a~~“foo”~~</p>\n");
     }
 }

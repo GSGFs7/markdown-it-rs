@@ -37,6 +37,7 @@ use regex::Regex;
 
 use crate::parser::core::CoreRule;
 use crate::parser::inline::Text;
+use crate::parser::inline::builtin::InlineParserRule;
 use crate::{MarkdownIt, Node};
 
 static REPLACEMENTS: LazyLock<Box<[(Regex, &'static str)]>> = LazyLock::new(|| {
@@ -76,7 +77,7 @@ fn replace_abbreviation(input: &str) -> &'static str {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    md.add_rule::<TypographerRule>();
+    md.add_rule::<TypographerRule>().after::<InlineParserRule>();
 }
 
 pub struct TypographerRule;

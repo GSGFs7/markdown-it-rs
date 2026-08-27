@@ -29,6 +29,7 @@ use std::collections::HashMap;
 use crate::common::utils::is_punct_char;
 use crate::parser::core::CoreRule;
 use crate::parser::inline::Text;
+use crate::parser::inline::builtin::InlineParserRule;
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
@@ -56,7 +57,8 @@ pub fn add_with<
         OPEN_SINGLE_QUOTE,
         CLOSE_SINGLE_QUOTE,
         OPEN_DOUBLE_QUOTE,
-        CLOSE_DOUBLE_QUOTE>>();
+        CLOSE_DOUBLE_QUOTE>>()
+    .after::<InlineParserRule>();
 }
 
 /// Simplified Node type that only holds the info we need
