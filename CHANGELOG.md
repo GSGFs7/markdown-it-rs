@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- required custom `NodeValue` implementations to be `Send + Sync`, allowing
+  `Node` ASTs to be transferred and shared across threads
+
 ## 0.7.0 - 2026-08-05
 
 ### Breaking changes

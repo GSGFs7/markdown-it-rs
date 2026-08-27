@@ -209,7 +209,7 @@ impl Default for Node {
 }
 
 /// Contents of the specific AST node.
-pub trait NodeValue: Debug + Downcast {
+pub trait NodeValue: Debug + Downcast + Send + Sync {
     /// Output HTML corresponding to this node using Renderer API.
     ///
     /// Example implementation looks like this:
@@ -230,3 +230,16 @@ pub trait NodeValue: Debug + Downcast {
 }
 
 impl_downcast!(NodeValue);
+
+#[cfg(test)]
+mod test {
+    use crate::{MarkdownIt, Node};
+
+    fn assert_send_sync<T: Sync>() {}
+
+    #[test]
+    fn parser_and_ast_are_send_and_sync() {
+        assert_send_sync::<Node>();
+        assert_send_sync::<MarkdownIt>();
+    }
+}
