@@ -4,10 +4,13 @@
 //!  - highlight (==xxx==)
 //!  - tables
 //!  - task lists (`- [ ] todo`, `- [x] done`)
+//!  - alerts (`> [!NOTE]`, `> [!WARNING]`, ...)
 //!  - linkify (convert <http://example.com> to a link)
 //!  - beautify links (cut "http://" from links and shorten paths)
 //!  - smartquotes and typographer
+//!  - footnotes
 //!  - code block highlighting using `syntect`
+//!  - math (`$...$` / `$$...$$`, with the `katex` feature enabled)
 //!
 //! ```rust
 //! let md = &mut markdown_it::MarkdownIt::new();
@@ -21,6 +24,7 @@
 //! assert_eq!(html.trim(), r#"<p>Markdown done “The Right Way™”</p>"#);
 //! ```
 
+pub mod alert;
 pub mod beautify_links;
 pub mod footnote;
 pub mod front_matter;
@@ -54,4 +58,5 @@ pub fn add(md: &mut MarkdownIt) {
     #[cfg(feature = "katex")]
     math::add(md);
     footnote::add(md);
+    alert::add(md);
 }

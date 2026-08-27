@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- added GFM-style alerts
 - required custom `NodeValue` implementations to be `Send + Sync`, allowing
   `Node` ASTs to be transferred and shared across threads
 
