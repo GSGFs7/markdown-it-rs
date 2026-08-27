@@ -57,3 +57,29 @@ impl InlineRule for HtmlInlineScanner {
         Some((node, capture_len))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    fn render(input: &str) -> String {
+        let md = &mut crate::MarkdownIt::new();
+        crate::plugins::cmark::add(md);
+        crate::plugins::html::add(md);
+        md.parse(input).render()
+    }
+
+    #[test]
+    fn comment_allows_internal_double_hyphens() {
+        assert_eq!(
+            render("foo <!-- this is a --\ncomment - with hyphens -->"),
+            "<p>foo <!-- this is a --\ncomment - with hyphens --></p>\n",
+        );
+    }
+
+    #[test]
+    fn supports_short_comment_forms() {
+        assert_eq!(
+            render("foo <!--> foo -->\n\nfoo <!---> foo -->"),
+            "<p>foo <!--> foo --&gt;</p>\n<p>foo <!---> foo --&gt;</p>\n",
+        );
+    }
+}

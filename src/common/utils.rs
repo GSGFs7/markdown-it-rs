@@ -315,7 +315,9 @@ pub fn is_punct_char(ch: char) -> bool {
     match get_general_category(ch) {
         // P
         ConnectorPunctuation | DashPunctuation | OpenPunctuation | ClosePunctuation |
-        InitialPunctuation | FinalPunctuation | OtherPunctuation => true,
+        InitialPunctuation | FinalPunctuation | OtherPunctuation |
+        // S (in CommonMark 0.31, symbol also refers to punctuation)
+        MathSymbol | CurrencySymbol | ModifierSymbol | OtherSymbol => true,
 
         // L
         UppercaseLetter | LowercaseLetter | TitlecaseLetter | ModifierLetter | OtherLetter |
@@ -323,8 +325,6 @@ pub fn is_punct_char(ch: char) -> bool {
         NonspacingMark | SpacingMark | EnclosingMark |
         // N
         DecimalNumber | LetterNumber | OtherNumber |
-        // S
-        MathSymbol | CurrencySymbol | ModifierSymbol | OtherSymbol |
         // Z
         SpaceSeparator | LineSeparator | ParagraphSeparator |
         // C

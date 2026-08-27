@@ -27,7 +27,7 @@ use super::run;
 // this part of the file is auto-generated
 // don't edit it, otherwise your changes might be lost
 #[test]
-fn src_line_355() {
+fn src_line_354() {
     let input = "\tfoo\tbaz\t\tbim";
     let output = "<pre><code>foo\tbaz\t\tbim
 </code></pre>";
@@ -35,7 +35,7 @@ fn src_line_355() {
 }
 
 #[test]
-fn src_line_362() {
+fn src_line_361() {
     let input = "  \tfoo\tbaz\t\tbim";
     let output = "<pre><code>foo\tbaz\t\tbim
 </code></pre>";
@@ -43,7 +43,7 @@ fn src_line_362() {
 }
 
 #[test]
-fn src_line_369() {
+fn src_line_368() {
     let input = "    a\ta
     ὐ\ta";
     let output = "<pre><code>a\ta
@@ -53,7 +53,7 @@ fn src_line_369() {
 }
 
 #[test]
-fn src_line_382() {
+fn src_line_381() {
     let input = "  - foo
 
 \tbar";
@@ -67,7 +67,7 @@ fn src_line_382() {
 }
 
 #[test]
-fn src_line_395() {
+fn src_line_394() {
     let input = "- foo
 
 \t\tbar";
@@ -82,7 +82,7 @@ fn src_line_395() {
 }
 
 #[test]
-fn src_line_418() {
+fn src_line_417() {
     let input = ">\t\tfoo";
     let output = r#"<blockquote>
 <pre><code>  foo
@@ -92,7 +92,7 @@ fn src_line_418() {
 }
 
 #[test]
-fn src_line_427() {
+fn src_line_426() {
     let input = "-\t\tfoo";
     let output = r#"<ul>
 <li>
@@ -104,7 +104,7 @@ fn src_line_427() {
 }
 
 #[test]
-fn src_line_439() {
+fn src_line_438() {
     let input = "    foo
 \tbar";
     let output = r#"<pre><code>foo
@@ -114,7 +114,7 @@ bar
 }
 
 #[test]
-fn src_line_448() {
+fn src_line_447() {
     let input = " - foo
    - bar
 \t - baz";
@@ -133,35 +133,35 @@ fn src_line_448() {
 }
 
 #[test]
-fn src_line_466() {
+fn src_line_465() {
     let input = "#\tFoo";
     let output = r#"<h1>Foo</h1>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_472() {
+fn src_line_471() {
     let input = "*\t*\t*\t";
     let output = r#"<hr />"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_489() {
+fn src_line_488() {
     let input = r#"\!\"\#\$\%\&\'\(\)\*\+\,\-\.\/\:\;\<\=\>\?\@\[\\\]\^\_\`\{\|\}\~"#;
     let output = r#"<p>!&quot;#$%&amp;'()*+,-./:;&lt;=&gt;?@[\]^_`{|}~</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_499() {
+fn src_line_498() {
     let input = "\\\t\\A\\a\\ \\3\\φ\\«";
     let output = "<p>\\\t\\A\\a\\ \\3\\φ\\«</p>";
     run(input, output);
 }
 
 #[test]
-fn src_line_509() {
+fn src_line_508() {
     let input = r#"\*not emphasized*
 \<br/> not a tag
 \[not a link](/foo)
@@ -184,14 +184,14 @@ fn src_line_509() {
 }
 
 #[test]
-fn src_line_534() {
+fn src_line_533() {
     let input = r#"\\*emphasis*"#;
     let output = r#"<p>\<em>emphasis</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_543() {
+fn src_line_542() {
     let input = r#"foo\
 bar"#;
     let output = r#"<p>foo<br />
@@ -200,14 +200,14 @@ bar</p>"#;
 }
 
 #[test]
-fn src_line_555() {
+fn src_line_554() {
     let input = r#"`` \[\` ``"#;
     let output = r#"<p><code>\[\`</code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_562() {
+fn src_line_561() {
     let input = r#"    \[\]"#;
     let output = r#"<pre><code>\[\]
 </code></pre>"#;
@@ -215,7 +215,7 @@ fn src_line_562() {
 }
 
 #[test]
-fn src_line_570() {
+fn src_line_569() {
     let input = r#"~~~
 \[\]
 ~~~"#;
@@ -225,28 +225,28 @@ fn src_line_570() {
 }
 
 #[test]
-fn src_line_580() {
-    let input = r#"<http://example.com?find=\*>"#;
-    let output = r#"<p><a href="http://example.com?find=%5C*">http://example.com?find=\*</a></p>"#;
+fn src_line_579() {
+    let input = r#"<https://example.com?find=\*>"#;
+    let output = r#"<p><a href="https://example.com?find=%5C*">https://example.com?find=\*</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_587() {
+fn src_line_586() {
     let input = r#"<a href="/bar\/)">"#;
     let output = r#"<a href="/bar\/)">"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_597() {
+fn src_line_596() {
     let input = r#"[foo](/bar\* "ti\*tle")"#;
     let output = r#"<p><a href="/bar*" title="ti*tle">foo</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_604() {
+fn src_line_603() {
     let input = r#"[foo]
 
 [foo]: /bar\* "ti\*tle""#;
@@ -255,7 +255,7 @@ fn src_line_604() {
 }
 
 #[test]
-fn src_line_613() {
+fn src_line_612() {
     let input = r#"``` foo\+bar
 foo
 ```"#;
@@ -265,7 +265,7 @@ foo
 }
 
 #[test]
-fn src_line_649() {
+fn src_line_648() {
     let input = r#"&nbsp; &amp; &copy; &AElig; &Dcaron;
 &frac34; &HilbertSpace; &DifferentialD;
 &ClockwiseContourIntegral; &ngE;"#;
@@ -276,21 +276,21 @@ fn src_line_649() {
 }
 
 #[test]
-fn src_line_668() {
+fn src_line_667() {
     let input = r#"&#35; &#1234; &#992; &#0;"#;
     let output = r#"<p># Ӓ Ϡ �</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_681() {
+fn src_line_680() {
     let input = r#"&#X22; &#XD06; &#xcab;"#;
     let output = r#"<p>&quot; ആ ಫ</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_690() {
+fn src_line_689() {
     let input = r#"&nbsp &x; &#; &#x;
 &#87654321;
 &#abcdef0;
@@ -303,35 +303,35 @@ fn src_line_690() {
 }
 
 #[test]
-fn src_line_707() {
+fn src_line_706() {
     let input = r#"&copy"#;
     let output = r#"<p>&amp;copy</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_717() {
+fn src_line_716() {
     let input = r#"&MadeUpEntity;"#;
     let output = r#"<p>&amp;MadeUpEntity;</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_728() {
+fn src_line_727() {
     let input = r#"<a href="&ouml;&ouml;.html">"#;
     let output = r#"<a href="&ouml;&ouml;.html">"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_735() {
+fn src_line_734() {
     let input = r#"[foo](/f&ouml;&ouml; "f&ouml;&ouml;")"#;
     let output = r#"<p><a href="/f%C3%B6%C3%B6" title="föö">foo</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_742() {
+fn src_line_741() {
     let input = r#"[foo]
 
 [foo]: /f&ouml;&ouml; "f&ouml;&ouml;""#;
@@ -340,7 +340,7 @@ fn src_line_742() {
 }
 
 #[test]
-fn src_line_751() {
+fn src_line_750() {
     let input = r#"``` f&ouml;&ouml;
 foo
 ```"#;
@@ -350,14 +350,14 @@ foo
 }
 
 #[test]
-fn src_line_764() {
+fn src_line_763() {
     let input = r#"`f&ouml;&ouml;`"#;
     let output = r#"<p><code>f&amp;ouml;&amp;ouml;</code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_771() {
+fn src_line_770() {
     let input = r#"    f&ouml;f&ouml;"#;
     let output = r#"<pre><code>f&amp;ouml;f&amp;ouml;
 </code></pre>"#;
@@ -365,7 +365,7 @@ fn src_line_771() {
 }
 
 #[test]
-fn src_line_783() {
+fn src_line_782() {
     let input = r#"&#42;foo&#42;
 *foo*"#;
     let output = r#"<p>*foo*
@@ -374,7 +374,7 @@ fn src_line_783() {
 }
 
 #[test]
-fn src_line_791() {
+fn src_line_790() {
     let input = r#"&#42; foo
 
 * foo"#;
@@ -386,7 +386,7 @@ fn src_line_791() {
 }
 
 #[test]
-fn src_line_802() {
+fn src_line_801() {
     let input = r#"foo&#10;&#10;bar"#;
     let output = r#"<p>foo
 
@@ -395,21 +395,21 @@ bar</p>"#;
 }
 
 #[test]
-fn src_line_810() {
+fn src_line_809() {
     let input = r#"&#9;foo"#;
     let output = "<p>\tfoo</p>";
     run(input, output);
 }
 
 #[test]
-fn src_line_817() {
+fn src_line_816() {
     let input = r#"[a](url &quot;tit&quot;)"#;
     let output = r#"<p>[a](url &quot;tit&quot;)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_840() {
+fn src_line_839() {
     let input = r#"- `one
 - two`"#;
     let output = r#"<ul>
@@ -420,7 +420,7 @@ fn src_line_840() {
 }
 
 #[test]
-fn src_line_879() {
+fn src_line_878() {
     let input = r#"***
 ---
 ___"#;
@@ -431,21 +431,21 @@ ___"#;
 }
 
 #[test]
-fn src_line_892() {
+fn src_line_891() {
     let input = r#"+++"#;
     let output = r#"<p>+++</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_899() {
+fn src_line_898() {
     let input = r#"==="#;
     let output = r#"<p>===</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_908() {
+fn src_line_907() {
     let input = r#"--
 **
 __"#;
@@ -456,7 +456,7 @@ __</p>"#;
 }
 
 #[test]
-fn src_line_921() {
+fn src_line_920() {
     let input = r#" ***
   ***
    ***"#;
@@ -467,7 +467,7 @@ fn src_line_921() {
 }
 
 #[test]
-fn src_line_934() {
+fn src_line_933() {
     let input = r#"    ***"#;
     let output = r#"<pre><code>***
 </code></pre>"#;
@@ -475,7 +475,7 @@ fn src_line_934() {
 }
 
 #[test]
-fn src_line_942() {
+fn src_line_941() {
     let input = r#"Foo
     ***"#;
     let output = r#"<p>Foo
@@ -484,42 +484,42 @@ fn src_line_942() {
 }
 
 #[test]
-fn src_line_953() {
+fn src_line_952() {
     let input = r#"_____________________________________"#;
     let output = r#"<hr />"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_962() {
+fn src_line_961() {
     let input = r#" - - -"#;
     let output = r#"<hr />"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_969() {
+fn src_line_968() {
     let input = r#" **  * ** * ** * **"#;
     let output = r#"<hr />"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_976() {
+fn src_line_975() {
     let input = r#"-     -      -      -"#;
     let output = r#"<hr />"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_985() {
+fn src_line_984() {
     let input = "- - - -   \x20";
     let output = r#"<hr />"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_994() {
+fn src_line_993() {
     let input = r#"_ _ _ _ a
 
 a------
@@ -532,14 +532,14 @@ a------
 }
 
 #[test]
-fn src_line_1010() {
+fn src_line_1009() {
     let input = r#" *-*"#;
     let output = r#"<p><em>-</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_1019() {
+fn src_line_1018() {
     let input = r#"- foo
 ***
 - bar"#;
@@ -554,7 +554,7 @@ fn src_line_1019() {
 }
 
 #[test]
-fn src_line_1036() {
+fn src_line_1035() {
     let input = r#"Foo
 ***
 bar"#;
@@ -565,7 +565,7 @@ bar"#;
 }
 
 #[test]
-fn src_line_1053() {
+fn src_line_1052() {
     let input = r#"Foo
 ---
 bar"#;
@@ -575,7 +575,7 @@ bar"#;
 }
 
 #[test]
-fn src_line_1066() {
+fn src_line_1065() {
     let input = r#"* Foo
 * * *
 * Bar"#;
@@ -590,7 +590,7 @@ fn src_line_1066() {
 }
 
 #[test]
-fn src_line_1083() {
+fn src_line_1082() {
     let input = r#"- Foo
 - * * *"#;
     let output = r#"<ul>
@@ -603,7 +603,7 @@ fn src_line_1083() {
 }
 
 #[test]
-fn src_line_1112() {
+fn src_line_1111() {
     let input = r#"# foo
 ## foo
 ### foo
@@ -620,14 +620,14 @@ fn src_line_1112() {
 }
 
 #[test]
-fn src_line_1131() {
+fn src_line_1130() {
     let input = r#"####### foo"#;
     let output = r#"<p>####### foo</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_1146() {
+fn src_line_1145() {
     let input = r#"#5 bolt
 
 #hashtag"#;
@@ -637,28 +637,28 @@ fn src_line_1146() {
 }
 
 #[test]
-fn src_line_1158() {
+fn src_line_1157() {
     let input = r#"\## foo"#;
     let output = r#"<p>## foo</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_1167() {
+fn src_line_1166() {
     let input = r#"# foo *bar* \*baz\*"#;
     let output = r#"<h1>foo <em>bar</em> *baz*</h1>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_1176() {
+fn src_line_1175() {
     let input = "#                  foo                    \x20";
     let output = r#"<h1>foo</h1>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_1185() {
+fn src_line_1184() {
     let input = r#" ### foo
   ## foo
    # foo"#;
@@ -669,7 +669,7 @@ fn src_line_1185() {
 }
 
 #[test]
-fn src_line_1198() {
+fn src_line_1197() {
     let input = r#"    # foo"#;
     let output = r#"<pre><code># foo
 </code></pre>"#;
@@ -677,7 +677,7 @@ fn src_line_1198() {
 }
 
 #[test]
-fn src_line_1206() {
+fn src_line_1205() {
     let input = r#"foo
     # bar"#;
     let output = r#"<p>foo
@@ -686,7 +686,7 @@ fn src_line_1206() {
 }
 
 #[test]
-fn src_line_1217() {
+fn src_line_1216() {
     let input = r#"## foo ##
   ###   bar    ###"#;
     let output = r#"<h2>foo</h2>
@@ -695,7 +695,7 @@ fn src_line_1217() {
 }
 
 #[test]
-fn src_line_1228() {
+fn src_line_1227() {
     let input = r#"# foo ##################################
 ##### foo ##"#;
     let output = r#"<h1>foo</h1>
@@ -704,28 +704,28 @@ fn src_line_1228() {
 }
 
 #[test]
-fn src_line_1239() {
+fn src_line_1238() {
     let input = "### foo ###    \x20";
     let output = r#"<h3>foo</h3>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_1250() {
+fn src_line_1249() {
     let input = r#"### foo ### b"#;
     let output = r#"<h3>foo ### b</h3>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_1259() {
+fn src_line_1258() {
     let input = r#"# foo#"#;
     let output = r#"<h1>foo#</h1>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_1269() {
+fn src_line_1268() {
     let input = r#"### foo \###
 ## foo #\##
 # foo \#"#;
@@ -736,7 +736,7 @@ fn src_line_1269() {
 }
 
 #[test]
-fn src_line_1283() {
+fn src_line_1282() {
     let input = r#"****
 ## foo
 ****"#;
@@ -747,7 +747,7 @@ fn src_line_1283() {
 }
 
 #[test]
-fn src_line_1294() {
+fn src_line_1293() {
     let input = r#"Foo bar
 # baz
 Bar foo"#;
@@ -758,7 +758,7 @@ Bar foo"#;
 }
 
 #[test]
-fn src_line_1307() {
+fn src_line_1306() {
     let input = "##\x20
 #
 ### ###";
@@ -769,7 +769,7 @@ fn src_line_1307() {
 }
 
 #[test]
-fn src_line_1350() {
+fn src_line_1346() {
     let input = r#"Foo *bar*
 =========
 
@@ -781,7 +781,7 @@ Foo *bar*
 }
 
 #[test]
-fn src_line_1364() {
+fn src_line_1360() {
     let input = r#"Foo *bar
 baz*
 ===="#;
@@ -791,7 +791,7 @@ baz</em></h1>"#;
 }
 
 #[test]
-fn src_line_1378() {
+fn src_line_1374() {
     let input = "  Foo *bar
 baz*\t
 ====";
@@ -801,7 +801,7 @@ baz</em></h1>"#;
 }
 
 #[test]
-fn src_line_1390() {
+fn src_line_1386() {
     let input = r#"Foo
 -------------------------
 
@@ -813,7 +813,7 @@ Foo
 }
 
 #[test]
-fn src_line_1405() {
+fn src_line_1401() {
     let input = r#"   Foo
 ---
 
@@ -829,7 +829,7 @@ fn src_line_1405() {
 }
 
 #[test]
-fn src_line_1423() {
+fn src_line_1419() {
     let input = r#"    Foo
     ---
 
@@ -845,7 +845,7 @@ Foo
 }
 
 #[test]
-fn src_line_1442() {
+fn src_line_1438() {
     let input = "Foo
    ----     \x20";
     let output = r#"<h2>Foo</h2>"#;
@@ -853,7 +853,7 @@ fn src_line_1442() {
 }
 
 #[test]
-fn src_line_1452() {
+fn src_line_1448() {
     let input = r#"Foo
     ---"#;
     let output = r#"<p>Foo
@@ -862,7 +862,7 @@ fn src_line_1452() {
 }
 
 #[test]
-fn src_line_1463() {
+fn src_line_1459() {
     let input = r#"Foo
 = =
 
@@ -876,7 +876,7 @@ Foo
 }
 
 #[test]
-fn src_line_1479() {
+fn src_line_1475() {
     let input = "Foo \x20
 -----";
     let output = r#"<h2>Foo</h2>"#;
@@ -884,7 +884,7 @@ fn src_line_1479() {
 }
 
 #[test]
-fn src_line_1489() {
+fn src_line_1485() {
     let input = r#"Foo\
 ----"#;
     let output = r#"<h2>Foo\</h2>"#;
@@ -892,7 +892,7 @@ fn src_line_1489() {
 }
 
 #[test]
-fn src_line_1500() {
+fn src_line_1496() {
     let input = r#"`Foo
 ----
 `
@@ -908,7 +908,7 @@ of dashes"/>"#;
 }
 
 #[test]
-fn src_line_1519() {
+fn src_line_1515() {
     let input = r#"> Foo
 ---"#;
     let output = r#"<blockquote>
@@ -919,7 +919,7 @@ fn src_line_1519() {
 }
 
 #[test]
-fn src_line_1530() {
+fn src_line_1526() {
     let input = r#"> foo
 bar
 ==="#;
@@ -932,7 +932,7 @@ bar
 }
 
 #[test]
-fn src_line_1543() {
+fn src_line_1539() {
     let input = r#"- Foo
 ---"#;
     let output = r#"<ul>
@@ -943,7 +943,7 @@ fn src_line_1543() {
 }
 
 #[test]
-fn src_line_1558() {
+fn src_line_1554() {
     let input = r#"Foo
 Bar
 ---"#;
@@ -953,7 +953,7 @@ Bar</h2>"#;
 }
 
 #[test]
-fn src_line_1571() {
+fn src_line_1567() {
     let input = r#"---
 Foo
 ---
@@ -968,7 +968,7 @@ Baz"#;
 }
 
 #[test]
-fn src_line_1588() {
+fn src_line_1584() {
     let input = r#"
 ===="#;
     let output = r#"<p>====</p>"#;
@@ -976,7 +976,7 @@ fn src_line_1588() {
 }
 
 #[test]
-fn src_line_1600() {
+fn src_line_1596() {
     let input = r#"---
 ---"#;
     let output = r#"<hr />
@@ -985,7 +985,7 @@ fn src_line_1600() {
 }
 
 #[test]
-fn src_line_1609() {
+fn src_line_1605() {
     let input = r#"- foo
 -----"#;
     let output = r#"<ul>
@@ -996,7 +996,7 @@ fn src_line_1609() {
 }
 
 #[test]
-fn src_line_1620() {
+fn src_line_1616() {
     let input = r#"    foo
 ---"#;
     let output = r#"<pre><code>foo
@@ -1006,7 +1006,7 @@ fn src_line_1620() {
 }
 
 #[test]
-fn src_line_1630() {
+fn src_line_1626() {
     let input = r#"> foo
 -----"#;
     let output = r#"<blockquote>
@@ -1017,7 +1017,7 @@ fn src_line_1630() {
 }
 
 #[test]
-fn src_line_1644() {
+fn src_line_1640() {
     let input = r#"\> foo
 ------"#;
     let output = r#"<h2>&gt; foo</h2>"#;
@@ -1025,7 +1025,7 @@ fn src_line_1644() {
 }
 
 #[test]
-fn src_line_1675() {
+fn src_line_1671() {
     let input = r#"Foo
 
 bar
@@ -1038,7 +1038,7 @@ baz"#;
 }
 
 #[test]
-fn src_line_1691() {
+fn src_line_1687() {
     let input = r#"Foo
 bar
 
@@ -1053,7 +1053,7 @@ bar</p>
 }
 
 #[test]
-fn src_line_1709() {
+fn src_line_1705() {
     let input = r#"Foo
 bar
 * * *
@@ -1066,7 +1066,7 @@ bar</p>
 }
 
 #[test]
-fn src_line_1724() {
+fn src_line_1720() {
     let input = r#"Foo
 bar
 \---
@@ -1079,7 +1079,7 @@ baz</p>"#;
 }
 
 #[test]
-fn src_line_1752() {
+fn src_line_1748() {
     let input = r#"    a simple
       indented code block"#;
     let output = r#"<pre><code>a simple
@@ -1089,7 +1089,7 @@ fn src_line_1752() {
 }
 
 #[test]
-fn src_line_1766() {
+fn src_line_1762() {
     let input = r#"  - foo
 
     bar"#;
@@ -1103,7 +1103,7 @@ fn src_line_1766() {
 }
 
 #[test]
-fn src_line_1780() {
+fn src_line_1776() {
     let input = r#"1.  foo
 
     - bar"#;
@@ -1119,7 +1119,7 @@ fn src_line_1780() {
 }
 
 #[test]
-fn src_line_1800() {
+fn src_line_1796() {
     let input = r#"    <a/>
     *hi*
 
@@ -1133,7 +1133,7 @@ fn src_line_1800() {
 }
 
 #[test]
-fn src_line_1816() {
+fn src_line_1812() {
     let input = "    chunk1
 
     chunk2
@@ -1153,7 +1153,7 @@ chunk3
 }
 
 #[test]
-fn src_line_1839() {
+fn src_line_1835() {
     let input = "    chunk1
      \x20
       chunk2";
@@ -1165,7 +1165,7 @@ fn src_line_1839() {
 }
 
 #[test]
-fn src_line_1854() {
+fn src_line_1850() {
     let input = r#"Foo
     bar
 "#;
@@ -1175,7 +1175,7 @@ bar</p>"#;
 }
 
 #[test]
-fn src_line_1868() {
+fn src_line_1864() {
     let input = r#"    foo
 bar"#;
     let output = r#"<pre><code>foo
@@ -1185,7 +1185,7 @@ bar"#;
 }
 
 #[test]
-fn src_line_1881() {
+fn src_line_1877() {
     let input = r#"# Heading
     foo
 Heading
@@ -1203,7 +1203,7 @@ Heading
 }
 
 #[test]
-fn src_line_1901() {
+fn src_line_1897() {
     let input = r#"        foo
     bar"#;
     let output = r#"<pre><code>    foo
@@ -1213,7 +1213,7 @@ bar
 }
 
 #[test]
-fn src_line_1914() {
+fn src_line_1910() {
     let input = "
    \x20
     foo
@@ -1225,7 +1225,7 @@ fn src_line_1914() {
 }
 
 #[test]
-fn src_line_1928() {
+fn src_line_1924() {
     let input = "    foo \x20";
     let output = "<pre><code>foo \x20
 </code></pre>";
@@ -1233,7 +1233,7 @@ fn src_line_1928() {
 }
 
 #[test]
-fn src_line_1983() {
+fn src_line_1979() {
     let input = r#"```
 <
  >
@@ -1245,7 +1245,7 @@ fn src_line_1983() {
 }
 
 #[test]
-fn src_line_1997() {
+fn src_line_1993() {
     let input = r#"~~~
 <
  >
@@ -1257,7 +1257,7 @@ fn src_line_1997() {
 }
 
 #[test]
-fn src_line_2010() {
+fn src_line_2006() {
     let input = r#"``
 foo
 ``"#;
@@ -1266,7 +1266,7 @@ foo
 }
 
 #[test]
-fn src_line_2021() {
+fn src_line_2017() {
     let input = r#"```
 aaa
 ~~~
@@ -1278,7 +1278,7 @@ aaa
 }
 
 #[test]
-fn src_line_2033() {
+fn src_line_2029() {
     let input = r#"~~~
 aaa
 ```
@@ -1290,7 +1290,7 @@ aaa
 }
 
 #[test]
-fn src_line_2047() {
+fn src_line_2043() {
     let input = r#"````
 aaa
 ```
@@ -1302,7 +1302,7 @@ aaa
 }
 
 #[test]
-fn src_line_2059() {
+fn src_line_2055() {
     let input = r#"~~~~
 aaa
 ~~~
@@ -1314,14 +1314,14 @@ aaa
 }
 
 #[test]
-fn src_line_2074() {
+fn src_line_2070() {
     let input = r#"```"#;
     let output = r#"<pre><code></code></pre>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_2081() {
+fn src_line_2077() {
     let input = r#"`````
 
 ```
@@ -1334,7 +1334,7 @@ aaa
 }
 
 #[test]
-fn src_line_2094() {
+fn src_line_2090() {
     let input = r#"> ```
 > aaa
 
@@ -1348,7 +1348,7 @@ bbb"#;
 }
 
 #[test]
-fn src_line_2110() {
+fn src_line_2106() {
     let input = "```
 
  \x20
@@ -1360,7 +1360,7 @@ fn src_line_2110() {
 }
 
 #[test]
-fn src_line_2124() {
+fn src_line_2120() {
     let input = r#"```
 ```"#;
     let output = r#"<pre><code></code></pre>"#;
@@ -1368,7 +1368,7 @@ fn src_line_2124() {
 }
 
 #[test]
-fn src_line_2136() {
+fn src_line_2132() {
     let input = r#" ```
  aaa
 aaa
@@ -1380,7 +1380,7 @@ aaa
 }
 
 #[test]
-fn src_line_2148() {
+fn src_line_2144() {
     let input = r#"  ```
 aaa
   aaa
@@ -1394,7 +1394,7 @@ aaa
 }
 
 #[test]
-fn src_line_2162() {
+fn src_line_2158() {
     let input = r#"   ```
    aaa
     aaa
@@ -1408,7 +1408,7 @@ aaa
 }
 
 #[test]
-fn src_line_2178() {
+fn src_line_2174() {
     let input = r#"    ```
     aaa
     ```"#;
@@ -1420,7 +1420,7 @@ aaa
 }
 
 #[test]
-fn src_line_2193() {
+fn src_line_2189() {
     let input = r#"```
 aaa
   ```"#;
@@ -1430,7 +1430,7 @@ aaa
 }
 
 #[test]
-fn src_line_2203() {
+fn src_line_2199() {
     let input = r#"   ```
 aaa
   ```"#;
@@ -1440,7 +1440,7 @@ aaa
 }
 
 #[test]
-fn src_line_2215() {
+fn src_line_2211() {
     let input = r#"```
 aaa
     ```"#;
@@ -1451,7 +1451,7 @@ aaa
 }
 
 #[test]
-fn src_line_2229() {
+fn src_line_2225() {
     let input = r#"``` ```
 aaa"#;
     let output = r#"<p><code> </code>
@@ -1460,7 +1460,7 @@ aaa</p>"#;
 }
 
 #[test]
-fn src_line_2238() {
+fn src_line_2234() {
     let input = r#"~~~~~~
 aaa
 ~~~ ~~"#;
@@ -1471,7 +1471,7 @@ aaa
 }
 
 #[test]
-fn src_line_2252() {
+fn src_line_2248() {
     let input = r#"foo
 ```
 bar
@@ -1485,7 +1485,7 @@ baz"#;
 }
 
 #[test]
-fn src_line_2269() {
+fn src_line_2265() {
     let input = r#"foo
 ---
 ~~~
@@ -1500,7 +1500,7 @@ bar
 }
 
 #[test]
-fn src_line_2291() {
+fn src_line_2287() {
     let input = r#"```ruby
 def foo(x)
   return 3
@@ -1514,7 +1514,7 @@ end
 }
 
 #[test]
-fn src_line_2305() {
+fn src_line_2301() {
     let input = r#"~~~~    ruby startline=3 $%@#$
 def foo(x)
   return 3
@@ -1528,7 +1528,7 @@ end
 }
 
 #[test]
-fn src_line_2319() {
+fn src_line_2315() {
     let input = r#"````;
 ````"#;
     let output = r#"<pre><code class="language-;"></code></pre>"#;
@@ -1536,7 +1536,7 @@ fn src_line_2319() {
 }
 
 #[test]
-fn src_line_2329() {
+fn src_line_2325() {
     let input = r#"``` aa ```
 foo"#;
     let output = r#"<p><code>aa</code>
@@ -1545,7 +1545,7 @@ foo</p>"#;
 }
 
 #[test]
-fn src_line_2340() {
+fn src_line_2336() {
     let input = r#"~~~ aa ``` ~~~
 foo
 ~~~"#;
@@ -1555,7 +1555,7 @@ foo
 }
 
 #[test]
-fn src_line_2352() {
+fn src_line_2348() {
     let input = r#"```
 ``` aaa
 ```"#;
@@ -1565,7 +1565,7 @@ fn src_line_2352() {
 }
 
 #[test]
-fn src_line_2431() {
+fn src_line_2427() {
     let input = r#"<table><tr><td>
 <pre>
 **Hello**,
@@ -1583,7 +1583,7 @@ _world_.
 }
 
 #[test]
-fn src_line_2460() {
+fn src_line_2456() {
     let input = r#"<table>
   <tr>
     <td>
@@ -1605,7 +1605,7 @@ okay."#;
 }
 
 #[test]
-fn src_line_2482() {
+fn src_line_2478() {
     let input = r#" <div>
   *hello*
          <foo><a>"#;
@@ -1616,7 +1616,7 @@ fn src_line_2482() {
 }
 
 #[test]
-fn src_line_2495() {
+fn src_line_2491() {
     let input = r#"</div>
 *foo*"#;
     let output = r#"</div>
@@ -1625,7 +1625,7 @@ fn src_line_2495() {
 }
 
 #[test]
-fn src_line_2506() {
+fn src_line_2502() {
     let input = r#"<DIV CLASS="foo">
 
 *Markdown*
@@ -1638,7 +1638,7 @@ fn src_line_2506() {
 }
 
 #[test]
-fn src_line_2522() {
+fn src_line_2518() {
     let input = r#"<div id="foo"
   class="bar">
 </div>"#;
@@ -1649,7 +1649,7 @@ fn src_line_2522() {
 }
 
 #[test]
-fn src_line_2533() {
+fn src_line_2529() {
     let input = r#"<div id="foo" class="bar
   baz">
 </div>"#;
@@ -1660,7 +1660,7 @@ fn src_line_2533() {
 }
 
 #[test]
-fn src_line_2545() {
+fn src_line_2541() {
     let input = r#"<div>
 *foo*
 
@@ -1672,7 +1672,7 @@ fn src_line_2545() {
 }
 
 #[test]
-fn src_line_2561() {
+fn src_line_2557() {
     let input = r#"<div id="foo"
 *hi*"#;
     let output = r#"<div id="foo"
@@ -1681,7 +1681,7 @@ fn src_line_2561() {
 }
 
 #[test]
-fn src_line_2570() {
+fn src_line_2566() {
     let input = r#"<div class
 foo"#;
     let output = r#"<div class
@@ -1690,7 +1690,7 @@ foo"#;
 }
 
 #[test]
-fn src_line_2582() {
+fn src_line_2578() {
     let input = r#"<div *???-&&&-<---
 *foo*"#;
     let output = r#"<div *???-&&&-<---
@@ -1699,14 +1699,14 @@ fn src_line_2582() {
 }
 
 #[test]
-fn src_line_2594() {
+fn src_line_2590() {
     let input = r#"<div><a href="bar">*foo*</a></div>"#;
     let output = r#"<div><a href="bar">*foo*</a></div>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_2601() {
+fn src_line_2597() {
     let input = r#"<table><tr><td>
 foo
 </td></tr></table>"#;
@@ -1717,7 +1717,7 @@ foo
 }
 
 #[test]
-fn src_line_2618() {
+fn src_line_2614() {
     let input = r#"<div></div>
 ``` c
 int x = 33;
@@ -1730,7 +1730,7 @@ int x = 33;
 }
 
 #[test]
-fn src_line_2635() {
+fn src_line_2631() {
     let input = r#"<a href="foo">
 *bar*
 </a>"#;
@@ -1741,7 +1741,7 @@ fn src_line_2635() {
 }
 
 #[test]
-fn src_line_2648() {
+fn src_line_2644() {
     let input = r#"<Warning>
 *bar*
 </Warning>"#;
@@ -1752,7 +1752,7 @@ fn src_line_2648() {
 }
 
 #[test]
-fn src_line_2659() {
+fn src_line_2655() {
     let input = r#"<i class="foo">
 *bar*
 </i>"#;
@@ -1763,7 +1763,7 @@ fn src_line_2659() {
 }
 
 #[test]
-fn src_line_2670() {
+fn src_line_2666() {
     let input = r#"</ins>
 *bar*"#;
     let output = r#"</ins>
@@ -1772,7 +1772,7 @@ fn src_line_2670() {
 }
 
 #[test]
-fn src_line_2685() {
+fn src_line_2681() {
     let input = r#"<del>
 *foo*
 </del>"#;
@@ -1783,7 +1783,7 @@ fn src_line_2685() {
 }
 
 #[test]
-fn src_line_2700() {
+fn src_line_2696() {
     let input = r#"<del>
 
 *foo*
@@ -1796,14 +1796,14 @@ fn src_line_2700() {
 }
 
 #[test]
-fn src_line_2718() {
+fn src_line_2714() {
     let input = r#"<del>*foo*</del>"#;
     let output = r#"<p><del><em>foo</em></del></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_2734() {
+fn src_line_2730() {
     let input = r#"<pre language="haskell"><code>
 import Text.HTML.TagSoup
 
@@ -1822,7 +1822,7 @@ main = print $ parseTags tags
 }
 
 #[test]
-fn src_line_2755() {
+fn src_line_2751() {
     let input = r#"<script type="text/javascript">
 // JavaScript example
 
@@ -1839,7 +1839,7 @@ document.getElementById("demo").innerHTML = "Hello JavaScript!";
 }
 
 #[test]
-fn src_line_2774() {
+fn src_line_2770() {
     let input = r#"<textarea>
 
 *foo*
@@ -1858,7 +1858,7 @@ _bar_
 }
 
 #[test]
-fn src_line_2794() {
+fn src_line_2790() {
     let input = r#"<style
   type="text/css">
 h1 {color:red;}
@@ -1877,7 +1877,7 @@ p {color:blue;}
 }
 
 #[test]
-fn src_line_2817() {
+fn src_line_2813() {
     let input = r#"<style
   type="text/css">
 
@@ -1890,7 +1890,7 @@ foo"#;
 }
 
 #[test]
-fn src_line_2830() {
+fn src_line_2826() {
     let input = r#"> <div>
 > foo
 
@@ -1904,7 +1904,7 @@ foo
 }
 
 #[test]
-fn src_line_2844() {
+fn src_line_2840() {
     let input = r#"- <div>
 - foo"#;
     let output = r#"<ul>
@@ -1917,7 +1917,7 @@ fn src_line_2844() {
 }
 
 #[test]
-fn src_line_2859() {
+fn src_line_2855() {
     let input = r#"<style>p{color:red;}</style>
 *foo*"#;
     let output = r#"<style>p{color:red;}</style>
@@ -1926,7 +1926,7 @@ fn src_line_2859() {
 }
 
 #[test]
-fn src_line_2868() {
+fn src_line_2864() {
     let input = r#"<!-- foo -->*bar*
 *baz*"#;
     let output = r#"<!-- foo -->*bar*
@@ -1935,7 +1935,7 @@ fn src_line_2868() {
 }
 
 #[test]
-fn src_line_2880() {
+fn src_line_2876() {
     let input = r#"<script>
 foo
 </script>1. *bar*"#;
@@ -1946,7 +1946,7 @@ foo
 }
 
 #[test]
-fn src_line_2893() {
+fn src_line_2889() {
     let input = r#"<!-- Foo
 
 bar
@@ -1961,7 +1961,7 @@ bar
 }
 
 #[test]
-fn src_line_2911() {
+fn src_line_2907() {
     let input = r#"<?php
 
   echo '>';
@@ -1978,14 +1978,14 @@ okay"#;
 }
 
 #[test]
-fn src_line_2930() {
+fn src_line_2926() {
     let input = r#"<!DOCTYPE html>"#;
     let output = r#"<!DOCTYPE html>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_2939() {
+fn src_line_2935() {
     let input = r#"<![CDATA[
 function matchwo(a,b)
 {
@@ -2016,7 +2016,7 @@ function matchwo(a,b)
 }
 
 #[test]
-fn src_line_2973() {
+fn src_line_2969() {
     let input = r#"  <!-- foo -->
 
     <!-- foo -->"#;
@@ -2027,7 +2027,7 @@ fn src_line_2973() {
 }
 
 #[test]
-fn src_line_2984() {
+fn src_line_2980() {
     let input = r#"  <div>
 
     <div>"#;
@@ -2038,7 +2038,7 @@ fn src_line_2984() {
 }
 
 #[test]
-fn src_line_2998() {
+fn src_line_2994() {
     let input = r#"Foo
 <div>
 bar
@@ -2051,7 +2051,7 @@ bar
 }
 
 #[test]
-fn src_line_3015() {
+fn src_line_3011() {
     let input = r#"<div>
 bar
 </div>
@@ -2064,7 +2064,7 @@ bar
 }
 
 #[test]
-fn src_line_3030() {
+fn src_line_3026() {
     let input = r#"Foo
 <a href="bar">
 baz"#;
@@ -2075,7 +2075,7 @@ baz</p>"#;
 }
 
 #[test]
-fn src_line_3071() {
+fn src_line_3067() {
     let input = r#"<div>
 
 *Emphasized* text.
@@ -2088,7 +2088,7 @@ fn src_line_3071() {
 }
 
 #[test]
-fn src_line_3084() {
+fn src_line_3080() {
     let input = r#"<div>
 *Emphasized* text.
 </div>"#;
@@ -2099,7 +2099,7 @@ fn src_line_3084() {
 }
 
 #[test]
-fn src_line_3106() {
+fn src_line_3102() {
     let input = r#"<table>
 
 <tr>
@@ -2122,7 +2122,7 @@ Hi
 }
 
 #[test]
-fn src_line_3133() {
+fn src_line_3129() {
     let input = r#"<table>
 
   <tr>
@@ -2146,7 +2146,7 @@ fn src_line_3133() {
 }
 
 #[test]
-fn src_line_3182() {
+fn src_line_3178() {
     let input = r#"[foo]: /url "title"
 
 [foo]"#;
@@ -2155,7 +2155,7 @@ fn src_line_3182() {
 }
 
 #[test]
-fn src_line_3191() {
+fn src_line_3187() {
     let input = "   [foo]:\x20
       /url \x20
            'the title' \x20
@@ -2166,7 +2166,7 @@ fn src_line_3191() {
 }
 
 #[test]
-fn src_line_3202() {
+fn src_line_3198() {
     let input = r#"[Foo*bar\]]:my_(url) 'title (with parens)'
 
 [Foo*bar\]]"#;
@@ -2175,7 +2175,7 @@ fn src_line_3202() {
 }
 
 #[test]
-fn src_line_3211() {
+fn src_line_3207() {
     let input = r#"[Foo bar]:
 <my url>
 'title'
@@ -2186,7 +2186,7 @@ fn src_line_3211() {
 }
 
 #[test]
-fn src_line_3224() {
+fn src_line_3220() {
     let input = r#"[foo]: /url '
 title
 line1
@@ -2203,7 +2203,7 @@ line2
 }
 
 #[test]
-fn src_line_3243() {
+fn src_line_3239() {
     let input = r#"[foo]: /url 'title
 
 with blank line'
@@ -2216,7 +2216,7 @@ with blank line'
 }
 
 #[test]
-fn src_line_3258() {
+fn src_line_3254() {
     let input = r#"[foo]:
 /url
 
@@ -2226,7 +2226,7 @@ fn src_line_3258() {
 }
 
 #[test]
-fn src_line_3270() {
+fn src_line_3266() {
     let input = r#"[foo]:
 
 [foo]"#;
@@ -2236,7 +2236,7 @@ fn src_line_3270() {
 }
 
 #[test]
-fn src_line_3282() {
+fn src_line_3278() {
     let input = r#"[foo]: <>
 
 [foo]"#;
@@ -2245,7 +2245,7 @@ fn src_line_3282() {
 }
 
 #[test]
-fn src_line_3293() {
+fn src_line_3289() {
     let input = r#"[foo]: <bar>(baz)
 
 [foo]"#;
@@ -2255,7 +2255,7 @@ fn src_line_3293() {
 }
 
 #[test]
-fn src_line_3306() {
+fn src_line_3302() {
     let input = r#"[foo]: /url\bar\*baz "foo\"bar\baz"
 
 [foo]"#;
@@ -2264,7 +2264,7 @@ fn src_line_3306() {
 }
 
 #[test]
-fn src_line_3317() {
+fn src_line_3313() {
     let input = r#"[foo]
 
 [foo]: url"#;
@@ -2273,7 +2273,7 @@ fn src_line_3317() {
 }
 
 #[test]
-fn src_line_3329() {
+fn src_line_3325() {
     let input = r#"[foo]
 
 [foo]: first
@@ -2283,7 +2283,7 @@ fn src_line_3329() {
 }
 
 #[test]
-fn src_line_3342() {
+fn src_line_3338() {
     let input = r#"[FOO]: /url
 
 [Foo]"#;
@@ -2292,7 +2292,7 @@ fn src_line_3342() {
 }
 
 #[test]
-fn src_line_3351() {
+fn src_line_3347() {
     let input = r#"[ΑΓΩ]: /φου
 
 [αγω]"#;
@@ -2301,14 +2301,14 @@ fn src_line_3351() {
 }
 
 #[test]
-fn src_line_3366() {
+fn src_line_3362() {
     let input = r#"[foo]: /url"#;
     let output = r#""#;
     run(input, output);
 }
 
 #[test]
-fn src_line_3374() {
+fn src_line_3370() {
     let input = r#"[
 foo
 ]: /url
@@ -2318,14 +2318,14 @@ bar"#;
 }
 
 #[test]
-fn src_line_3387() {
+fn src_line_3383() {
     let input = r#"[foo]: /url "title" ok"#;
     let output = r#"<p>[foo]: /url &quot;title&quot; ok</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_3396() {
+fn src_line_3392() {
     let input = r#"[foo]: /url
 "title" ok"#;
     let output = r#"<p>&quot;title&quot; ok</p>"#;
@@ -2333,7 +2333,7 @@ fn src_line_3396() {
 }
 
 #[test]
-fn src_line_3407() {
+fn src_line_3403() {
     let input = r#"    [foo]: /url "title"
 
 [foo]"#;
@@ -2344,7 +2344,7 @@ fn src_line_3407() {
 }
 
 #[test]
-fn src_line_3421() {
+fn src_line_3417() {
     let input = r#"```
 [foo]: /url
 ```
@@ -2357,7 +2357,7 @@ fn src_line_3421() {
 }
 
 #[test]
-fn src_line_3436() {
+fn src_line_3432() {
     let input = r#"Foo
 [bar]: /baz
 
@@ -2369,7 +2369,7 @@ fn src_line_3436() {
 }
 
 #[test]
-fn src_line_3451() {
+fn src_line_3447() {
     let input = r#"# [Foo]
 [foo]: /url
 > bar"#;
@@ -2381,7 +2381,7 @@ fn src_line_3451() {
 }
 
 #[test]
-fn src_line_3462() {
+fn src_line_3458() {
     let input = r#"[foo]: /url
 bar
 ===
@@ -2392,7 +2392,7 @@ bar
 }
 
 #[test]
-fn src_line_3472() {
+fn src_line_3468() {
     let input = r#"[foo]: /url
 ===
 [foo]"#;
@@ -2402,7 +2402,7 @@ fn src_line_3472() {
 }
 
 #[test]
-fn src_line_3485() {
+fn src_line_3481() {
     let input = r#"[foo]: /foo-url "foo"
 [bar]: /bar-url
   "bar"
@@ -2418,7 +2418,7 @@ fn src_line_3485() {
 }
 
 #[test]
-fn src_line_3506() {
+fn src_line_3502() {
     let input = r#"[foo]
 
 > [foo]: /url"#;
@@ -2429,7 +2429,7 @@ fn src_line_3506() {
 }
 
 #[test]
-fn src_line_3528() {
+fn src_line_3524() {
     let input = r#"aaa
 
 bbb"#;
@@ -2439,7 +2439,7 @@ bbb"#;
 }
 
 #[test]
-fn src_line_3540() {
+fn src_line_3536() {
     let input = r#"aaa
 bbb
 
@@ -2453,7 +2453,7 @@ ddd</p>"#;
 }
 
 #[test]
-fn src_line_3556() {
+fn src_line_3552() {
     let input = r#"aaa
 
 
@@ -2464,7 +2464,7 @@ bbb"#;
 }
 
 #[test]
-fn src_line_3569() {
+fn src_line_3565() {
     let input = r#"  aaa
  bbb"#;
     let output = r#"<p>aaa
@@ -2473,7 +2473,7 @@ bbb</p>"#;
 }
 
 #[test]
-fn src_line_3581() {
+fn src_line_3577() {
     let input = r#"aaa
              bbb
                                        ccc"#;
@@ -2484,7 +2484,7 @@ ccc</p>"#;
 }
 
 #[test]
-fn src_line_3595() {
+fn src_line_3591() {
     let input = r#"   aaa
 bbb"#;
     let output = r#"<p>aaa
@@ -2493,7 +2493,7 @@ bbb</p>"#;
 }
 
 #[test]
-fn src_line_3604() {
+fn src_line_3600() {
     let input = r#"    aaa
 bbb"#;
     let output = r#"<pre><code>aaa
@@ -2503,7 +2503,7 @@ bbb"#;
 }
 
 #[test]
-fn src_line_3618() {
+fn src_line_3614() {
     let input = "aaa    \x20
 bbb    \x20";
     let output = r#"<p>aaa<br />
@@ -2512,7 +2512,7 @@ bbb</p>"#;
 }
 
 #[test]
-fn src_line_3635() {
+fn src_line_3631() {
     let input = " \x20
 
 aaa
@@ -2527,7 +2527,7 @@ aaa
 }
 
 #[test]
-fn src_line_3703() {
+fn src_line_3699() {
     let input = r#"> # Foo
 > bar
 > baz"#;
@@ -2540,7 +2540,7 @@ baz</p>
 }
 
 #[test]
-fn src_line_3718() {
+fn src_line_3714() {
     let input = r#"># Foo
 >bar
 > baz"#;
@@ -2553,7 +2553,7 @@ baz</p>
 }
 
 #[test]
-fn src_line_3733() {
+fn src_line_3729() {
     let input = r#"   > # Foo
    > bar
  > baz"#;
@@ -2566,7 +2566,7 @@ baz</p>
 }
 
 #[test]
-fn src_line_3748() {
+fn src_line_3744() {
     let input = r#"    > # Foo
     > bar
     > baz"#;
@@ -2578,7 +2578,7 @@ fn src_line_3748() {
 }
 
 #[test]
-fn src_line_3763() {
+fn src_line_3759() {
     let input = r#"> # Foo
 > bar
 baz"#;
@@ -2591,7 +2591,7 @@ baz</p>
 }
 
 #[test]
-fn src_line_3779() {
+fn src_line_3775() {
     let input = r#"> bar
 baz
 > foo"#;
@@ -2604,7 +2604,7 @@ foo</p>
 }
 
 #[test]
-fn src_line_3803() {
+fn src_line_3799() {
     let input = r#"> foo
 ---"#;
     let output = r#"<blockquote>
@@ -2615,7 +2615,7 @@ fn src_line_3803() {
 }
 
 #[test]
-fn src_line_3823() {
+fn src_line_3819() {
     let input = r#"> - foo
 - bar"#;
     let output = r#"<blockquote>
@@ -2630,7 +2630,7 @@ fn src_line_3823() {
 }
 
 #[test]
-fn src_line_3841() {
+fn src_line_3837() {
     let input = r#">     foo
     bar"#;
     let output = r#"<blockquote>
@@ -2643,7 +2643,7 @@ fn src_line_3841() {
 }
 
 #[test]
-fn src_line_3854() {
+fn src_line_3850() {
     let input = r#"> ```
 foo
 ```"#;
@@ -2656,7 +2656,7 @@ foo
 }
 
 #[test]
-fn src_line_3870() {
+fn src_line_3866() {
     let input = r#"> foo
     - bar"#;
     let output = r#"<blockquote>
@@ -2667,7 +2667,7 @@ fn src_line_3870() {
 }
 
 #[test]
-fn src_line_3894() {
+fn src_line_3890() {
     let input = r#">"#;
     let output = r#"<blockquote>
 </blockquote>"#;
@@ -2675,7 +2675,7 @@ fn src_line_3894() {
 }
 
 #[test]
-fn src_line_3902() {
+fn src_line_3898() {
     let input = ">
 > \x20
 >\x20";
@@ -2685,7 +2685,7 @@ fn src_line_3902() {
 }
 
 #[test]
-fn src_line_3914() {
+fn src_line_3910() {
     let input = ">
 > foo
 > \x20";
@@ -2696,7 +2696,7 @@ fn src_line_3914() {
 }
 
 #[test]
-fn src_line_3927() {
+fn src_line_3923() {
     let input = r#"> foo
 
 > bar"#;
@@ -2710,7 +2710,7 @@ fn src_line_3927() {
 }
 
 #[test]
-fn src_line_3949() {
+fn src_line_3945() {
     let input = r#"> foo
 > bar"#;
     let output = r#"<blockquote>
@@ -2721,7 +2721,7 @@ bar</p>
 }
 
 #[test]
-fn src_line_3962() {
+fn src_line_3958() {
     let input = r#"> foo
 >
 > bar"#;
@@ -2733,7 +2733,7 @@ fn src_line_3962() {
 }
 
 #[test]
-fn src_line_3976() {
+fn src_line_3972() {
     let input = r#"foo
 > bar"#;
     let output = r#"<p>foo</p>
@@ -2744,7 +2744,7 @@ fn src_line_3976() {
 }
 
 #[test]
-fn src_line_3990() {
+fn src_line_3986() {
     let input = r#"> aaa
 ***
 > bbb"#;
@@ -2759,7 +2759,7 @@ fn src_line_3990() {
 }
 
 #[test]
-fn src_line_4008() {
+fn src_line_4004() {
     let input = r#"> bar
 baz"#;
     let output = r#"<blockquote>
@@ -2770,7 +2770,7 @@ baz</p>
 }
 
 #[test]
-fn src_line_4019() {
+fn src_line_4015() {
     let input = r#"> bar
 
 baz"#;
@@ -2782,7 +2782,7 @@ baz"#;
 }
 
 #[test]
-fn src_line_4031() {
+fn src_line_4027() {
     let input = r#"> bar
 >
 baz"#;
@@ -2794,7 +2794,7 @@ baz"#;
 }
 
 #[test]
-fn src_line_4047() {
+fn src_line_4043() {
     let input = r#"> > > foo
 bar"#;
     let output = r#"<blockquote>
@@ -2809,7 +2809,7 @@ bar</p>
 }
 
 #[test]
-fn src_line_4062() {
+fn src_line_4058() {
     let input = r#">>> foo
 > bar
 >>baz"#;
@@ -2826,7 +2826,7 @@ baz</p>
 }
 
 #[test]
-fn src_line_4084() {
+fn src_line_4080() {
     let input = r#">     code
 
 >    not code"#;
@@ -2841,7 +2841,7 @@ fn src_line_4084() {
 }
 
 #[test]
-fn src_line_4138() {
+fn src_line_4134() {
     let input = r#"A paragraph
 with two lines.
 
@@ -2859,7 +2859,7 @@ with two lines.</p>
 }
 
 #[test]
-fn src_line_4160() {
+fn src_line_4156() {
     let input = r#"1.  A paragraph
     with two lines.
 
@@ -2881,7 +2881,7 @@ with two lines.</p>
 }
 
 #[test]
-fn src_line_4193() {
+fn src_line_4189() {
     let input = r#"- one
 
  two"#;
@@ -2893,7 +2893,7 @@ fn src_line_4193() {
 }
 
 #[test]
-fn src_line_4205() {
+fn src_line_4201() {
     let input = r#"- one
 
   two"#;
@@ -2907,7 +2907,7 @@ fn src_line_4205() {
 }
 
 #[test]
-fn src_line_4219() {
+fn src_line_4215() {
     let input = r#" -    one
 
      two"#;
@@ -2920,7 +2920,7 @@ fn src_line_4219() {
 }
 
 #[test]
-fn src_line_4232() {
+fn src_line_4228() {
     let input = r#" -    one
 
       two"#;
@@ -2934,7 +2934,7 @@ fn src_line_4232() {
 }
 
 #[test]
-fn src_line_4254() {
+fn src_line_4250() {
     let input = r#"   > > 1.  one
 >>
 >>     two"#;
@@ -2952,7 +2952,7 @@ fn src_line_4254() {
 }
 
 #[test]
-fn src_line_4281() {
+fn src_line_4277() {
     let input = r#">>- one
 >>
   >  > two"#;
@@ -2968,7 +2968,7 @@ fn src_line_4281() {
 }
 
 #[test]
-fn src_line_4300() {
+fn src_line_4296() {
     let input = r#"-one
 
 2.two"#;
@@ -2978,7 +2978,7 @@ fn src_line_4300() {
 }
 
 #[test]
-fn src_line_4313() {
+fn src_line_4309() {
     let input = r#"- foo
 
 
@@ -2993,7 +2993,7 @@ fn src_line_4313() {
 }
 
 #[test]
-fn src_line_4330() {
+fn src_line_4326() {
     let input = r#"1.  foo
 
     ```
@@ -3018,7 +3018,7 @@ fn src_line_4330() {
 }
 
 #[test]
-fn src_line_4358() {
+fn src_line_4354() {
     let input = r#"- Foo
 
       bar
@@ -3039,7 +3039,7 @@ baz
 }
 
 #[test]
-fn src_line_4380() {
+fn src_line_4376() {
     let input = r#"123456789. ok"#;
     let output = r#"<ol start="123456789">
 <li>ok</li>
@@ -3048,14 +3048,14 @@ fn src_line_4380() {
 }
 
 #[test]
-fn src_line_4389() {
+fn src_line_4385() {
     let input = r#"1234567890. not ok"#;
     let output = r#"<p>1234567890. not ok</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_4398() {
+fn src_line_4394() {
     let input = r#"0. ok"#;
     let output = r#"<ol start="0">
 <li>ok</li>
@@ -3064,7 +3064,7 @@ fn src_line_4398() {
 }
 
 #[test]
-fn src_line_4407() {
+fn src_line_4403() {
     let input = r#"003. ok"#;
     let output = r#"<ol start="3">
 <li>ok</li>
@@ -3073,14 +3073,14 @@ fn src_line_4407() {
 }
 
 #[test]
-fn src_line_4418() {
+fn src_line_4414() {
     let input = r#"-1. not ok"#;
     let output = r#"<p>-1. not ok</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_4441() {
+fn src_line_4437() {
     let input = r#"- foo
 
       bar"#;
@@ -3095,7 +3095,7 @@ fn src_line_4441() {
 }
 
 #[test]
-fn src_line_4458() {
+fn src_line_4454() {
     let input = r#"  10.  foo
 
            bar"#;
@@ -3110,7 +3110,7 @@ fn src_line_4458() {
 }
 
 #[test]
-fn src_line_4477() {
+fn src_line_4473() {
     let input = r#"    indented code
 
 paragraph
@@ -3125,7 +3125,7 @@ paragraph
 }
 
 #[test]
-fn src_line_4492() {
+fn src_line_4488() {
     let input = r#"1.     indented code
 
    paragraph
@@ -3144,7 +3144,7 @@ fn src_line_4492() {
 }
 
 #[test]
-fn src_line_4514() {
+fn src_line_4510() {
     let input = r#"1.      indented code
 
    paragraph
@@ -3163,7 +3163,7 @@ fn src_line_4514() {
 }
 
 #[test]
-fn src_line_4541() {
+fn src_line_4537() {
     let input = r#"   foo
 
 bar"#;
@@ -3173,7 +3173,7 @@ bar"#;
 }
 
 #[test]
-fn src_line_4551() {
+fn src_line_4547() {
     let input = r#"-    foo
 
   bar"#;
@@ -3185,7 +3185,7 @@ fn src_line_4551() {
 }
 
 #[test]
-fn src_line_4568() {
+fn src_line_4564() {
     let input = r#"-  foo
 
    bar"#;
@@ -3199,7 +3199,7 @@ fn src_line_4568() {
 }
 
 #[test]
-fn src_line_4595() {
+fn src_line_4591() {
     let input = r#"-
   foo
 -
@@ -3223,7 +3223,7 @@ fn src_line_4595() {
 }
 
 #[test]
-fn src_line_4621() {
+fn src_line_4617() {
     let input = "-  \x20
   foo";
     let output = r#"<ul>
@@ -3233,7 +3233,7 @@ fn src_line_4621() {
 }
 
 #[test]
-fn src_line_4635() {
+fn src_line_4631() {
     let input = r#"-
 
   foo"#;
@@ -3245,7 +3245,7 @@ fn src_line_4635() {
 }
 
 #[test]
-fn src_line_4649() {
+fn src_line_4645() {
     let input = r#"- foo
 -
 - bar"#;
@@ -3258,7 +3258,7 @@ fn src_line_4649() {
 }
 
 #[test]
-fn src_line_4664() {
+fn src_line_4660() {
     let input = "- foo
 -  \x20
 - bar";
@@ -3271,7 +3271,7 @@ fn src_line_4664() {
 }
 
 #[test]
-fn src_line_4679() {
+fn src_line_4675() {
     let input = r#"1. foo
 2.
 3. bar"#;
@@ -3284,7 +3284,7 @@ fn src_line_4679() {
 }
 
 #[test]
-fn src_line_4694() {
+fn src_line_4690() {
     let input = r#"*"#;
     let output = r#"<ul>
 <li></li>
@@ -3293,7 +3293,7 @@ fn src_line_4694() {
 }
 
 #[test]
-fn src_line_4704() {
+fn src_line_4700() {
     let input = r#"foo
 *
 
@@ -3307,7 +3307,7 @@ foo
 }
 
 #[test]
-fn src_line_4726() {
+fn src_line_4722() {
     let input = r#" 1.  A paragraph
      with two lines.
 
@@ -3329,7 +3329,7 @@ with two lines.</p>
 }
 
 #[test]
-fn src_line_4750() {
+fn src_line_4746() {
     let input = r#"  1.  A paragraph
       with two lines.
 
@@ -3351,7 +3351,7 @@ with two lines.</p>
 }
 
 #[test]
-fn src_line_4774() {
+fn src_line_4770() {
     let input = r#"   1.  A paragraph
        with two lines.
 
@@ -3373,7 +3373,7 @@ with two lines.</p>
 }
 
 #[test]
-fn src_line_4798() {
+fn src_line_4794() {
     let input = r#"    1.  A paragraph
         with two lines.
 
@@ -3391,7 +3391,7 @@ fn src_line_4798() {
 }
 
 #[test]
-fn src_line_4828() {
+fn src_line_4824() {
     let input = r#"  1.  A paragraph
 with two lines.
 
@@ -3413,7 +3413,7 @@ with two lines.</p>
 }
 
 #[test]
-fn src_line_4852() {
+fn src_line_4848() {
     let input = r#"  1.  A paragraph
     with two lines."#;
     let output = r#"<ol>
@@ -3424,7 +3424,7 @@ with two lines.</li>
 }
 
 #[test]
-fn src_line_4865() {
+fn src_line_4861() {
     let input = r#"> 1. > Blockquote
 continued here."#;
     let output = r#"<blockquote>
@@ -3441,7 +3441,7 @@ continued here.</p>
 }
 
 #[test]
-fn src_line_4882() {
+fn src_line_4878() {
     let input = r#"> 1. > Blockquote
 > continued here."#;
     let output = r#"<blockquote>
@@ -3458,7 +3458,7 @@ continued here.</p>
 }
 
 #[test]
-fn src_line_4910() {
+fn src_line_4906() {
     let input = r#"- foo
   - bar
     - baz
@@ -3482,7 +3482,7 @@ fn src_line_4910() {
 }
 
 #[test]
-fn src_line_4936() {
+fn src_line_4932() {
     let input = r#"- foo
  - bar
   - baz
@@ -3497,7 +3497,7 @@ fn src_line_4936() {
 }
 
 #[test]
-fn src_line_4953() {
+fn src_line_4949() {
     let input = r#"10) foo
     - bar"#;
     let output = r#"<ol start="10">
@@ -3511,7 +3511,7 @@ fn src_line_4953() {
 }
 
 #[test]
-fn src_line_4969() {
+fn src_line_4965() {
     let input = r#"10) foo
    - bar"#;
     let output = r#"<ol start="10">
@@ -3524,7 +3524,7 @@ fn src_line_4969() {
 }
 
 #[test]
-fn src_line_4984() {
+fn src_line_4980() {
     let input = r#"- - foo"#;
     let output = r#"<ul>
 <li>
@@ -3537,7 +3537,7 @@ fn src_line_4984() {
 }
 
 #[test]
-fn src_line_4997() {
+fn src_line_4993() {
     let input = r#"1. - 2. foo"#;
     let output = r#"<ol>
 <li>
@@ -3554,7 +3554,7 @@ fn src_line_4997() {
 }
 
 #[test]
-fn src_line_5016() {
+fn src_line_5012() {
     let input = r#"- # Foo
 - Bar
   ---
@@ -3571,7 +3571,7 @@ baz</li>
 }
 
 #[test]
-fn src_line_5252() {
+fn src_line_5248() {
     let input = r#"- foo
 - bar
 + baz"#;
@@ -3586,7 +3586,7 @@ fn src_line_5252() {
 }
 
 #[test]
-fn src_line_5267() {
+fn src_line_5263() {
     let input = r#"1. foo
 2. bar
 3) baz"#;
@@ -3601,7 +3601,7 @@ fn src_line_5267() {
 }
 
 #[test]
-fn src_line_5286() {
+fn src_line_5282() {
     let input = r#"Foo
 - bar
 - baz"#;
@@ -3614,7 +3614,7 @@ fn src_line_5286() {
 }
 
 #[test]
-fn src_line_5363() {
+fn src_line_5359() {
     let input = r#"The number of windows in my house is
 14.  The number of doors is 6."#;
     let output = r#"<p>The number of windows in my house is
@@ -3623,7 +3623,7 @@ fn src_line_5363() {
 }
 
 #[test]
-fn src_line_5373() {
+fn src_line_5369() {
     let input = r#"The number of windows in my house is
 1.  The number of doors is 6."#;
     let output = r#"<p>The number of windows in my house is</p>
@@ -3634,7 +3634,7 @@ fn src_line_5373() {
 }
 
 #[test]
-fn src_line_5387() {
+fn src_line_5383() {
     let input = r#"- foo
 
 - bar
@@ -3656,7 +3656,7 @@ fn src_line_5387() {
 }
 
 #[test]
-fn src_line_5408() {
+fn src_line_5404() {
     let input = r#"- foo
   - bar
     - baz
@@ -3681,7 +3681,7 @@ fn src_line_5408() {
 }
 
 #[test]
-fn src_line_5438() {
+fn src_line_5434() {
     let input = r#"- foo
 - bar
 
@@ -3702,7 +3702,7 @@ fn src_line_5438() {
 }
 
 #[test]
-fn src_line_5459() {
+fn src_line_5455() {
     let input = r#"-   foo
 
     notcode
@@ -3728,7 +3728,7 @@ fn src_line_5459() {
 }
 
 #[test]
-fn src_line_5490() {
+fn src_line_5486() {
     let input = r#"- a
  - b
   - c
@@ -3749,7 +3749,7 @@ fn src_line_5490() {
 }
 
 #[test]
-fn src_line_5511() {
+fn src_line_5507() {
     let input = r#"1. a
 
   2. b
@@ -3770,7 +3770,7 @@ fn src_line_5511() {
 }
 
 #[test]
-fn src_line_5535() {
+fn src_line_5531() {
     let input = r#"- a
  - b
   - c
@@ -3787,7 +3787,7 @@ fn src_line_5535() {
 }
 
 #[test]
-fn src_line_5555() {
+fn src_line_5551() {
     let input = r#"1. a
 
   2. b
@@ -3807,7 +3807,7 @@ fn src_line_5555() {
 }
 
 #[test]
-fn src_line_5578() {
+fn src_line_5574() {
     let input = r#"- a
 - b
 
@@ -3827,7 +3827,7 @@ fn src_line_5578() {
 }
 
 #[test]
-fn src_line_5600() {
+fn src_line_5596() {
     let input = r#"* a
 *
 
@@ -3845,7 +3845,7 @@ fn src_line_5600() {
 }
 
 #[test]
-fn src_line_5622() {
+fn src_line_5618() {
     let input = r#"- a
 - b
 
@@ -3867,7 +3867,7 @@ fn src_line_5622() {
 }
 
 #[test]
-fn src_line_5644() {
+fn src_line_5640() {
     let input = r#"- a
 - b
 
@@ -3888,7 +3888,7 @@ fn src_line_5644() {
 }
 
 #[test]
-fn src_line_5667() {
+fn src_line_5663() {
     let input = r#"- a
 - ```
   b
@@ -3910,7 +3910,7 @@ fn src_line_5667() {
 }
 
 #[test]
-fn src_line_5693() {
+fn src_line_5689() {
     let input = r#"- a
   - b
 
@@ -3931,7 +3931,7 @@ fn src_line_5693() {
 }
 
 #[test]
-fn src_line_5717() {
+fn src_line_5713() {
     let input = r#"* a
   > b
   >
@@ -3948,7 +3948,7 @@ fn src_line_5717() {
 }
 
 #[test]
-fn src_line_5737() {
+fn src_line_5733() {
     let input = r#"- a
   > b
   ```
@@ -3969,7 +3969,7 @@ fn src_line_5737() {
 }
 
 #[test]
-fn src_line_5760() {
+fn src_line_5756() {
     let input = r#"- a"#;
     let output = r#"<ul>
 <li>a</li>
@@ -3978,7 +3978,7 @@ fn src_line_5760() {
 }
 
 #[test]
-fn src_line_5769() {
+fn src_line_5765() {
     let input = r#"- a
   - b"#;
     let output = r#"<ul>
@@ -3992,7 +3992,7 @@ fn src_line_5769() {
 }
 
 #[test]
-fn src_line_5786() {
+fn src_line_5782() {
     let input = r#"1. ```
    foo
    ```
@@ -4009,7 +4009,7 @@ fn src_line_5786() {
 }
 
 #[test]
-fn src_line_5805() {
+fn src_line_5801() {
     let input = r#"* foo
   * bar
 
@@ -4027,7 +4027,7 @@ fn src_line_5805() {
 }
 
 #[test]
-fn src_line_5823() {
+fn src_line_5819() {
     let input = r#"- a
   - b
   - c
@@ -4055,56 +4055,56 @@ fn src_line_5823() {
 }
 
 #[test]
-fn src_line_5857() {
+fn src_line_5853() {
     let input = r#"`hi`lo`"#;
     let output = r#"<p><code>hi</code>lo`</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_5889() {
+fn src_line_5885() {
     let input = r#"`foo`"#;
     let output = r#"<p><code>foo</code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_5900() {
+fn src_line_5896() {
     let input = r#"`` foo ` bar ``"#;
     let output = r#"<p><code>foo ` bar</code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_5910() {
+fn src_line_5906() {
     let input = r#"` `` `"#;
     let output = r#"<p><code>``</code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_5918() {
+fn src_line_5914() {
     let input = r#"`  ``  `"#;
     let output = r#"<p><code> `` </code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_5927() {
+fn src_line_5923() {
     let input = r#"` a`"#;
     let output = r#"<p><code> a</code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_5936() {
+fn src_line_5932() {
     let input = r#"` b `"#;
     let output = r#"<p><code> b </code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_5944() {
+fn src_line_5940() {
     let input = r#"` `
 `  `"#;
     let output = r#"<p><code> </code>
@@ -4113,7 +4113,7 @@ fn src_line_5944() {
 }
 
 #[test]
-fn src_line_5955() {
+fn src_line_5951() {
     let input = "``
 foo
 bar \x20
@@ -4124,7 +4124,7 @@ baz
 }
 
 #[test]
-fn src_line_5965() {
+fn src_line_5961() {
     let input = "``
 foo\x20
 ``";
@@ -4133,7 +4133,7 @@ foo\x20
 }
 
 #[test]
-fn src_line_5976() {
+fn src_line_5972() {
     let input = "`foo   bar\x20
 baz`";
     let output = r#"<p><code>foo   bar  baz</code></p>"#;
@@ -4141,203 +4141,216 @@ baz`";
 }
 
 #[test]
-fn src_line_5993() {
+fn src_line_5989() {
     let input = r#"`foo\`bar`"#;
     let output = r#"<p><code>foo\</code>bar`</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6004() {
+fn src_line_6000() {
     let input = r#"``foo`bar``"#;
     let output = r#"<p><code>foo`bar</code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6010() {
+fn src_line_6006() {
     let input = r#"` foo `` bar `"#;
     let output = r#"<p><code>foo `` bar</code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6022() {
+fn src_line_6018() {
     let input = r#"*foo`*`"#;
     let output = r#"<p>*foo<code>*</code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6031() {
+fn src_line_6027() {
     let input = r#"[not a `link](/foo`)"#;
     let output = r#"<p>[not a <code>link](/foo</code>)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6041() {
+fn src_line_6037() {
     let input = r#"`<a href="`">`"#;
     let output = r#"<p><code>&lt;a href=&quot;</code>&quot;&gt;`</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6050() {
+fn src_line_6046() {
     let input = r#"<a href="`">`"#;
     let output = r#"<p><a href="`">`</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6059() {
-    let input = r#"`<http://foo.bar.`baz>`"#;
-    let output = r#"<p><code>&lt;http://foo.bar.</code>baz&gt;`</p>"#;
+fn src_line_6055() {
+    let input = r#"`<https://foo.bar.`baz>`"#;
+    let output = r#"<p><code>&lt;https://foo.bar.</code>baz&gt;`</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6068() {
-    let input = r#"<http://foo.bar.`baz>`"#;
-    let output = r#"<p><a href="http://foo.bar.%60baz">http://foo.bar.`baz</a>`</p>"#;
+fn src_line_6064() {
+    let input = r#"<https://foo.bar.`baz>`"#;
+    let output = r#"<p><a href="https://foo.bar.%60baz">https://foo.bar.`baz</a>`</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6078() {
+fn src_line_6074() {
     let input = r#"```foo``"#;
     let output = r#"<p>```foo``</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6085() {
+fn src_line_6081() {
     let input = r#"`foo"#;
     let output = r#"<p>`foo</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6094() {
+fn src_line_6090() {
     let input = r#"`foo``bar``"#;
     let output = r#"<p>`foo<code>bar</code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6311() {
+fn src_line_6307() {
     let input = r#"*foo bar*"#;
     let output = r#"<p><em>foo bar</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6321() {
+fn src_line_6317() {
     let input = r#"a * foo bar*"#;
     let output = r#"<p>a * foo bar*</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6332() {
+fn src_line_6328() {
     let input = r#"a*"foo"*"#;
     let output = r#"<p>a*&quot;foo&quot;*</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6341() {
+fn src_line_6337() {
     let input = r#"* a *"#;
     let output = r#"<p>* a *</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6350() {
+fn src_line_6346() {
+    let input = r#"*$*alpha.
+
+*£*bravo.
+
+*€*charlie."#;
+    let output = r#"<p>*$*alpha.</p>
+<p>*£*bravo.</p>
+<p>*€*charlie.</p>"#;
+    run(input, output);
+}
+
+#[test]
+fn src_line_6361() {
     let input = r#"foo*bar*"#;
     let output = r#"<p>foo<em>bar</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6357() {
+fn src_line_6368() {
     let input = r#"5*6*78"#;
     let output = r#"<p>5<em>6</em>78</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6366() {
+fn src_line_6377() {
     let input = r#"_foo bar_"#;
     let output = r#"<p><em>foo bar</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6376() {
+fn src_line_6387() {
     let input = r#"_ foo bar_"#;
     let output = r#"<p>_ foo bar_</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6386() {
+fn src_line_6397() {
     let input = r#"a_"foo"_"#;
     let output = r#"<p>a_&quot;foo&quot;_</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6395() {
+fn src_line_6406() {
     let input = r#"foo_bar_"#;
     let output = r#"<p>foo_bar_</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6402() {
+fn src_line_6413() {
     let input = r#"5_6_78"#;
     let output = r#"<p>5_6_78</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6409() {
+fn src_line_6420() {
     let input = r#"пристаням_стремятся_"#;
     let output = r#"<p>пристаням_стремятся_</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6419() {
+fn src_line_6430() {
     let input = r#"aa_"bb"_cc"#;
     let output = r#"<p>aa_&quot;bb&quot;_cc</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6430() {
+fn src_line_6441() {
     let input = r#"foo-_(bar)_"#;
     let output = r#"<p>foo-<em>(bar)</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6442() {
+fn src_line_6453() {
     let input = r#"_foo*"#;
     let output = r#"<p>_foo*</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6452() {
+fn src_line_6463() {
     let input = r#"*foo bar *"#;
     let output = r#"<p>*foo bar *</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6461() {
+fn src_line_6472() {
     let input = r#"*foo bar
 *"#;
     let output = r#"<p>*foo bar
@@ -4346,119 +4359,119 @@ fn src_line_6461() {
 }
 
 #[test]
-fn src_line_6474() {
+fn src_line_6485() {
     let input = r#"*(*foo)"#;
     let output = r#"<p>*(*foo)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6484() {
+fn src_line_6495() {
     let input = r#"*(*foo*)*"#;
     let output = r#"<p><em>(<em>foo</em>)</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6493() {
+fn src_line_6504() {
     let input = r#"*foo*bar"#;
     let output = r#"<p><em>foo</em>bar</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6506() {
+fn src_line_6517() {
     let input = r#"_foo bar _"#;
     let output = r#"<p>_foo bar _</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6516() {
+fn src_line_6527() {
     let input = r#"_(_foo)"#;
     let output = r#"<p>_(_foo)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6525() {
+fn src_line_6536() {
     let input = r#"_(_foo_)_"#;
     let output = r#"<p><em>(<em>foo</em>)</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6534() {
+fn src_line_6545() {
     let input = r#"_foo_bar"#;
     let output = r#"<p>_foo_bar</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6541() {
+fn src_line_6552() {
     let input = r#"_пристаням_стремятся"#;
     let output = r#"<p>_пристаням_стремятся</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6548() {
+fn src_line_6559() {
     let input = r#"_foo_bar_baz_"#;
     let output = r#"<p><em>foo_bar_baz</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6559() {
+fn src_line_6570() {
     let input = r#"_(bar)_."#;
     let output = r#"<p><em>(bar)</em>.</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6568() {
+fn src_line_6579() {
     let input = r#"**foo bar**"#;
     let output = r#"<p><strong>foo bar</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6578() {
+fn src_line_6589() {
     let input = r#"** foo bar**"#;
     let output = r#"<p>** foo bar**</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6589() {
+fn src_line_6600() {
     let input = r#"a**"foo"**"#;
     let output = r#"<p>a**&quot;foo&quot;**</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6598() {
+fn src_line_6609() {
     let input = r#"foo**bar**"#;
     let output = r#"<p>foo<strong>bar</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6607() {
+fn src_line_6618() {
     let input = r#"__foo bar__"#;
     let output = r#"<p><strong>foo bar</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6617() {
+fn src_line_6628() {
     let input = r#"__ foo bar__"#;
     let output = r#"<p>__ foo bar__</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6625() {
+fn src_line_6636() {
     let input = r#"__
 foo bar__"#;
     let output = r#"<p>__
@@ -4467,70 +4480,70 @@ foo bar__</p>"#;
 }
 
 #[test]
-fn src_line_6637() {
+fn src_line_6648() {
     let input = r#"a__"foo"__"#;
     let output = r#"<p>a__&quot;foo&quot;__</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6646() {
+fn src_line_6657() {
     let input = r#"foo__bar__"#;
     let output = r#"<p>foo__bar__</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6653() {
+fn src_line_6664() {
     let input = r#"5__6__78"#;
     let output = r#"<p>5__6__78</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6660() {
+fn src_line_6671() {
     let input = r#"пристаням__стремятся__"#;
     let output = r#"<p>пристаням__стремятся__</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6667() {
+fn src_line_6678() {
     let input = r#"__foo, __bar__, baz__"#;
     let output = r#"<p><strong>foo, <strong>bar</strong>, baz</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6678() {
+fn src_line_6689() {
     let input = r#"foo-__(bar)__"#;
     let output = r#"<p>foo-<strong>(bar)</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6691() {
+fn src_line_6702() {
     let input = r#"**foo bar **"#;
     let output = r#"<p>**foo bar **</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6704() {
+fn src_line_6715() {
     let input = r#"**(**foo)"#;
     let output = r#"<p>**(**foo)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6714() {
+fn src_line_6725() {
     let input = r#"*(**foo**)*"#;
     let output = r#"<p><em>(<strong>foo</strong>)</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6721() {
+fn src_line_6732() {
     let input = r#"**Gomphocarpus (*Gomphocarpus physocarpus*, syn.
 *Asclepias physocarpa*)**"#;
     let output = r#"<p><strong>Gomphocarpus (<em>Gomphocarpus physocarpus</em>, syn.
@@ -4539,77 +4552,77 @@ fn src_line_6721() {
 }
 
 #[test]
-fn src_line_6730() {
+fn src_line_6741() {
     let input = r#"**foo "*bar*" foo**"#;
     let output = r#"<p><strong>foo &quot;<em>bar</em>&quot; foo</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6739() {
+fn src_line_6750() {
     let input = r#"**foo**bar"#;
     let output = r#"<p><strong>foo</strong>bar</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6751() {
+fn src_line_6762() {
     let input = r#"__foo bar __"#;
     let output = r#"<p>__foo bar __</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6761() {
+fn src_line_6772() {
     let input = r#"__(__foo)"#;
     let output = r#"<p>__(__foo)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6771() {
+fn src_line_6782() {
     let input = r#"_(__foo__)_"#;
     let output = r#"<p><em>(<strong>foo</strong>)</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6780() {
+fn src_line_6791() {
     let input = r#"__foo__bar"#;
     let output = r#"<p>__foo__bar</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6787() {
+fn src_line_6798() {
     let input = r#"__пристаням__стремятся"#;
     let output = r#"<p>__пристаням__стремятся</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6794() {
+fn src_line_6805() {
     let input = r#"__foo__bar__baz__"#;
     let output = r#"<p><strong>foo__bar__baz</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6805() {
+fn src_line_6816() {
     let input = r#"__(bar)__."#;
     let output = r#"<p><strong>(bar)</strong>.</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6817() {
+fn src_line_6828() {
     let input = r#"*foo [bar](/url)*"#;
     let output = r#"<p><em>foo <a href="/url">bar</a></em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6824() {
+fn src_line_6835() {
     let input = r#"*foo
 bar*"#;
     let output = r#"<p><em>foo
@@ -4618,126 +4631,126 @@ bar</em></p>"#;
 }
 
 #[test]
-fn src_line_6836() {
+fn src_line_6847() {
     let input = r#"_foo __bar__ baz_"#;
     let output = r#"<p><em>foo <strong>bar</strong> baz</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6843() {
+fn src_line_6854() {
     let input = r#"_foo _bar_ baz_"#;
     let output = r#"<p><em>foo <em>bar</em> baz</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6850() {
+fn src_line_6861() {
     let input = r#"__foo_ bar_"#;
     let output = r#"<p><em><em>foo</em> bar</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6857() {
+fn src_line_6868() {
     let input = r#"*foo *bar**"#;
     let output = r#"<p><em>foo <em>bar</em></em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6864() {
+fn src_line_6875() {
     let input = r#"*foo **bar** baz*"#;
     let output = r#"<p><em>foo <strong>bar</strong> baz</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6870() {
+fn src_line_6881() {
     let input = r#"*foo**bar**baz*"#;
     let output = r#"<p><em>foo<strong>bar</strong>baz</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6894() {
+fn src_line_6905() {
     let input = r#"*foo**bar*"#;
     let output = r#"<p><em>foo**bar</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6907() {
+fn src_line_6918() {
     let input = r#"***foo** bar*"#;
     let output = r#"<p><em><strong>foo</strong> bar</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6914() {
+fn src_line_6925() {
     let input = r#"*foo **bar***"#;
     let output = r#"<p><em>foo <strong>bar</strong></em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6921() {
+fn src_line_6932() {
     let input = r#"*foo**bar***"#;
     let output = r#"<p><em>foo<strong>bar</strong></em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6932() {
+fn src_line_6943() {
     let input = r#"foo***bar***baz"#;
     let output = r#"<p>foo<em><strong>bar</strong></em>baz</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6938() {
+fn src_line_6949() {
     let input = r#"foo******bar*********baz"#;
     let output = r#"<p>foo<strong><strong><strong>bar</strong></strong></strong>***baz</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6947() {
+fn src_line_6958() {
     let input = r#"*foo **bar *baz* bim** bop*"#;
     let output = r#"<p><em>foo <strong>bar <em>baz</em> bim</strong> bop</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6954() {
+fn src_line_6965() {
     let input = r#"*foo [*bar*](/url)*"#;
     let output = r#"<p><em>foo <a href="/url"><em>bar</em></a></em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6963() {
+fn src_line_6974() {
     let input = r#"** is not an empty emphasis"#;
     let output = r#"<p>** is not an empty emphasis</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6970() {
+fn src_line_6981() {
     let input = r#"**** is not an empty strong emphasis"#;
     let output = r#"<p>**** is not an empty strong emphasis</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6983() {
+fn src_line_6994() {
     let input = r#"**foo [bar](/url)**"#;
     let output = r#"<p><strong>foo <a href="/url">bar</a></strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_6990() {
+fn src_line_7001() {
     let input = r#"**foo
 bar**"#;
     let output = r#"<p><strong>foo
@@ -4746,63 +4759,63 @@ bar</strong></p>"#;
 }
 
 #[test]
-fn src_line_7002() {
+fn src_line_7013() {
     let input = r#"__foo _bar_ baz__"#;
     let output = r#"<p><strong>foo <em>bar</em> baz</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7009() {
+fn src_line_7020() {
     let input = r#"__foo __bar__ baz__"#;
     let output = r#"<p><strong>foo <strong>bar</strong> baz</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7016() {
+fn src_line_7027() {
     let input = r#"____foo__ bar__"#;
     let output = r#"<p><strong><strong>foo</strong> bar</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7023() {
+fn src_line_7034() {
     let input = r#"**foo **bar****"#;
     let output = r#"<p><strong>foo <strong>bar</strong></strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7030() {
+fn src_line_7041() {
     let input = r#"**foo *bar* baz**"#;
     let output = r#"<p><strong>foo <em>bar</em> baz</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7037() {
+fn src_line_7048() {
     let input = r#"**foo*bar*baz**"#;
     let output = r#"<p><strong>foo<em>bar</em>baz</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7044() {
+fn src_line_7055() {
     let input = r#"***foo* bar**"#;
     let output = r#"<p><strong><em>foo</em> bar</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7051() {
+fn src_line_7062() {
     let input = r#"**foo *bar***"#;
     let output = r#"<p><strong>foo <em>bar</em></strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7060() {
+fn src_line_7071() {
     let input = r#"**foo *bar **baz**
 bim* bop**"#;
     let output = r#"<p><strong>foo <em>bar <strong>baz</strong>
@@ -4811,406 +4824,406 @@ bim</em> bop</strong></p>"#;
 }
 
 #[test]
-fn src_line_7069() {
+fn src_line_7080() {
     let input = r#"**foo [*bar*](/url)**"#;
     let output = r#"<p><strong>foo <a href="/url"><em>bar</em></a></strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7078() {
+fn src_line_7089() {
     let input = r#"__ is not an empty emphasis"#;
     let output = r#"<p>__ is not an empty emphasis</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7085() {
+fn src_line_7096() {
     let input = r#"____ is not an empty strong emphasis"#;
     let output = r#"<p>____ is not an empty strong emphasis</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7095() {
+fn src_line_7106() {
     let input = r#"foo ***"#;
     let output = r#"<p>foo ***</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7102() {
+fn src_line_7113() {
     let input = r#"foo *\**"#;
     let output = r#"<p>foo <em>*</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7109() {
+fn src_line_7120() {
     let input = r#"foo *_*"#;
     let output = r#"<p>foo <em>_</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7116() {
+fn src_line_7127() {
     let input = r#"foo *****"#;
     let output = r#"<p>foo *****</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7123() {
+fn src_line_7134() {
     let input = r#"foo **\***"#;
     let output = r#"<p>foo <strong>*</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7130() {
+fn src_line_7141() {
     let input = r#"foo **_**"#;
     let output = r#"<p>foo <strong>_</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7141() {
+fn src_line_7152() {
     let input = r#"**foo*"#;
     let output = r#"<p>*<em>foo</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7148() {
+fn src_line_7159() {
     let input = r#"*foo**"#;
     let output = r#"<p><em>foo</em>*</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7155() {
+fn src_line_7166() {
     let input = r#"***foo**"#;
     let output = r#"<p>*<strong>foo</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7162() {
+fn src_line_7173() {
     let input = r#"****foo*"#;
     let output = r#"<p>***<em>foo</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7169() {
+fn src_line_7180() {
     let input = r#"**foo***"#;
     let output = r#"<p><strong>foo</strong>*</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7176() {
+fn src_line_7187() {
     let input = r#"*foo****"#;
     let output = r#"<p><em>foo</em>***</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7186() {
+fn src_line_7197() {
     let input = r#"foo ___"#;
     let output = r#"<p>foo ___</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7193() {
+fn src_line_7204() {
     let input = r#"foo _\__"#;
     let output = r#"<p>foo <em>_</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7200() {
+fn src_line_7211() {
     let input = r#"foo _*_"#;
     let output = r#"<p>foo <em>*</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7207() {
+fn src_line_7218() {
     let input = r#"foo _____"#;
     let output = r#"<p>foo _____</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7214() {
+fn src_line_7225() {
     let input = r#"foo __\___"#;
     let output = r#"<p>foo <strong>_</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7221() {
+fn src_line_7232() {
     let input = r#"foo __*__"#;
     let output = r#"<p>foo <strong>*</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7228() {
+fn src_line_7239() {
     let input = r#"__foo_"#;
     let output = r#"<p>_<em>foo</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7239() {
+fn src_line_7250() {
     let input = r#"_foo__"#;
     let output = r#"<p><em>foo</em>_</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7246() {
+fn src_line_7257() {
     let input = r#"___foo__"#;
     let output = r#"<p>_<strong>foo</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7253() {
+fn src_line_7264() {
     let input = r#"____foo_"#;
     let output = r#"<p>___<em>foo</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7260() {
+fn src_line_7271() {
     let input = r#"__foo___"#;
     let output = r#"<p><strong>foo</strong>_</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7267() {
+fn src_line_7278() {
     let input = r#"_foo____"#;
     let output = r#"<p><em>foo</em>___</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7277() {
+fn src_line_7288() {
     let input = r#"**foo**"#;
     let output = r#"<p><strong>foo</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7284() {
+fn src_line_7295() {
     let input = r#"*_foo_*"#;
     let output = r#"<p><em><em>foo</em></em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7291() {
+fn src_line_7302() {
     let input = r#"__foo__"#;
     let output = r#"<p><strong>foo</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7298() {
+fn src_line_7309() {
     let input = r#"_*foo*_"#;
     let output = r#"<p><em><em>foo</em></em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7308() {
+fn src_line_7319() {
     let input = r#"****foo****"#;
     let output = r#"<p><strong><strong>foo</strong></strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7315() {
+fn src_line_7326() {
     let input = r#"____foo____"#;
     let output = r#"<p><strong><strong>foo</strong></strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7326() {
+fn src_line_7337() {
     let input = r#"******foo******"#;
     let output = r#"<p><strong><strong><strong>foo</strong></strong></strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7335() {
+fn src_line_7346() {
     let input = r#"***foo***"#;
     let output = r#"<p><em><strong>foo</strong></em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7342() {
+fn src_line_7353() {
     let input = r#"_____foo_____"#;
     let output = r#"<p><em><strong><strong>foo</strong></strong></em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7351() {
+fn src_line_7362() {
     let input = r#"*foo _bar* baz_"#;
     let output = r#"<p><em>foo _bar</em> baz_</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7358() {
+fn src_line_7369() {
     let input = r#"*foo __bar *baz bim__ bam*"#;
     let output = r#"<p><em>foo <strong>bar *baz bim</strong> bam</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7367() {
+fn src_line_7378() {
     let input = r#"**foo **bar baz**"#;
     let output = r#"<p>**foo <strong>bar baz</strong></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7374() {
+fn src_line_7385() {
     let input = r#"*foo *bar baz*"#;
     let output = r#"<p>*foo <em>bar baz</em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7383() {
+fn src_line_7394() {
     let input = r#"*[bar*](/url)"#;
     let output = r#"<p>*<a href="/url">bar*</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7390() {
+fn src_line_7401() {
     let input = r#"_foo [bar_](/url)"#;
     let output = r#"<p>_foo <a href="/url">bar_</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7397() {
+fn src_line_7408() {
     let input = r#"*<img src="foo" title="*"/>"#;
     let output = r#"<p>*<img src="foo" title="*"/></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7404() {
+fn src_line_7415() {
     let input = r#"**<a href="**">"#;
     let output = r#"<p>**<a href="**"></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7411() {
+fn src_line_7422() {
     let input = r#"__<a href="__">"#;
     let output = r#"<p>__<a href="__"></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7418() {
+fn src_line_7429() {
     let input = r#"*a `*`*"#;
     let output = r#"<p><em>a <code>*</code></em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7425() {
+fn src_line_7436() {
     let input = r#"_a `_`_"#;
     let output = r#"<p><em>a <code>_</code></em></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7432() {
-    let input = r#"**a<http://foo.bar/?q=**>"#;
-    let output = r#"<p>**a<a href="http://foo.bar/?q=**">http://foo.bar/?q=**</a></p>"#;
+fn src_line_7443() {
+    let input = r#"**a<https://foo.bar/?q=**>"#;
+    let output = r#"<p>**a<a href="https://foo.bar/?q=**">https://foo.bar/?q=**</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7439() {
-    let input = r#"__a<http://foo.bar/?q=__>"#;
-    let output = r#"<p>__a<a href="http://foo.bar/?q=__">http://foo.bar/?q=__</a></p>"#;
+fn src_line_7450() {
+    let input = r#"__a<https://foo.bar/?q=__>"#;
+    let output = r#"<p>__a<a href="https://foo.bar/?q=__">https://foo.bar/?q=__</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7527() {
+fn src_line_7538() {
     let input = r#"[link](/uri "title")"#;
     let output = r#"<p><a href="/uri" title="title">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7537() {
+fn src_line_7548() {
     let input = r#"[link](/uri)"#;
     let output = r#"<p><a href="/uri">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7543() {
+fn src_line_7554() {
     let input = r#"[](./target.md)"#;
     let output = r#"<p><a href="./target.md"></a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7550() {
+fn src_line_7561() {
     let input = r#"[link]()"#;
     let output = r#"<p><a href="">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7557() {
+fn src_line_7568() {
     let input = r#"[link](<>)"#;
     let output = r#"<p><a href="">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7564() {
+fn src_line_7575() {
     let input = r#"[]()"#;
     let output = r#"<p><a href=""></a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7573() {
+fn src_line_7584() {
     let input = r#"[link](/my uri)"#;
     let output = r#"<p>[link](/my uri)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7579() {
+fn src_line_7590() {
     let input = r#"[link](</my uri>)"#;
     let output = r#"<p><a href="/my%20uri">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7588() {
+fn src_line_7599() {
     let input = r#"[link](foo
 bar)"#;
     let output = r#"<p>[link](foo
@@ -5219,7 +5232,7 @@ bar)</p>"#;
 }
 
 #[test]
-fn src_line_7596() {
+fn src_line_7607() {
     let input = r#"[link](<foo
 bar>)"#;
     let output = r#"<p>[link](<foo
@@ -5228,21 +5241,21 @@ bar>)</p>"#;
 }
 
 #[test]
-fn src_line_7607() {
+fn src_line_7618() {
     let input = r#"[a](<b)c>)"#;
     let output = r#"<p><a href="b)c">a</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7615() {
+fn src_line_7626() {
     let input = r#"[link](<foo\>)"#;
     let output = r#"<p>[link](&lt;foo&gt;)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7624() {
+fn src_line_7635() {
     let input = r#"[a](<b)c
 [a](<b)c>
 [a](<b>c)"#;
@@ -5253,83 +5266,83 @@ fn src_line_7624() {
 }
 
 #[test]
-fn src_line_7636() {
+fn src_line_7647() {
     let input = r#"[link](\(foo\))"#;
     let output = r#"<p><a href="(foo)">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7645() {
+fn src_line_7656() {
     let input = r#"[link](foo(and(bar)))"#;
     let output = r#"<p><a href="foo(and(bar))">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7654() {
+fn src_line_7665() {
     let input = r#"[link](foo(and(bar))"#;
     let output = r#"<p>[link](foo(and(bar))</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7661() {
+fn src_line_7672() {
     let input = r#"[link](foo\(and\(bar\))"#;
     let output = r#"<p><a href="foo(and(bar)">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7668() {
+fn src_line_7679() {
     let input = r#"[link](<foo(and(bar)>)"#;
     let output = r#"<p><a href="foo(and(bar)">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7678() {
+fn src_line_7689() {
     let input = r#"[link](foo\)\:)"#;
     let output = r#"<p><a href="foo):">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7687() {
+fn src_line_7698() {
     let input = r#"[link](#fragment)
 
-[link](http://example.com#fragment)
+[link](https://example.com#fragment)
 
-[link](http://example.com?foo=3#frag)"#;
+[link](https://example.com?foo=3#frag)"#;
     let output = r##"<p><a href="#fragment">link</a></p>
-<p><a href="http://example.com#fragment">link</a></p>
-<p><a href="http://example.com?foo=3#frag">link</a></p>"##;
+<p><a href="https://example.com#fragment">link</a></p>
+<p><a href="https://example.com?foo=3#frag">link</a></p>"##;
     run(input, output);
 }
 
 #[test]
-fn src_line_7703() {
+fn src_line_7714() {
     let input = r#"[link](foo\bar)"#;
     let output = r#"<p><a href="foo%5Cbar">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7719() {
+fn src_line_7730() {
     let input = r#"[link](foo%20b&auml;)"#;
     let output = r#"<p><a href="foo%20b%C3%A4">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7730() {
+fn src_line_7741() {
     let input = r#"[link]("title")"#;
     let output = r#"<p><a href="%22title%22">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7739() {
+fn src_line_7750() {
     let input = r#"[link](/url "title")
 [link](/url 'title')
 [link](/url (title))"#;
@@ -5340,35 +5353,35 @@ fn src_line_7739() {
 }
 
 #[test]
-fn src_line_7753() {
+fn src_line_7764() {
     let input = r#"[link](/url "title \"&quot;")"#;
     let output = r#"<p><a href="/url" title="title &quot;&quot;">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7764() {
+fn src_line_7775() {
     let input = r#"[link](/url "title")"#;
     let output = r#"<p><a href="/url%C2%A0%22title%22">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7773() {
+fn src_line_7784() {
     let input = r#"[link](/url "title "and" title")"#;
     let output = r#"<p>[link](/url &quot;title &quot;and&quot; title&quot;)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7782() {
+fn src_line_7793() {
     let input = r#"[link](/url 'title "and" title')"#;
     let output = r#"<p><a href="/url" title="title &quot;and&quot; title">link</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7807() {
+fn src_line_7818() {
     let input = r#"[link](   /uri
   "title"  )"#;
     let output = r#"<p><a href="/uri" title="title">link</a></p>"#;
@@ -5376,119 +5389,119 @@ fn src_line_7807() {
 }
 
 #[test]
-fn src_line_7818() {
+fn src_line_7829() {
     let input = r#"[link] (/uri)"#;
     let output = r#"<p>[link] (/uri)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7828() {
+fn src_line_7839() {
     let input = r#"[link [foo [bar]]](/uri)"#;
     let output = r#"<p><a href="/uri">link [foo [bar]]</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7835() {
+fn src_line_7846() {
     let input = r#"[link] bar](/uri)"#;
     let output = r#"<p>[link] bar](/uri)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7842() {
+fn src_line_7853() {
     let input = r#"[link [bar](/uri)"#;
     let output = r#"<p>[link <a href="/uri">bar</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7849() {
+fn src_line_7860() {
     let input = r#"[link \[bar](/uri)"#;
     let output = r#"<p><a href="/uri">link [bar</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7858() {
+fn src_line_7869() {
     let input = r#"[link *foo **bar** `#`*](/uri)"#;
     let output = r#"<p><a href="/uri">link <em>foo <strong>bar</strong> <code>#</code></em></a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7865() {
+fn src_line_7876() {
     let input = r#"[![moon](moon.jpg)](/uri)"#;
     let output = r#"<p><a href="/uri"><img src="moon.jpg" alt="moon" /></a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7874() {
+fn src_line_7885() {
     let input = r#"[foo [bar](/uri)](/uri)"#;
     let output = r#"<p>[foo <a href="/uri">bar</a>](/uri)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7881() {
+fn src_line_7892() {
     let input = r#"[foo *[bar [baz](/uri)](/uri)*](/uri)"#;
     let output = r#"<p>[foo <em>[bar <a href="/uri">baz</a>](/uri)</em>](/uri)</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7888() {
+fn src_line_7899() {
     let input = r#"![[[foo](uri1)](uri2)](uri3)"#;
     let output = r#"<p><img src="uri3" alt="[foo](uri2)" /></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7898() {
+fn src_line_7909() {
     let input = r#"*[foo*](/uri)"#;
     let output = r#"<p>*<a href="/uri">foo*</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7905() {
+fn src_line_7916() {
     let input = r#"[foo *bar](baz*)"#;
     let output = r#"<p><a href="baz*">foo *bar</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7915() {
+fn src_line_7926() {
     let input = r#"*foo [bar* baz]"#;
     let output = r#"<p><em>foo [bar</em> baz]</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7925() {
+fn src_line_7936() {
     let input = r#"[foo <bar attr="](baz)">"#;
     let output = r#"<p>[foo <bar attr="](baz)"></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7932() {
+fn src_line_7943() {
     let input = r#"[foo`](/uri)`"#;
     let output = r#"<p>[foo<code>](/uri)</code></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7939() {
-    let input = r#"[foo<http://example.com/?search=](uri)>"#;
-    let output = r#"<p>[foo<a href="http://example.com/?search=%5D(uri)">http://example.com/?search=](uri)</a></p>"#;
+fn src_line_7950() {
+    let input = r#"[foo<https://example.com/?search=](uri)>"#;
+    let output = r#"<p>[foo<a href="https://example.com/?search=%5D(uri)">https://example.com/?search=](uri)</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_7977() {
+fn src_line_7988() {
     let input = r#"[foo][bar]
 
 [bar]: /url "title""#;
@@ -5497,7 +5510,7 @@ fn src_line_7977() {
 }
 
 #[test]
-fn src_line_7992() {
+fn src_line_8003() {
     let input = r#"[link [foo [bar]]][ref]
 
 [ref]: /uri"#;
@@ -5506,7 +5519,7 @@ fn src_line_7992() {
 }
 
 #[test]
-fn src_line_8001() {
+fn src_line_8012() {
     let input = r#"[link \[bar][ref]
 
 [ref]: /uri"#;
@@ -5515,7 +5528,7 @@ fn src_line_8001() {
 }
 
 #[test]
-fn src_line_8012() {
+fn src_line_8023() {
     let input = r#"[link *foo **bar** `#`*][ref]
 
 [ref]: /uri"#;
@@ -5524,7 +5537,7 @@ fn src_line_8012() {
 }
 
 #[test]
-fn src_line_8021() {
+fn src_line_8032() {
     let input = r#"[![moon](moon.jpg)][ref]
 
 [ref]: /uri"#;
@@ -5533,7 +5546,7 @@ fn src_line_8021() {
 }
 
 #[test]
-fn src_line_8032() {
+fn src_line_8043() {
     let input = r#"[foo [bar](/uri)][ref]
 
 [ref]: /uri"#;
@@ -5542,7 +5555,7 @@ fn src_line_8032() {
 }
 
 #[test]
-fn src_line_8041() {
+fn src_line_8052() {
     let input = r#"[foo *bar [baz][ref]*][ref]
 
 [ref]: /uri"#;
@@ -5551,7 +5564,7 @@ fn src_line_8041() {
 }
 
 #[test]
-fn src_line_8056() {
+fn src_line_8067() {
     let input = r#"*[foo*][ref]
 
 [ref]: /uri"#;
@@ -5560,7 +5573,7 @@ fn src_line_8056() {
 }
 
 #[test]
-fn src_line_8065() {
+fn src_line_8076() {
     let input = r#"[foo *bar][ref]*
 
 [ref]: /uri"#;
@@ -5569,7 +5582,7 @@ fn src_line_8065() {
 }
 
 #[test]
-fn src_line_8077() {
+fn src_line_8088() {
     let input = r#"[foo <bar attr="][ref]">
 
 [ref]: /uri"#;
@@ -5578,7 +5591,7 @@ fn src_line_8077() {
 }
 
 #[test]
-fn src_line_8086() {
+fn src_line_8097() {
     let input = r#"[foo`][ref]`
 
 [ref]: /uri"#;
@@ -5587,16 +5600,16 @@ fn src_line_8086() {
 }
 
 #[test]
-fn src_line_8095() {
-    let input = r#"[foo<http://example.com/?search=][ref]>
+fn src_line_8106() {
+    let input = r#"[foo<https://example.com/?search=][ref]>
 
 [ref]: /uri"#;
-    let output = r#"<p>[foo<a href="http://example.com/?search=%5D%5Bref%5D">http://example.com/?search=][ref]</a></p>"#;
+    let output = r#"<p>[foo<a href="https://example.com/?search=%5D%5Bref%5D">https://example.com/?search=][ref]</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8106() {
+fn src_line_8117() {
     let input = r#"[foo][BaR]
 
 [bar]: /url "title""#;
@@ -5605,7 +5618,7 @@ fn src_line_8106() {
 }
 
 #[test]
-fn src_line_8117() {
+fn src_line_8128() {
     let input = r#"[ẞ]
 
 [SS]: /url"#;
@@ -5614,7 +5627,7 @@ fn src_line_8117() {
 }
 
 #[test]
-fn src_line_8129() {
+fn src_line_8140() {
     let input = r#"[Foo
   bar]: /url
 
@@ -5624,7 +5637,7 @@ fn src_line_8129() {
 }
 
 #[test]
-fn src_line_8142() {
+fn src_line_8153() {
     let input = r#"[foo] [bar]
 
 [bar]: /url "title""#;
@@ -5633,7 +5646,7 @@ fn src_line_8142() {
 }
 
 #[test]
-fn src_line_8151() {
+fn src_line_8162() {
     let input = r#"[foo]
 [bar]
 
@@ -5644,7 +5657,7 @@ fn src_line_8151() {
 }
 
 #[test]
-fn src_line_8192() {
+fn src_line_8203() {
     let input = r#"[foo]: /url1
 
 [foo]: /url2
@@ -5655,7 +5668,7 @@ fn src_line_8192() {
 }
 
 #[test]
-fn src_line_8207() {
+fn src_line_8218() {
     let input = r#"[bar][foo\!]
 
 [foo!]: /url"#;
@@ -5664,7 +5677,7 @@ fn src_line_8207() {
 }
 
 #[test]
-fn src_line_8219() {
+fn src_line_8230() {
     let input = r#"[foo][ref[]
 
 [ref[]: /uri"#;
@@ -5674,7 +5687,7 @@ fn src_line_8219() {
 }
 
 #[test]
-fn src_line_8229() {
+fn src_line_8240() {
     let input = r#"[foo][ref[bar]]
 
 [ref[bar]]: /uri"#;
@@ -5684,7 +5697,7 @@ fn src_line_8229() {
 }
 
 #[test]
-fn src_line_8239() {
+fn src_line_8250() {
     let input = r#"[[[foo]]]
 
 [[[foo]]]: /url"#;
@@ -5694,7 +5707,7 @@ fn src_line_8239() {
 }
 
 #[test]
-fn src_line_8249() {
+fn src_line_8260() {
     let input = r#"[foo][ref\[]
 
 [ref\[]: /uri"#;
@@ -5703,7 +5716,7 @@ fn src_line_8249() {
 }
 
 #[test]
-fn src_line_8260() {
+fn src_line_8271() {
     let input = r#"[bar\\]: /uri
 
 [bar\\]"#;
@@ -5712,7 +5725,7 @@ fn src_line_8260() {
 }
 
 #[test]
-fn src_line_8272() {
+fn src_line_8283() {
     let input = r#"[]
 
 []: /uri"#;
@@ -5722,7 +5735,7 @@ fn src_line_8272() {
 }
 
 #[test]
-fn src_line_8282() {
+fn src_line_8293() {
     let input = r#"[
  ]
 
@@ -5736,7 +5749,7 @@ fn src_line_8282() {
 }
 
 #[test]
-fn src_line_8305() {
+fn src_line_8316() {
     let input = r#"[foo][]
 
 [foo]: /url "title""#;
@@ -5745,7 +5758,7 @@ fn src_line_8305() {
 }
 
 #[test]
-fn src_line_8314() {
+fn src_line_8325() {
     let input = r#"[*foo* bar][]
 
 [*foo* bar]: /url "title""#;
@@ -5754,7 +5767,7 @@ fn src_line_8314() {
 }
 
 #[test]
-fn src_line_8325() {
+fn src_line_8336() {
     let input = r#"[Foo][]
 
 [foo]: /url "title""#;
@@ -5763,7 +5776,7 @@ fn src_line_8325() {
 }
 
 #[test]
-fn src_line_8338() {
+fn src_line_8349() {
     let input = "[foo]\x20
 []
 
@@ -5774,7 +5787,7 @@ fn src_line_8338() {
 }
 
 #[test]
-fn src_line_8358() {
+fn src_line_8369() {
     let input = r#"[foo]
 
 [foo]: /url "title""#;
@@ -5783,7 +5796,7 @@ fn src_line_8358() {
 }
 
 #[test]
-fn src_line_8367() {
+fn src_line_8378() {
     let input = r#"[*foo* bar]
 
 [*foo* bar]: /url "title""#;
@@ -5792,7 +5805,7 @@ fn src_line_8367() {
 }
 
 #[test]
-fn src_line_8376() {
+fn src_line_8387() {
     let input = r#"[[*foo* bar]]
 
 [*foo* bar]: /url "title""#;
@@ -5801,7 +5814,7 @@ fn src_line_8376() {
 }
 
 #[test]
-fn src_line_8385() {
+fn src_line_8396() {
     let input = r#"[[bar [foo]
 
 [foo]: /url"#;
@@ -5810,7 +5823,7 @@ fn src_line_8385() {
 }
 
 #[test]
-fn src_line_8396() {
+fn src_line_8407() {
     let input = r#"[Foo]
 
 [foo]: /url "title""#;
@@ -5819,7 +5832,7 @@ fn src_line_8396() {
 }
 
 #[test]
-fn src_line_8407() {
+fn src_line_8418() {
     let input = r#"[foo] bar
 
 [foo]: /url"#;
@@ -5828,7 +5841,7 @@ fn src_line_8407() {
 }
 
 #[test]
-fn src_line_8419() {
+fn src_line_8430() {
     let input = r#"\[foo]
 
 [foo]: /url "title""#;
@@ -5837,7 +5850,7 @@ fn src_line_8419() {
 }
 
 #[test]
-fn src_line_8431() {
+fn src_line_8442() {
     let input = r#"[foo*]: /url
 
 *[foo*]"#;
@@ -5846,7 +5859,7 @@ fn src_line_8431() {
 }
 
 #[test]
-fn src_line_8443() {
+fn src_line_8454() {
     let input = r#"[foo][bar]
 
 [foo]: /url1
@@ -5856,7 +5869,7 @@ fn src_line_8443() {
 }
 
 #[test]
-fn src_line_8452() {
+fn src_line_8463() {
     let input = r#"[foo][]
 
 [foo]: /url1"#;
@@ -5865,7 +5878,7 @@ fn src_line_8452() {
 }
 
 #[test]
-fn src_line_8462() {
+fn src_line_8473() {
     let input = r#"[foo]()
 
 [foo]: /url1"#;
@@ -5874,7 +5887,7 @@ fn src_line_8462() {
 }
 
 #[test]
-fn src_line_8470() {
+fn src_line_8481() {
     let input = r#"[foo](not a link)
 
 [foo]: /url1"#;
@@ -5883,7 +5896,7 @@ fn src_line_8470() {
 }
 
 #[test]
-fn src_line_8481() {
+fn src_line_8492() {
     let input = r#"[foo][bar][baz]
 
 [baz]: /url"#;
@@ -5892,7 +5905,7 @@ fn src_line_8481() {
 }
 
 #[test]
-fn src_line_8493() {
+fn src_line_8504() {
     let input = r#"[foo][bar][baz]
 
 [baz]: /url1
@@ -5902,7 +5915,7 @@ fn src_line_8493() {
 }
 
 #[test]
-fn src_line_8506() {
+fn src_line_8517() {
     let input = r#"[foo][bar][baz]
 
 [baz]: /url1
@@ -5912,14 +5925,14 @@ fn src_line_8506() {
 }
 
 #[test]
-fn src_line_8529() {
+fn src_line_8540() {
     let input = r#"![foo](/url "title")"#;
     let output = r#"<p><img src="/url" alt="foo" title="title" /></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8536() {
+fn src_line_8547() {
     let input = r#"![foo *bar*]
 
 [foo *bar*]: train.jpg "train & tracks""#;
@@ -5928,21 +5941,21 @@ fn src_line_8536() {
 }
 
 #[test]
-fn src_line_8545() {
+fn src_line_8556() {
     let input = r#"![foo ![bar](/url)](/url2)"#;
     let output = r#"<p><img src="/url2" alt="foo bar" /></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8552() {
+fn src_line_8563() {
     let input = r#"![foo [bar](/url)](/url2)"#;
     let output = r#"<p><img src="/url2" alt="foo bar" /></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8566() {
+fn src_line_8577() {
     let input = r#"![foo *bar*][]
 
 [foo *bar*]: train.jpg "train & tracks""#;
@@ -5951,7 +5964,7 @@ fn src_line_8566() {
 }
 
 #[test]
-fn src_line_8575() {
+fn src_line_8586() {
     let input = r#"![foo *bar*][foobar]
 
 [FOOBAR]: train.jpg "train & tracks""#;
@@ -5960,35 +5973,35 @@ fn src_line_8575() {
 }
 
 #[test]
-fn src_line_8584() {
+fn src_line_8595() {
     let input = r#"![foo](train.jpg)"#;
     let output = r#"<p><img src="train.jpg" alt="foo" /></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8591() {
+fn src_line_8602() {
     let input = r#"My ![foo bar](/path/to/train.jpg  "title"   )"#;
     let output = r#"<p>My <img src="/path/to/train.jpg" alt="foo bar" title="title" /></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8598() {
+fn src_line_8609() {
     let input = r#"![foo](<url>)"#;
     let output = r#"<p><img src="url" alt="foo" /></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8605() {
+fn src_line_8616() {
     let input = r#"![](/url)"#;
     let output = r#"<p><img src="/url" alt="" /></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8614() {
+fn src_line_8625() {
     let input = r#"![foo][bar]
 
 [bar]: /url"#;
@@ -5997,7 +6010,7 @@ fn src_line_8614() {
 }
 
 #[test]
-fn src_line_8623() {
+fn src_line_8634() {
     let input = r#"![foo][bar]
 
 [BAR]: /url"#;
@@ -6006,7 +6019,7 @@ fn src_line_8623() {
 }
 
 #[test]
-fn src_line_8634() {
+fn src_line_8645() {
     let input = r#"![foo][]
 
 [foo]: /url "title""#;
@@ -6015,7 +6028,7 @@ fn src_line_8634() {
 }
 
 #[test]
-fn src_line_8643() {
+fn src_line_8654() {
     let input = r#"![*foo* bar][]
 
 [*foo* bar]: /url "title""#;
@@ -6024,7 +6037,7 @@ fn src_line_8643() {
 }
 
 #[test]
-fn src_line_8654() {
+fn src_line_8665() {
     let input = r#"![Foo][]
 
 [foo]: /url "title""#;
@@ -6033,7 +6046,7 @@ fn src_line_8654() {
 }
 
 #[test]
-fn src_line_8666() {
+fn src_line_8677() {
     let input = "![foo]\x20
 []
 
@@ -6044,7 +6057,7 @@ fn src_line_8666() {
 }
 
 #[test]
-fn src_line_8679() {
+fn src_line_8690() {
     let input = r#"![foo]
 
 [foo]: /url "title""#;
@@ -6053,7 +6066,7 @@ fn src_line_8679() {
 }
 
 #[test]
-fn src_line_8688() {
+fn src_line_8699() {
     let input = r#"![*foo* bar]
 
 [*foo* bar]: /url "title""#;
@@ -6062,7 +6075,7 @@ fn src_line_8688() {
 }
 
 #[test]
-fn src_line_8699() {
+fn src_line_8710() {
     let input = r#"![[foo]]
 
 [[foo]]: /url "title""#;
@@ -6072,7 +6085,7 @@ fn src_line_8699() {
 }
 
 #[test]
-fn src_line_8711() {
+fn src_line_8722() {
     let input = r#"![Foo]
 
 [foo]: /url "title""#;
@@ -6081,7 +6094,7 @@ fn src_line_8711() {
 }
 
 #[test]
-fn src_line_8723() {
+fn src_line_8734() {
     let input = r#"!\[foo]
 
 [foo]: /url "title""#;
@@ -6090,7 +6103,7 @@ fn src_line_8723() {
 }
 
 #[test]
-fn src_line_8735() {
+fn src_line_8746() {
     let input = r#"\![foo]
 
 [foo]: /url "title""#;
@@ -6099,154 +6112,154 @@ fn src_line_8735() {
 }
 
 #[test]
-fn src_line_8768() {
+fn src_line_8779() {
     let input = r#"<http://foo.bar.baz>"#;
     let output = r#"<p><a href="http://foo.bar.baz">http://foo.bar.baz</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8775() {
-    let input = r#"<http://foo.bar.baz/test?q=hello&id=22&boolean>"#;
-    let output = r#"<p><a href="http://foo.bar.baz/test?q=hello&amp;id=22&amp;boolean">http://foo.bar.baz/test?q=hello&amp;id=22&amp;boolean</a></p>"#;
+fn src_line_8786() {
+    let input = r#"<https://foo.bar.baz/test?q=hello&id=22&boolean>"#;
+    let output = r#"<p><a href="https://foo.bar.baz/test?q=hello&amp;id=22&amp;boolean">https://foo.bar.baz/test?q=hello&amp;id=22&amp;boolean</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8782() {
+fn src_line_8793() {
     let input = r#"<irc://foo.bar:2233/baz>"#;
     let output = r#"<p><a href="irc://foo.bar:2233/baz">irc://foo.bar:2233/baz</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8791() {
+fn src_line_8802() {
     let input = r#"<MAILTO:FOO@BAR.BAZ>"#;
     let output = r#"<p><a href="MAILTO:FOO@BAR.BAZ">MAILTO:FOO@BAR.BAZ</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8803() {
+fn src_line_8814() {
     let input = r#"<a+b+c:d>"#;
     let output = r#"<p><a href="a+b+c:d">a+b+c:d</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8810() {
+fn src_line_8821() {
     let input = r#"<made-up-scheme://foo,bar>"#;
     let output = r#"<p><a href="made-up-scheme://foo,bar">made-up-scheme://foo,bar</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8817() {
-    let input = r#"<http://../>"#;
-    let output = r#"<p><a href="http://../">http://../</a></p>"#;
+fn src_line_8828() {
+    let input = r#"<https://../>"#;
+    let output = r#"<p><a href="https://../">https://../</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8824() {
+fn src_line_8835() {
     let input = r#"<localhost:5001/foo>"#;
     let output = r#"<p><a href="localhost:5001/foo">localhost:5001/foo</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8833() {
-    let input = r#"<http://foo.bar/baz bim>"#;
-    let output = r#"<p>&lt;http://foo.bar/baz bim&gt;</p>"#;
+fn src_line_8844() {
+    let input = r#"<https://foo.bar/baz bim>"#;
+    let output = r#"<p>&lt;https://foo.bar/baz bim&gt;</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8842() {
-    let input = r#"<http://example.com/\[\>"#;
-    let output = r#"<p><a href="http://example.com/%5C%5B%5C">http://example.com/\[\</a></p>"#;
+fn src_line_8853() {
+    let input = r#"<https://example.com/\[\>"#;
+    let output = r#"<p><a href="https://example.com/%5C%5B%5C">https://example.com/\[\</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8864() {
+fn src_line_8875() {
     let input = r#"<foo@bar.example.com>"#;
     let output = r#"<p><a href="mailto:foo@bar.example.com">foo@bar.example.com</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8871() {
+fn src_line_8882() {
     let input = r#"<foo+special@Bar.baz-bar0.com>"#;
     let output = r#"<p><a href="mailto:foo+special@Bar.baz-bar0.com">foo+special@Bar.baz-bar0.com</a></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8880() {
+fn src_line_8891() {
     let input = r#"<foo\+@bar.example.com>"#;
     let output = r#"<p>&lt;foo+@bar.example.com&gt;</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8889() {
+fn src_line_8900() {
     let input = r#"<>"#;
     let output = r#"<p>&lt;&gt;</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8896() {
-    let input = r#"< http://foo.bar >"#;
-    let output = r#"<p>&lt; http://foo.bar &gt;</p>"#;
+fn src_line_8907() {
+    let input = r#"< https://foo.bar >"#;
+    let output = r#"<p>&lt; https://foo.bar &gt;</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8903() {
+fn src_line_8914() {
     let input = r#"<m:abc>"#;
     let output = r#"<p>&lt;m:abc&gt;</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8910() {
+fn src_line_8921() {
     let input = r#"<foo.bar.baz>"#;
     let output = r#"<p>&lt;foo.bar.baz&gt;</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8917() {
-    let input = r#"http://example.com"#;
-    let output = r#"<p>http://example.com</p>"#;
+fn src_line_8928() {
+    let input = r#"https://example.com"#;
+    let output = r#"<p>https://example.com</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_8924() {
+fn src_line_8935() {
     let input = r#"foo@bar.example.com"#;
     let output = r#"<p>foo@bar.example.com</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_9005() {
+fn src_line_9015() {
     let input = r#"<a><bab><c2c>"#;
     let output = r#"<p><a><bab><c2c></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_9014() {
+fn src_line_9024() {
     let input = r#"<a/><b2/>"#;
     let output = r#"<p><a/><b2/></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_9023() {
+fn src_line_9033() {
     let input = r#"<a  /><b2
 data="foo" >"#;
     let output = r#"<p><a  /><b2
@@ -6255,7 +6268,7 @@ data="foo" ></p>"#;
 }
 
 #[test]
-fn src_line_9034() {
+fn src_line_9044() {
     let input = r#"<a foo="bar" bam = 'baz <em>"</em>'
 _boolean zoop:33=zoop:33 />"#;
     let output = r#"<p><a foo="bar" bam = 'baz <em>"</em>'
@@ -6264,35 +6277,35 @@ _boolean zoop:33=zoop:33 /></p>"#;
 }
 
 #[test]
-fn src_line_9045() {
+fn src_line_9055() {
     let input = r#"Foo <responsive-image src="foo.jpg" />"#;
     let output = r#"<p>Foo <responsive-image src="foo.jpg" /></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_9054() {
+fn src_line_9064() {
     let input = r#"<33> <__>"#;
     let output = r#"<p>&lt;33&gt; &lt;__&gt;</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_9063() {
+fn src_line_9073() {
     let input = r#"<a h*#ref="hi">"#;
     let output = r#"<p>&lt;a h*#ref=&quot;hi&quot;&gt;</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_9072() {
+fn src_line_9082() {
     let input = r#"<a href="hi'> <a href=hi'>"#;
     let output = r#"<p>&lt;a href=&quot;hi'&gt; &lt;a href=hi'&gt;</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_9081() {
+fn src_line_9091() {
     let input = r#"< a><
 foo><bar/ >
 <foo bar=baz
@@ -6305,39 +6318,32 @@ bim!bop /&gt;</p>"#;
 }
 
 #[test]
-fn src_line_9096() {
+fn src_line_9106() {
     let input = r#"<a href='bar'title=title>"#;
     let output = r#"<p>&lt;a href='bar'title=title&gt;</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_9105() {
+fn src_line_9115() {
     let input = r#"</a></foo >"#;
     let output = r#"<p></a></foo ></p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_9114() {
+fn src_line_9124() {
     let input = r#"</a href="foo">"#;
     let output = r#"<p>&lt;/a href=&quot;foo&quot;&gt;</p>"#;
     run(input, output);
 }
 
 #[test]
-fn src_line_9123() {
-    let input = r#"foo <!-- this is a
-comment - with hyphen -->"#;
-    let output = r#"<p>foo <!-- this is a
-comment - with hyphen --></p>"#;
-    run(input, output);
-}
-
-#[test]
-fn src_line_9132() {
-    let input = r#"foo <!-- not a comment -- two hyphens -->"#;
-    let output = r#"<p>foo &lt;!-- not a comment -- two hyphens --&gt;</p>"#;
+fn src_line_9133() {
+    let input = r#"foo <!-- this is a --
+comment - with hyphens -->"#;
+    let output = r#"<p>foo <!-- this is a --
+comment - with hyphens --></p>"#;
     run(input, output);
 }
 
@@ -6345,9 +6351,9 @@ fn src_line_9132() {
 fn src_line_9141() {
     let input = r#"foo <!--> foo -->
 
-foo <!-- foo--->"#;
-    let output = r#"<p>foo &lt;!--&gt; foo --&gt;</p>
-<p>foo &lt;!-- foo---&gt;</p>"#;
+foo <!---> foo -->"#;
+    let output = r#"<p>foo <!--> foo --&gt;</p>
+<p>foo <!---> foo --&gt;</p>"#;
     run(input, output);
 }
 
