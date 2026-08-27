@@ -1,0 +1,151 @@
+//! Parser presets: ready-made plugin selections, and the open trait for
+//! defining your own.
+//!
+//! ```
+//! use markdown_it::plugins::presets::{new_with_preset, Preset};
+//!
+//! let md = new_with_preset(Preset::CommonMark);                  // built-in
+//! let md = new_with_preset(|md: &mut markdown_it::MarkdownIt| {  // custom
+//!     markdown_it::plugins::cmark::add(md);
+//!     markdown_it::plugins::extra::tables::add(md);
+//! });
+//! ```
+
+use crate::MarkdownIt;
+use crate::plugins::{cmark, extra, html};
+
+/// Impl this to build your own presets.
+pub trait PresetConfig {
+    /// Apply this preset to a freshly created `md`.
+    fn configure(&self, md: &mut MarkdownIt);
+}
+
+/// Built-in presets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Preset {
+    /// markdown-it.js `default`: CommonMark plus tables and strikethrough.
+    /// Raw HTML, linkify, typographer off; `max_nesting` 100.
+    MarkdownItDefault,
+
+    /// Strict CommonMark, including raw HTML; `max_nesting` 20.
+    CommonMark,
+
+    /// Only paragraphs and plain inline text — a base for manual rule
+    /// selection; `max_nesting` 20.
+    Zero,
+}
+
+impl PresetConfig for Preset {
+    fn configure(&self, md: &mut MarkdownIt) {
+        match self {
+            Preset::MarkdownItDefault => {
+                cmark::add(md);
+                extra::tables::add(md);
+                extra::strikethrough::add(md);
+                md.max_nesting = 100;
+            }
+            Preset::CommonMark => {
+                cmark::add(md);
+                html::add(md);
+                md.max_nesting = 20;
+            }
+            Preset::Zero => {
+                // same with markdownit.js
+                cmark::block::paragraph::add(md);
+                md.max_nesting = 20;
+            }
+        }
+    }
+}
+
+/// Allow one-off presets to be expressed as closures or functions.
+impl<F> PresetConfig for F
+where
+    F: Fn(&mut MarkdownIt),
+{
+    fn configure(&self, md: &mut MarkdownIt) {
+        self(md);
+    }
+}
+
+/// Create a configured parser from a preset.
+pub fn new_with_preset(preset: impl PresetConfig) -> MarkdownIt {
+    let mut md = MarkdownIt::new();
+    preset.configure(&mut md);
+    md
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Preset, PresetConfig, new_with_preset};
+    use crate::MarkdownIt;
+    use crate::plugins::{cmark, extra};
+
+    #[test]
+    fn markdown_it_default_enables_only_bundled_extensions() {
+        let md = new_with_preset(Preset::MarkdownItDefault);
+
+        assert_eq!(
+            md.parse("~~deleted~~\n\n| a |\n| - |").render(),
+            "<p><s>deleted</s></p>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n"
+        );
+        assert_eq!(
+            md.parse("<em>escaped</em>").render(),
+            "<p>&lt;em&gt;escaped&lt;/em&gt;</p>\n"
+        );
+        assert_eq!(md.max_nesting, 100);
+    }
+
+    #[test]
+    fn commonmark_enables_html_but_not_markdown_it_extensions() {
+        let md = new_with_preset(Preset::CommonMark);
+
+        assert_eq!(
+            md.parse("<em>raw</em> ~~plain~~").render(),
+            "<p><em>raw</em> ~~plain~~</p>\n"
+        );
+        assert_eq!(md.max_nesting, 20);
+    }
+
+    #[test]
+    fn zero_keeps_only_paragraphs_and_plain_text() {
+        let md = new_with_preset(Preset::Zero);
+
+        assert_eq!(
+            md.parse("# **plain** <em>text</em>").render(),
+            "<p># **plain** &lt;em&gt;text&lt;/em&gt;</p>\n"
+        );
+        assert_eq!(md.max_nesting, 20);
+    }
+
+    #[test]
+    fn downstream_types_can_define_presets() {
+        struct GfmLike;
+
+        impl PresetConfig for GfmLike {
+            fn configure(&self, md: &mut MarkdownIt) {
+                cmark::add(md);
+                extra::tables::add(md);
+                extra::strikethrough::add(md);
+                extra::tasklist::add(md);
+            }
+        }
+
+        let md = new_with_preset(GfmLike);
+        let html = md.parse("- [x] done").render();
+        assert!(html.contains("task-list-item-checkbox"));
+    }
+
+    #[test]
+    fn closures_can_define_one_off_presets() {
+        let md = new_with_preset(|md: &mut MarkdownIt| {
+            cmark::add(md);
+            extra::mark::add(md);
+        });
+
+        assert_eq!(
+            md.parse("==marked==").render(),
+            "<p><mark>marked</mark></p>\n"
+        );
+    }
+}

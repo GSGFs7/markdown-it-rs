@@ -19,4 +19,5 @@ pub mod cmark;
 pub mod directives;
 pub mod extra;
 pub mod html;
+pub mod presets;
 pub mod sourcepos;
