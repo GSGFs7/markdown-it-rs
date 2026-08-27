@@ -4,8 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 use std::slice::Iter;
-
-use once_cell::sync::OnceCell;
+use std::sync::OnceLock;
 
 ///
 /// Ruler allows you to implement a plugin system with dependency management and ensure that
@@ -51,7 +50,7 @@ use once_cell::sync::OnceCell;
 ///
 pub struct Ruler<M, T> {
     deps: Vec<RuleItem<M, T>>,
-    compiled: OnceCell<(Vec<usize>, Vec<T>)>,
+    compiled: OnceLock<(Vec<usize>, Vec<T>)>,
 }
 
 impl<M, T> Ruler<M, T> {
@@ -63,7 +62,7 @@ impl<M, T> Ruler<M, T> {
 impl<M: Eq + Hash + Clone + Debug, T: Clone> Ruler<M, T> {
     /// Add a new rule identified by `mark` with payload `value`.
     pub fn add(&mut self, mark: M, value: T) -> &mut RuleItem<M, T> {
-        self.compiled = OnceCell::new();
+        self.compiled = OnceLock::new();
         let dep = RuleItem::new(mark, value);
         self.deps.push(dep);
         self.deps.last_mut().unwrap()
@@ -71,7 +70,7 @@ impl<M: Eq + Hash + Clone + Debug, T: Clone> Ruler<M, T> {
 
     /// Remove all rules identified by `mark`.
     pub fn remove(&mut self, mark: M) {
-        self.compiled = OnceCell::new();
+        self.compiled = OnceLock::new();
         self.deps.retain(|dep| !dep.marks.contains(&mark));
     }
 
@@ -253,7 +252,7 @@ impl<M, T> Default for Ruler<M, T> {
     fn default() -> Self {
         Self {
             deps: Vec::new(),
-            compiled: OnceCell::new(),
+            compiled: OnceLock::new(),
         }
     }
 }

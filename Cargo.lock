@@ -783,7 +783,6 @@ dependencies = [
  "katex-rs",
  "linkify",
  "markdown-it-rs-url",
- "once_cell",
  "readonly",
  "regex",
  "stacker",

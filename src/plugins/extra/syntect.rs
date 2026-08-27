@@ -29,8 +29,8 @@
 //! ```
 
 use std::collections::HashSet;
+use std::sync::LazyLock;
 
-use once_cell::sync::Lazy;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Theme, ThemeSet};
 use syntect::html::{
@@ -51,8 +51,8 @@ use crate::plugins::cmark::block::fence::CodeFence;
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 // lazy load themes. it wast a lot of performance
-static SYNTAX_SET: Lazy<SyntaxSet> = Lazy::new(SyntaxSet::load_defaults_newlines);
-static THEME_SET: Lazy<ThemeSet> = Lazy::new(ThemeSet::load_defaults);
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
 // --- render ---
 

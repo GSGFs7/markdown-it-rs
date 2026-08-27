@@ -6,8 +6,7 @@ mod rule;
 mod state;
 
 use std::collections::HashMap;
-
-use once_cell::sync::OnceCell;
+use std::sync::OnceLock;
 
 pub use self::builtin::inline_parser::InlineRoot;
 pub use self::builtin::skip_text::{Text, TextSpecial};
@@ -30,7 +29,7 @@ type RuleFns = (
 pub struct InlineParser {
     ruler: Ruler<RuleMark, RuleFns>,
     text_charmap: HashMap<char, Vec<RuleMark>>,
-    text_impl: OnceCell<TextScannerImpl>,
+    text_impl: OnceLock<TextScannerImpl>,
 }
 
 impl InlineParser {
@@ -138,7 +137,7 @@ impl InlineParser {
 
     pub fn add_rule<T: InlineRule>(&mut self) -> RuleBuilder<'_, RuleFns> {
         if T::MARKER != '\0' {
-            self.text_impl = OnceCell::new();
+            self.text_impl = OnceLock::new();
             let charvec = self.text_charmap.entry(T::MARKER).or_default();
             charvec.push(RuleMark::of::<T>());
         }
@@ -156,7 +155,7 @@ impl InlineParser {
 
     pub fn remove_rule<T: InlineRule>(&mut self) {
         if T::MARKER != '\0' {
-            self.text_impl = OnceCell::new();
+            self.text_impl = OnceLock::new();
             let mut charvec = self.text_charmap.remove(&T::MARKER).unwrap_or_default();
             charvec.retain(|x| *x != RuleMark::of::<T>());
             if !charvec.is_empty() {

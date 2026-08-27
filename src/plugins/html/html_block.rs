@@ -1,7 +1,8 @@
 //! HTML block syntax from CommonMark
 //!
 //! <https://spec.commonmark.org/0.30/#html-blocks>
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
+
 use regex::Regex;
 
 use super::utils::blocks::*;
@@ -45,7 +46,7 @@ impl HTMLSequence {
 // An array of opening and corresponding closing sequences for html tags,
 // last argument defines whether it can terminate a paragraph or not
 //
-static HTML_SEQUENCES: Lazy<[HTMLSequence; 7]> = Lazy::new(|| {
+static HTML_SEQUENCES: LazyLock<[HTMLSequence; 7]> = LazyLock::new(|| {
     let block_names = HTML_BLOCKS.join("|");
     let open_close_tag_re = HTML_OPEN_CLOSE_TAG_RE.as_str();
 

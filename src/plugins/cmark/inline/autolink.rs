@@ -3,7 +3,8 @@
 //! `<https://example.org>`
 //!
 //! <https://spec.commonmark.org/0.30/#autolinks>
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
+
 use regex::Regex;
 
 use crate::parser::inline::{InlineRule, InlineState, TextSpecial};
@@ -29,10 +30,10 @@ pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<AutolinkScanner>();
 }
 
-static AUTOLINK_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^([a-zA-Z][a-zA-Z0-9+.\-]{1,31}):([^<>\x00-\x20]*)$").unwrap());
+static AUTOLINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^([a-zA-Z][a-zA-Z0-9+.\-]{1,31}):([^<>\x00-\x20]*)$").unwrap());
 
-static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
+static EMAIL_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^([a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*)$").unwrap()
 });
 

@@ -918,7 +918,6 @@ dependencies = [
  "html-escape",
  "linkify 0.11.0",
  "markdown-it-rs-url",
- "once_cell",
  "readonly",
  "regex",
  "stacker",

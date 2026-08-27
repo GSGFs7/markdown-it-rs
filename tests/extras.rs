@@ -1,4 +1,4 @@
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
 #[test]
 fn title_example() {
@@ -13,7 +13,7 @@ fn title_example() {
 
 #[test]
 fn lazy_singleton() {
-    static MD: Lazy<markdown_it::MarkdownIt> = Lazy::new(|| {
+    static MD: LazyLock<markdown_it::MarkdownIt> = LazyLock::new(|| {
         let mut parser = markdown_it::MarkdownIt::new();
         markdown_it::plugins::cmark::add(&mut parser);
         parser

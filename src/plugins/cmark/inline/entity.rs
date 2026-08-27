@@ -3,7 +3,8 @@
 //! `&#123;`, `&#xAF;`, `&quot;`
 //!
 //! <https://spec.commonmark.org/0.30/#entity-and-numeric-character-references>
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
+
 use regex::Regex;
 
 use crate::common::utils::{get_entity_from_str, is_valid_entity_code};
@@ -14,10 +15,11 @@ pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<EntityScanner>();
 }
 
-static DIGITAL_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new("(?i)^&#((?:x[a-f0-9]{1,6}|[0-9]{1,7}));").unwrap());
+static DIGITAL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("(?i)^&#((?:x[a-f0-9]{1,6}|[0-9]{1,7}));").unwrap());
 
-static NAMED_RE: Lazy<Regex> = Lazy::new(|| Regex::new("(?i)^&([a-z][a-z0-9]{1,31});").unwrap());
+static NAMED_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("(?i)^&([a-z][a-z0-9]{1,31});").unwrap());
 
 #[doc(hidden)]
 pub struct EntityScanner;

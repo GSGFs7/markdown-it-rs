@@ -1,9 +1,9 @@
 //! Find urls and emails, and turn them into links
 
 use std::cmp::Ordering;
+use std::sync::LazyLock;
 
 use linkify::{LinkFinder, LinkKind};
-use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::parser::core::{CoreRule, Root};
@@ -12,8 +12,8 @@ use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::inline::{InlineRule, InlineState, TextSpecial};
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
-static SCHEME_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)(?:^|[^a-z0-9.+-])([a-z][a-z0-9.+-]*)$").unwrap());
+static SCHEME_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(?:^|[^a-z0-9.+-])([a-z][a-z0-9.+-]*)$").unwrap());
 
 #[derive(Debug)]
 pub struct Linkified {
