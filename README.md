@@ -54,8 +54,9 @@ transformation rules. This example replaces an emoji shortcode after
 inline parsing:
 
 ```rust
-use markdown_it::parser::{core::CoreRule, inline::Text};
-use markdown_it::{MarkdownIt, Node};
+use markdown_it::parser::core::CoreRule;
+use markdown_it::parser::inline::Text;
+use markdown_it::{MarkdownIt, Node, Preset};
 
 struct Emoji;
 
@@ -72,12 +73,6 @@ impl CoreRule for Emoji {
 fn emoji_plugin(md: &mut MarkdownIt) {
     md.add_rule::<Emoji>().after_named("inline");
 }
-```
-
-Use it:
-
-```rust
-use markdown_it::{MarkdownIt, Preset};
 
 fn main() {
     let mut md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
@@ -90,7 +85,7 @@ fn main() {
 }
 ```
 
-See the `examples` folder for a detailed guide on how to extend it.
+See the `examples/ferris` folder for a detailed guide on how to extend it.
 
 ## Security
 
