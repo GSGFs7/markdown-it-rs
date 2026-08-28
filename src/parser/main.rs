@@ -1,4 +1,3 @@
-use crate::Node;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::common::sourcemap::SourcePos;
@@ -7,6 +6,8 @@ use crate::parser::core::{Root, *};
 use crate::parser::extset::MarkdownItExtSet;
 use crate::parser::inline::{self, InlineParser};
 use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
+use crate::parser::node::Node;
+use crate::plugins::presets::{PresetConfig, new_with_preset};
 
 type RuleFn = fn(&mut Node, &MarkdownIt);
 
@@ -85,6 +86,10 @@ impl MarkdownIt {
 
     pub fn remove_rule<T: CoreRule>(&mut self) {
         self.ruler.remove(RuleMark::of::<T>());
+    }
+
+    pub fn with_preset(preset: impl PresetConfig) -> Self {
+        new_with_preset(preset)
     }
 }
 

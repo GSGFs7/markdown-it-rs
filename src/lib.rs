@@ -19,3 +19,4 @@ pub mod plugins;
 pub use parser::main::MarkdownIt;
 pub use parser::node::{Node, NodeValue};
 pub use parser::renderer::Renderer;
+pub use plugins::presets::{Preset, PresetConfig};
