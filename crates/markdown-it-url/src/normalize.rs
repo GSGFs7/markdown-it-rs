@@ -59,7 +59,7 @@ fn normalize_mailto_url(input: &str) -> String {
     };
 
     let mut result = String::with_capacity(input.len());
-    result.push_str("mailto:");
+    result.push_str(&input[..input.len() - mailto.body.len()]);
     result.push_str(encode_url(local).as_ref());
     result.push('@');
     result.push_str(&domain);
@@ -255,7 +255,7 @@ mod tests {
     fn complex_mailto() {
         assert_eq!(
             format_url_for_computers("MAILTO:user.name+label@クロ.com?subject=hi"),
-            "mailto:user.name+label@xn--pckwg.com?subject=hi"
+            "MAILTO:user.name+label@xn--pckwg.com?subject=hi"
         );
         assert_eq!(
             format_url_for_computers("mailto:测试@クロ.com?subject=你好 世界"),

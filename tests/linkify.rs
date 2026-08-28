@@ -121,14 +121,14 @@ fn bold_links_exclude_markup_of_pairs_from_link_tail() {
     run(input, output);
 }
 
-/*#[test]
+#[test]
 fn match_links_without_protocol() {
     let input = r#"www.example.org"#;
     let output = r#"<p><a href="http://www.example.org">www.example.org</a></p>"#;
     run(input, output);
-}*/
+}
 
-/*#[test]
+#[test]
 fn emails() {
     let input = r#"test@example.com
 
@@ -136,7 +136,7 @@ mailto:test@example.com"#;
     let output = r#"<p><a href="mailto:test@example.com">test@example.com</a></p>
 <p><a href="mailto:test@example.com">mailto:test@example.com</a></p>"#;
     run(input, output);
-}*/
+}
 
 #[test]
 fn typorgapher_should_not_break_href() {
