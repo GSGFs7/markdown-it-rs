@@ -1,3 +1,5 @@
+#![cfg(feature = "linkify")]
+
 mod common;
 
 fn run(input: &str, output: &str) {

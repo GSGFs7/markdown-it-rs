@@ -8,6 +8,7 @@ pub fn markdown_it_fixture_parser() -> MarkdownIt {
     markdown_it::plugins::cmark::block::fence::set_lang_prefix(&mut md, "");
     markdown_it::plugins::extra::typographer::add(&mut md);
     markdown_it::plugins::extra::smartquotes::add(&mut md);
+    #[cfg(feature = "linkify")]
     markdown_it::plugins::extra::linkify::add(&mut md);
 
     md
