@@ -109,7 +109,7 @@ jobs:
           retention-days: 1
 
   package-jvm:
-    name: Package JVM JAR
+    name: Test and package JVM JAR
     needs: build-native
     runs-on: ubuntu-latest
     steps:
@@ -154,10 +154,10 @@ jobs:
           cp native-libs/android-binaries/i686/libmarkdown_it_rs_kt.so "$RESOURCE_DIR/android-x86/libmarkdown_it_rs_kt.so"
           cp native-libs/android-binaries/x86_64/libmarkdown_it_rs_kt.so "$RESOURCE_DIR/android-x86-64/libmarkdown_it_rs_kt.so"
 
-      - name: Build JAR with Gradle
+      - name: Test and build JAR with Gradle
         run: |
           cd bindings/kotlin
-          ./gradlew jar
+          ./gradlew build --no-daemon
 
       - name: Upload completed JAR
         uses: actions/upload-artifact@v7
