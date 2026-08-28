@@ -10,6 +10,11 @@ use crate::parser::extset::RenderExtSet;
 /// Renderer is a struct that walks through AST and collects HTML from each node
 /// into internal buffer.
 pub trait Renderer {
+    /// Whether this renderer emits XHTML-compatible output.
+    fn is_xhtml(&self) -> bool {
+        false
+    }
+
     /// Write opening html tag with attributes, e.g. `<a href="url">`.
     fn open(&mut self, tag: &str, attrs: &[(&str, String)]);
     /// Write closing html tag, e.g. `</a>`.
@@ -103,6 +108,10 @@ impl<const XHTML: bool> From<HTMLRenderer<XHTML>> for String {
 }
 
 impl<const XHTML: bool> Renderer for HTMLRenderer<XHTML> {
+    fn is_xhtml(&self) -> bool {
+        XHTML
+    }
+
     fn open(&mut self, tag: &str, attrs: &[(&str, String)]) {
         self.result.push('<');
         self.result.push_str(tag);

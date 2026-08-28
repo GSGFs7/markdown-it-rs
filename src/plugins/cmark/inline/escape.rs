@@ -33,6 +33,9 @@ impl InlineRule for EscapeScanner {
                 }
                 Some((Node::new(Hardbreak), len))
             }
+            // A space is not escapable. Leave both characters in the pending
+            // text so the newline rule can still see two trailing spaces.
+            Some(' ') => None,
             Some(chr) => {
                 let start = state.pos;
                 let end = state.pos + 1 + chr.len_utf8();

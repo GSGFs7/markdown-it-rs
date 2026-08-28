@@ -280,7 +280,15 @@ pub fn parse_link_destination(
                 // space + ascii control characters
                 Some('\0'..=' ' | '\x7f') | None => break,
                 Some('\\') => match chars.next() {
-                    Some(' ') | None => break,
+                    Some(' ') | None => {
+                        // [a](/url\ "title")
+                        //          ^--- this space can't be escape in CommonMark
+                        // it should be:
+                        //  <a href="/url%5C" title="title">a</a>
+                        //               ^^^--- backslash here
+                        pos += 1;
+                        break;
+                    }
                     Some(x) => pos += 1 + x.len_utf8(),
                 },
                 Some('(') => {
@@ -347,6 +355,17 @@ pub fn parse_link_title(str: &str, start: usize, max: usize) -> Option<ParseLink
             Some('\\') => {
                 let x = chars.next()?;
                 pos += 1 + x.len_utf8();
+                if x == '\n' {
+                    // [foo]: /url "
+                    // hello
+                    // \
+                    // world
+                    // "
+                    //
+                    // physical line break, must be recorded
+                    // otherwise, some problems may occur during parsing
+                    lines += 1;
+                }
             }
             Some(x) => {
                 pos += x.len_utf8();

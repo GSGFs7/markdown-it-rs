@@ -67,7 +67,7 @@ static HTML_SEQUENCES: LazyLock<[HTMLSequence; 7]> = LazyLock::new(|| {
             true,
         ),
         HTMLSequence::new(
-            Regex::new(r#"^<![A-Z]"#).unwrap(),
+            Regex::new(r#"^<![A-Za-z]"#).unwrap(),
             Regex::new(r#">"#).unwrap(),
             true,
         ),
@@ -137,11 +137,14 @@ impl BlockRule for HtmlBlockScanner {
         // Let's roll down till block end.
         if !sequence.close.is_match(line_text) {
             while next_line < state.line_max {
-                if state.line_indent(next_line) < 0 {
+                let line_text = state.get_line(next_line);
+
+                // Blank lines may occur inside explicitly terminated HTML
+                // blocks. A non-empty negative-indent line, however, has left
+                // the current list or blockquote container.
+                if state.line_indent(next_line) < 0 && !line_text.is_empty() {
                     break;
                 }
-
-                let line_text = state.get_line(next_line);
 
                 if sequence.close.is_match(line_text) {
                     if !line_text.is_empty() {

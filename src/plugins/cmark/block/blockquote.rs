@@ -5,6 +5,7 @@
 //! <https://spec.commonmark.org/0.30/#block-quotes>
 use crate::common::utils::find_indent_of;
 use crate::parser::block::{BlockRule, BlockState};
+use crate::plugins::cmark::block::reference::Definition;
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 #[derive(Debug)]
@@ -14,9 +15,23 @@ impl NodeValue for Blockquote {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         fmt.cr();
         fmt.open("blockquote", &node.attrs);
-        fmt.cr();
-        fmt.contents(&node.children);
-        fmt.cr();
+
+        // > [foo]: bar
+        // [foo]
+        //
+        // in this case, Definition node must keep in Blockquote.
+        // it should be reference by link.
+        // but Definition is invisible, in XHTML it should contain a '\n'
+        let only_invisible_definitions =
+            !node.children.is_empty() && node.children.iter().all(|child| child.is::<Definition>());
+        if !only_invisible_definitions || fmt.is_xhtml() {
+            fmt.cr();
+            fmt.contents(&node.children);
+            fmt.cr();
+        } else {
+            fmt.contents(&node.children);
+        }
+
         fmt.close("blockquote");
         fmt.cr();
     }

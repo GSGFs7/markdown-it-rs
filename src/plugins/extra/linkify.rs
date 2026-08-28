@@ -88,9 +88,12 @@ impl InlineRule for LinkifyScanner {
             return None;
         }
         if state.link_level > 0 {
+            // e.g. [https://example.com](other)
             return None;
         }
 
+        // cia https://example.com llo
+        // ^^^^^^^^^-- this
         let trailing = state.trailing_text_get();
         if !SCHEME_RE.is_match(trailing) {
             return None;
@@ -101,6 +104,11 @@ impl InlineRule for LinkifyScanner {
 
         let positions = state.root_ext.get::<LinkifyState>().unwrap();
 
+        // https://example.com
+        // ^    ^            ^
+        // |    |            |
+        // start colon      end
+        // find which interval the colon is in 
         let found_idx = positions
             .binary_search_by(|x| {
                 if x.start >= start {
@@ -116,6 +124,11 @@ impl InlineRule for LinkifyScanner {
         let found = positions[found_idx];
         let proto_size = start - found.start;
         if proto_size > trailing.len() {
+            return None;
+        }
+        // \https://example.com
+        // this should keep text.
+        if trailing[..trailing.len() - proto_size].ends_with('\\') {
             return None;
         }
 

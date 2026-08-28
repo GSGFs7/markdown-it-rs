@@ -46,7 +46,7 @@ use crate::parser::extset::{InlineRootExt, MarkdownItExt};
 use crate::parser::inline::{InlineRule, InlineState, Text};
 use crate::{MarkdownIt, Node};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct CodePairCache<const MARKER: char> {
     scanned: bool,
     max: Vec<usize>,
@@ -71,6 +71,20 @@ pub struct CodePairScanner<const MARKER: char>;
 impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
     const MARKER: char = MARKER;
     const NAMES: &'static [&'static str] = &["code_pair"];
+
+    fn check(state: &mut InlineState) -> Option<usize> {
+        // avoid polluting cache
+        let old_cache = state.inline_ext.get::<CodePairCache<MARKER>>().cloned();
+        let result = Self::run(state).map(|(_, len)| len);
+
+        if let Some(cache) = old_cache {
+            state.inline_ext.insert(cache);
+        } else {
+            state.inline_ext.remove::<CodePairCache<MARKER>>();
+        }
+
+        result
+    }
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();
@@ -119,9 +133,12 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
             let closer_len = match_end - match_start;
 
             if closer_len == opener_len {
-                // Found matching closer length.
+                // found matching closer length
                 let mut content = state.src[pos..match_start].to_owned().replace('\n', " ");
-                if content.starts_with(' ') && content.ends_with(' ') && content.len() > 2 {
+                if content.starts_with(' ')
+                    && content.ends_with(' ')
+                    && content.chars().any(|ch| ch != ' ')
+                {
                     content[1..content.len() - 1]
                         .to_owned()
                         .clone_into(&mut content);
