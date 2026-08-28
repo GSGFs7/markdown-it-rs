@@ -3,42 +3,101 @@
 > [!NOTE]
 > This is a personally maintained fork of
 > [markdown-it-rust/markdown-it](https://github.com/markdown-it-rust/markdown-it).  
-> Due to my limited skills, some features may not be as reliable as the original author's code.
 
-Rust port of popular [markdown-it.js](https://github.com/markdown-it/markdown-it) library.
+A Rust-native, AST-first Markdown parser with [markdown-it.js](https://github.com/markdown-it/markdown-it)-compatible rendering.
 
-You can check a [demo](https://gsgfs7.github.io/markdown-it-rs/) in your browser *(it's Rust compiled into WASM)*.
+You can check a [demo](https://gsgfs7.github.io/markdown-it-rs/) in your browser.
 
 ## Features
 
-- CommonMark test-suite coverage
-- AST
-- Source maps
-- Easy to expand
-- Python, and WebAssembly support
+- 100% CommonMark compatible & highly markdown-it.js compatible
+- Mutable, typed AST
+- Source maps for parsed nodes
+- Extensible core, block, and inline rule chains
+- Optional Python and WebAssembly bindings
 
-## Usage
+## Quick start
+
+The `MarkdownItDefault` preset corresponds to markdown-it.js's default syntax:
 
 ```rust
-let parser = &mut markdown_it::MarkdownIt::new();
-markdown_it::plugins::cmark::add(parser);
-markdown_it::plugins::extra::add(parser);
+use markdown_it::{MarkdownIt, Preset};
 
-let ast  = parser.parse("Hello **world**!");
-let html = ast.render();
+fn main() {
+    let md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
+    let html = md.parse("Hello **world**!").render();
 
-print!("{html}");
-// prints "<p>Hello <strong>world</strong>!</p>"
+    assert_eq!(html, "<p>Hello <strong>world</strong>!</p>\n");
+}
 ```
 
-For a guide on how to extend it, see `examples` folder.
+Assembling your own Rust Markdown dialect:
+
+```rust
+use markdown_it::MarkdownIt;
+use markdown_it::plugins::{cmark, extra};
+
+fn main() {
+    let mut md = MarkdownIt::new();
+    cmark::add(&mut md);
+    extra::tables::add(&mut md);
+    extra::tasklist::add(&mut md);
+    extra::footnote::add(&mut md);
+    // ...
+}
+```
+
+## Write a plugin in a few lines
+
+Plugins are regular Rust functions that install typed parsing or AST
+transformation rules. This example replaces an emoji shortcode after
+inline parsing:
+
+```rust
+use markdown_it::parser::{core::CoreRule, inline::Text};
+use markdown_it::{MarkdownIt, Node};
+
+struct Emoji;
+
+impl CoreRule for Emoji {
+    fn run(root: &mut Node, _: &MarkdownIt) {
+        root.walk_mut(|node, _| {
+            if let Some(text) = node.cast_mut::<Text>() {
+                text.content = text.content.replace(":rocket:", "🚀");
+            }
+        });
+    }
+}
+
+fn emoji_plugin(md: &mut MarkdownIt) {
+    md.add_rule::<Emoji>().after_named("inline");
+}
+```
+
+Use it:
+
+```rust
+use markdown_it::{MarkdownIt, Preset};
+
+fn main() {
+    let mut md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
+    emoji_plugin(&mut md);
+
+    assert_eq!(
+        md.parse("Ready to launch :rocket:").render(),
+        "<p>Ready to launch 🚀</p>\n"
+    );
+}
+```
+
+See the `examples` folder for a detailed guide on how to extend it.
 
 ## Security
 
 This lib does **not** sanitize or filter any HTML output.
 You should add a sanitizer before rendering untrusted content.
 
-There are two plugins should be careful:
+There are two plugins you should be careful with:
 
 - **`html`** - enable raw inline/block HTML.
   By default `plugins::cmark` does not enable raw HTML.
@@ -46,4 +105,4 @@ There are two plugins should be careful:
 
 - **`directives`** - allows custom directives like `:name{key=value}` that are
   rendered by user provided content. The default renderers simply emit `<span>`/`<div>`
-  wrappers. But it might be used like `:name{onclink=...}`.
+  wrappers. But it might be used like `:name{onclick=...}`.
