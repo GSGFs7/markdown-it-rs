@@ -9,14 +9,6 @@
 #![allow(clippy::collapsible_else_if)]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_match)]
-//
-// these are intentional in bevy systems: nobody is directly calling those,
-// so extra arguments don't decrease readability
-#![allow(clippy::too_many_arguments)]
-#![allow(clippy::type_complexity)]
-//
-// just a style choice that clippy has no business complaining about
-#![allow(clippy::uninlined_format_args)]
 
 pub mod common;
 pub mod examples;

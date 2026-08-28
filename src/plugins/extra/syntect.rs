@@ -113,6 +113,13 @@ struct FenceMeta {
     highlighted_lines: HashSet<usize>,
 }
 
+struct RenderOptions<'a> {
+    language: Option<&'a str>,
+    lang_prefix: &'static str,
+    prefix: &'static str,
+    highlighted_lines: &'a HashSet<usize>,
+}
+
 impl FenceMeta {
     // parse "{1, 4-7}" -> Set[1, 4, 5, 6, 7]
     fn parse_line_spec(spec: &str) -> HashSet<usize> {
@@ -208,31 +215,20 @@ impl CoreRule for SyntectRule {
             let syntax = language
                 .and_then(|lang| ss.find_syntax_by_token(lang))
                 .unwrap_or_else(|| ss.find_syntax_plain_text());
+            let options = RenderOptions {
+                language,
+                lang_prefix: lang_prefix.unwrap_or("language-"),
+                prefix: settings.prefix,
+                highlighted_lines: &highlighted_lines,
+            };
 
             let html = match settings.mode {
                 SyntectMode::Inline => {
                     let theme = resolve_theme(&THEME_SET, &settings)
                         .unwrap_or_else(|| panic!("unknown syntect theme: {}", settings.theme));
-                    render_inline_html(
-                        content,
-                        ss,
-                        syntax,
-                        theme,
-                        language,
-                        lang_prefix.unwrap_or("language-"),
-                        settings.prefix,
-                        &highlighted_lines,
-                    )
+                    render_inline_html(content, ss, syntax, theme, &options)
                 }
-                SyntectMode::Classed => render_classed_html(
-                    content,
-                    ss,
-                    syntax,
-                    language,
-                    lang_prefix.unwrap_or("language-"),
-                    settings.prefix,
-                    &highlighted_lines,
-                ),
+                SyntectMode::Classed => render_classed_html(content, ss, syntax, &options),
             };
 
             if let Some(html) = html {
@@ -340,10 +336,7 @@ fn render_inline_html(
     ss: &SyntaxSet,
     syntax: &SyntaxReference,
     theme: &Theme,
-    language: Option<&str>,
-    lang_prefix: &'static str,
-    prefix: &'static str,
-    highlight_lines: &HashSet<usize>,
+    options: &RenderOptions<'_>,
 ) -> Option<String> {
     let mut highlighter = HighlightLines::new(syntax, theme);
     let bg = theme
@@ -351,9 +344,9 @@ fn render_inline_html(
         .background
         .unwrap_or(syntect::highlighting::Color::WHITE);
     let mut class_attr = String::new();
-    if let Some(lang) = language {
+    if let Some(lang) = options.language {
         if !lang.is_empty() {
-            class_attr.push_str(lang_prefix);
+            class_attr.push_str(options.lang_prefix);
             class_attr.push_str(lang);
         }
     }
@@ -383,12 +376,12 @@ fn render_inline_html(
 
         // splicing HTML
         html.push_str("<span class=\"");
-        html.push_str(prefix);
+        html.push_str(options.prefix);
         html.push_str("line");
-        if highlight_lines.contains(&line_no) {
+        if options.highlighted_lines.contains(&line_no) {
             // mark as highlighted line. you may need to add styles to this class yourself
             html.push(' ');
-            html.push_str(prefix);
+            html.push_str(options.prefix);
             html.push_str("line-highlighted");
         }
         html.push_str("\">");
@@ -406,19 +399,16 @@ fn render_classed_html(
     content: &str,
     ss: &SyntaxSet,
     syntax: &SyntaxReference,
-    language: Option<&str>,
-    lang_prefix: &'static str,
-    prefix: &'static str,
-    highlighted_lines: &HashSet<usize>,
+    options: &RenderOptions<'_>,
 ) -> Option<String> {
     let mut parse_state = ParseState::new(syntax);
     let mut scope_stack = ScopeStack::new();
 
-    let mut class_attr = format!("{prefix}code");
-    if let Some(lang) = language {
+    let mut class_attr = format!("{}code", options.prefix);
+    if let Some(lang) = options.language {
         if !lang.is_empty() {
             class_attr.push(' ');
-            class_attr.push_str(lang_prefix);
+            class_attr.push_str(options.lang_prefix);
             class_attr.push_str(lang);
         }
     }
@@ -435,11 +425,11 @@ fn render_classed_html(
 
         // it looks like `<span class="syntect-line [syntect-line-highlighted]">`
         html.push_str("<span class=\"");
-        html.push_str(prefix);
+        html.push_str(options.prefix);
         html.push_str("line");
-        if highlighted_lines.contains(&line_no) {
+        if options.highlighted_lines.contains(&line_no) {
             html.push(' ');
-            html.push_str(prefix);
+            html.push_str(options.prefix);
             html.push_str("line-highlighted");
         }
         html.push_str("\">");
@@ -447,14 +437,16 @@ fn render_classed_html(
         // too complex here
 
         // reopen the scope
-        reopen_scopes(&mut html, &active_scopes, prefix);
+        reopen_scopes(&mut html, &active_scopes, options.prefix);
 
         // use syntect process the line
         let ops = parse_state.parse_line(line, ss).ok()?;
         let (line_html, _) = line_tokens_to_classed_spans(
             line,
             ops.as_slice(),
-            ClassStyle::SpacedPrefixed { prefix },
+            ClassStyle::SpacedPrefixed {
+                prefix: options.prefix,
+            },
             &mut scope_stack,
         )
         .ok()?;
