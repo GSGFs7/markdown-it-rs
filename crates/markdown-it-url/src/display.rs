@@ -1,8 +1,34 @@
 use crate::authority::split_authority;
 use crate::elide::fit_to_length;
 use crate::host::display_host;
-use crate::parse::{MailtoUrl, split_authority_suffix, split_mailto_url, strip_ascii_prefix};
+use crate::parse::{
+    MailtoUrl,
+    split_authority_suffix,
+    split_authority_url,
+    split_mailto_url,
+    strip_ascii_prefix,
+};
 use crate::percent::decode_for_display;
+
+pub fn decode_url_for_display(input: &str) -> String {
+    if let Some(url) = split_authority_url(input) {
+        let mut result = String::with_capacity(input.len());
+        result.push_str(url.prefix);
+        result.push_str(&display_authority(url.authority));
+        result.push_str(&decode_for_display(url.suffix));
+        return result;
+    }
+
+    if let Some(mailto) = split_mailto_url(input) {
+        let prefix_len = input.len() - mailto.body.len();
+        let mut result = String::with_capacity(input.len());
+        result.push_str(&input[..prefix_len]);
+        result.push_str(&display_mailto_url(mailto));
+        return result;
+    }
+
+    decode_for_display(input)
+}
 
 // provide a human read url
 pub fn format_url_for_humans(input: &str, max_length: usize) -> String {
@@ -78,6 +104,30 @@ mod tests {
         assert_eq!(
             format_url_for_humans("mailto:user@example.com", usize::MAX),
             "user@example.com"
+        );
+    }
+
+    #[test]
+    fn display_decode_preserves_url_structure() {
+        assert_eq!(
+            decode_url_for_display("http://xn--n3h.net/"),
+            "http://☃.net/"
+        );
+        assert_eq!(
+            decode_url_for_display("//xn--n3h.net/%CE%B1%CE%B2"),
+            "//☃.net/αβ"
+        );
+        assert_eq!(
+            decode_url_for_display("mailto:user@xn--n3h.net"),
+            "mailto:user@☃.net"
+        );
+    }
+
+    #[test]
+    fn display_decode_does_not_decode_percent_twice() {
+        assert_eq!(
+            decode_url_for_display("https://example.com/hello%2E%252Ehello"),
+            "https://example.com/hello.%252Ehello"
         );
     }
 

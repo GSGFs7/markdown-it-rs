@@ -23,8 +23,20 @@ pub(crate) fn decode_for_display(input: &str) -> String {
                     break;
                 };
 
+                // Decode adjacent safe escapes independently from reserved
+                // ones. This lets `%2E%252E` become `.%252E` without ever
+                // turning `%25` into a literal percent and decoding twice.
+                let unsafe_ascii = byte.is_ascii() && !is_safe_display_char(byte as char);
+                if unsafe_ascii && !decoded.is_empty() {
+                    break;
+                }
+
                 decoded.push(byte);
                 pos += 3;
+
+                if unsafe_ascii {
+                    break;
+                }
             }
 
             // try utf-8

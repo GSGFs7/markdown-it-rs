@@ -108,7 +108,7 @@ impl InlineRule for LinkifyScanner {
         // ^    ^            ^
         // |    |            |
         // start colon      end
-        // find which interval the colon is in 
+        // find which interval the colon is in
         let found_idx = positions
             .binary_search_by(|x| {
                 if x.start >= start {
