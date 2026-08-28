@@ -74,6 +74,7 @@ fn emoji_plugin(md: &mut MarkdownIt) {
     md.add_rule::<Emoji>().after_named("inline");
 }
 
+// use it
 fn main() {
     let mut md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
     emoji_plugin(&mut md);
