@@ -3,7 +3,6 @@
 //! <https://github.github.com/gfm/#tables-extension->
 use crate::common::sourcemap::SourcePos;
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::extset::RenderExt;
 use crate::parser::inline::InlineRoot;
 use crate::plugins::cmark::block::heading::HeadingScanner;
 use crate::plugins::cmark::block::list::ListScanner;
@@ -41,8 +40,6 @@ pub struct TableRenderContext {
     pub index: usize,
     pub alignments: Vec<ColumnAlignment>,
 }
-
-impl RenderExt for TableRenderContext {}
 
 #[derive(Debug)]
 pub struct TableHead;

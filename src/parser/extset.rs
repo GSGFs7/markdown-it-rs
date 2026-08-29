@@ -7,37 +7,20 @@ use std::fmt::Debug;
 
 use downcast_rs::{Downcast, impl_downcast};
 
-/// Extension set member for the entire parser (only writable at init).
-pub trait MarkdownItExt: Debug + Downcast + Send + Sync {}
-impl_downcast!(MarkdownItExt);
-extension_set!(MarkdownItExtSet, MarkdownItExt);
-
-/// Extension set member for an arbitrary AST node.
-pub trait NodeExt: Debug + Downcast + Send + Sync {}
-impl_downcast!(NodeExt);
-extension_set!(NodeExtSet, NodeExt);
-
-/// Extension set member for an inline context.
-pub trait InlineRootExt: Debug + Downcast + Send + Sync {}
-impl_downcast!(InlineRootExt);
-extension_set!(InlineRootExtSet, InlineRootExt);
-
-/// Extension set member for a block context.
-pub trait RootExt: Debug + Downcast + Send + Sync {}
-impl_downcast!(RootExt);
-extension_set!(RootExtSet, RootExt);
-
-/// Extension set member for a renderer context.
-pub trait RenderExt: Debug + Downcast + Send + Sync {}
-impl_downcast!(RenderExt);
-extension_set!(RenderExtSet, RenderExt);
+/// A value that can be stored in an extension set.
+///
+/// This trait is implemented automatically for every `Debug + Send + Sync + 'static` type.
+pub trait Extension: Debug + Downcast + Send + Sync {}
+impl<T: Debug + Downcast + Send + Sync> Extension for T {}
+impl_downcast!(Extension);
 
 // see https://github.com/malobre/erased_set for inspiration and API
 // see https://lucumr.pocoo.org/2022/1/7/as-any-hack/ for additional impl details
 macro_rules! extension_set {
-    ($name: ident, $trait: ident) => {
+    ($(#[$meta:meta])* $name: ident) => {
+        $(#[$meta])*
         #[derive(Debug, Default)]
-        pub struct $name(::std::collections::HashMap<crate::common::TypeKey, Box<dyn $trait>>);
+        pub struct $name(::std::collections::HashMap<crate::common::TypeKey, Box<dyn Extension>>);
 
         impl $name {
             #[must_use]
@@ -60,50 +43,50 @@ macro_rules! extension_set {
             }
 
             #[must_use]
-            pub fn contains<T: 'static>(&self) -> bool {
+            pub fn contains<T: Extension>(&self) -> bool {
                 let key = crate::common::TypeKey::of::<T>();
                 self.0.contains_key(&key)
             }
 
             #[must_use]
-            pub fn get<T: $trait>(&self) -> Option<&T> {
+            pub fn get<T: Extension>(&self) -> Option<&T> {
                 let key = crate::common::TypeKey::of::<T>();
                 let result = self.0.get(&key)?;
                 result.downcast_ref::<T>()
             }
 
             #[must_use]
-            pub fn get_mut<T: $trait>(&mut self) -> Option<&mut T> {
+            pub fn get_mut<T: Extension>(&mut self) -> Option<&mut T> {
                 let key = crate::common::TypeKey::of::<T>();
                 let result = self.0.get_mut(&key)?;
                 result.downcast_mut::<T>()
             }
 
-            pub fn get_or_insert<T: $trait>(&mut self, value: T) -> &mut T {
+            pub fn get_or_insert<T: Extension>(&mut self, value: T) -> &mut T {
                 let key = crate::common::TypeKey::of::<T>();
                 let result = self.0.entry(key).or_insert_with(|| Box::new(value));
                 result.downcast_mut::<T>().unwrap()
             }
 
-            pub fn get_or_insert_with<T: $trait>(&mut self, f: impl FnOnce() -> T) -> &mut T {
+            pub fn get_or_insert_with<T: Extension>(&mut self, f: impl FnOnce() -> T) -> &mut T {
                 let key = crate::common::TypeKey::of::<T>();
                 let result = self.0.entry(key).or_insert_with(|| Box::new(f()));
                 result.downcast_mut::<T>().unwrap()
             }
 
-            pub fn get_or_insert_default<T: $trait + Default>(&mut self) -> &mut T {
+            pub fn get_or_insert_default<T: Extension + Default>(&mut self) -> &mut T {
                 let key = crate::common::TypeKey::of::<T>();
                 let result = self.0.entry(key).or_insert_with(|| Box::<T>::default());
                 result.downcast_mut::<T>().unwrap()
             }
 
-            pub fn insert<T: $trait>(&mut self, value: T) -> Option<T> {
+            pub fn insert<T: Extension>(&mut self, value: T) -> Option<T> {
                 let key = crate::common::TypeKey::of::<T>();
                 let result = self.0.insert(key, Box::new(value))?;
                 Some(*result.downcast::<T>().unwrap())
             }
 
-            pub fn remove<T: $trait>(&mut self) -> Option<T> {
+            pub fn remove<T: Extension>(&mut self) -> Option<T> {
                 let key = crate::common::TypeKey::of::<T>();
                 let result = self.0.remove(&key)?;
                 Some(*result.downcast::<T>().unwrap())
@@ -112,20 +95,67 @@ macro_rules! extension_set {
     };
 }
 
-pub(crate) use extension_set;
+extension_set!(
+    /// Extension storage for the entire parser (only writable at init).
+    MarkdownItExtSet
+);
+
+extension_set!(
+    /// Extension storage for an arbitrary AST node.
+    NodeExtSet
+);
+
+extension_set!(
+    /// Extension storage for an inline context.
+    InlineRootExtSet
+);
+
+extension_set!(
+    /// Extension storage for a block context.
+    RootExtSet
+);
+
+extension_set!(
+    /// Extension storage for a renderer context.
+    RenderExtSet
+);
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::Debug;
+    use super::{
+        Extension,
+        InlineRootExtSet,
+        MarkdownItExtSet,
+        NodeExtSet,
+        RenderExtSet,
+        RootExtSet,
+    };
 
-    use downcast_rs::{Downcast, impl_downcast};
+    extension_set!(TestExtSet);
 
-    pub trait TestExt: Debug + Downcast + Send + Sync {}
-    impl_downcast!(TestExt);
+    #[test]
+    fn extension_types_do_not_require_marker_impls() {
+        #[derive(Debug, PartialEq, Eq)]
+        struct State(u8);
 
-    extension_set!(TestExtSet, TestExt);
+        let mut markdown_it = MarkdownItExtSet::new();
+        let mut node = NodeExtSet::new();
+        let mut inline_root = InlineRootExtSet::new();
+        let mut root = RootExtSet::new();
+        let mut render = RenderExtSet::new();
 
-    impl<T: Debug + Downcast + Send + Sync> TestExt for T {}
+        markdown_it.insert(State(1));
+        node.insert(State(2));
+        inline_root.insert(State(3));
+        root.insert(State(4));
+        render.insert(State(5));
+
+        assert_eq!(markdown_it.get::<State>(), Some(&State(1)));
+        assert_eq!(node.get::<State>(), Some(&State(2)));
+        assert_eq!(inline_root.get::<State>(), Some(&State(3)));
+        assert_eq!(root.get::<State>(), Some(&State(4)));
+        assert_eq!(render.get::<State>(), Some(&State(5)));
+    }
 
     #[test]
     fn empty_set() {

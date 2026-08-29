@@ -50,7 +50,6 @@ use std::cmp::min;
 
 use crate::common::sourcemap::SourcePos;
 use crate::parser::core::CoreRule;
-use crate::parser::extset::{MarkdownItExt, NodeExt};
 use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::inline::{InlineRule, InlineState, Text};
 use crate::{MarkdownIt, Node, NodeValue};
@@ -60,11 +59,8 @@ struct PairConfig<const MARKER: char> {
     inserted: bool,
     fns: [Option<fn() -> Node>; 3],
 }
-impl<const MARKER: char> MarkdownItExt for PairConfig<MARKER> {}
-
 #[derive(Debug, Default)]
 struct OpenersBottom<const MARKER: char>([usize; 6]);
-impl<const MARKER: char> NodeExt for OpenersBottom<MARKER> {}
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]

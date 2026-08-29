@@ -47,7 +47,6 @@ use two_face::theme::LazyThemeSet;
 
 use crate::common::utils::unescape_all;
 use crate::parser::core::CoreRule;
-use crate::parser::extset::MarkdownItExt;
 use crate::plugins::cmark::block::code::CodeBlock;
 use crate::plugins::cmark::block::fence::CodeFence;
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
@@ -121,8 +120,6 @@ struct SyntectSettings {
     mode: SyntectMode,
     prefix: &'static str,
 }
-
-impl MarkdownItExt for SyntectSettings {}
 
 impl Default for SyntectSettings {
     fn default() -> Self {

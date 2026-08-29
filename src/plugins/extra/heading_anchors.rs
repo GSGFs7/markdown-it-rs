@@ -13,7 +13,6 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::parser::core::CoreRule;
-use crate::parser::extset::MarkdownItExt;
 use crate::parser::inline::builtin::InlineParserRule;
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
@@ -76,8 +75,6 @@ pub struct HeadingAnchorsOptions {
     /// add a prefix? if set "doc-": "# hello" -> `id="doc-hello"`
     pub prefix: Option<String>,
 }
-
-impl MarkdownItExt for HeadingAnchorsOptions {}
 
 // --- slugify function ---
 

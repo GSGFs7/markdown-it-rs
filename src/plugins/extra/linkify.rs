@@ -5,7 +5,6 @@ use std::cmp::Ordering;
 use linkify::{LinkKind, Linkify};
 
 use crate::parser::core::{CoreRule, Root};
-use crate::parser::extset::{MarkdownItExt, RootExt};
 use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::inline::{InlineRule, InlineState, TextSpecial};
 use crate::parser::main::MarkdownIt;
@@ -36,8 +35,6 @@ pub struct LinkifyOptions {
     pub fuzzy_links: bool,
 }
 
-impl MarkdownItExt for LinkifyOptions {}
-
 pub fn add(md: &mut MarkdownIt) {
     add_with_options(md, LinkifyOptions::default());
 }
@@ -54,7 +51,6 @@ pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
 }
 
 type LinkifyState = Vec<LinkifyPosition>;
-impl RootExt for LinkifyState {}
 
 #[derive(Debug, Clone, Copy)]
 struct LinkifyPosition {

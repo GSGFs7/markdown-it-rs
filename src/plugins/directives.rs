@@ -70,7 +70,6 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::extset::{MarkdownItExt, NodeExt};
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
@@ -401,8 +400,6 @@ impl Debug for DirectiveRenderers {
     }
 }
 
-impl MarkdownItExt for DirectiveRenderers {}
-
 #[derive(Clone, Copy)]
 struct DirectiveRendererExt(DirectiveRenderFn);
 
@@ -411,8 +408,6 @@ impl Debug for DirectiveRendererExt {
         f.debug_struct("DirectiveRendererExt").finish()
     }
 }
-
-impl NodeExt for DirectiveRendererExt {}
 
 // --- helper method ---
 

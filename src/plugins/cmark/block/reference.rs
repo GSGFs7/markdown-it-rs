@@ -16,7 +16,6 @@ use downcast_rs::{Downcast, impl_downcast};
 use crate::common::utils::normalize_reference;
 use crate::generics::inline::full_link;
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::extset::RootExt;
 use crate::{MarkdownIt, Node, NodeValue};
 
 /// Storage for parsed references
@@ -111,8 +110,6 @@ impl Default for ReferenceMap {
         Self::new(DefaultReferenceMap::new())
     }
 }
-
-impl RootExt for ReferenceMap {}
 
 pub trait CustomReferenceMap: Debug + Downcast + Send + Sync {
     /// Insert new element to the reference map. You may return false if it's not a valid label to stop parsing.

@@ -42,7 +42,6 @@
 //!
 //! If you define two structures with the same marker, only the first one will work.
 //!
-use crate::parser::extset::{InlineRootExt, MarkdownItExt};
 use crate::parser::inline::{InlineRule, InlineState, Text};
 use crate::{MarkdownIt, Node};
 
@@ -51,11 +50,8 @@ struct CodePairCache<const MARKER: char> {
     scanned: bool,
     max: Vec<usize>,
 }
-impl<const MARKER: char> InlineRootExt for CodePairCache<MARKER> {}
-
 #[derive(Debug)]
 struct CodePairConfig<const MARKER: char>(fn(usize) -> Node);
-impl<const MARKER: char> MarkdownItExt for CodePairConfig<MARKER> {}
 
 pub fn add_with<const MARKER: char>(md: &mut MarkdownIt, f: fn(length: usize) -> Node) {
     md.ext.insert(CodePairConfig::<MARKER>(f));

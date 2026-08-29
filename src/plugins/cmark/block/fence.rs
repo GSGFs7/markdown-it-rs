@@ -5,7 +5,6 @@
 //! <https://spec.commonmark.org/0.30/#code-fence>
 use crate::common::utils::unescape_all;
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::extset::MarkdownItExt;
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 #[derive(Debug)]
@@ -45,8 +44,6 @@ impl NodeValue for CodeFence {
 
 #[derive(Debug, Clone)]
 struct FenceSettings(String);
-impl MarkdownItExt for FenceSettings {}
-
 impl Default for FenceSettings {
     fn default() -> Self {
         Self("language-".to_string())

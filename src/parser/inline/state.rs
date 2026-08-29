@@ -2,7 +2,7 @@
 //
 use crate::common::sourcemap::SourcePos;
 use crate::common::utils::is_punct_char;
-use crate::parser::extset::{InlineRootExtSet, MarkdownItExt, RootExtSet};
+use crate::parser::extset::{InlineRootExtSet, RootExtSet};
 use crate::parser::inline::Text;
 use crate::{MarkdownIt, Node};
 
@@ -26,8 +26,6 @@ type DelimiterScanner = for<'a, 'b> fn(&InlineState<'a, 'b>, usize, bool) -> Del
 
 #[derive(Debug)]
 struct DelimiterScannerConfig(DelimiterScanner);
-impl MarkdownItExt for DelimiterScannerConfig {}
-
 /// custom delimiter scanner
 /// provider for `cjk_friendly` plugin. will not be made public for the time being.
 pub(crate) fn set_delimiter_scanner(md: &mut MarkdownIt, scanner: DelimiterScanner) {

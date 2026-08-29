@@ -16,15 +16,12 @@
 use std::collections::HashMap;
 
 use crate::common::utils::unescape_all;
-use crate::parser::extset::{InlineRootExt, MarkdownItExt};
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::plugins::cmark::block::reference::ReferenceMap;
 use crate::{MarkdownIt, Node};
 
 #[derive(Debug)]
 struct LinkCfg<const PREFIX: char>(fn(Option<String>, Option<String>) -> Node);
-impl<const PREFIX: char> MarkdownItExt for LinkCfg<PREFIX> {}
-
 /// adds custom rule with no prefix
 pub fn add<const ENABLE_NESTED: bool>(
     md: &mut MarkdownIt,
@@ -164,7 +161,6 @@ fn rule_run(
 
 #[derive(Debug, Default)]
 struct LinkLabelScanCache(HashMap<(usize, bool), Option<usize>>);
-impl InlineRootExt for LinkLabelScanCache {}
 
 // Parse link label
 //

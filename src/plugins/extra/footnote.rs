@@ -53,7 +53,6 @@ use std::collections::{HashMap, HashSet};
 use crate::common::utils::normalize_reference;
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::core::CoreRule;
-use crate::parser::extset::RootExt;
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
@@ -347,8 +346,6 @@ struct FootnoteEnv {
     numbers: HashMap<String, usize>,
     ref_counts: HashMap<String, usize>,
 }
-
-impl RootExt for FootnoteEnv {}
 
 // --- helper method ---
 

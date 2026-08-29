@@ -139,14 +139,11 @@ mod markdown_it_rs_extras {
     fn test_node_ext_propagation() {
         use markdown_it::parser::block::{BlockRule, BlockState};
         use markdown_it::parser::core::CoreRule;
-        use markdown_it::parser::extset::NodeExt;
         use markdown_it::parser::inline::{InlineRule, InlineState};
         use markdown_it::{MarkdownIt, Node};
 
         #[derive(Debug, Default)]
         struct NodeErrors(Vec<&'static str>);
-        impl NodeExt for NodeErrors {}
-
         struct MyInlineRule;
         impl InlineRule for MyInlineRule {
             const MARKER: char = '@';
@@ -198,14 +195,11 @@ mod markdown_it_rs_extras {
     #[test]
     fn named_rule_aliases_interoperate_with_builtin_core_rules() {
         use markdown_it::parser::core::CoreRule;
-        use markdown_it::parser::extset::NodeExt;
         use markdown_it::parser::inline::InlineRoot;
         use markdown_it::{MarkdownIt, Node};
 
         #[derive(Debug)]
         struct SawBlockBeforeInline(bool);
-        impl NodeExt for SawBlockBeforeInline {}
-
         struct BetweenBlockAndInline;
         impl CoreRule for BetweenBlockAndInline {
             fn run(root: &mut Node, _md: &MarkdownIt) {

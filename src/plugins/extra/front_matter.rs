@@ -1,5 +1,4 @@
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::extset::{MarkdownItExt, RootExt};
 use crate::{MarkdownIt, Node};
 
 /// Default maximum number of document lines searched for the closing delimiter.
@@ -28,14 +27,10 @@ impl FrontMatter {
     }
 }
 
-impl RootExt for FrontMatter {}
-
 #[derive(Debug, Clone, Copy)]
 struct FrontMatterSettings {
     max_lines: usize,
 }
-
-impl MarkdownItExt for FrontMatterSettings {}
 
 pub struct FrontMatterScanner;
 
