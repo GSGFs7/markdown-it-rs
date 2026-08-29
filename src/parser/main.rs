@@ -119,7 +119,7 @@ impl MarkdownIt {
     }
 
     /// Check whether a rule of type `T` is registered.
-    pub fn has_rule<T: CoreRule>(&mut self) -> bool {
+    pub fn has_rule<T: CoreRule>(&self) -> bool {
         self.ruler.contains(RuleMark::of::<T>())
     }
 
@@ -146,7 +146,10 @@ impl Default for MarkdownIt {
 #[cfg(test)]
 mod tests {
     use super::MarkdownIt;
+    use crate::parser::block::builtin::BlockParserRule;
+    use crate::parser::inline::builtin::TextScanner;
     use crate::plugins::cmark;
+    use crate::plugins::cmark::block::paragraph::ParagraphScanner;
 
     #[test]
     fn new_uses_markdown_it_default_preset() {
@@ -185,5 +188,15 @@ mod tests {
         let md = MarkdownIt::with_preset(|md: &mut MarkdownIt| cmark::add(md));
 
         assert_eq!(md.render("~~plain~~"), "<p>~~plain~~</p>\n");
+    }
+
+    #[test]
+    fn rule_presence_can_be_checked_through_a_shared_reference() {
+        let md = MarkdownIt::new();
+        let md = &md;
+
+        assert!(md.has_rule::<BlockParserRule>());
+        assert!(md.block.has_rule::<ParagraphScanner>());
+        assert!(md.inline.has_rule::<TextScanner>());
     }
 }

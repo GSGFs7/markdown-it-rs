@@ -149,7 +149,7 @@ impl InlineParser {
         RuleBuilder::new(item)
     }
 
-    pub fn has_rule<T: InlineRule>(&mut self) -> bool {
+    pub fn has_rule<T: InlineRule>(&self) -> bool {
         self.ruler.contains(RuleMark::of::<T>())
     }
 

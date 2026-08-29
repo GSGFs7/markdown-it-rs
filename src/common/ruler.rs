@@ -75,7 +75,7 @@ impl<M: Eq + Hash + Clone + Debug, T: Clone> Ruler<M, T> {
     }
 
     /// Check if there are any rules identified by `mark`.
-    pub fn contains(&mut self, mark: M) -> bool {
+    pub fn contains(&self, mark: M) -> bool {
         self.deps.iter().any(|dep| dep.marks.contains(&mark))
     }
 
@@ -444,5 +444,15 @@ mod tests {
 
         r.remove("A");
         assert!(r.iter().next().is_none());
+    }
+
+    #[test]
+    fn contains_accepts_a_shared_reference() {
+        let mut ruler = Ruler::new();
+        ruler.add("present", ());
+
+        let ruler = &ruler;
+        assert!(ruler.contains("present"));
+        assert!(!ruler.contains("missing"));
     }
 }

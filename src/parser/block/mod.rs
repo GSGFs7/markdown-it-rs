@@ -123,7 +123,7 @@ impl BlockParser {
         RuleBuilder::new(item)
     }
 
-    pub fn has_rule<T: BlockRule>(&mut self) -> bool {
+    pub fn has_rule<T: BlockRule>(&self) -> bool {
         self.ruler.contains(RuleMark::of::<T>())
     }
 
