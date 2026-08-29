@@ -2,11 +2,25 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- required custom `NodeValue` implementations to be `Send + Sync`
+- removed `syntect` from the default features; enable it explicitly when needed
+
+### Added
+
 - added parser presets via `MarkdownIt::with_preset`
-- added GFM-style alerts
-- required custom `NodeValue` implementations to be `Send + Sync`, allowing
-  `Node` ASTs to be transferred and shared across threads
-- update commonmark compliance to spec 0.31.2
+- added GFM-style alerts and CJK-friendly emphasis handling
+- expanded `syntect` syntax and theme support via `two-face`
+
+### Changed
+
+- updated CommonMark compliance to spec 0.31.2
+- extracted link detection into the `markdown-it-rs-linkify` crate
+
+### Fixed
+
+- aligned linkification and URL normalization with markdown-it.js 15.0.1
 
 ## 0.7.0 - 2026-08-05
 
