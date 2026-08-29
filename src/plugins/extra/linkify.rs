@@ -3,14 +3,16 @@
 use std::cmp::Ordering;
 use std::sync::LazyLock;
 
-use linkify::{LinkFinder, LinkKind};
+use linkify::{LinkKind, Linkify};
 use regex::Regex;
 
 use crate::parser::core::{CoreRule, Root};
 use crate::parser::extset::RootExt;
 use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::inline::{InlineRule, InlineState, TextSpecial};
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 
 static SCHEME_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(?:^|[^a-z0-9.+-])([a-z][a-z0-9.+-]*)$").unwrap());
@@ -59,90 +61,15 @@ impl CoreRule for LinkifyPrescan {
     fn run(root: &mut Node, _: &MarkdownIt) {
         let root_data = root.cast_mut::<Root>().unwrap();
         let source = root_data.content.as_str();
-        let mut finder = LinkFinder::new();
-        finder.url_must_have_scheme(false);
-
-        let mut positions = finder
+        let positions = Linkify::new()
             .links(source)
-            .map(|link| {
-                let email = *link.kind() == LinkKind::Email;
-                let mut start = link.start();
-                if email
-                    && start >= "mailto:".len()
-                    && source[start - "mailto:".len()..start].eq_ignore_ascii_case("mailto:")
-                {
-                    start -= "mailto:".len();
-                }
-                LinkifyPosition {
-                    start,
-                    end: link.end(),
-                    email,
-                }
+            .into_iter()
+            .map(|link| LinkifyPosition {
+                start: link.start(),
+                end: link.end(),
+                email: link.kind() == LinkKind::Email,
             })
             .collect::<Vec<_>>();
-
-        // compatible markdownit.js's `linkify-it`.
-        // 
-        // "https://example.com/foo`bar`baz" -> "https://example.com/foo~bar~baz"
-        // scan the replaced URL length & encode origin content.
-        if source.contains('`') {
-            let scan_source = source.replace('`', "~");
-            for link in finder.links(&scan_source) {
-                if *link.kind() != LinkKind::Url {
-                    continue;
-                }
-
-                let original = &source[link.start()..link.end()];
-                if !original.contains('`') || !has_explicit_scheme(original) {
-                    continue;
-                }
-
-                if let Some(position) = positions
-                    .iter_mut()
-                    .find(|position| position.start == link.start() && !position.email)
-                {
-                    position.end = position.end.max(link.end());
-                } else {
-                    positions.push(LinkifyPosition {
-                        start: link.start(),
-                        end: link.end(),
-                        email: false,
-                    });
-                }
-            }
-        }
-
-        // rust `linkify` deliberately doesn't recognize protocol-relative URLs.
-        // but markdwonit.js's `linkify-it` will identify it.
-        for (start, _) in source.match_indices("//") {
-            // https://example.com
-            //      ^--- processed
-            // \//example.com
-            // ^--- disable auto linkify
-            if source[..start].ends_with([':', '\\']) {
-                continue;
-            }
-
-            // //example.com/ ciallo
-            //   ^^^^^^^^^^^^^^^^--- check if this is a link
-            // (it should identify "example.com/")
-            let rest = &source[start + 2..];
-            let Some(link) = finder.links(rest).next() else {
-                continue;
-            };
-            if link.start() != 0 || *link.kind() != LinkKind::Url {
-                continue;
-            }
-
-            positions.push(LinkifyPosition {
-                start,
-                end: start + 2 + link.end(),
-                email: false,
-            });
-        }
-
-        positions.sort_by_key(|position| (position.start, std::cmp::Reverse(position.end)));
-        positions.dedup_by(|a, b| a.start == b.start && a.end == b.end);
         root_data.ext.insert(positions);
     }
 }
@@ -375,16 +302,6 @@ fn starts_with_ascii_case_insensitive(input: &str, prefix: &str) -> bool {
     input
         .get(..prefix.len())
         .is_some_and(|actual| actual.eq_ignore_ascii_case(prefix))
-}
-
-fn has_explicit_scheme(input: &str) -> bool {
-    let Some((scheme, _)) = input.split_once("://") else {
-        return false;
-    };
-
-    let mut chars = scheme.chars();
-    chars.next().is_some_and(|ch| ch.is_ascii_alphabetic())
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '.'))
 }
 
 #[cfg(all(test, feature = "linkify"))]

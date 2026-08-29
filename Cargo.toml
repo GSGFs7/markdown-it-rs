@@ -31,6 +31,7 @@ required-features = ["syntect"]
 
 [workspace]
 members = [
+    "crates/markdown-it-rs-linkify",
     "crates/markdown-it-rs-url",
     "bindings/kotlin",
     "bindings/python",
@@ -56,7 +57,7 @@ derive_more = { version = ">= 0.99.0, < 3", features = ["deref", "deref_mut"] }
 downcast-rs = ">= 1.0.2, < 3"
 entities = ">= 0.1.0, < 2"
 html-escape = ">= 0.1.0, < 0.3"
-linkify = { version = ">= 0.9.0, < 0.12", optional = true }
+linkify = { package = "markdown-it-rs-linkify", version = "0.1.0", path = "crates/markdown-it-rs-linkify", optional = true }
 katex-rs = { version = "0.2.4", optional = true }
 mdurl = { package = "markdown-it-rs-url", version = "0.1.0", path = "crates/markdown-it-rs-url" }
 readonly = ">= 0.2.0, < 0.3"

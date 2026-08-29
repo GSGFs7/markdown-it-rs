@@ -1,0 +1,14 @@
+[package]
+name = "markdown-it-rs-linkify"
+version = "0.1.0"
+description = "linkify-it compatible URL and email detection for markdown-it-rs"
+documentation = "https://docs.rs/markdown-it-rs-linkify"
+homepage = "https://github.com/GSGFs7/markdown-it-rs"
+repository = "https://github.com/GSGFs7/markdown-it-rs"
+readme = "README.md"
+keywords = ["linkify", "url", "markdown"]
+license = "MIT"
+edition = "2024"
+
+[dependencies]
+linkify-upstream = { package = "linkify", version = ">= 0.9.0, < 0.12" }

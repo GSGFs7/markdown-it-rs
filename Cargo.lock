@@ -781,7 +781,7 @@ dependencies = [
  "entities",
  "html-escape",
  "katex-rs",
- "linkify",
+ "markdown-it-rs-linkify",
  "markdown-it-rs-url",
  "readonly",
  "regex",
@@ -797,6 +797,13 @@ dependencies = [
  "markdown-it-rs",
  "thiserror",
  "uniffi",
+]
+
+[[package]]
+name = "markdown-it-rs-linkify"
+version = "0.1.0"
+dependencies = [
+ "linkify",
 ]
 
 [[package]]
