@@ -17,7 +17,7 @@ use crate::plugins::{cmark, extra, html};
 /// Impl this to build your own presets.
 pub trait PresetConfig {
     /// Apply this preset to a freshly created `md`.
-    fn configure(&self, md: &mut MarkdownIt);
+    fn configure(self, md: &mut MarkdownIt);
 }
 
 /// Built-in presets.
@@ -36,7 +36,7 @@ pub enum Preset {
 }
 
 impl PresetConfig for Preset {
-    fn configure(&self, md: &mut MarkdownIt) {
+    fn configure(self, md: &mut MarkdownIt) {
         match self {
             Preset::MarkdownItDefault => {
                 cmark::add(md);
@@ -62,9 +62,9 @@ impl PresetConfig for Preset {
 /// Allow one-off presets to be expressed as closures or functions.
 impl<F> PresetConfig for F
 where
-    F: Fn(&mut MarkdownIt),
+    F: FnOnce(&mut MarkdownIt),
 {
-    fn configure(&self, md: &mut MarkdownIt) {
+    fn configure(self, md: &mut MarkdownIt) {
         self(md);
     }
 }
@@ -72,8 +72,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{Preset, PresetConfig};
-    use crate::MarkdownIt;
     use crate::plugins::{cmark, extra};
+    use crate::{MarkdownIt, RenderOptions};
 
     #[test]
     fn markdown_it_default_enables_only_bundled_extensions() {
@@ -118,7 +118,7 @@ mod tests {
         struct GfmLike;
 
         impl PresetConfig for GfmLike {
-            fn configure(&self, md: &mut MarkdownIt) {
+            fn configure(self, md: &mut MarkdownIt) {
                 cmark::add(md);
                 extra::tables::add(md);
                 extra::strikethrough::add(md);
@@ -142,5 +142,22 @@ mod tests {
             md.parse("==marked==").render(),
             "<p><mark>marked</mark></p>\n"
         );
+    }
+
+    #[test]
+    fn closures_can_consume_captured_preset_data() {
+        let options = RenderOptions {
+            breaks: true,
+            lang_prefix: Some("language-".into()),
+            ..RenderOptions::default()
+        };
+
+        let md = MarkdownIt::with_preset(move |md: &mut MarkdownIt| {
+            cmark::add(md);
+            md.render_options = options;
+        });
+
+        assert!(md.render_options.breaks);
+        assert_eq!(md.render_options.lang_prefix.as_deref(), Some("language-"));
     }
 }
