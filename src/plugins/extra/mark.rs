@@ -25,7 +25,7 @@ mod tests {
     use crate as markdown_it;
 
     fn run(input: &str, output: &str) {
-        let md = &mut MarkdownIt::new();
+        let md = &mut MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::extra::mark::add(md);
         markdown_it::plugins::extra::strikethrough::add(md);

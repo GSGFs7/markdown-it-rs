@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 #[test]
 fn title_example() {
-    let parser = &mut markdown_it::MarkdownIt::new();
+    let parser = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(parser);
 
     let ast = parser.parse("Hello **world**!");
@@ -14,7 +14,7 @@ fn title_example() {
 #[test]
 fn lazy_singleton() {
     static MD: LazyLock<markdown_it::MarkdownIt> = LazyLock::new(|| {
-        let mut parser = markdown_it::MarkdownIt::new();
+        let mut parser = markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(&mut parser);
         parser
     });
@@ -27,7 +27,7 @@ fn lazy_singleton() {
 
 #[test]
 fn no_plugins() {
-    let md = &mut markdown_it::MarkdownIt::new();
+    let md = &mut markdown_it::MarkdownIt::empty();
     let node = md.parse("hello\nworld");
     let result = node.render();
     assert_eq!(result, "hello\nworld\n");
@@ -35,7 +35,7 @@ fn no_plugins() {
 
 #[test]
 fn no_max_indent() {
-    let md = &mut markdown_it::MarkdownIt::new();
+    let md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(md);
     markdown_it::plugins::cmark::block::list::add(md);
     md.max_indent = i32::MAX;
@@ -46,7 +46,7 @@ fn no_max_indent() {
 
 /*#[test]
 fn no_block_parser() {
-    let md = &mut markdown_it::MarkdownIt::new();
+    let md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(md);
     md.remove_rule::<markdown_it::parser::block::builtin::BlockParserRule>();
     let node = md.parse("hello *world*");
@@ -60,7 +60,7 @@ fn run(input: &str, output: &str) {
     } else {
         output.to_owned() + "\n"
     };
-    let md = &mut markdown_it::MarkdownIt::new();
+    let md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(md);
     markdown_it::plugins::html::add(md);
     markdown_it::plugins::extra::beautify_links::add(md);
@@ -175,7 +175,7 @@ mod markdown_it_rs_extras {
             }
         }
 
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
 
         md.inline.add_rule::<MyInlineRule>();
@@ -217,7 +217,7 @@ mod markdown_it_rs_extras {
             }
         }
 
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
 
         md.add_rule::<BetweenBlockAndInline>()
@@ -233,7 +233,7 @@ mod markdown_it_rs_extras {
     #[cfg(feature = "syntect")]
     #[test]
     fn syntect_classed_mode_renders_language_class() {
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::extra::syntect::add(md);
         markdown_it::plugins::extra::syntect::set_to_classed(md);
@@ -246,7 +246,7 @@ mod markdown_it_rs_extras {
     #[cfg(feature = "syntect")]
     #[test]
     fn syntect_classed_mode_escapes_language_class() {
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::extra::syntect::add(md);
         markdown_it::plugins::extra::syntect::set_to_classed(md);
@@ -262,7 +262,7 @@ mod markdown_it_rs_extras {
     #[cfg(feature = "syntect")]
     #[test]
     fn syntect_classed_mode_respects_custom_lang_prefix() {
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::cmark::block::fence::set_lang_prefix(md, "lang-");
         markdown_it::plugins::extra::syntect::add(md);
@@ -276,7 +276,7 @@ mod markdown_it_rs_extras {
     #[cfg(feature = "syntect")]
     #[test]
     fn syntect_parses_attached_line_spec_after_language() {
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::extra::syntect::add(md);
 
@@ -291,7 +291,7 @@ mod markdown_it_rs_extras {
     #[cfg(feature = "syntect")]
     #[test]
     fn syntect_theme_css_depends_on_mode() {
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::extra::syntect::add(md);
 
         assert_eq!(markdown_it::plugins::extra::syntect::theme_css(md), None);
@@ -307,7 +307,7 @@ mod markdown_it_rs_extras {
     #[test]
     #[should_panic(expected = "unknown syntect theme: definitely-not-a-theme")]
     fn syntect_invalid_theme_panics() {
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::extra::syntect::add(md);
         markdown_it::plugins::extra::syntect::set_theme(md, "definitely-not-a-theme");

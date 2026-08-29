@@ -13,7 +13,7 @@
 //!  - math (`$...$` / `$$...$$`, with the `katex` feature enabled)
 //!
 //! ```rust
-//! let md = &mut markdown_it::MarkdownIt::new();
+//! let md = &mut markdown_it::MarkdownIt::empty();
 //! markdown_it::plugins::cmark::add(md);
 //! markdown_it::plugins::extra::add(md);
 //!

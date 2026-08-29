@@ -31,7 +31,7 @@
 //! use this plugin:
 //!
 //! ```rust
-//! let mut md = markdown_it::MarkdownIt::new();
+//! let mut md = markdown_it::MarkdownIt::empty();
 //! markdown_it::plugins::cmark::add(&mut md);
 //! markdown_it::plugins::extra::footnote::add(&mut md);
 //!
@@ -614,7 +614,7 @@ mod tests {
     use crate as markdown_it;
 
     fn render(input: &str) -> String {
-        let mut md = markdown_it::MarkdownIt::new();
+        let mut md = markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(&mut md);
         markdown_it::plugins::extra::footnote::add(&mut md);
 

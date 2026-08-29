@@ -8,7 +8,7 @@ use crate::parser::inline::{self, InlineParser};
 use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
 use crate::parser::node::Node;
 use crate::parser::render_options::RenderOptions;
-use crate::plugins::presets::PresetConfig;
+use crate::plugins::presets::{Preset, PresetConfig};
 
 type RuleFn = fn(&mut Node, &MarkdownIt);
 
@@ -59,9 +59,28 @@ impl std::fmt::Debug for MarkdownIt {
 }
 
 impl MarkdownIt {
-    /// Create a new parser without installing a Markdown syntax preset.
+    /// Create a parser using the markdown-it.js default preset.
     pub fn new() -> Self {
-        Self::default()
+        Self::with_preset(Preset::MarkdownItDefault)
+    }
+
+    pub fn empty() -> Self {
+        let mut md = Self {
+            block: BlockParser::new(),
+            inline: InlineParser::new(),
+            link_formatter: Box::new(MDLinkFormatter),
+            ext: MarkdownItExtSet::new(),
+            max_nesting: 100,
+            max_indent: i32::MAX,
+            render_options: RenderOptions::default(),
+            ruler: Ruler::new(),
+        };
+
+        // infrastructure
+        block::builtin::add(&mut md);
+        inline::builtin::add(&mut md);
+
+        md
     }
 
     /// Parse a markdown source string into an AST ([`Node`]).
@@ -112,7 +131,7 @@ impl MarkdownIt {
     /// Create a parser configured with a preset (e.g. `Preset::CommonMark`)
     /// or a custom closure `|md| { ... }`.
     pub fn with_preset(preset: impl PresetConfig) -> Self {
-        let mut md = Self::new();
+        let mut md = Self::empty();
         preset.configure(&mut md);
         md
     }
@@ -120,18 +139,51 @@ impl MarkdownIt {
 
 impl Default for MarkdownIt {
     fn default() -> Self {
-        let mut md = Self {
-            block: BlockParser::new(),
-            inline: InlineParser::new(),
-            link_formatter: Box::new(MDLinkFormatter::new()),
-            ext: MarkdownItExtSet::new(),
-            max_nesting: 100,
-            ruler: Ruler::new(),
-            max_indent: i32::MAX,
-            render_options: RenderOptions::default(),
-        };
-        block::builtin::add(&mut md);
-        inline::builtin::add(&mut md);
-        md
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MarkdownIt;
+    use crate::plugins::cmark;
+
+    #[test]
+    fn new_uses_markdown_it_default_preset() {
+        let md = MarkdownIt::new();
+
+        assert_eq!(md.render("~~deleted~~"), "<p><s>deleted</s></p>\n");
+        assert_eq!(
+            md.render("| a |\n| - |"),
+            "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n"
+        );
+        assert_eq!(
+            md.render("<em>escaped</em>"),
+            "<p>&lt;em&gt;escaped&lt;/em&gt;</p>\n"
+        );
+    }
+
+    #[test]
+    fn default_matches_new() {
+        let src = "Hello **world**!";
+
+        assert_eq!(
+            MarkdownIt::default().render(src),
+            MarkdownIt::new().render(src)
+        );
+    }
+
+    #[test]
+    fn empty_does_not_install_markdown_syntax() {
+        let md = MarkdownIt::empty();
+
+        assert_eq!(md.render("# **plain**"), "# **plain**\n");
+    }
+
+    #[test]
+    fn with_preset_starts_from_empty_parser() {
+        let md = MarkdownIt::with_preset(|md: &mut MarkdownIt| cmark::add(md));
+
+        assert_eq!(md.render("~~plain~~"), "<p>~~plain~~</p>\n");
     }
 }

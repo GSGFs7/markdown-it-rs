@@ -4,7 +4,7 @@ fn run_with(input: &str, output: &str, configure: impl FnOnce(&mut markdown_it::
     } else {
         output.to_owned() + "\n"
     };
-    let md = &mut markdown_it::MarkdownIt::new();
+    let md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(md);
     markdown_it::plugins::html::add(md);
     configure(md);

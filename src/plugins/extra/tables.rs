@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     fn require_pipe_or_colon_in_align_row() {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::extra::tables::add(md);
         let html = md.parse("foo\n---\nbar").render();
         assert_eq!(html.trim(), "foo\n---\nbar");

@@ -29,7 +29,7 @@ use crate::{MarkdownIt, Node, NodeValue};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap, CustomReferenceMap};
 /// use markdown_it::{MarkdownIt, Node};
 ///
-/// let md = &mut MarkdownIt::new();
+/// let md = &mut MarkdownIt::empty();
 /// markdown_it::plugins::cmark::add(md);
 ///
 /// #[derive(Debug, Default)]
@@ -77,7 +77,7 @@ use crate::{MarkdownIt, Node, NodeValue};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap};
 /// use markdown_it::{MarkdownIt, Node};
 ///
-/// let md = &mut MarkdownIt::new();
+/// let md = &mut MarkdownIt::empty();
 /// markdown_it::plugins::cmark::add(md);
 ///
 /// let ast = md.parse("[hello]: world");

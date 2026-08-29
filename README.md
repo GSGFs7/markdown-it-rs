@@ -39,7 +39,7 @@ use markdown_it::MarkdownIt;
 use markdown_it::plugins::{cmark, extra};
 
 fn main() {
-    let mut md = MarkdownIt::new();
+    let mut md = MarkdownIt::empty();
     cmark::add(&mut md);
     extra::tables::add(&mut md);
     extra::tasklist::add(&mut md);

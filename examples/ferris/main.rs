@@ -5,7 +5,7 @@ mod inline_rule;
 
 fn main() {
     // create markdown parser
-    let md = &mut markdown_it::MarkdownIt::new();
+    let md = &mut markdown_it::MarkdownIt::empty();
 
     // add commonmark syntax, you almost always want to do that
     markdown_it::plugins::cmark::add(md);

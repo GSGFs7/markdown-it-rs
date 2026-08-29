@@ -24,7 +24,7 @@ impl MarkdownIt {
             .map_err(|err| JsValue::from_str(&err.to_string()))?
             .unwrap_or_default();
 
-        let mut inner = RustMarkdownIt::new();
+        let mut inner = RustMarkdownIt::empty();
         markdown_it::plugins::cmark::add(&mut inner);
 
         #[cfg(feature = "extras")]

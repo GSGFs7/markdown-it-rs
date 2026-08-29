@@ -11,7 +11,7 @@
 //! <https://github.com/tats-u/markdown-cjk-friendly>.
 //!
 //! ```rust
-//! let md = &mut markdown_it::MarkdownIt::new();
+//! let md = &mut markdown_it::MarkdownIt::empty();
 //! markdown_it::plugins::cmark::add(md);
 //! markdown_it::plugins::cjk_friendly::add(md);
 //!
@@ -186,7 +186,7 @@ mod tests {
     use crate::plugins::cmark;
 
     fn parser(cjk_friendly: bool) -> MarkdownIt {
-        let mut md = MarkdownIt::new();
+        let mut md = MarkdownIt::empty();
         cmark::add(&mut md);
         if cjk_friendly {
             add(&mut md);

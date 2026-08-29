@@ -6,11 +6,11 @@ fn main() {
         return;
     }
 
-    let mut md_inline = markdown_it::MarkdownIt::new();
+    let mut md_inline = markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md_inline);
     markdown_it::plugins::extra::syntect::add(&mut md_inline);
 
-    let mut md_classed = markdown_it::MarkdownIt::new();
+    let mut md_classed = markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md_classed);
     markdown_it::plugins::extra::syntect::add(&mut md_classed);
     markdown_it::plugins::extra::syntect::set_to_classed(&mut md_classed);

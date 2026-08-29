@@ -5,7 +5,7 @@
 //! `plugins::extra::add`. You will have to enable it separately:
 //!
 //! ```rust
-//! let md = &mut markdown_it::MarkdownIt::new();
+//! let md = &mut markdown_it::MarkdownIt::empty();
 //! markdown_it::plugins::cmark::add(md);
 //! markdown_it::plugins::extra::add(md);
 //! markdown_it::plugins::extra::typographer::add(md);

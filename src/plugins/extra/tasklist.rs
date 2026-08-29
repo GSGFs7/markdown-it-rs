@@ -183,7 +183,7 @@ pub fn add(md: &mut MarkdownIt) {
 #[cfg(test)]
 mod tests {
     fn run(input: &str, output: &str) {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         crate::plugins::extra::tasklist::add(md);
 
@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn stripped_marker_updates_text_source_map() {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         crate::plugins::extra::tasklist::add(md);
 

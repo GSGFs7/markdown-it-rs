@@ -534,7 +534,7 @@ fn find_last_char_before(
 mod tests {
     #[test]
     fn smartquotes_basics() {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         crate::plugins::extra::smartquotes::add(md);
         let html = md.parse(r#"'hello' "world""#).render();
@@ -543,7 +543,7 @@ mod tests {
 
     #[test]
     fn smartquotes_shouldnt_affect_html() {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         crate::plugins::html::html_inline::add(md);
         crate::plugins::extra::smartquotes::add(md);
@@ -554,7 +554,7 @@ mod tests {
     #[test]
     fn smartquotes_should_work_with_typographer() {
         // regression test for https://github.com/rlidwka/markdown-it.rs/issues/26
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         crate::plugins::html::html_inline::add(md);
         crate::plugins::extra::typographer::add(md);

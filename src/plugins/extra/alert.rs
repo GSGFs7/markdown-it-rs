@@ -42,7 +42,7 @@
 //! Enabled via [`crate::plugins::extra::add`], or standalone:
 //!
 //! ```
-//! let md = &mut markdown_it::MarkdownIt::new();
+//! let md = &mut markdown_it::MarkdownIt::empty();
 //! markdown_it::plugins::cmark::add(md);
 //! markdown_it::plugins::extra::alert::add(md);
 //!
@@ -192,7 +192,7 @@ pub fn add(md: &mut MarkdownIt) {
 #[cfg(test)]
 mod test {
     fn render(input: &str) -> String {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         super::add(md);
         md.parse(input).render()
@@ -303,7 +303,7 @@ mod test {
 
     #[test]
     fn extra_plugin_enables_alerts() {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         crate::plugins::extra::add(md);
 

@@ -1,7 +1,7 @@
 //! Add id attribute (slug) to headings.
 //!
 //! ```rust
-//! let md = &mut markdown_it::MarkdownIt::new();
+//! let md = &mut markdown_it::MarkdownIt::empty();
 //! markdown_it::plugins::cmark::add(md);
 //! markdown_it::plugins::extra::heading_anchors::add(md);
 //!
@@ -276,7 +276,7 @@ mod tests {
 
     #[test]
     fn test_atx_and_setext_heading_uniqueness() {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         add(md);
 
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_uniqueness_handles_slug_suffix_collisions() {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         add(md);
 
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn test_empty_slug_fallback_and_prefix() {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         add_with_options(
             md,
@@ -328,7 +328,7 @@ mod tests {
 
     #[test]
     fn test_empty_slug_is_skipped_by_default() {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         add(md);
 
@@ -341,7 +341,7 @@ mod tests {
             format!("custom-{}", text.to_lowercase())
         }
 
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         add_with_options(
             md,
@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn test_existing_id_is_kept_and_reserved() {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         md.add_rule::<AddExistingHeadingId>()
             .after::<InlineParserRule>();
@@ -374,7 +374,7 @@ mod tests {
 
     #[test]
     fn test_existing_id_is_overridden() {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         md.add_rule::<AddExistingHeadingId>()
             .after::<InlineParserRule>();

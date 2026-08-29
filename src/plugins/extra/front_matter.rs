@@ -107,7 +107,7 @@ mod tests {
         use markdown_it::parser::core::Root;
         use markdown_it::plugins::extra::front_matter::{FrontMatter, FrontMatterKind};
 
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::extra::front_matter::add(md);
         markdown_it::plugins::cmark::add(md);
 
@@ -127,7 +127,7 @@ mod tests {
         use markdown_it::parser::core::Root;
         use markdown_it::plugins::extra::front_matter::{FrontMatter, FrontMatterKind};
 
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::extra::front_matter::add(md);
         markdown_it::plugins::cmark::add(md);
 
@@ -150,7 +150,7 @@ mod tests {
             title: String,
         }
 
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::extra::front_matter::add(md);
         markdown_it::plugins::cmark::add(md);
 
@@ -183,7 +183,7 @@ mod tests {
         use markdown_it::parser::core::Root;
         use markdown_it::plugins::extra::front_matter::FrontMatter;
 
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::extra::front_matter::add_with_max_lines(md, 3);
         markdown_it::plugins::cmark::add(md);
 

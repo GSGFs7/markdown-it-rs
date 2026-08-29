@@ -210,7 +210,7 @@ mod tests {
             output.to_owned() + "\n"
         };
 
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::html::add(md);
         markdown_it::plugins::extra::math::add(md);

@@ -29,7 +29,7 @@ pub(crate) fn build(
     #[cfg(not(feature = "syntect"))]
     let _ = (syntax_theme, syntax_classed);
 
-    let mut inner = MarkdownIt::new();
+    let mut inner = MarkdownIt::empty();
     let mut state = PluginState::new();
 
     if enable_frontmatter {

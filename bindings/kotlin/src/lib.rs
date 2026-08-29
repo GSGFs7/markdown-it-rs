@@ -144,7 +144,7 @@ fn validate_options(options: &MarkdownOptions) -> Result<(), MarkdownError> {
 }
 
 fn build_parser(options: &MarkdownOptions) -> MarkdownIt {
-    let mut parser = MarkdownIt::new();
+    let mut parser = MarkdownIt::empty();
 
     // Front matter must run before CommonMark block parsing.
     if options.front_matter {

@@ -7,7 +7,7 @@ use markdown_it::MarkdownIt;
 use markdown_it::plugins::directives::{self, DirectiveKind};
 
 fn main() {
-    let mut md = MarkdownIt::new();
+    let mut md = MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md);
     directives::add(&mut md);
 

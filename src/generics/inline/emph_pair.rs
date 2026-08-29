@@ -36,7 +36,7 @@
 //!     }
 //! }
 //!
-//! let md = &mut MarkdownIt::new();
+//! let md = &mut MarkdownIt::empty();
 //! emph_pair::add_with::<'^', 1, true>(md, || Node::new(Superscript));
 //!
 //! let html = md.parse("e^iπ^+1=0").render();

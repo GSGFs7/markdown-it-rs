@@ -54,7 +54,7 @@
 //!     fmt.close("mark");
 //! }
 //!
-//! let mut md = MarkdownIt::new();
+//! let mut md = MarkdownIt::empty();
 //! markdown_it::plugins::cmark::add(&mut md);
 //! directives::add(&mut md);
 //! directives::add_render(&mut md, DirectiveKind::Text, "badge", render_badge);
@@ -608,7 +608,7 @@ mod tests {
     use crate as markdown_it;
 
     fn render(src: &str) -> String {
-        let mut md = MarkdownIt::new();
+        let mut md = MarkdownIt::empty();
         markdown_it::plugins::cmark::add(&mut md);
         directives::add(&mut md);
 
@@ -616,7 +616,7 @@ mod tests {
     }
 
     fn render_with(src: &str, configure: impl FnOnce(&mut MarkdownIt)) -> String {
-        let mut md = MarkdownIt::new();
+        let mut md = MarkdownIt::empty();
         markdown_it::plugins::cmark::add(&mut md);
         directives::add(&mut md);
         configure(&mut md);
@@ -863,7 +863,7 @@ body
     }
 
     fn parse_text_attrs(source: &str) -> Attrs {
-        let mut md = MarkdownIt::new();
+        let mut md = MarkdownIt::empty();
         markdown_it::plugins::cmark::add(&mut md);
         directives::add(&mut md);
 

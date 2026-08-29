@@ -25,7 +25,7 @@
 //!     }
 //! }
 //!
-//! let md = &mut MarkdownIt::new();
+//! let md = &mut MarkdownIt::empty();
 //! code_pair::add_with::<'%'>(md, |_| Node::new(Ferris));
 //! let html = md.parse("hello %world%").render();
 //! assert_eq!(html.trim(), "hello 🦀world🦀");

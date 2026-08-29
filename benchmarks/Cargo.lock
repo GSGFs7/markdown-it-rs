@@ -912,7 +912,6 @@ dependencies = [
  "readonly",
  "regex",
  "stacker",
- "syntect",
  "unicode-general-category 1.1.0",
 ]
 

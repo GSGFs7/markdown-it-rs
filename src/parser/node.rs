@@ -246,7 +246,7 @@ mod test {
 
     #[test]
     fn render_uses_parser_render_options() {
-        let mut md = MarkdownIt::new();
+        let mut md = MarkdownIt::empty();
         plugins::cmark::add(&mut md);
         md.render_options.breaks = true;
         md.render_options.xhtml_out = true;

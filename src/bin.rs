@@ -81,7 +81,7 @@ fn main() {
     };
 
     let source = String::from_utf8_lossy(&vec);
-    let md = &mut markdown_it::MarkdownIt::new();
+    let md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(md);
     #[cfg(feature = "syntect")]
     markdown_it::plugins::extra::syntect::add(md);

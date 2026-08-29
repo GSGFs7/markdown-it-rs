@@ -356,7 +356,7 @@ mod tests {
         use crate::plugins::cmark;
         use crate::plugins::extra::*;
 
-        let md = &mut MarkdownIt::new();
+        let md = &mut MarkdownIt::empty();
         cmark::add(md);
         typographer::add(md);
         smartquotes::add(md);
@@ -371,7 +371,7 @@ mod tests {
         } else {
             output.to_owned() + "\n"
         };
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::html::add(md);
         markdown_it::plugins::extra::linkify::add(md);
@@ -487,7 +487,7 @@ mod tests {
 
     #[test]
     fn match_links_without_protocol() {
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::extra::linkify::add_with_options(
             md,
@@ -502,7 +502,7 @@ mod tests {
 
     #[test]
     fn links_without_protocol_are_disabled_by_default() {
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::extra::linkify::add(md);
 
@@ -514,7 +514,7 @@ mod tests {
 
     #[test]
     fn short_email_with_beautifier_does_not_panic() {
-        let md = &mut markdown_it::MarkdownIt::new();
+        let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::extra::beautify_links::add(md);
         markdown_it::plugins::extra::linkify::add(md);

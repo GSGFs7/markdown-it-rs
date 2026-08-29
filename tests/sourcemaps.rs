@@ -2,7 +2,7 @@ use markdown_it::Node;
 use markdown_it::common::sourcemap::SourceWithLineStarts;
 
 fn run(input: &str, f: fn(&Node, SourceWithLineStarts)) {
-    let md = &mut markdown_it::MarkdownIt::new();
+    let md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(md);
     markdown_it::plugins::html::add(md);
     let node = md.parse(input);

@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use markdown_it::MarkdownIt;
 
 static MD: LazyLock<MarkdownIt> = LazyLock::new(|| {
-    let mut parser = markdown_it::MarkdownIt::new();
+    let mut parser = markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut parser);
     markdown_it::plugins::html::add(&mut parser);
     markdown_it::plugins::extra::add(&mut parser);

@@ -90,7 +90,7 @@ mod test {
     use crate::*;
 
     fn parser() -> MarkdownIt {
-        let mut md = MarkdownIt::new();
+        let mut md = MarkdownIt::empty();
         plugins::cmark::add(&mut md);
         md
     }

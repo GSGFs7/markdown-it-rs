@@ -20,7 +20,7 @@
 //! Line number started with 1.
 //!
 //! ```rust
-//! let mut md = markdown_it::MarkdownIt::new();
+//! let mut md = markdown_it::MarkdownIt::empty();
 //! markdown_it::plugins::cmark::add(&mut md);
 //! markdown_it::plugins::extra::syntect::add(&mut md);
 //! markdown_it::plugins::extra::syntect::set_theme(&mut md, "base16-ocean.dark");
@@ -312,7 +312,7 @@ pub fn set_theme(md: &mut MarkdownIt, theme: impl Into<String>) {
 /// Use [`theme_css`] to generate CSS for the selected theme.
 ///
 /// ```rust
-/// let mut md = markdown_it::MarkdownIt::new();
+/// let mut md = markdown_it::MarkdownIt::empty();
 /// markdown_it::plugins::cmark::add(&mut md);
 /// markdown_it::plugins::extra::syntect::add(&mut md);
 /// markdown_it::plugins::extra::syntect::set_to_classed(&mut md);
@@ -506,13 +506,16 @@ fn push_scope_classes(html: &mut String, scope: Scope, prefix: &'static str) {
 mod test {
     use crate::*;
 
-    #[test]
-    fn render_options_override_syntect_lang_prefix() {
-        let mut md = MarkdownIt::new();
+    fn parser() -> MarkdownIt {
+        let mut md = MarkdownIt::empty();
         plugins::cmark::add(&mut md);
         plugins::extra::syntect::add(&mut md);
+        md
+    }
 
-        let ast = md.parse("```rust\nfn main() {}\n```");
+    #[test]
+    fn render_options_override_syntect_lang_prefix() {
+        let ast = parser().parse("```rust\nfn main() {}\n```");
         let html = ast.render_with(&RenderOptions {
             lang_prefix: Some("lang-".into()),
             ..Default::default()
@@ -524,11 +527,7 @@ mod test {
 
     #[test]
     fn highlights_indented_code_blocks() {
-        let mut md = MarkdownIt::new();
-        plugins::cmark::add(&mut md);
-        plugins::extra::syntect::add(&mut md);
-
-        let html = md.parse("    plain code\n").render();
+        let html = parser().parse("    plain code\n").render();
 
         assert!(html.contains(r#"class="syntect-line""#));
     }

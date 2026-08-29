@@ -61,7 +61,7 @@ impl InlineRule for HtmlInlineScanner {
 #[cfg(test)]
 mod tests {
     fn render(input: &str) -> String {
-        let md = &mut crate::MarkdownIt::new();
+        let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         crate::plugins::html::add(md);
         md.parse(input).render()
