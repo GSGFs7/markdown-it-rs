@@ -10,7 +10,7 @@ You can check a [demo](https://gsgfs7.github.io/markdown-it-rs/) in your browser
 
 ## Features
 
-- 100% CommonMark compatible & highly markdown-it.js compatible
+- 100% CommonMark compatible & 100% markdown-it.js-compatible HTML rendering
 - Mutable, typed AST
 - Source maps for parsed nodes
 - Extensible core, block, and inline rule chains
