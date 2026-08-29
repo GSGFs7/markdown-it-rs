@@ -22,7 +22,7 @@ pub struct Softbreak;
 
 impl NodeValue for Softbreak {
     fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
-        fmt.cr();
+        fmt.softbreak();
     }
 }
 
@@ -82,5 +82,36 @@ impl InlineRule for NewlineScanner {
 
         state.pos -= tail_size; // backtrack to include tail in source maps
         Some((node, pos - state.pos))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::*;
+
+    fn parser() -> MarkdownIt {
+        let mut md = MarkdownIt::new();
+        plugins::cmark::add(&mut md);
+        md
+    }
+
+    #[test]
+    fn renders_softbreak_as_newline_by_default() {
+        let ast = parser().parse("hello\nworld");
+        assert_eq!(ast.render(), "<p>hello\nworld</p>\n");
+    }
+
+    #[test]
+    fn breaks_respects_xhtml_out() {
+        let ast = parser().parse("hello\nworld");
+
+        assert_eq!(
+            ast.render_with(&RenderOptions {
+                breaks: true,
+                xhtml_out: true,
+                ..Default::default()
+            }),
+            "<p>hello<br />\nworld</p>\n"
+        );
     }
 }

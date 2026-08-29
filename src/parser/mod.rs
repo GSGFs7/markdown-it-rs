@@ -42,4 +42,5 @@ pub mod linkfmt;
 
 pub(super) mod main;
 pub(super) mod node;
+pub(super) mod render_options;
 pub(super) mod renderer;

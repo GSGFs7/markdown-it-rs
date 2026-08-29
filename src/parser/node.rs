@@ -8,6 +8,7 @@ use crate::common::TypeKey;
 use crate::common::sourcemap::SourcePos;
 use crate::parser::extset::NodeExtSet;
 use crate::parser::inline::{Text, TextSpecial};
+use crate::parser::render_options::RenderOptions;
 use crate::parser::renderer::HTMLRenderer;
 use crate::plugins::cmark::inline::newline::Softbreak;
 
@@ -85,16 +86,21 @@ impl Node {
 
     /// Render this node to HTML.
     pub fn render(&self) -> String {
-        let mut fmt = HTMLRenderer::<false>::new();
-        fmt.render(self);
-        fmt.into()
+        self.render_with(&RenderOptions::default())
     }
 
     /// Render this node to XHTML, it adds slash to self-closing tags like this: `<img />`.
     ///
     /// This mode exists for compatibility with CommonMark tests.
     pub fn xrender(&self) -> String {
-        let mut fmt = HTMLRenderer::<true>::new();
+        self.render_with(&RenderOptions {
+            xhtml_out: true,
+            ..RenderOptions::default()
+        })
+    }
+
+    pub fn render_with(&self, options: &RenderOptions) -> String {
+        let mut fmt = HTMLRenderer::new(options);
         fmt.render(self);
         fmt.into()
     }
