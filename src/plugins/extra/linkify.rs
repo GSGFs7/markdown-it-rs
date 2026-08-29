@@ -81,6 +81,37 @@ impl CoreRule for LinkifyPrescan {
             })
             .collect::<Vec<_>>();
 
+        // compatible markdownit.js's `linkify-it`.
+        // 
+        // "https://example.com/foo`bar`baz" -> "https://example.com/foo~bar~baz"
+        // scan the replaced URL length & encode origin content.
+        if source.contains('`') {
+            let scan_source = source.replace('`', "~");
+            for link in finder.links(&scan_source) {
+                if *link.kind() != LinkKind::Url {
+                    continue;
+                }
+
+                let original = &source[link.start()..link.end()];
+                if !original.contains('`') || !has_explicit_scheme(original) {
+                    continue;
+                }
+
+                if let Some(position) = positions
+                    .iter_mut()
+                    .find(|position| position.start == link.start() && !position.email)
+                {
+                    position.end = position.end.max(link.end());
+                } else {
+                    positions.push(LinkifyPosition {
+                        start: link.start(),
+                        end: link.end(),
+                        email: false,
+                    });
+                }
+            }
+        }
+
         // rust `linkify` deliberately doesn't recognize protocol-relative URLs.
         // but markdwonit.js's `linkify-it` will identify it.
         for (start, _) in source.match_indices("//") {
@@ -346,6 +377,16 @@ fn starts_with_ascii_case_insensitive(input: &str, prefix: &str) -> bool {
         .is_some_and(|actual| actual.eq_ignore_ascii_case(prefix))
 }
 
+fn has_explicit_scheme(input: &str) -> bool {
+    let Some((scheme, _)) = input.split_once("://") else {
+        return false;
+    };
+
+    let mut chars = scheme.chars();
+    chars.next().is_some_and(|ch| ch.is_ascii_alphabetic())
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '.'))
+}
+
 #[cfg(all(test, feature = "linkify"))]
 mod tests {
     use crate as markdown_it;
@@ -435,13 +476,12 @@ mod tests {
         run(input, output);
     }
 
-    // not accepted as link by rust linkify
-    /*#[test]
+    #[test]
     fn backticks_inside_raw_links() {
         let input = r#"https://example.com/foo`bar`baz"#;
         let output = r#"<p><a href="https://example.com/foo%60bar%60baz">https://example.com/foo`bar`baz</a></p>"#;
         run(input, output);
-    }*/
+    }
 
     #[test]
     fn links_inside_raw_links() {
@@ -523,12 +563,12 @@ mailto:test@example.com"#;
         run(input, output);
     }
 
-    /*#[test]
+    #[test]
     fn emphasis_with_real_link() {
         let input = r#"http://cdecl.ridiculousfish.com/?q=int+%28*f%29+%28float+*%29%3B"#;
         let output = r#"<p><a href="http://cdecl.ridiculousfish.com/?q=int+%28*f%29+%28float+*%29%3B">http://cdecl.ridiculousfish.com/?q=int+(*f)+(float+*)%3B</a></p>"#;
         run(input, output);
-    }*/
+    }
 
     #[test]
     fn emphasis_with_real_link_1() {

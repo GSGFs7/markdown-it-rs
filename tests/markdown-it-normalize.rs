@@ -78,6 +78,27 @@ fn two_slashes_should_start_a_domain() {
 }
 
 #[test]
+fn ipv6_address_literals_should_preserve_brackets_while_encoding_other_components() {
+    let input = r#"[foo](http://[2001:db8::1]:1896/a[b]?x=[y])"#;
+    let output = r#"<p><a href="http://[2001:db8::1]:1896/a%5Bb%5D?x=%5By%5D">foo</a></p>"#;
+    run(input, output);
+}
+
+#[test]
+fn unnamed_2() {
+    let input = r#"[foo](//[::ffff:192.0.2.1]/)"#;
+    let output = r#"<p><a href="//[::ffff:192.0.2.1]/">foo</a></p>"#;
+    run(input, output);
+}
+
+#[test]
+fn unnamed_3() {
+    let input = r#"[foo](http://user:password@[2001:db8:0:0:0:0:0:1]:1926/)"#;
+    let output = r#"<p><a href="http://user:password@[2001:db8:0:0:0:0:0:1]:1926/">foo</a></p>"#;
+    run(input, output);
+}
+
+#[test]
 fn don_t_encode_domains_in_unknown_schemas() {
     let input = r#"[](skype:γγγ)"#;
     let output = r#"<p><a href="skype:%CE%B3%CE%B3%CE%B3"></a></p>"#;
@@ -92,21 +113,21 @@ fn should_support_idn_in_autolinks() {
 }
 
 #[test]
-fn unnamed_2() {
+fn unnamed_4() {
     let input = r#"test http://☃.net/ foo"#;
     let output = r#"<p>test <a href="http://xn--n3h.net/">http://☃.net/</a> foo</p>"#;
     run(input, output);
 }
 
 #[test]
-fn unnamed_3() {
+fn unnamed_5() {
     let input = r#"test //xn--n3h.net/ foo"#;
     let output = r#"<p>test <a href="//xn--n3h.net/">//☃.net/</a> foo</p>"#;
     run(input, output);
 }
 
 #[test]
-fn unnamed_4() {
+fn unnamed_6() {
     let input = r#"test xn--n3h@xn--n3h.net foo"#;
     let output = r#"<p>test <a href="mailto:xn--n3h@xn--n3h.net">xn--n3h@☃.net</a> foo</p>"#;
     run(input, output);

@@ -132,6 +132,16 @@ mod tests {
     }
 
     #[test]
+    fn display_decode_matches_markdown_it_exclusion_set() {
+        assert_eq!(
+            decode_url_for_display(
+                "http://cdecl.ridiculousfish.com/?q=int+%28*f%29+%28float+*%29%3B"
+            ),
+            "http://cdecl.ridiculousfish.com/?q=int+(*f)+(float+*)%3B"
+        );
+    }
+
+    #[test]
     fn keeps_unknown_scheme() {
         assert_eq!(
             format_url_for_humans("JAVASCRIPT:alert(1)", usize::MAX),

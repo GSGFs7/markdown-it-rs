@@ -89,9 +89,8 @@ fn hex_value(byte: u8) -> Option<u8> {
 }
 
 fn is_safe_display_char(ch: char) -> bool {
-    if !ch.is_ascii() && !ch.is_control() {
-        return true;
-    }
-
-    ch.is_ascii_alphanumeric() || matches!(ch, ' ' | '-' | '_' | '.' | '~')
+    !matches!(
+        ch,
+        ';' | '/' | '?' | ':' | '@' | '&' | '=' | '+' | '$' | ',' | '#' | '%'
+    )
 }
