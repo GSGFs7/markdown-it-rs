@@ -5,7 +5,8 @@
 //! unknown language and indented code blocks will be rendered as plain text.
 //!
 //! This plugin use `InspiredGitHub` theme and render inline styles by default.
-//! Use [`set_theme`] to select another built-in syntect theme.
+//! Use [`set_theme`] to select another built-in theme (syntect defaults plus
+//! two-face extras, e.g. `Nord`, `Dracula`, `Catppuccin Mocha`, `Solarized (dark)`).
 //! It will panic when get an unknown theme.
 //! Use [`available_themes`] to view all available themes.
 //!
@@ -32,7 +33,7 @@ use std::collections::HashSet;
 use std::sync::LazyLock;
 
 use syntect::easy::HighlightLines;
-use syntect::highlighting::{Theme, ThemeSet};
+use syntect::highlighting::Theme;
 use syntect::html::{
     ClassStyle,
     IncludeBackground,
@@ -42,6 +43,7 @@ use syntect::html::{
 };
 use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
+use two_face::theme::LazyThemeSet;
 
 use crate::common::utils::{escape_html, unescape_all};
 use crate::parser::core::CoreRule;
@@ -51,8 +53,9 @@ use crate::plugins::cmark::block::fence::CodeFence;
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 // lazy load themes. it wast a lot of performance
-static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
-static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(two_face::syntax::extra_newlines);
+static THEME_SET: LazyLock<LazyThemeSet> =
+    LazyLock::new(|| LazyThemeSet::from(two_face::theme::extra()));
 
 // --- render ---
 
@@ -247,9 +250,11 @@ pub fn add(md: &mut MarkdownIt) {
     md.add_rule::<SyntectRule>();
 }
 
-/// Return the names of all built-in syntect themes available to this plugin.
+/// Return the names of all built-in themes available to this plugin.
+///
+/// Includes syntect's defaults plus the extra themes shipped with two-face.
 pub fn available_themes() -> Vec<String> {
-    let mut themes: Vec<String> = THEME_SET.themes.keys().cloned().collect();
+    let mut themes: Vec<String> = THEME_SET.theme_names().map(str::to_owned).collect();
     themes.sort();
     themes
 }
@@ -327,8 +332,8 @@ fn update_syntect_settings(md: &mut MarkdownIt, f: impl FnOnce(&mut SyntectSetti
     md.ext.insert(settings);
 }
 
-fn resolve_theme<'a>(themes: &'a ThemeSet, settings: &SyntectSettings) -> Option<&'a Theme> {
-    themes.themes.get(settings.theme.as_str())
+fn resolve_theme<'a>(themes: &'a LazyThemeSet, settings: &SyntectSettings) -> Option<&'a Theme> {
+    themes.get(settings.theme.as_str())
 }
 
 fn render_inline_html(
