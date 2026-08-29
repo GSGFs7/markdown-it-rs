@@ -15,6 +15,7 @@
 //! markdown_it::plugins::sourcepos::add(md);
 //! // ...
 //! ```
+pub mod cjk_friendly;
 pub mod cmark;
 pub mod directives;
 pub mod extra;

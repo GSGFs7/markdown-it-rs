@@ -2,7 +2,7 @@
 //
 use crate::common::sourcemap::SourcePos;
 use crate::common::utils::is_punct_char;
-use crate::parser::extset::{InlineRootExtSet, RootExtSet};
+use crate::parser::extset::{InlineRootExtSet, MarkdownItExt, RootExtSet};
 use crate::parser::inline::Text;
 use crate::{MarkdownIt, Node};
 
@@ -20,6 +20,18 @@ pub struct DelimiterRun {
 
     /// Total length of scanned delimiters.
     pub length: usize,
+}
+
+type DelimiterScanner = for<'a, 'b> fn(&InlineState<'a, 'b>, usize, bool) -> DelimiterRun;
+
+#[derive(Debug)]
+struct DelimiterScannerConfig(DelimiterScanner);
+impl MarkdownItExt for DelimiterScannerConfig {}
+
+/// custom delimiter scanner
+/// provider for `cjk_friendly` plugin. will not be made public for the time being.
+pub(crate) fn set_delimiter_scanner(md: &mut MarkdownIt, scanner: DelimiterScanner) {
+    md.ext.insert(DelimiterScannerConfig(scanner));
 }
 
 #[derive(Debug)]
@@ -159,6 +171,14 @@ impl<'a, 'b> InlineState<'a, 'b> {
     ///
     #[must_use]
     pub fn scan_delims(&self, start: usize, can_split_word: bool) -> DelimiterRun {
+        if let Some(config) = self.md.ext.get::<DelimiterScannerConfig>() {
+            return config.0(self, start, can_split_word);
+        }
+
+        self.scan_delims_default(start, can_split_word)
+    }
+
+    fn scan_delims_default(&self, start: usize, can_split_word: bool) -> DelimiterRun {
         let mut left_flanking = true;
         let mut right_flanking = true;
 

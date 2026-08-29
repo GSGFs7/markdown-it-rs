@@ -14,6 +14,7 @@ You can check a [demo](https://gsgfs7.github.io/markdown-it-rs/) in your browser
 - Mutable, typed AST
 - Source maps for parsed nodes
 - Extensible core, block, and inline rule chains
+- Optional CJK-friendly emphasis handling
 - Optional Python and WebAssembly bindings
 
 ## Quick start
@@ -87,6 +88,24 @@ fn main() {
 ```
 
 See the `examples/ferris` folder for a detailed guide on how to extend it.
+
+## CJK-friendly delimiters
+
+The optional `cjk_friendly` plugin implements the delimiter amendments from
+[`markdown-cjk-friendly`](https://github.com/tats-u/markdown-cjk-friendly), so
+emphasis next to Chinese, Japanese, or Korean punctuation works without spaces:
+
+```rust
+use markdown_it::{MarkdownIt, Preset};
+
+let mut md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
+markdown_it::plugins::cjk_friendly::add(&mut md);
+
+assert_eq!(
+    md.parse("**这是重要内容。**后面可以继续写~~被删除的内容！~~").render(),
+    "<p><strong>这是重要内容。</strong>后面可以继续写<s>被删除的内容！</s></p>\n"
+);
+```
 
 ## Security
 

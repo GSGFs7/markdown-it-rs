@@ -15,6 +15,10 @@ fn run(input: &str, output: &str) {
     let result = node.xrender();
     assert_eq!(result, output);
 
+    // The CJK-friendly amendment must not change any original CommonMark case.
+    markdown_it::plugins::cjk_friendly::add(md);
+    assert_eq!(md.parse(&(input.to_owned() + "\n")).xrender(), result);
+
     // make sure it doesn't crash without trailing \n
     let _ = md.parse(input.trim_end());
 }
