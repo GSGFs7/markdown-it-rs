@@ -2,10 +2,10 @@
 //! defining your own.
 //!
 //! ```
-//! use markdown_it::plugins::presets::{new_with_preset, Preset};
+//! use markdown_it::{MarkdownIt, Preset};
 //!
-//! let md = new_with_preset(Preset::CommonMark);                  // built-in
-//! let md = new_with_preset(|md: &mut markdown_it::MarkdownIt| {  // custom
+//! let md = MarkdownIt::with_preset(Preset::CommonMark);          // built-in
+//! let md = MarkdownIt::with_preset(|md: &mut MarkdownIt| {       // custom
 //!     markdown_it::plugins::cmark::add(md);
 //!     markdown_it::plugins::extra::tables::add(md);
 //! });
@@ -48,6 +48,7 @@ impl PresetConfig for Preset {
                 cmark::add(md);
                 html::add(md);
                 md.max_nesting = 20;
+                md.render_options.xhtml_out = true;
             }
             Preset::Zero => {
                 // same with markdownit.js
@@ -68,22 +69,15 @@ where
     }
 }
 
-/// Create a configured parser from a preset.
-pub fn new_with_preset(preset: impl PresetConfig) -> MarkdownIt {
-    let mut md = MarkdownIt::new();
-    preset.configure(&mut md);
-    md
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{Preset, PresetConfig, new_with_preset};
+    use super::{Preset, PresetConfig};
     use crate::MarkdownIt;
     use crate::plugins::{cmark, extra};
 
     #[test]
     fn markdown_it_default_enables_only_bundled_extensions() {
-        let md = new_with_preset(Preset::MarkdownItDefault);
+        let md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
 
         assert_eq!(
             md.parse("~~deleted~~\n\n| a |\n| - |").render(),
@@ -98,18 +92,19 @@ mod tests {
 
     #[test]
     fn commonmark_enables_html_but_not_markdown_it_extensions() {
-        let md = new_with_preset(Preset::CommonMark);
+        let md = MarkdownIt::with_preset(Preset::CommonMark);
 
         assert_eq!(
             md.parse("<em>raw</em> ~~plain~~").render(),
             "<p><em>raw</em> ~~plain~~</p>\n"
         );
         assert_eq!(md.max_nesting, 20);
+        assert_eq!(md.render("---"), "<hr />\n");
     }
 
     #[test]
     fn zero_keeps_only_paragraphs_and_plain_text() {
-        let md = new_with_preset(Preset::Zero);
+        let md = MarkdownIt::with_preset(Preset::Zero);
 
         assert_eq!(
             md.parse("# **plain** <em>text</em>").render(),
@@ -131,14 +126,14 @@ mod tests {
             }
         }
 
-        let md = new_with_preset(GfmLike);
+        let md = MarkdownIt::with_preset(GfmLike);
         let html = md.parse("- [x] done").render();
         assert!(html.contains("task-list-item-checkbox"));
     }
 
     #[test]
     fn closures_can_define_one_off_presets() {
-        let md = new_with_preset(|md: &mut MarkdownIt| {
+        let md = MarkdownIt::with_preset(|md: &mut MarkdownIt| {
             cmark::add(md);
             extra::mark::add(md);
         });

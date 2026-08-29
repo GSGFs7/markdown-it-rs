@@ -38,6 +38,6 @@ impl MarkdownIt {
     }
 
     pub fn render(&self, source: &str) -> String {
-        self.inner.parse(source).render()
+        self.inner.render(source)
     }
 }

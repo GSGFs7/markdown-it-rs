@@ -86,19 +86,14 @@ impl Node {
 
     /// Render this node to HTML.
     pub fn render(&self) -> String {
-        self.render_with(&RenderOptions::default())
+        if let Some(options) = self.ext.get::<RenderOptions>() {
+            self.render_with(options)
+        } else {
+            self.render_with(&RenderOptions::default())
+        }
     }
 
-    /// Render this node to XHTML, it adds slash to self-closing tags like this: `<img />`.
-    ///
-    /// This mode exists for compatibility with CommonMark tests.
-    pub fn xrender(&self) -> String {
-        self.render_with(&RenderOptions {
-            xhtml_out: true,
-            ..RenderOptions::default()
-        })
-    }
-
+    /// Render this node to HTML with the given options.
     pub fn render_with(&self, options: &RenderOptions) -> String {
         let mut fmt = HTMLRenderer::new(options);
         fmt.render(self);
@@ -239,7 +234,7 @@ impl_downcast!(NodeValue);
 
 #[cfg(test)]
 mod test {
-    use crate::{MarkdownIt, Node};
+    use crate::*;
 
     fn assert_send_sync<T: Sync>() {}
 
@@ -247,5 +242,17 @@ mod test {
     fn parser_and_ast_are_send_and_sync() {
         assert_send_sync::<Node>();
         assert_send_sync::<MarkdownIt>();
+    }
+
+    #[test]
+    fn render_uses_parser_render_options() {
+        let mut md = MarkdownIt::new();
+        plugins::cmark::add(&mut md);
+        md.render_options.breaks = true;
+        md.render_options.xhtml_out = true;
+
+        let ast = md.parse("hello\nworld");
+
+        assert_eq!(ast.render(), "<p>hello<br />\nworld</p>\n");
     }
 }

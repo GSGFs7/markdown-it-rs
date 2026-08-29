@@ -1,8 +1,7 @@
-use markdown_it::MarkdownIt;
-use markdown_it::plugins::presets::{Preset, new_with_preset};
+use markdown_it::{MarkdownIt, Preset};
 
 pub fn markdown_it_fixture_parser() -> MarkdownIt {
-    let mut md = new_with_preset(Preset::MarkdownItDefault);
+    let mut md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
 
     markdown_it::plugins::html::add(&mut md);
     markdown_it::plugins::cmark::block::fence::set_lang_prefix(&mut md, "");

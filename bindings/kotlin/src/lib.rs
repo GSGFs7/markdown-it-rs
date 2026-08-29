@@ -78,7 +78,7 @@ impl MarkdownParser {
     }
 
     pub fn render(&self, source: String) -> String {
-        self.inner.parse(&source).render()
+        self.inner.render(&source)
     }
 
     pub fn render_with_metadata(&self, source: String) -> RenderResult {

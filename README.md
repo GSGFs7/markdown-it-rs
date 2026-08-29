@@ -26,7 +26,7 @@ use markdown_it::{MarkdownIt, Preset};
 
 fn main() {
     let md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
-    let html = md.parse("Hello **world**!").render();
+    let html = md.render("Hello **world**!");
 
     assert_eq!(html, "<p>Hello <strong>world</strong>!</p>\n");
 }
@@ -81,7 +81,7 @@ fn main() {
     emoji_plugin(&mut md);
 
     assert_eq!(
-        md.parse("Ready to launch :rocket:").render(),
+        md.render("Ready to launch :rocket:"),
         "<p>Ready to launch 🚀</p>\n"
     );
 }
@@ -102,8 +102,8 @@ let mut md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
 markdown_it::plugins::cjk_friendly::add(&mut md);
 
 assert_eq!(
-    md.parse("**这是重要内容。**后面可以继续写~~被删除的内容！~~").render(),
-    "<p><strong>这是重要内容。</strong>后面可以继续写<s>被删除的内容！</s></p>\n"
+    md.render("**这是重要内容。**后面可以继续写~~，被删除的内容~~"),
+    "<p><strong>这是重要内容。</strong>后面可以继续写<s>，被删除的内容</s></p>\n"
 );
 ```
 

@@ -1,3 +1,5 @@
+use crate::parser::extset::NodeExt;
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RenderOptions {
     /// output `<br />`, `<hr />`, `<img />`...
@@ -7,3 +9,5 @@ pub struct RenderOptions {
     /// cover fenced code class prefixes
     pub lang_prefix: Option<String>,
 }
+
+impl NodeExt for RenderOptions {}
