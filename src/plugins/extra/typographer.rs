@@ -94,7 +94,7 @@ impl CoreRule for TypographerRule {
             if SCOPED_RE.is_match(&text_node.content) {
                 text_node.content = SCOPED_RE
                     .replace_all(&text_node.content, |caps: &regex::Captures| {
-                        replace_abbreviation(caps.get(0).unwrap().as_str())
+                        replace_abbreviation(caps.get(0).unwrap().as_str()).to_owned()
                     })
                     .to_string();
             }
