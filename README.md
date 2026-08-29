@@ -4,6 +4,10 @@
 > This is a personally maintained fork of
 > [markdown-it-rust/markdown-it](https://github.com/markdown-it-rust/markdown-it).  
 
+> [!WARNING]
+> **Status: unpublished `1.0.0`** — contains many breaking changes compared to
+> the latest published version (`0.7.0`); the API is not stable yet.
+
 A Rust-native, AST-first Markdown parser with [markdown-it.js](https://github.com/markdown-it/markdown-it)-compatible rendering.
 
 You can check a [demo](https://gsgfs7.github.io/markdown-it-rs/) in your browser.
