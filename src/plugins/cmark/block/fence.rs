@@ -30,7 +30,7 @@ impl NodeValue for CodeFence {
             .unwrap_or(&self.lang_prefix);
         if !lang_name.is_empty() {
             let class = format!("{lang_prefix}{lang_name}");
-            attrs.push(("class", class));
+            attrs.push(("class".into(), class));
         }
 
         fmt.cr();

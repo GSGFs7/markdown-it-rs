@@ -79,14 +79,17 @@ struct FootnoteReference {
 impl NodeValue for FootnoteReference {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         let mut attrs = node.attrs.clone();
-        attrs.push(("class", "footnote-ref".into()));
+        attrs.push(("class".into(), "footnote-ref".into()));
 
         fmt.open("sup", &attrs);
         fmt.open(
             "a",
             &[
-                ("href", "#".to_string() + footnote_id(self.number).as_str()),
-                ("id", footnote_ref_id(self.number, self.sub_id)),
+                (
+                    "href".into(),
+                    "#".to_string() + footnote_id(self.number).as_str(),
+                ),
+                ("id".into(), footnote_ref_id(self.number, self.sub_id)),
             ],
         );
         fmt.text(&format!("[{}]", self.number));
@@ -102,11 +105,11 @@ struct FootnoteSection;
 impl NodeValue for FootnoteSection {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         fmt.cr();
-        fmt.self_close("hr", &[("class", "footnotes-sep".into())]);
+        fmt.self_close("hr", &[("class".into(), "footnotes-sep".into())]);
         fmt.cr();
-        fmt.open("section", &[("class", "footnotes".into())]);
+        fmt.open("section", &[("class".into(), "footnotes".into())]);
         fmt.cr();
-        fmt.open("ol", &[("class", "footnotes-list".into())]);
+        fmt.open("ol", &[("class".into(), "footnotes-list".into())]);
         fmt.cr();
         fmt.contents(&node.children);
         fmt.cr();
@@ -126,8 +129,8 @@ struct FootnoteItem {
 impl NodeValue for FootnoteItem {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         let attrs = [
-            ("id", footnote_id(self.number)),
-            ("class", "footnote-item".into()),
+            ("id".into(), footnote_id(self.number)),
+            ("class".into(), "footnote-item".into()),
         ];
 
         fmt.open("li", &attrs);
@@ -150,10 +153,10 @@ impl NodeValue for FootnoteBackref {
             "a",
             &[
                 (
-                    "href",
+                    "href".into(),
                     format!("#{}", footnote_ref_id(self.number, self.sub_id)),
                 ),
-                ("class", "footnote-backref".into()),
+                ("class".into(), "footnote-backref".into()),
             ],
         );
         // a arrow

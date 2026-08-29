@@ -49,7 +49,7 @@
 //!         .find_map(|(key, value)| (key == "label").then_some(value.as_str()))
 //!         .unwrap_or("");
 //!
-//!     fmt.open("mark", &[("class", "badge".to_owned())]);
+//!     fmt.open("mark", &[("class".into(), "badge".to_owned())]);
 //!     fmt.text(label);
 //!     fmt.close("mark");
 //! }
@@ -94,11 +94,10 @@ impl NodeValue for TextDirective {
             return;
         }
 
-        let mut attrs: Vec<(&str, String)> =
-            node.attrs.iter().map(|(k, v)| (*k, v.clone())).collect();
-        attrs.push(("class", format!("directive {}", self.name)));
+        let mut attrs = node.attrs.clone();
+        attrs.push(("class".into(), format!("directive {}", self.name)));
         for (k, v) in &self.attrs {
-            attrs.push((k.as_str(), v.clone()));
+            attrs.push((k.clone(), v.clone()));
         }
 
         fmt.open("span", &attrs);
@@ -122,11 +121,10 @@ impl NodeValue for LeafDirective {
             return;
         }
 
-        let mut attrs: Vec<(&str, String)> =
-            node.attrs.iter().map(|(k, v)| (*k, v.clone())).collect();
-        attrs.push(("class", format!("directive {}", self.name)));
+        let mut attrs = node.attrs.clone();
+        attrs.push(("class".into(), format!("directive {}", self.name)));
         for (k, v) in &self.attrs {
-            attrs.push((k.as_str(), v.clone()));
+            attrs.push((k.clone(), v.clone()));
         }
 
         fmt.cr();
@@ -152,11 +150,10 @@ impl NodeValue for ContainerDirective {
             return;
         }
 
-        let mut attrs: Vec<(&str, String)> =
-            node.attrs.iter().map(|(k, v)| (*k, v.clone())).collect();
-        attrs.push(("class", format!("directive {}", self.name)));
+        let mut attrs = node.attrs.clone();
+        attrs.push(("class".into(), format!("directive {}", self.name)));
         for (k, v) in &self.attrs {
-            attrs.push((k.as_str(), v.clone()));
+            attrs.push((k.clone(), v.clone()));
         }
 
         fmt.cr();
@@ -642,8 +639,8 @@ mod tests {
         assert_eq!(name, "badge");
 
         let html_attrs = [
-            ("data-kind", format!("{kind:?}")),
-            ("data-tone", attr(attrs, "tone").to_owned()),
+            ("data-kind".into(), format!("{kind:?}")),
+            ("data-tone".into(), attr(attrs, "tone").to_owned()),
         ];
         fmt.open("mark", &html_attrs);
         fmt.text(attr(attrs, "label"));
@@ -661,7 +658,7 @@ mod tests {
         assert_eq!(name, "callout");
         assert!(node.children.is_empty());
 
-        let html_attrs = [("data-name", name.to_owned())];
+        let html_attrs = [("data-name".into(), name.to_owned())];
         fmt.cr();
         fmt.open("aside", &html_attrs);
         fmt.open("strong", &[]);
@@ -681,7 +678,7 @@ mod tests {
         assert_eq!(kind, DirectiveKind::Container);
         assert_eq!(name, "panel");
 
-        let html_attrs = [("data-title", attr(attrs, "title").to_owned())];
+        let html_attrs = [("data-title".into(), attr(attrs, "title").to_owned())];
         fmt.cr();
         fmt.open("section", &html_attrs);
         fmt.contents(&node.children);

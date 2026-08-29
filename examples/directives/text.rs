@@ -21,7 +21,10 @@ pub fn render_badge(
         .map(|(_, v)| v.as_str())
         .unwrap_or("info");
 
-    fmt.open("span", &[("class", format!("badge badge-{}", badge_type))]);
+    fmt.open(
+        "span",
+        &[("class".into(), format!("badge badge-{}", badge_type))],
+    );
     fmt.text(label);
     fmt.close("span");
 }

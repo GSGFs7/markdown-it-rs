@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use crate::common::utils::escape_html;
 use crate::parser::extset::RenderExtSet;
-use crate::parser::node::Node;
+use crate::parser::node::{HtmlAttribute, Node};
 use crate::parser::render_options::RenderOptions;
 
 /// Each node outputs its HTML using this API.
@@ -31,11 +31,11 @@ pub trait Renderer {
     }
 
     /// Write opening html tag with attributes, e.g. `<a href="url">`.
-    fn open(&mut self, tag: &str, attrs: &[(&str, String)]);
+    fn open(&mut self, tag: &str, attrs: &[HtmlAttribute]);
     /// Write closing html tag, e.g. `</a>`.
     fn close(&mut self, tag: &str);
     /// Write self-closing html tag with attributes, e.g. `<img src="url"/>`.
-    fn self_close(&mut self, tag: &str, attrs: &[(&str, String)]);
+    fn self_close(&mut self, tag: &str, attrs: &[HtmlAttribute]);
     /// Loop through child nodes and render each one.
     fn contents(&mut self, nodes: &[Node]);
     /// Write line break (`\n`). Default renderer ignores it if last char in the buffer is `\n` already.
@@ -78,14 +78,17 @@ impl<'a> HTMLRenderer<'a> {
         self.result.push('"');
     }
 
-    fn make_attrs(&mut self, attrs: &[(&str, String)]) {
+    fn make_attrs(&mut self, attrs: &[HtmlAttribute]) {
         let mut attr_hash = HashMap::new();
         let mut attr_order = Vec::with_capacity(attrs.len());
 
         for (name, value) in attrs {
-            let entry = attr_hash.entry(*name).or_insert(Vec::new());
-            entry.push(value.as_str());
-            attr_order.push(*name);
+            let name = name.as_str();
+            attr_hash
+                .entry(name)
+                .or_insert_with(Vec::new)
+                .push(value.as_str());
+            attr_order.push(name);
         }
 
         for name in attr_order {
@@ -130,7 +133,7 @@ impl<'a> Renderer for HTMLRenderer<'a> {
         Some(self.options)
     }
 
-    fn open(&mut self, tag: &str, attrs: &[(&str, String)]) {
+    fn open(&mut self, tag: &str, attrs: &[HtmlAttribute]) {
         self.result.push('<');
         self.result.push_str(tag);
         self.make_attrs(attrs);
@@ -144,7 +147,7 @@ impl<'a> Renderer for HTMLRenderer<'a> {
         self.result.push('>');
     }
 
-    fn self_close(&mut self, tag: &str, attrs: &[(&str, String)]) {
+    fn self_close(&mut self, tag: &str, attrs: &[HtmlAttribute]) {
         self.result.push('<');
         self.result.push_str(tag);
         self.make_attrs(attrs);

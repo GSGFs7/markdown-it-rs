@@ -96,7 +96,7 @@ impl NodeValue for SyntectSnippet {
         let attrs = if classes.is_empty() {
             Vec::new()
         } else {
-            vec![("class", classes.join(" "))]
+            vec![("class".into(), classes.join(" "))]
         };
 
         fmt.open("pre", &[]);

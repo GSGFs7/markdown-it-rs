@@ -229,7 +229,7 @@ impl CoreRule for AddHeadingAnchors {
             }
 
             let slug = unique_slug(slug, &mut used_ids, &mut next_suffix);
-            node.attrs.push(("id", slug));
+            node.attrs.push(("id".into(), slug));
         });
     }
 }
@@ -243,7 +243,7 @@ mod tests {
         fn run(root: &mut Node, _: &MarkdownIt) {
             root.walk_mut(|node, _| {
                 if is_heading(node) && node.collect_text() == "Existing" {
-                    node.attrs.push(("id", "generated".into()));
+                    node.attrs.push(("id".into(), "generated".into()));
                 }
             });
         }

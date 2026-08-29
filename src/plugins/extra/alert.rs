@@ -108,14 +108,17 @@ pub struct Alert {
 impl NodeValue for Alert {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         let mut attrs = node.attrs.clone();
-        attrs.push(("class", "markdown-alert".into()));
-        attrs.push(("class", format!("markdown-alert-{}", self.kind.name())));
+        attrs.push(("class".into(), "markdown-alert".into()));
+        attrs.push((
+            "class".into(),
+            format!("markdown-alert-{}", self.kind.name()),
+        ));
 
         fmt.cr();
         fmt.open("div", &attrs);
         fmt.cr();
 
-        fmt.open("p", &[("class", "markdown-alert-title".into())]);
+        fmt.open("p", &[("class".into(), "markdown-alert-title".into())]);
         fmt.text(self.kind.title());
         fmt.close("p");
         fmt.cr();

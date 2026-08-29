@@ -116,7 +116,7 @@ impl PythonHeadingAnchors {
             }
 
             let slug = unique_slug(slug, &mut used_ids, &mut next_suffix);
-            node.attrs.push(("id", slug));
+            node.attrs.push(("id".into(), slug));
         });
 
         if let Some(err) = first_error {

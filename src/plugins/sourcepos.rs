@@ -32,7 +32,7 @@ impl CoreRule for SyntaxPosRule {
             if let Some(map) = node.srcmap {
                 let ((startline, startcol), (endline, endcol)) = map.get_positions(&mapping);
                 node.attrs.push((
-                    "data-sourcepos",
+                    "data-sourcepos".into(),
                     format!("{}:{}-{}:{}", startline, startcol, endline, endcol),
                 ));
             }

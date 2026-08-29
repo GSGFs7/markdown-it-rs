@@ -14,7 +14,7 @@ impl NodeValue for MathBlock {
         #[cfg(not(feature = "katex"))]
         {
             let mut attrs = node.attrs.clone();
-            attrs.push(("class", "math-block".into()));
+            attrs.push(("class".into(), "math-block".into()));
 
             fmt.cr();
             fmt.open("div", &attrs);
@@ -26,7 +26,7 @@ impl NodeValue for MathBlock {
         #[cfg(feature = "katex")]
         {
             let mut attrs = node.attrs.clone();
-            attrs.push(("class", "math-block".into()));
+            attrs.push(("class".into(), "math-block".into()));
             fmt.cr();
             fmt.open("div", &attrs);
 
@@ -115,7 +115,7 @@ impl NodeValue for MathInline {
         #[cfg(not(feature = "katex"))]
         {
             let mut attrs = node.attrs.clone();
-            attrs.push(("class", "math-inline".into()));
+            attrs.push(("class".into(), "math-inline".into()));
             fmt.open("span", &attrs);
             fmt.text(&self.content);
             fmt.close("span");
@@ -124,7 +124,7 @@ impl NodeValue for MathInline {
         #[cfg(feature = "katex")]
         {
             let mut attrs = node.attrs.clone();
-            attrs.push(("class", "math-inline".into()));
+            attrs.push(("class".into(), "math-inline".into()));
             fmt.open("span", &attrs);
 
             let ctx = katex::KatexContext::default();

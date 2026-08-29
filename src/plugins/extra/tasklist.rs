@@ -15,14 +15,14 @@ pub struct TaskListMarker {
 impl NodeValue for TaskListMarker {
     fn render(&self, _node: &Node, fmt: &mut dyn crate::Renderer) {
         let mut attrs = vec![
-            ("class", "task-list-item-checkbox".to_owned()),
+            ("class".into(), "task-list-item-checkbox".to_owned()),
             // prevent checking by user
-            ("disabled", String::new()),
-            ("type", "checkbox".to_owned()),
+            ("disabled".into(), String::new()),
+            ("type".into(), "checkbox".to_owned()),
         ];
 
         if self.checked {
-            attrs.push(("checked", String::new()));
+            attrs.push(("checked".into(), String::new()));
         }
 
         // render a checkbox `<input type="checkbox" ... />`
@@ -136,7 +136,8 @@ impl TaskListScanner {
         };
 
         inline_nodes.insert(0, Node::new(TaskListMarker { checked }));
-        item.attrs.push(("class", "task-list-item".to_owned()));
+        item.attrs
+            .push(("class".into(), "task-list-item".to_owned()));
 
         Some(())
     }
@@ -154,7 +155,8 @@ impl TaskListScanner {
             }
         }
         if contains_task {
-            node.attrs.push(("class", "contains-task-list".to_owned()));
+            node.attrs
+                .push(("class".into(), "contains-task-list".to_owned()));
         }
     }
 }

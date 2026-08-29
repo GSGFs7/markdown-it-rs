@@ -23,11 +23,11 @@ pub fn render_alert(
     fmt.open(
         "div",
         &[
-            ("class", "markdown-alert".to_owned()),
-            ("class", format!("markdown-alert-{name}")),
+            ("class".into(), "markdown-alert".to_owned()),
+            ("class".into(), format!("markdown-alert-{name}")),
         ],
     );
-    fmt.open("p", &[("class", "markdown-alert-title".to_owned())]);
+    fmt.open("p", &[("class".into(), "markdown-alert-title".to_owned())]);
     fmt.text(title);
     fmt.close("p");
     fmt.contents(&node.children);

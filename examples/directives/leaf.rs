@@ -17,14 +17,14 @@ pub fn render_youtube(
         .unwrap_or("");
 
     fmt.cr();
-    fmt.open("div", &[("class", "video-container".to_owned())]);
+    fmt.open("div", &[("class".into(), "video-container".to_owned())]);
     fmt.open("iframe", &[
         // it not work. google's reason
-        ("src", format!("https://www.youtube-nocookie.com/embed/{}", video_id)),
-        ("title", "YouTube video player".to_owned()),
-        ("frameborder", "0".to_owned()),
-        ("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share".to_owned()),
-        ("allowfullscreen", "true".to_owned()),
+        ("src".into(), format!("https://www.youtube-nocookie.com/embed/{}", video_id)),
+        ("title".into(), "YouTube video player".to_owned()),
+        ("frameborder".into(), "0".to_owned()),
+        ("allow".into(), "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share".to_owned()),
+        ("allowfullscreen".into(), "true".to_owned()),
     ]);
     fmt.close("iframe");
     fmt.close("div");

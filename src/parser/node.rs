@@ -12,6 +12,12 @@ use crate::parser::render_options::RenderOptions;
 use crate::parser::renderer::HTMLRenderer;
 use crate::plugins::cmark::inline::newline::Softbreak;
 
+/// One HTML attribute: `(name, value)`.
+pub type HtmlAttribute = (String, String);
+
+/// HTML attributes attached to an AST node.
+pub type HtmlAttributes = Vec<HtmlAttribute>;
+
 /// Single node in the CommonMark AST.
 #[derive(Debug)]
 #[readonly::make]
@@ -26,7 +32,7 @@ pub struct Node {
     pub ext: NodeExtSet,
 
     /// Additional attributes to be added to resulting html.
-    pub attrs: Vec<(&'static str, String)>,
+    pub attrs: HtmlAttributes,
 
     /// Type name, used for debugging.
     #[readonly]
@@ -254,5 +260,21 @@ mod test {
         let ast = md.parse("hello\nworld");
 
         assert_eq!(ast.render(), "<p>hello<br />\nworld</p>\n");
+    }
+
+    #[test]
+    fn renders_runtime_attribute_names() {
+        let md = MarkdownIt::new();
+        let mut ast = md.parse("hello");
+        let paragraph = &mut ast.children[0];
+
+        paragraph
+            .attrs
+            .push((format!("data-{}", "runtime"), "<dynamic value>".to_owned()));
+
+        assert_eq!(
+            ast.render(),
+            "<p data-runtime=\"&lt;dynamic value&gt;\">hello</p>\n"
+        );
     }
 }

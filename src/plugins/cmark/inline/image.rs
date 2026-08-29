@@ -18,11 +18,11 @@ pub struct Image {
 impl NodeValue for Image {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         let mut attrs = node.attrs.clone();
-        attrs.push(("src", self.url.clone()));
-        attrs.push(("alt", collect_alt_text(node)));
+        attrs.push(("src".into(), self.url.clone()));
+        attrs.push(("alt".into(), collect_alt_text(node)));
 
         if let Some(title) = &self.title {
-            attrs.push(("title", title.clone()));
+            attrs.push(("title".into(), title.clone()));
         }
 
         fmt.self_close("img", &attrs);
