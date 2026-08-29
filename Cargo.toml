@@ -45,7 +45,7 @@ exclude = ["benchmarks"]
 opt-level = "s"
 
 [features]
-default = ["linkify", "syntect"]
+default = ["linkify"]
 cli = ["dep:clap"]
 katex = ["dep:katex-rs"]
 syntect = ["dep:syntect"]
