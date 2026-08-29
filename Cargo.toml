@@ -31,7 +31,7 @@ required-features = ["syntect"]
 
 [workspace]
 members = [
-    "crates/markdown-it-url",
+    "crates/markdown-it-rs-url",
     "bindings/kotlin",
     "bindings/python",
     "bindings/wasm",
@@ -58,7 +58,7 @@ entities = ">= 0.1.0, < 2"
 html-escape = ">= 0.1.0, < 0.3"
 linkify = { version = ">= 0.9.0, < 0.12", optional = true }
 katex-rs = { version = "0.2.4", optional = true }
-mdurl = { package = "markdown-it-rs-url", version = "0.1.0", path = "crates/markdown-it-url" }
+mdurl = { package = "markdown-it-rs-url", version = "0.1.0", path = "crates/markdown-it-rs-url" }
 readonly = ">= 0.2.0, < 0.3"
 regex = ">= 1.0.0, < 2"
 stacker = ">= 0.1.2, < 0.2"
