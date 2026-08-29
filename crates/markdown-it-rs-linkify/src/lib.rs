@@ -50,17 +50,30 @@ impl Linkify {
 
     /// Return all non-overlapping links as byte ranges into `input`.
     pub fn links(&self, input: &str) -> Vec<Link> {
+        self.links_with_fuzzy(input, false)
+    }
+
+    /// Return links, optionally recognizing URLs without an explicit scheme.
+    pub fn links_with_fuzzy(&self, input: &str, fuzzy_links: bool) -> Vec<Link> {
         let mut finder = LinkFinder::new();
-        finder.url_must_have_scheme(false);
+        finder.url_must_have_scheme(!fuzzy_links);
 
         let mut links = finder
             .links(input)
-            .map(|link| {
+            .filter_map(|link| {
                 let kind = match *link.kind() {
                     UpstreamLinkKind::Url => LinkKind::Url,
                     UpstreamLinkKind::Email => LinkKind::Email,
                     _ => unreachable!("linkify returned an unknown link kind"),
                 };
+                let raw = &input[link.start()..link.end()];
+                if kind == LinkKind::Url
+                    && raw.contains("://")
+                    && !has_supported_explicit_scheme(raw)
+                {
+                    return None;
+                }
+
                 let mut start = link.start();
                 if kind == LinkKind::Email
                     && start >= "mailto:".len()
@@ -68,16 +81,16 @@ impl Linkify {
                 {
                     start -= "mailto:".len();
                 }
-                Link {
+                Some(Link {
                     start,
                     end: link.end(),
                     kind,
-                }
+                })
             })
             .collect::<Vec<_>>();
 
         self.extend_explicit_urls_with_backticks(input, &finder, &mut links);
-        self.add_protocol_relative_urls(input, &finder, &mut links);
+        self.add_protocol_relative_urls(input, &mut links);
 
         links.sort_by_key(|link| (link.start, std::cmp::Reverse(link.end)));
         links.dedup_by(|a, b| a.start == b.start && a.end == b.end && a.kind == b.kind);
@@ -105,7 +118,7 @@ impl Linkify {
             }
 
             let original = &input[link.start()..link.end()];
-            if !original.contains('`') || !has_explicit_scheme(original) {
+            if !original.contains('`') || !has_supported_explicit_scheme(original) {
                 continue;
             }
 
@@ -124,7 +137,10 @@ impl Linkify {
         }
     }
 
-    fn add_protocol_relative_urls(&self, input: &str, finder: &LinkFinder, links: &mut Vec<Link>) {
+    fn add_protocol_relative_urls(&self, input: &str, links: &mut Vec<Link>) {
+        let mut fuzzy_finder = LinkFinder::new();
+        fuzzy_finder.url_must_have_scheme(false);
+
         // rust `linkify` deliberately doesn't recognize protocol-relative URLs.
         // but markdwonit.js's `linkify-it` will identify it.
         for (start, _) in input.match_indices("//") {
@@ -140,7 +156,7 @@ impl Linkify {
             //   ^^^^^^^^^^^^^^^^^^^--- check if this is a link
             // (it should identify "example.com/")
             let rest = &input[start + 2..];
-            let Some(link) = finder.links(rest).next() else {
+            let Some(link) = fuzzy_finder.links(rest).next() else {
                 continue;
             };
             if link.start() != 0 || *link.kind() != UpstreamLinkKind::Url {
@@ -156,14 +172,16 @@ impl Linkify {
     }
 }
 
-fn has_explicit_scheme(input: &str) -> bool {
+fn has_supported_explicit_scheme(input: &str) -> bool {
     let Some((scheme, _)) = input.split_once("://") else {
         return false;
     };
 
-    let mut chars = scheme.chars();
-    chars.next().is_some_and(|ch| ch.is_ascii_alphabetic())
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '.'))
+    // `linkify-it` only support the 3 explicit schemes
+    matches!(
+        scheme.to_ascii_lowercase().as_str(),
+        "http" | "https" | "ftp"
+    )
 }
 
 #[cfg(test)]
@@ -172,7 +190,7 @@ mod tests {
 
     fn matches(input: &str) -> Vec<(&str, LinkKind)> {
         Linkify::new()
-            .links(input)
+            .links_with_fuzzy(input, true)
             .into_iter()
             .map(|link| (link.as_str(input), link.kind()))
             .collect()
@@ -210,6 +228,25 @@ mod tests {
         assert_eq!(
             matches("//example.com/path"),
             vec![("//example.com/path", LinkKind::Url)]
+        );
+    }
+
+    #[test]
+    fn fuzzy_links_are_opt_in() {
+        assert!(Linkify::new().links("example.org").is_empty());
+        assert_eq!(matches("example.org"), vec![("example.org", LinkKind::Url)]);
+    }
+
+    #[test]
+    fn ignores_unregistered_schemes() {
+        assert!(Linkify::new().links("a://example.org").is_empty());
+        assert_eq!(
+            Linkify::new()
+                .links("http://example.org")
+                .into_iter()
+                .map(|link| link.as_str("http://example.org"))
+                .collect::<Vec<_>>(),
+            vec!["http://example.org"]
         );
     }
 }

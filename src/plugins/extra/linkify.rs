@@ -1,21 +1,16 @@
 //! Find urls and emails, and turn them into links
 
 use std::cmp::Ordering;
-use std::sync::LazyLock;
 
 use linkify::{LinkKind, Linkify};
-use regex::Regex;
 
 use crate::parser::core::{CoreRule, Root};
-use crate::parser::extset::RootExt;
+use crate::parser::extset::{MarkdownItExt, RootExt};
 use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::inline::{InlineRule, InlineState, TextSpecial};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
-
-static SCHEME_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)(?:^|[^a-z0-9.+-])([a-z][a-z0-9.+-]*)$").unwrap());
 
 #[derive(Debug)]
 pub struct Linkified {
@@ -33,7 +28,22 @@ impl NodeValue for Linkified {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LinkifyOptions {
+    /// Recognize URLs without an explicit scheme, such as `example.org`.
+    ///
+    /// Disabled by default to match `linkify-it` 6.
+    pub fuzzy_links: bool,
+}
+
+impl MarkdownItExt for LinkifyOptions {}
+
 pub fn add(md: &mut MarkdownIt) {
+    add_with_options(md, LinkifyOptions::default());
+}
+
+pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
+    md.ext.insert(options);
     md.add_rule::<LinkifyPrescan>()
         .before::<InlineParserRule>()
         .before_all();
@@ -58,11 +68,17 @@ pub struct LinkifyPrescan;
 impl CoreRule for LinkifyPrescan {
     const NAMES: &'static [&'static str] = &["linkify_prescan"];
 
-    fn run(root: &mut Node, _: &MarkdownIt) {
+    fn run(root: &mut Node, md: &MarkdownIt) {
         let root_data = root.cast_mut::<Root>().unwrap();
         let source = root_data.content.as_str();
+        let fuzzy_links = md
+            .ext
+            .get::<LinkifyOptions>()
+            .copied()
+            .unwrap_or_default()
+            .fuzzy_links;
         let positions = Linkify::new()
-            .links(source)
+            .links_with_fuzzy(source, fuzzy_links)
             .into_iter()
             .map(|link| LinkifyPosition {
                 start: link.start(),
@@ -199,12 +215,12 @@ fn find_candidate(state: &InlineState, mode: LinkifyMode) -> Option<CandidateRan
         return None;
     }
 
-    // cia https://example.com llo
-    // ^^^^^^^^^-- this
     let trailing = state.trailing_text_get();
-    if matches!(mode, LinkifyMode::Scheme) && !SCHEME_RE.is_match(trailing) {
-        return None;
-    }
+    let scheme_len = if matches!(mode, LinkifyMode::Scheme) {
+        Some(find_scheme_len(&state.src, state.pos, trailing.len())?)
+    } else {
+        None
+    };
 
     let map = state.get_map(state.pos, state.pos_max)?;
     let (start, _) = map.get_byte_offsets();
@@ -235,6 +251,9 @@ fn find_candidate(state: &InlineState, mode: LinkifyMode) -> Option<CandidateRan
 
     let rewind = start - found.start;
     if rewind > trailing.len() {
+        return None;
+    }
+    if scheme_len.is_some_and(|scheme_len| scheme_len != rewind) {
         return None;
     }
     // \https://example.com
@@ -276,7 +295,9 @@ fn prepare_link(state: &InlineState, mode: LinkifyMode, url: &str) -> Option<Pre
     state.md.link_formatter.validate_link(&href)?;
 
     let mut content = state.md.link_formatter.normalize_link_text(&href_source);
-    if let Some(prefix) = injected_prefix {
+    if let Some(prefix) = injected_prefix
+        && starts_with_ascii_case_insensitive(&content, prefix)
+    {
         content.drain(..prefix.len());
     }
 
@@ -302,6 +323,28 @@ fn starts_with_ascii_case_insensitive(input: &str, prefix: &str) -> bool {
     input
         .get(..prefix.len())
         .is_some_and(|actual| actual.eq_ignore_ascii_case(prefix))
+}
+
+fn find_scheme_len(src: &str, pos: usize, trailing_len: usize) -> Option<usize> {
+    let bytes = src.as_bytes();
+    // look back at most 10 chars. avoid ReDoS
+    let min = pos.saturating_sub(10.min(trailing_len));
+    let mut start = pos;
+
+    while start > min {
+        let byte = bytes[start - 1];
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.') {
+            start -= 1;
+        } else {
+            break;
+        }
+    }
+
+    if start == pos || !bytes[start].is_ascii_alphabetic() {
+        return None;
+    }
+
+    Some(pos - start)
 }
 
 #[cfg(all(test, feature = "linkify"))]
@@ -444,9 +487,42 @@ mod tests {
 
     #[test]
     fn match_links_without_protocol() {
-        let input = r#"www.example.org"#;
-        let output = r#"<p><a href="http://www.example.org">www.example.org</a></p>"#;
-        run(input, output);
+        let md = &mut markdown_it::MarkdownIt::new();
+        markdown_it::plugins::cmark::add(md);
+        markdown_it::plugins::extra::linkify::add_with_options(
+            md,
+            markdown_it::plugins::extra::linkify::LinkifyOptions { fuzzy_links: true },
+        );
+
+        assert_eq!(
+            md.parse("www.example.org").render(),
+            "<p><a href=\"http://www.example.org\">www.example.org</a></p>\n"
+        );
+    }
+
+    #[test]
+    fn links_without_protocol_are_disabled_by_default() {
+        let md = &mut markdown_it::MarkdownIt::new();
+        markdown_it::plugins::cmark::add(md);
+        markdown_it::plugins::extra::linkify::add(md);
+
+        assert_eq!(
+            md.parse("www.example.org").render(),
+            "<p>www.example.org</p>\n"
+        );
+    }
+
+    #[test]
+    fn short_email_with_beautifier_does_not_panic() {
+        let md = &mut markdown_it::MarkdownIt::new();
+        markdown_it::plugins::cmark::add(md);
+        markdown_it::plugins::extra::beautify_links::add(md);
+        markdown_it::plugins::extra::linkify::add(md);
+
+        assert_eq!(
+            md.parse("ping a@b.co ok").render(),
+            "<p>ping <a href=\"mailto:a@b.co\">a@b.co</a> ok</p>\n"
+        );
     }
 
     #[test]
@@ -470,6 +546,13 @@ mailto:test@example.com"#;
     fn coverage_prefix_not_valid() {
         let input = r#"http:/example.com/"#;
         let output = r#"<p>http:/example.com/</p>"#;
+        run(input, output);
+    }
+
+    #[test]
+    fn unregistered_schemes_are_not_linkified() {
+        let input = r#"a://a://"#;
+        let output = r#"<p>a://a://</p>"#;
         run(input, output);
     }
 

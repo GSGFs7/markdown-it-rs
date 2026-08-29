@@ -157,4 +157,14 @@ mod markdownit {
     fn hardbreak_whitespaces_pattern() {
         run(&format!("{}{}{}", "x", " ".repeat(100000), "x  \nx"));
     }
+
+    #[test]
+    fn linkify_emails_separated_by_softbreaks() {
+        run(&"ping a@b.co ok\n".repeat(30000));
+    }
+
+    #[test]
+    fn linkify_unregistered_schemes() {
+        run(&"a://".repeat(70000));
+    }
 }

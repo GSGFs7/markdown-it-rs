@@ -21,6 +21,9 @@
 ### Fixed
 
 - aligned linkification and URL normalization with markdown-it.js 15.0.1
+- fixed a panic when linkifying short email addresses with link beautification
+- prevented pathological linkification of unregistered schemes from taking
+  superlinear time
 
 ## 0.7.0 - 2026-08-05
 
