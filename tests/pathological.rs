@@ -245,6 +245,13 @@ mod commonmark {
     }
 
     #[test]
+    fn multiline_reference_title() {
+        let src = format!("[foo]: /url '\n{}'\n\n[foo]", "line\n".repeat(40_000),);
+
+        run_render(&src);
+    }
+
+    #[test]
     fn nul_bytes_in_input() {
         run_render(&"abc\0de\0".repeat(100_000));
     }
