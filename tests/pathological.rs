@@ -212,11 +212,31 @@ mod commonmark {
         let src = format!("{}{}", ">".repeat(100_000), "a*".repeat(100_000),);
         run_render(&src);
     }
+
+    #[test]
+    fn many_references() {
+        use std::fmt::Write;
+
+        let count = 25_000;
+        let mut src = String::with_capacity(count * 48);
+
+        for i in 0..count {
+            writeln!(&mut src, "[ref{i}]: /url/{i}").unwrap();
+        }
+
+        src.push('\n');
+
+        for i in 0..count {
+            write!(&mut src, "[ref{i}] ").unwrap();
+        }
+
+        run_render(&src);
+    }
 }
 
 mod markdownit {
     // Ported from markdown-it.js
-    use super::{run, run_render_with_output_limit};
+    use super::{run, run_render, run_render_with_output_limit};
 
     #[test]
     fn table_autocompleted_cells() {
@@ -266,5 +286,13 @@ mod markdownit {
     #[test]
     fn many_smartquotes_in_single_block() {
         run(&"\"".repeat(70000));
+    }
+
+    #[cfg(feature = "linkify")]
+    #[test]
+    fn linkify_trailing_asterisks() {
+        let src = format!("https://test.com?{}a", "*".repeat(70_000),);
+
+        run_render(&src);
     }
 }

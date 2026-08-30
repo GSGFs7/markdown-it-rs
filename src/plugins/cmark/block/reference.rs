@@ -13,7 +13,7 @@ use std::fmt::Debug;
 use derive_more::{Deref, DerefMut};
 use downcast_rs::{Downcast, impl_downcast};
 
-use crate::common::utils::normalize_reference;
+use crate::common::utils::{normalize_reference, unescape_all};
 use crate::generics::inline::full_link;
 use crate::parser::block::{BlockRule, BlockState};
 use crate::{MarkdownIt, Node, NodeValue};
@@ -259,132 +259,100 @@ impl BlockRule for ReferenceScanner {
         }
 
         let start_line = state.line;
-        let mut next_line = start_line;
+        let mut next_line = start_line + 1;
+        let mut str = state.get_line(start_line).to_owned();
+        str.push('\n');
 
-        // jump line-by-line until empty one or EOF
-        'outer: loop {
-            next_line += 1;
-
-            if next_line >= state.line_max || state.is_empty(next_line) {
-                break;
-            }
-
-            // this may be a code block normally, but after paragraph
-            // it's considered a lazy continuation regardless of what's there
-            if state.line_indent(next_line) >= state.md.max_indent {
-                continue;
-            }
-
-            // quirk for blockquotes, this line should already be checked by that rule
-            if state.line_offsets[next_line].indent_nonspace < 0 {
-                continue;
-            }
-
-            // Some tags can terminate paragraph without empty line.
-            let old_state_line = state.line;
-            state.line = next_line;
-            if state.test_rules_at_line() {
-                state.line = old_state_line;
-                break 'outer;
-            }
-            state.line = old_state_line;
-        }
-
-        let (str_before_trim, _) = state.get_lines(start_line, next_line, state.blk_indent, false);
-        let str = str_before_trim.trim();
-        let mut chars = str.char_indices();
-        chars.next(); // skip '['
+        let mut pos = 1; // skip '['
         let label_end;
-        let mut lines = 0;
 
         loop {
-            match chars.next() {
-                Some((_, '[')) => return None,
-                Some((p, ']')) => {
-                    label_end = p;
+            let ch = str[pos..].chars().next()?;
+            match ch {
+                '[' => return None,
+                ']' => {
+                    label_end = pos;
+                    pos += 1;
                     break;
                 }
-                Some((_, '\n')) => lines += 1,
-                Some((_, '\\')) => {
-                    if let Some((_, '\n')) = chars.next() {
-                        lines += 1;
+                '\n' => {
+                    pos += 1;
+                    if pos == str.len()
+                        && !append_next_reference_line(state, &mut next_line, &mut str)
+                    {
+                        return None;
                     }
                 }
-                Some(_) => {}
-                None => return None,
+                '\\' => {
+                    pos += 1;
+                    let escaped = str[pos..].chars().next()?;
+                    pos += escaped.len_utf8();
+                    if escaped == '\n'
+                        && pos == str.len()
+                        && !append_next_reference_line(state, &mut next_line, &mut str)
+                    {
+                        return None;
+                    }
+                }
+                _ => pos += ch.len_utf8(),
             }
         }
 
-        let Some((_, ':')) = chars.next() else {
+        let Some(':') = str[pos..].chars().next() else {
             return None;
         };
+        pos += 1;
 
         // [label]:   destination   'title'
         //         ^^^ skip optional whitespace here
-        let mut pos = label_end + 2;
-        while let Some((_, ch @ (' ' | '\t' | '\n'))) = chars.next() {
-            if ch == '\n' {
-                lines += 1;
-            }
-            pos += 1;
-        }
+        skip_reference_whitespace(state, &mut next_line, &mut str, &mut pos);
 
         // [label]:   destination   'title'
         //            ^^^^^^^^^^^ parse this
         let href;
         {
-            let res = full_link::parse_link_destination(str, pos, str.len())?;
+            let res = full_link::parse_link_destination(&str, pos, str.len())?;
             if pos == res.pos {
                 return None;
             }
             href = state.md.link_formatter.normalize_link(&res.str);
             state.md.link_formatter.validate_link(&href)?;
             pos = res.pos;
-            lines += res.lines;
         }
 
         // save cursor state, we could require to rollback later
         let dest_end_pos = pos;
-        let dest_end_lines = lines;
+        let dest_end_next_line = next_line;
 
         // [label]:   destination   'title'
         //                       ^^^ skipping those spaces
         let start = pos;
-        let mut chars = str[pos..].chars();
-        while let Some(ch @ (' ' | '\t' | '\n')) = chars.next() {
-            if ch == '\n' {
-                lines += 1;
-            }
-            pos += 1;
-        }
+        skip_reference_whitespace(state, &mut next_line, &mut str, &mut pos);
 
         // [label]:   destination   'title'
         //                          ^^^^^^^ parse this
         let mut title = None;
         if pos != start {
-            if let Some(res) = full_link::parse_link_title(str, pos, str.len()) {
+            if let Some(res) = parse_reference_title(state, &mut next_line, &mut str, pos) {
                 title = Some(res.str);
                 pos = res.pos;
-                lines += res.lines;
             } else {
                 pos = dest_end_pos;
-                lines = dest_end_lines;
+                next_line = dest_end_next_line;
             }
         }
 
         // skip trailing spaces until the rest of the line
-        let mut chars = str[pos..].chars();
         loop {
-            match chars.next() {
-                Some(' ' | '\t') => {} // pos no longer used
+            match str[pos..].chars().next() {
+                Some(ch @ (' ' | '\t')) => pos += ch.len_utf8(),
                 Some('\n') | None => break,
                 Some(_) if title.is_some() => {
                     // garbage at the end of the line after title,
                     // but it could still be a valid reference if we roll back
                     title = None;
                     pos = dest_end_pos;
-                    lines = dest_end_lines;
-                    chars = str[pos..].chars();
+                    next_line = dest_end_next_line;
                 }
                 Some(_) => {
                     // garbage at the end of the line
@@ -404,7 +372,106 @@ impl BlockRule for ReferenceScanner {
                 destination: href,
                 title,
             }),
-            lines + 1,
+            next_line - start_line,
         ))
+    }
+}
+
+fn append_next_reference_line(
+    state: &mut BlockState,
+    next_line: &mut usize,
+    str: &mut String,
+) -> bool {
+    if *next_line >= state.line_max || state.is_empty(*next_line) {
+        return false;
+    }
+
+    let is_continuation = state.line_indent(*next_line) >= state.md.max_indent
+        || state.line_offsets[*next_line].indent_nonspace < 0;
+
+    if !is_continuation {
+        let old_state_line = state.line;
+        state.line = *next_line;
+        let terminated = state.test_rules_at_line();
+        state.line = old_state_line;
+        if terminated {
+            return false;
+        }
+    }
+
+    let (line, _) = state.get_lines(*next_line, *next_line + 1, state.blk_indent, true);
+    str.push_str(&line);
+    *next_line += 1;
+    true
+}
+
+fn skip_reference_whitespace(
+    state: &mut BlockState,
+    next_line: &mut usize,
+    str: &mut String,
+    pos: &mut usize,
+) {
+    while let Some(ch) = str[*pos..].chars().next() {
+        match ch {
+            ' ' | '\t' => *pos += ch.len_utf8(),
+            '\n' => {
+                *pos += 1;
+                if *pos == str.len() && !append_next_reference_line(state, next_line, str) {
+                    break;
+                }
+            }
+            _ => break,
+        }
+    }
+}
+
+fn parse_reference_title(
+    state: &mut BlockState,
+    next_line: &mut usize,
+    str: &mut String,
+    start: usize,
+) -> Option<full_link::ParseLinkFragmentResult> {
+    let marker = match str[start..].chars().next() {
+        Some('"') => '"',
+        Some('\'') => '\'',
+        Some('(') => ')',
+        None | Some(_) => return None,
+    };
+
+    let mut pos = start + 1;
+    let mut lines = 0;
+
+    loop {
+        let ch = str[pos..].chars().next()?;
+        if ch == marker {
+            return Some(full_link::ParseLinkFragmentResult {
+                pos: pos + ch.len_utf8(),
+                lines,
+                str: unescape_all(&str[start + 1..pos]).into_owned(),
+            });
+        }
+
+        match ch {
+            '(' if marker == ')' => return None,
+            '\n' => {
+                pos += 1;
+                lines += 1;
+                if pos == str.len() && !append_next_reference_line(state, next_line, str) {
+                    return None;
+                }
+            }
+            '\\' => {
+                pos += 1;
+                let escaped = str[pos..].chars().next()?;
+                pos += escaped.len_utf8();
+                if escaped == '\n' {
+                    lines += 1;
+                    if pos == str.len() && !append_next_reference_line(state, next_line, str) {
+                        return None;
+                    }
+                }
+            }
+            _ => pos += ch.len_utf8(),
+        }
     }
 }
