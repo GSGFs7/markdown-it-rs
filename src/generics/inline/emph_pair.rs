@@ -244,6 +244,10 @@ fn scan_and_match_delimiters<const MARKER: char>(
         if opener.remaining > 0 {
             state.node.children[idx].replace(opener);
         } // otherwise node was already deleted
+
+        if closer.remaining == 0 {
+            break;
+        }
     }
 
     if new_min_opener_idx != 0 {

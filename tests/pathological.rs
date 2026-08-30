@@ -58,7 +58,7 @@ fn run_render_with_output_limit(src: &str, output_limit: usize) {
 
 mod commonmark {
     // Ported from cmark, https://github.com/commonmark/cmark/blob/master/test/pathological_tests.py
-    use super::{run, run_render};
+    use super::{MD, run, run_render};
 
     #[test]
     fn nested_inlines() {
@@ -82,12 +82,11 @@ mod commonmark {
 
     #[test]
     fn nested_strong_emph() {
-        // suspiciously slow
         run(&format!(
             "{}{}{}",
-            "*a **a".repeat(5000),
+            "*a **a ".repeat(5_000),
             "b",
-            " a** a*".repeat(5000)
+            " a** a*".repeat(5_000)
         ));
     }
 
@@ -119,7 +118,19 @@ mod commonmark {
 
     #[test]
     fn commonmark_cmark_389() {
-        run(&format!("{}{}", "*a ".repeat(2000), "_a*_ ".repeat(2000)));
+        run(&format!(
+            "{}{}",
+            "*a ".repeat(20_000),
+            "_a*_ ".repeat(20_000)
+        ));
+    }
+
+    #[test]
+    fn hard_link_emph_case() {
+        assert_eq!(
+            MD.render("**x [a*b**c*](d)"),
+            "<p>**x <a href=\"d\">a<em>b**c</em></a></p>\n"
+        );
     }
 
     #[test]
@@ -260,7 +271,7 @@ mod markdownit {
 
     #[test]
     fn emphasis_pattern() {
-        run(&"**_* ".repeat(5000));
+        run(&"**_* ".repeat(50_000));
     }
 
     #[test]
