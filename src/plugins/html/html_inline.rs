@@ -5,6 +5,11 @@ use super::utils::regexps::*;
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
+#[derive(Debug, Default)]
+struct HtmlInlineScanCache {
+    no_comment_closer_range: Option<(usize, usize)>,
+}
+
 #[derive(Debug)]
 pub struct HtmlInline {
     pub content: String,
@@ -38,11 +43,33 @@ impl InlineRule for HtmlInlineScanner {
             return None;
         };
 
-        let capture = HTML_TAG_RE
-            .captures(&state.src[state.pos..state.pos_max])?
-            .get(0)
-            .unwrap()
-            .as_str();
+        // this avoid complexity reach O(n^2)
+        // <!--<!--<!--...-->...
+        // ^^^^           ^^^
+        //   |             |
+        // only find there two, skip the middle part.
+        let rest = &state.src[state.pos..state.pos_max];
+        if rest.starts_with("<!--") && !rest.starts_with("<!-->") && !rest.starts_with("<!--->") {
+            let cached_miss = state
+                .inline_ext
+                .get::<HtmlInlineScanCache>()
+                .and_then(|cache| cache.no_comment_closer_range)
+                .is_some_and(|(start, end)| state.pos >= start && state.pos_max <= end);
+
+            if cached_miss {
+                return None;
+            }
+
+            if !rest.contains("-->") {
+                state
+                    .inline_ext
+                    .get_or_insert_default::<HtmlInlineScanCache>()
+                    .no_comment_closer_range = Some((state.pos, state.pos_max));
+                return None;
+            }
+        }
+
+        let capture = HTML_TAG_RE.captures(rest)?.get(0).unwrap().as_str();
         let capture_len = capture.len();
 
         let content = capture.to_owned();
