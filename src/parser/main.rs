@@ -190,6 +190,16 @@ mod tests {
     }
 
     #[test]
+    fn replaces_nul_with_replacement_character() {
+        let md = MarkdownIt::with_preset(|md: &mut MarkdownIt| cmark::add(md));
+
+        let html = md.render("abc\0de\0");
+
+        assert_eq!(html, "<p>abc\u{FFFD}de\u{FFFD}</p>\n");
+        assert!(!html.contains('\0'));
+    }
+
+    #[test]
     fn rule_presence_can_be_checked_through_a_shared_reference() {
         let md = MarkdownIt::new();
         let md = &md;

@@ -232,6 +232,11 @@ mod commonmark {
 
         run_render(&src);
     }
+
+    #[test]
+    fn nul_bytes_in_input() {
+        run_render(&"abc\0de\0".repeat(100_000));
+    }
 }
 
 mod markdownit {
