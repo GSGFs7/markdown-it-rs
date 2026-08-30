@@ -160,7 +160,9 @@ impl<'a> Renderer for HTMLRenderer<'a> {
 
     fn contents(&mut self, nodes: &[Node]) {
         for node in nodes.iter() {
-            self.render(node);
+            stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+                self.render(node);
+            });
         }
     }
 

@@ -28,6 +28,7 @@ jobs:
   test:
     name: Test (${{ matrix.name }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       CARGO_NET_RETRY: "3"
     strategy:

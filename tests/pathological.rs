@@ -1,7 +1,8 @@
 // run it like this:
 // cargo test --test pathological --jobs 1 -- --nocapture --test-threads=1
+use std::hint::black_box;
 use std::sync::LazyLock;
-use std::time::SystemTime;
+use std::time::{Duration, Instant};
 
 use markdown_it::MarkdownIt;
 
@@ -13,19 +14,61 @@ static MD: LazyLock<MarkdownIt> = LazyLock::new(|| {
     parser
 });
 
+const CASE_BUDGET: Duration = Duration::from_secs(10);
+
+#[track_caller]
+fn assert_within_budget(start: Instant, phase: &str, input_len: usize) {
+    let elapsed = start.elapsed();
+    eprintln!("{phase} completed for {input_len} bytes in {elapsed:?}");
+    assert!(
+        elapsed <= CASE_BUDGET,
+        "pathological {phase} exceeded {CASE_BUDGET:?}: {input_len} bytes took {elapsed:?}"
+    );
+}
+
+#[track_caller]
 fn run(src: &str) {
-    let now = SystemTime::now();
-    MD.parse(src);
-    dbg!(now.elapsed().ok().unwrap());
+    let start = Instant::now();
+    let ast = MD.parse(src);
+    black_box(&ast);
+    assert_within_budget(start, "parse", src.len());
+}
+
+#[track_caller]
+fn run_render(src: &str) {
+    let start = Instant::now();
+    let output = MD.parse(src).render();
+    black_box(&output);
+    assert_within_budget(start, "render", src.len());
+
+    // this guards against accidentally quadratic output.
+    let output_limit = src.len().saturating_mul(64).saturating_add(1024);
+    assert!(
+        output.len() <= output_limit,
+        "pathological render amplified {} input bytes into {} output bytes (limit: {})",
+        src.len(),
+        output.len(),
+        output_limit,
+    );
 }
 
 mod commonmark {
     // Ported from cmark, https://github.com/commonmark/cmark/blob/master/test/pathological_tests.py
-    use super::run;
+    use super::{run, run_render};
 
     #[test]
     fn nested_inlines() {
         run(&format!(
+            "{}{}{}",
+            "*".repeat(100000),
+            "a",
+            "*".repeat(100000)
+        ));
+    }
+
+    #[test]
+    fn render_nested_inlines() {
+        run_render(&format!(
             "{}{}{}",
             "*".repeat(100000),
             "a",
@@ -103,6 +146,11 @@ mod commonmark {
     #[test]
     fn nested_block_quotes() {
         run(&format!("{}{}", "> ".repeat(50000), "a"));
+    }
+
+    #[test]
+    fn render_nested_block_quotes() {
+        run_render(&format!("{}{}", "> ".repeat(50000), "a"));
     }
 
     #[test]
