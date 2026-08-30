@@ -52,46 +52,63 @@ fn main() {
 }
 ```
 
-## Write a plugin in a few lines
+## Planned plugin API
 
-Plugins are regular Rust functions that install typed parsing or AST
-transformation rules. This example replaces an emoji shortcode after
-inline parsing:
+> [!IMPORTANT]
+> This section is a design target for the next major version, not an API that is
+> available in the current release yet.
+
+The planned high-level API uses typed, composable builders for common plugins,
+while keeping the lower-level rule and AST interfaces available for advanced
+parsers. An emoji shortcode plugin with custom HTML rendering should look roughly
+like this:
 
 ```rust
-use markdown_it::parser::core::CoreRule;
-use markdown_it::parser::inline::Text;
-use markdown_it::{MarkdownIt, Node, Preset};
+use markdown_it::{MarkdownIt, PluginSpec};
 
-struct Emoji;
+const EMOJIS: &[(&str, &str, &str)] = &[
+    (":rocket:", "🚀", "rocket"),
+    (":warning:", "⚠️", "warning"),
+];
 
-impl CoreRule for Emoji {
-    fn run(root: &mut Node, _: &MarkdownIt) {
-        root.walk_mut(|node, _| {
-            if let Some(text) = node.cast_mut::<Text>() {
-                text.content = text.content.replace(":rocket:", "🚀");
-            }
-        });
-    }
+#[derive(Debug)]
+struct Emoji {
+    glyph: &'static str,
+    label: &'static str,
 }
 
-fn emoji_plugin(md: &mut MarkdownIt) {
-    md.add_rule::<Emoji>().after_named("inline");
+fn emoji() -> PluginSpec {
+    PluginSpec::new("emoji")
+        .inline_leaf::<Emoji>("shortcode")
+        .marker(':')
+        .parse(|cx| {
+            let &(shortcode, glyph, label) = EMOJIS
+                .iter()
+                .find(|(code, _, _)| cx.starts_with(code))?;
+
+            cx.consume(shortcode);
+            Some(Emoji { glyph, label })
+        })
+        .render_html(|emoji, html| {
+            html.element("span")
+                .class("emoji")
+                .attr("role", "img")
+                .attr("aria-label", emoji.label)
+                .text(emoji.glyph);
+        })
+        .finish()
 }
 
-// use it
-fn main() {
-    let mut md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
-    emoji_plugin(&mut md);
-
-    assert_eq!(
-        md.render("Ready to launch :rocket:"),
-        "<p>Ready to launch 🚀</p>\n"
-    );
-}
+let md = MarkdownIt::builder().plugin(emoji()).build()?;
+let html = md.render("Ready :rocket: **now**; unknown: :wave:");
+//assert_eq!(html, r#"<p>Ready <span class="emoji" role="img" aria-label="rocket">🚀</span> <strong>now</strong>; unknown: :wave:</p>"#)
 ```
 
-See the `examples/ferris` folder for a detailed guide on how to extend it.
+The goal is to keep simple plugins around 20 lines, with automatic rollback and
+HTML escaping, while retaining lower-level APIs for advanced plugins.
+
+Until then, see the `examples/ferris` folder for a detailed guide to the current
+low-level plugin API.
 
 ## CJK-friendly delimiters
 
