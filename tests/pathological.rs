@@ -194,6 +194,24 @@ mod commonmark {
     fn unclosed_html_comments() {
         run(&format!("</{}", "<!--".repeat(300000)));
     }
+
+    #[test]
+    fn empty_lines_in_deeply_nested_lists() {
+        let src = format!("{}x{}", "- ".repeat(30_000), "\n".repeat(30_000),);
+        run_render(&src);
+    }
+
+    #[test]
+    fn empty_lines_in_deeply_nested_lists_in_blockquote() {
+        let src = format!("> {}x\n{}", "- ".repeat(30_000), ">\n".repeat(30_000),);
+        run_render(&src);
+    }
+
+    #[test]
+    fn emphasis_in_deep_blockquote() {
+        let src = format!("{}{}", ">".repeat(100_000), "a*".repeat(100_000),);
+        run_render(&src);
+    }
 }
 
 mod markdownit {

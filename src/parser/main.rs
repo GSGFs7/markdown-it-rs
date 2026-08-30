@@ -29,7 +29,6 @@ pub struct MarkdownIt {
     /// Maximum depth of the generated AST, exists to prevent recursion
     /// (if markdown source reaches this depth, deeply nested structures
     /// will be parsed as plain text).
-    /// TODO: doesn't work
     #[doc(hidden)]
     pub max_nesting: u32,
 

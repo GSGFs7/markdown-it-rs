@@ -107,6 +107,17 @@ impl BlockParser {
         });
     }
 
+    /// Tokenize the contents of a nested block container.
+    ///
+    /// Block rules that recursively invoke the block parser must use this
+    /// method so [`MarkdownIt::max_nesting`] can stop excessively deep input.
+    pub fn tokenize_nested(&self, state: &mut BlockState) {
+        let old_level = state.level;
+        state.level = state.level.saturating_add(1);
+        self.tokenize(state);
+        state.level = old_level;
+    }
+
     /// Process input string and push block tokens into `out_tokens`
     ///
     pub fn parse(&self, src: &str, node: Node, md: &MarkdownIt, root_ext: &mut RootExtSet) -> Node {

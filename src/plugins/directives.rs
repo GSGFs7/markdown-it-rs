@@ -353,7 +353,7 @@ impl BlockRule for ContainerDirectiveScanner {
         state.line_max = next_line;
 
         // recursion tokenize
-        state.md.block.tokenize(state);
+        state.md.block.tokenize_nested(state);
 
         // recover state
         state.line = start_line;

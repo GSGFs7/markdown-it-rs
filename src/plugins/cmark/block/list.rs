@@ -315,7 +315,7 @@ impl BlockRule for ListScanner {
                 }
             } else {
                 state.line = next_line;
-                state.md.block.tokenize(state);
+                state.md.block.tokenize_nested(state);
             }
 
             // If any of list item is tight, mark list as tight
@@ -397,5 +397,19 @@ impl BlockRule for ListScanner {
         state.line = start_line;
         let node = std::mem::replace(&mut state.node, old_node);
         Some((node, next_line - state.line))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn respects_max_nesting() {
+        let mut md = crate::MarkdownIt::empty();
+        crate::plugins::cmark::add(&mut md);
+        md.max_nesting = 10;
+
+        let html = md.render(&format!("{}x", "- ".repeat(100)));
+
+        assert_eq!(html.matches("<ul>").count(), 10);
     }
 }

@@ -199,7 +199,7 @@ impl BlockRule for FootnoteDefinitionScanner {
         state.line = start_line;
         state.line_max = end_line;
 
-        state.md.block.tokenize(state);
+        state.md.block.tokenize_nested(state);
         let next_line = state.line;
 
         state.line = start_line;

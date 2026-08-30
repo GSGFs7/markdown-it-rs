@@ -174,7 +174,7 @@ impl BlockRule for BlockquoteScanner {
         let old_line_max = state.line_max;
         state.line = start_line;
         state.line_max = next_line;
-        state.md.block.tokenize(state);
+        state.md.block.tokenize_nested(state);
         next_line = state.line;
         state.line = start_line;
         state.line_max = old_line_max;
