@@ -215,9 +215,24 @@ impl<
         truncate_stack(quote_stack, level);
 
         let mut result: Vec<_> = Vec::new();
-        for (quote_position, quote_type) in find_quotes(content) {
-            let last_char = find_last_char_before(text_tokens, walk_index, quote_position);
-            let next_char = find_first_char_after(text_tokens, walk_index, quote_position);
+        let mut content_chars = content.chars().enumerate().peekable();
+        let mut previous_char = None;
+        while let Some((quote_position, ch)) = content_chars.next() {
+            let local_previous_char = previous_char;
+            previous_char = Some(ch);
+
+            let quote_type = match ch {
+                SINGLE_QUOTE => QuoteType::Single,
+                DOUBLE_QUOTE => QuoteType::Double,
+                _ => continue,
+            };
+
+            let last_char = local_previous_char
+                .unwrap_or_else(|| find_last_char_before(text_tokens, walk_index));
+            let next_char = content_chars
+                .peek()
+                .map(|(_, ch)| *ch)
+                .unwrap_or_else(|| find_first_char_after(text_tokens, walk_index));
 
             let (can_open, can_close): (bool, bool) =
                 can_open_or_close(&quote_type, last_char, next_char);
@@ -325,7 +340,6 @@ impl<
 /// would get during a `root.walk` call.
 fn all_text_tokens(root: &Node) -> Vec<FlatToken<'_>> {
     let mut result = Vec::new();
-    let mut walk_index = 0;
     root.walk(|node, nesting_level| {
         if let Some(text_node) = node.cast::<Text>() {
             result.push(FlatToken::Text {
@@ -341,7 +355,6 @@ fn all_text_tokens(root: &Node) -> Vec<FlatToken<'_>> {
         } else {
             result.push(FlatToken::Irrelevant);
         }
-        walk_index += 1;
     });
     result
 }
@@ -417,48 +430,17 @@ fn truncate_stack(quote_stack: &mut Vec<QuoteMarker>, level: u32) {
     quote_stack.truncate(stack_len);
 }
 
-/// Finds all single or double quotes in a string, together with their positions
-///
-/// This might be replaced with a regex search, but not sure that's really worth
-/// it, given that we only check for two fixed characters.
-fn find_quotes(content: &str) -> impl Iterator<Item = (usize, QuoteType)> + '_ {
-    content.chars().enumerate().filter_map(|(p, c)| {
-        if c == SINGLE_QUOTE || c == DOUBLE_QUOTE {
-            Some((
-                p,
-                if c == SINGLE_QUOTE {
-                    QuoteType::Single
-                } else {
-                    QuoteType::Double
-                },
-            ))
-        } else {
-            None
-        }
-    })
-}
-
-/// Finds the next relevant character after a given position
+/// Finds the first relevant character after a text token
 ///
 /// This is the mirror image of `find_last_char_before`.
 ///
-/// The position given is that of a quote we found. It is identified by its
-/// token/node index and the position of the quote inside that token. The full
-/// sequence of the text tokens is searched forwards from that point and the
-/// first character is returned.
+/// The text tokens after `token_index` are searched forwards and the first
+/// character is returned.
 ///
 /// If a line break or the end of the document is encountered during search,
 /// space (0x20) is returned.
-///
-/// This function is a bit simpler than `find_last_char_before` because Vec
-/// conveniently returns None for out-of-range indexes at the top end, while not
-/// allowing to index with negative index.
-fn find_first_char_after(
-    text_tokens: &[FlatToken],
-    token_index: usize,
-    quote_position: usize,
-) -> char {
-    for (idx_t, text_token) in text_tokens.iter().enumerate().skip(token_index) {
+fn find_first_char_after(text_tokens: &[FlatToken], token_index: usize) -> char {
+    for text_token in text_tokens.iter().skip(token_index + 1) {
         let token = match text_token {
             FlatToken::LineBreak => return SPACE,
             FlatToken::Text {
@@ -468,12 +450,7 @@ fn find_first_char_after(
             FlatToken::HtmlInline { content } => content,
             FlatToken::Irrelevant => continue,
         };
-        let start_index = if idx_t == token_index {
-            quote_position + 1
-        } else {
-            0
-        };
-        if let Some(c) = token.chars().nth(start_index) {
+        if let Some(c) = token.chars().next() {
             return c;
         }
     }
@@ -482,21 +459,15 @@ fn find_first_char_after(
     SPACE
 }
 
-/// Finds the last relevant character before a given position
+/// Finds the last relevant character before a text token
 ///
-/// The position given is that of a quote we found. It is identified by its
-/// token/node index and the position of the quote inside that token. The full
-/// sequence of the text tokens is searched backwards from that point and the
-/// first character is returned.
+/// The text tokens before `token_index` are searched backwards and the last
+/// character is returned.
 ///
 /// If a line break or the beginning of the document is encountered during
 /// search, space (0x20) is returned.
-fn find_last_char_before(
-    text_tokens: &[FlatToken],
-    token_index: usize,
-    quote_position: usize,
-) -> char {
-    for idx_t in (0..=token_index).rev() {
+fn find_last_char_before(text_tokens: &[FlatToken], token_index: usize) -> char {
+    for idx_t in (0..token_index).rev() {
         let token = match &text_tokens[idx_t] {
             FlatToken::LineBreak => return SPACE,
             FlatToken::Text {
@@ -506,25 +477,9 @@ fn find_last_char_before(
             FlatToken::HtmlInline { content } => content,
             FlatToken::Irrelevant => continue,
         };
-
-        // this is _not_ the first index we want to look at, but rather the
-        // index just _after_ that.  The reason is simply that this is `usize`
-        // and we want to first check if it's possible to still subtract 1 from
-        // it without panicking.
-        let start_index: usize = if idx_t == token_index {
-            quote_position
-        } else {
-            token.chars().count()
-        };
-        // means we can't go any further left -> try the next token (i.e. the
-        // one preceding this one)
-        if start_index == 0 {
-            continue;
+        if let Some(c) = token.chars().next_back() {
+            return c;
         }
-        // unwrapping is safe here, we built our index to match the length of
-        // the string, or (in the case of the token containing the quote itself)
-        // it should be indexing a _prefix_ of the string.
-        return token.chars().nth(start_index - 1).unwrap();
     }
     // this will be hit if we find a quote in the first position of the first token
     SPACE
