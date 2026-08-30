@@ -134,6 +134,11 @@ mod commonmark {
     }
 
     #[test]
+    fn image_link_pattern_repeated() {
+        run(&"![[]()".repeat(160000));
+    }
+
+    #[test]
     fn nested_brackets() {
         run(&format!(
             "{}{}{}",
@@ -180,6 +185,11 @@ mod commonmark {
     fn unclosed_links_b() {
         run(&"[a](b".repeat(30000));
     }
+
+    #[test]
+    fn unclosed_html_comments() {
+        run(&format!("</{}", "<!--".repeat(300000)));
+    }
 }
 
 mod markdownit {
@@ -214,5 +224,10 @@ mod markdownit {
     #[test]
     fn linkify_unregistered_schemes() {
         run(&"a://".repeat(70000));
+    }
+
+    #[test]
+    fn many_smartquotes_in_single_block() {
+        run(&"\"".repeat(70000));
     }
 }
