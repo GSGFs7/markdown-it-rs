@@ -32,7 +32,7 @@ impl BlockParser {
 
     /// Generate tokens for input range
     ///
-    pub fn tokenize(&self, state: &mut BlockState) {
+    fn tokenize(&self, state: &mut BlockState) {
         stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
             let mut has_empty_lines = false;
 
