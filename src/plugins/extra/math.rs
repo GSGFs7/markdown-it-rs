@@ -259,7 +259,7 @@ $$"#;
 
         let output = r#"<div class="math-block">E=mc^2</div>"#;
 
-        run(input, output)
+        run(input, output);
     }
 
     #[test]
@@ -286,7 +286,7 @@ $$"#;
 
         let output = r#"<div class="math-block">E=mc^2</div>"#;
 
-        run(input, output)
+        run(input, output);
     }
 
     #[test]
@@ -311,7 +311,7 @@ $$"#;
 
         let output = r#"<p><span class="math-inline">E=mc^2</span></p>"#;
 
-        run(input, output)
+        run(input, output);
     }
 
     #[test]
@@ -331,7 +331,7 @@ $$"#;
 
         let output = r#"<p>something<span class="math-inline">E=mc^2</span>something</p>"#;
 
-        run(input, output)
+        run(input, output);
     }
 
     #[test]
