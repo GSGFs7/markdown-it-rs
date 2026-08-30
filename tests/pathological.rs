@@ -36,13 +36,17 @@ fn run(src: &str) {
 
 #[track_caller]
 fn run_render(src: &str) {
+    let output_limit = src.len().saturating_mul(64).saturating_add(1024);
+    run_render_with_output_limit(src, output_limit);
+}
+
+#[track_caller]
+fn run_render_with_output_limit(src: &str, output_limit: usize) {
     let start = Instant::now();
     let output = MD.parse(src).render();
     black_box(&output);
     assert_within_budget(start, "render", src.len());
 
-    // this guards against accidentally quadratic output.
-    let output_limit = src.len().saturating_mul(64).saturating_add(1024);
     assert!(
         output.len() <= output_limit,
         "pathological render amplified {} input bytes into {} output bytes (limit: {})",
@@ -194,7 +198,22 @@ mod commonmark {
 
 mod markdownit {
     // Ported from markdown-it.js
-    use super::run;
+    use super::{run, run_render_with_output_limit};
+
+    #[test]
+    fn table_autocompleted_cells() {
+        let size = 1000;
+        let src = format!(
+            "{}\n{}\n{}",
+            "x|".repeat(size),
+            "-|".repeat(size),
+            "x|\n".repeat(size),
+        );
+
+        // Without a cap on synthesized empty cells this produces roughly
+        // 10 MB of HTML and grows quadratically with `size`.
+        run_render_with_output_limit(&src, 1024 * 1024);
+    }
 
     #[test]
     fn emphasis_pattern() {
