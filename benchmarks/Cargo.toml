@@ -8,12 +8,14 @@ publish = false
 [dependencies]
 comrak = "0.52"
 criterion = "0.8"
+markdown = "1.0"
 markdown-it-rs = { path = "../" }
 markdown-it-v6 = { package = "markdown-it", version = "0.6" }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 
 [[bench]]
-name = "test-file"
-path = "test-file.rs"
+name = "throughput"
+path = "benches/throughput.rs"
 harness = false
 
 [workspace]
