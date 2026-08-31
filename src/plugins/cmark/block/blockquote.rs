@@ -44,6 +44,7 @@ pub fn add(md: &mut MarkdownIt) {
 #[doc(hidden)]
 pub struct BlockquoteScanner;
 impl BlockRule for BlockquoteScanner {
+    const MARKERS: &'static [char] = &['>'];
     const NAMES: &'static [&'static str] = &["blockquote"];
 
     fn check(state: &mut BlockState) -> Option<()> {

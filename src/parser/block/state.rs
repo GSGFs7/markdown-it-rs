@@ -130,8 +130,8 @@ impl<'a, 'b> BlockState<'a, 'b> {
 
     #[must_use]
     pub fn test_rules_at_line(&mut self) -> bool {
-        for rule in self.md.block.ruler.iter() {
-            if rule.0(self).is_some() {
+        for rule in self.md.block.rules_for_line(self) {
+            if (rule.0)(self).is_some() {
                 return true;
             }
         }

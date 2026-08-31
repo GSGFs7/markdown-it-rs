@@ -96,6 +96,7 @@ impl FenceScanner {
 }
 
 impl BlockRule for FenceScanner {
+    const MARKERS: &'static [char] = &['`', '~'];
     const NAMES: &'static [&'static str] = &["fence"];
 
     fn check(state: &mut BlockState) -> Option<()> {

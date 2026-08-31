@@ -218,6 +218,9 @@ impl ListScanner {
 }
 
 impl BlockRule for ListScanner {
+    const MARKERS: &'static [char] = &[
+        '*', '+', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+    ];
     const NAMES: &'static [&'static str] = &["list"];
 
     fn check(state: &mut BlockState) -> Option<()> {

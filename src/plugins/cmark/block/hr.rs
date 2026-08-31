@@ -27,6 +27,7 @@ pub fn add(md: &mut MarkdownIt) {
 #[doc(hidden)]
 pub struct HrScanner;
 impl BlockRule for HrScanner {
+    const MARKERS: &'static [char] = &['*', '-', '_'];
     const NAMES: &'static [&'static str] = &["hr"];
 
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {

@@ -116,6 +116,7 @@ impl HtmlBlockScanner {
 }
 
 impl BlockRule for HtmlBlockScanner {
+    const MARKERS: &'static [char] = &['<'];
     const NAMES: &'static [&'static str] = &["html_block"];
 
     fn check(state: &mut BlockState) -> Option<()> {

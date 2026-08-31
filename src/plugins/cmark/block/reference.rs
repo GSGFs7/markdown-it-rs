@@ -222,6 +222,7 @@ impl NodeValue for Definition {
 #[doc(hidden)]
 pub struct ReferenceScanner;
 impl BlockRule for ReferenceScanner {
+    const MARKERS: &'static [char] = &['['];
     const NAMES: &'static [&'static str] = &["reference"];
 
     fn check(_: &mut BlockState) -> Option<()> {

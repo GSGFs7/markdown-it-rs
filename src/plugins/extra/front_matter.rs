@@ -35,6 +35,7 @@ struct FrontMatterSettings {
 pub struct FrontMatterScanner;
 
 impl BlockRule for FrontMatterScanner {
+    const MARKERS: &'static [char] = &['-', '+'];
     const NAMES: &'static [&'static str] = &["front_matter", "frontmatter"];
 
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {

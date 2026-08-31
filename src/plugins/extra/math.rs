@@ -64,6 +64,7 @@ impl MathBlockScanner {
 }
 
 impl BlockRule for MathBlockScanner {
+    const MARKERS: &'static [char] = &['$'];
     const NAMES: &'static [&'static str] = &["math_block"];
 
     fn check(state: &mut BlockState) -> Option<()> {

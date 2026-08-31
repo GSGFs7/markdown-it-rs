@@ -199,6 +199,7 @@ impl InlineRule for TextDirective {
 pub struct LeafDirectiveScanner;
 
 impl BlockRule for LeafDirectiveScanner {
+    const MARKERS: &'static [char] = &[':'];
     const NAMES: &'static [&'static str] = &["leaf_directive"];
 
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
@@ -281,6 +282,7 @@ impl ContainerDirectiveScanner {
 }
 
 impl BlockRule for ContainerDirectiveScanner {
+    const MARKERS: &'static [char] = &[':'];
     const NAMES: &'static [&'static str] = &["container_directive"];
 
     fn check(state: &mut BlockState) -> Option<()> {

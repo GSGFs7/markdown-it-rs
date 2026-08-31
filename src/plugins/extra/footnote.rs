@@ -171,6 +171,7 @@ const FOOTNOTE_INDENT: i32 = 4;
 struct FootnoteDefinitionScanner;
 
 impl BlockRule for FootnoteDefinitionScanner {
+    const MARKERS: &'static [char] = &['['];
     const NAMES: &'static [&'static str] = &["footnote_definition"];
 
     fn check(state: &mut BlockState) -> Option<()> {

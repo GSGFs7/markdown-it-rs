@@ -37,6 +37,7 @@ pub fn add(md: &mut MarkdownIt) {
 #[doc(hidden)]
 pub struct LHeadingScanner;
 impl BlockRule for LHeadingScanner {
+    // no `MARKERS` here on purpose
     const NAMES: &'static [&'static str] = &["lheading"];
 
     fn check(_: &mut BlockState) -> Option<()> {
