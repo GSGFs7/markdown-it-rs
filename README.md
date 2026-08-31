@@ -63,7 +63,7 @@ while keeping the lower-level rule and AST interfaces available for advanced
 parsers. An emoji shortcode plugin with custom HTML rendering should look roughly
 like this:
 
-```rust
+```rust,ignore
 use markdown_it::{MarkdownIt, PluginSpec};
 
 const EMOJIS: &[(&str, &str, &str)] = &[
