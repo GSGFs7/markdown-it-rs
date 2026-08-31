@@ -100,8 +100,8 @@ fn emoji() -> PluginSpec {
 }
 
 let md = MarkdownIt::builder().plugin(emoji()).build()?;
-let html = md.render("Ready :rocket: **now**; unknown: :wave:");
-//assert_eq!(html, r#"<p>Ready <span class="emoji" role="img" aria-label="rocket">🚀</span> <strong>now</strong>; unknown: :wave:</p>"#)
+let html = md.render("Ready :rocket:");
+//assert_eq!(html, r#"<p>Ready <span class="emoji" role="img" aria-label="rocket">🚀</span></p>"#)
 ```
 
 The goal is to keep simple plugins around 20 lines, with automatic rollback and
