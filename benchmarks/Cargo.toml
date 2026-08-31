@@ -18,4 +18,9 @@ name = "throughput"
 path = "benches/throughput.rs"
 harness = false
 
+[[bench]]
+name = "smartquotes"
+path = "benches/smartquotes.rs"
+harness = false
+
 [workspace]
