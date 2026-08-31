@@ -1,5 +1,7 @@
 // Parser state class
 //
+use memchr::memchr2_iter;
+
 use crate::common::sourcemap::SourcePos;
 use crate::common::utils::calc_right_whitespace_with_tabstops;
 use crate::parser::extset::RootExtSet;
@@ -122,53 +124,7 @@ impl<'a, 'b> BlockState<'a, 'b> {
     }
 
     fn generate_caches(&mut self) {
-        // Create caches
-        // Generate markers.
-        let mut chars = self.src.chars().peekable();
-        let mut indent_found = false;
-        let mut indent = 0;
-        let mut offset = 0;
-        let mut start = 0;
-        let mut pos = 0;
-
-        loop {
-            match chars.next() {
-                Some(ch @ (' ' | '\t')) if !indent_found => {
-                    indent += 1;
-                    offset += if ch == '\t' { 4 - offset % 4 } else { 1 };
-                    pos += 1;
-                }
-                ch @ (Some('\n' | '\r') | None) => {
-                    self.line_offsets.push(LineOffset {
-                        line_start: start,
-                        line_end: pos,
-                        first_nonspace: start + indent,
-                        indent_nonspace: offset,
-                    });
-
-                    if ch == Some('\r') && chars.peek() == Some(&'\n') {
-                        // treat CR+LF as one linebreak
-                        chars.next();
-                        pos += 1;
-                    }
-
-                    indent_found = false;
-                    indent = 0;
-                    offset = 0;
-                    start = pos + 1;
-                    pos += 1;
-
-                    if ch.is_none() || chars.peek().is_none() {
-                        break;
-                    }
-                }
-                Some(ch) => {
-                    indent_found = true;
-                    pos += ch.len_utf8();
-                }
-            }
-        }
-
+        self.line_offsets = build_line_offsets(self.src);
         self.line_max = self.line_offsets.len();
     }
 
@@ -279,5 +235,128 @@ impl<'a, 'b> BlockState<'a, 'b> {
         debug_assert!(start_pos <= end_pos);
 
         Some(SourcePos::new(start_pos, end_pos))
+    }
+}
+
+fn build_line_offsets(src: &str) -> Vec<LineOffset> {
+    let bytes = src.as_bytes();
+    let mut result = Vec::new();
+    let mut line_start = 0;
+
+    for line_end in memchr2_iter(b'\n', b'\r', bytes) {
+        // the LF half of CRLF was already consumed when CR was visited.
+        if line_end < line_start {
+            continue;
+        }
+
+        result.push(build_line_offset(bytes, line_start, line_end));
+        line_start = line_end + 1;
+        if bytes[line_end] == b'\r' && bytes.get(line_start) == Some(&b'\n') {
+            line_start += 1;
+        }
+    }
+
+    // A final line break terminates the preceding line; it does not create an
+    // additional empty line in the block parser's line cache. Empty input is
+    // represented by one empty line for compatibility with the block parser.
+    if line_start < bytes.len() || result.is_empty() {
+        result.push(build_line_offset(bytes, line_start, bytes.len()));
+    }
+
+    result
+}
+
+#[inline]
+fn build_line_offset(bytes: &[u8], line_start: usize, line_end: usize) -> LineOffset {
+    let mut first_nonspace = line_start;
+    let mut indent_nonspace = 0;
+    while first_nonspace < line_end {
+        match bytes[first_nonspace] {
+            b' ' => indent_nonspace += 1,
+            b'\t' => indent_nonspace += 4 - indent_nonspace % 4,
+            _ => break,
+        }
+        first_nonspace += 1;
+    }
+
+    LineOffset {
+        line_start,
+        line_end,
+        first_nonspace,
+        indent_nonspace,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LineOffset, build_line_offsets};
+
+    fn compact(offsets: &[LineOffset]) -> Vec<(usize, usize, usize, i32)> {
+        offsets
+            .iter()
+            .map(|line| {
+                (
+                    line.line_start,
+                    line.line_end,
+                    line.first_nonspace,
+                    line.indent_nonspace,
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn empty_input_has_one_empty_line() {
+        assert_eq!(compact(&build_line_offsets("")), vec![(0, 0, 0, 0)]);
+    }
+
+    #[test]
+    fn supports_lf_crlf_and_cr_line_endings() {
+        assert_eq!(
+            compact(&build_line_offsets("a\nb")),
+            vec![(0, 1, 0, 0), (2, 3, 2, 0)]
+        );
+        assert_eq!(
+            compact(&build_line_offsets("a\r\nb")),
+            vec![(0, 1, 0, 0), (3, 4, 3, 0)]
+        );
+        assert_eq!(
+            compact(&build_line_offsets("a\rb")),
+            vec![(0, 1, 0, 0), (2, 3, 2, 0)]
+        );
+    }
+
+    #[test]
+    fn final_line_break_does_not_add_an_empty_line() {
+        assert_eq!(compact(&build_line_offsets("a\n")), vec![(0, 1, 0, 0)]);
+        assert_eq!(
+            compact(&build_line_offsets("\n\n")),
+            vec![(0, 0, 0, 0), (1, 1, 1, 0)]
+        );
+    }
+
+    #[test]
+    fn expands_only_leading_spaces_and_tabs() {
+        assert_eq!(
+            compact(&build_line_offsets(" \t foo\n\t \tbar")),
+            vec![(0, 6, 3, 5), (7, 13, 10, 8)]
+        );
+    }
+
+    #[test]
+    fn offsets_remain_on_utf8_boundaries() {
+        assert_eq!(
+            compact(&build_line_offsets("中\n é")),
+            vec![(0, 3, 0, 0), (4, 7, 5, 1)]
+        );
+    }
+
+    #[test]
+    fn handles_deep_indentation() {
+        let src = "                \titem";
+        assert_eq!(
+            compact(&build_line_offsets(src)),
+            vec![(0, src.len(), 17, 20)]
+        );
     }
 }

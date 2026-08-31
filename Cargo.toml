@@ -59,6 +59,7 @@ entities = ">= 0.1.0, < 2"
 html-escape = ">= 0.1.0, < 0.3"
 linkify = { package = "markdown-it-rs-linkify", version = "0.1.0", path = "crates/markdown-it-rs-linkify", optional = true }
 katex-rs = { version = "0.2.4", optional = true }
+memchr = ">= 2.0.0, < 3"
 mdurl = { package = "markdown-it-rs-url", version = "0.1.0", path = "crates/markdown-it-rs-url" }
 readonly = ">= 0.2.0, < 0.3"
 regex = ">= 1.0.0, < 2"

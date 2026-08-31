@@ -929,6 +929,7 @@ dependencies = [
  "html-escape",
  "markdown-it-rs-linkify",
  "markdown-it-rs-url",
+ "memchr",
  "readonly",
  "regex",
  "stacker",
