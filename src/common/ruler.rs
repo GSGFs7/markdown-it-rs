@@ -85,6 +85,19 @@ impl<M: Eq + Hash + Clone + Debug, T: Clone> Ruler<M, T> {
         self.compiled.get_or_init(|| self.compile()).1.iter()
     }
 
+    /// Ordered iteration with each rule's primary (non-alias) mark.
+    ///
+    /// This is crate-private because public consumers should order and invoke
+    /// rules through [`Ruler::iter`]. Parser dispatch tables use the primary
+    /// mark to join ordered rule values with parser-specific metadata.
+    pub(crate) fn iter_with_marks(&self) -> impl Iterator<Item = (&M, &T)> {
+        let indices = &self.compiled.get_or_init(|| self.compile()).0;
+        indices.iter().map(move |idx| {
+            let item = &self.deps[*idx];
+            (item.marks.first().unwrap(), &item.value)
+        })
+    }
+
     fn compile(&self) -> (Vec<usize>, Vec<T>) {
         // Topological Sort
 
