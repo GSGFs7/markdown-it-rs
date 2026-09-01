@@ -23,4 +23,9 @@ name = "smartquotes"
 path = "benches/smartquotes.rs"
 harness = false
 
+[[bench]]
+name = "document"
+path = "benches/document.rs"
+harness = false
+
 [workspace]

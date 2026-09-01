@@ -1,8 +1,11 @@
+use std::sync::Arc;
+
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::common::sourcemap::SourcePos;
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::{Root, *};
+use crate::parser::document::Document;
 use crate::parser::extset::MarkdownItExtSet;
 use crate::parser::inline::{self, InlineParser};
 use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
@@ -99,6 +102,14 @@ impl MarkdownIt {
             );
         }
         node
+    }
+
+    /// Parse a Markdown source into the experimental arena-backed document.
+    ///
+    /// Parser rules currently build the legacy tree first; this method then
+    /// moves its nodes into the arena without cloning their payloads.
+    pub fn parse_document(&self, src: &str) -> Document {
+        Document::from_legacy(Arc::<str>::from(src), self.parse(src))
     }
 
     /// Parse `src` and render it to HTML, using the options stored in the

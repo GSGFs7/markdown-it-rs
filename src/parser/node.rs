@@ -43,6 +43,18 @@ pub struct Node {
     pub node_value: Box<dyn NodeValue>,
 }
 
+/// also a Node, but not impl drop
+///
+/// it's member data can be move.
+pub(crate) struct NodeParts {
+    pub children: Vec<Node>,
+    pub srcmap: Option<SourcePos>,
+    pub ext: NodeExtSet,
+    pub attrs: HtmlAttributes,
+    pub node_type: TypeKey,
+    pub node_value: Box<dyn NodeValue>,
+}
+
 impl Node {
     /// Create a new [Node](Node) with a custom value.
     pub fn new<T: NodeValue>(value: T) -> Self {
@@ -53,6 +65,28 @@ impl Node {
             ext: NodeExtSet::new(),
             node_type: TypeKey::of::<T>(),
             node_value: Box::new(value),
+        }
+    }
+
+    pub(crate) fn from_parts(parts: NodeParts) -> Self {
+        Self {
+            children: parts.children,
+            srcmap: parts.srcmap,
+            ext: parts.ext,
+            attrs: parts.attrs,
+            node_type: parts.node_type,
+            node_value: parts.node_value,
+        }
+    }
+
+    pub(crate) fn take_parts(&mut self) -> NodeParts {
+        NodeParts {
+            children: std::mem::take(&mut self.children),
+            srcmap: self.srcmap,
+            ext: std::mem::take(&mut self.ext),
+            attrs: std::mem::take(&mut self.attrs),
+            node_type: self.node_type,
+            node_value: std::mem::replace(&mut self.node_value, Box::new(NodeEmpty)),
         }
     }
 

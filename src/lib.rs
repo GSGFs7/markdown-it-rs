@@ -16,6 +16,7 @@ pub mod generics;
 pub mod parser;
 pub mod plugins;
 
+pub use parser::document::{Document, DocumentNode, InvalidNodeId, NodeId};
 pub use parser::main::MarkdownIt;
 pub use parser::node::{HtmlAttribute, HtmlAttributes, Node, NodeValue};
 pub use parser::render_options::RenderOptions;
