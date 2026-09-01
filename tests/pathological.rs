@@ -307,8 +307,10 @@ mod markdownit {
     }
 
     #[test]
-    fn many_smartquotes_in_single_block() {
-        run(&"\"".repeat(70000));
+    fn smartquotes_scaling_sizes() {
+        for size in [70_000, 140_000, 280_000] {
+            run(&"\"".repeat(size));
+        }
     }
 
     #[cfg(feature = "linkify")]

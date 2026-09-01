@@ -40,6 +40,8 @@ pub mod extset;
 pub mod inline;
 pub mod linkfmt;
 
+pub(crate) mod text; // not be public for now
+
 pub(super) mod main;
 pub(super) mod node;
 pub(super) mod render_options;
