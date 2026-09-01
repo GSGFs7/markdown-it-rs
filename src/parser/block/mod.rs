@@ -5,11 +5,11 @@ pub mod builtin;
 mod rule;
 mod state;
 
-pub use self::rule::*;
-pub use self::state::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
+pub use self::rule::*;
+pub use self::state::*;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::parser::extset::RootExtSet;
@@ -356,8 +356,7 @@ mod tests {
         md.block.add_rule::<SnowRule>();
 
         let mut root_ext = RootExtSet::default();
-        let mut state =
-            BlockState::new("   \n@at\n雪", &md, &mut root_ext, Node::new(NodeEmpty));
+        let mut state = BlockState::new("   \n@at\n雪", &md, &mut root_ext, Node::new(NodeEmpty));
 
         // Line 0 is all spaces: empty, must yield no rules (and not panic).
         assert!(md.block.rules_for_line(&state).is_empty());
