@@ -1,5 +1,6 @@
 //! Transactional edits for arena-backed documents.
 
+use std::collections::HashSet;
 use std::fmt;
 use std::ops::Range;
 
@@ -68,6 +69,16 @@ pub enum EditError {
         node: NodeId,
         name: String,
     },
+    CannotRemoveRoot(NodeId),
+    DuplicateNodeRemoval(NodeId),
+    OverlappingNodeRemovals {
+        ancestor: NodeId,
+        descendant: NodeId,
+    },
+    EditTargetsRemovedNode {
+        removed: NodeId,
+        edited: NodeId,
+    },
 }
 
 impl fmt::Display for EditError {
@@ -97,6 +108,23 @@ impl fmt::Display for EditError {
                     "conflicting edits for attribute {name:?} on node {node:?}"
                 )
             }
+            Self::CannotRemoveRoot(node) => {
+                write!(f, "cannot remove document root {node:?}")
+            }
+            Self::DuplicateNodeRemoval(node) => {
+                write!(f, "node {node:?} is removed more than once")
+            }
+            Self::OverlappingNodeRemovals {
+                ancestor,
+                descendant,
+            } => write!(
+                f,
+                "cannot remove both ancestor {ancestor:?} and descendant {descendant:?}"
+            ),
+            Self::EditTargetsRemovedNode { removed, edited } => write!(
+                f,
+                "edit targets node {edited:?} inside removed subtree {removed:?}"
+            ),
         }
     }
 }
@@ -114,6 +142,7 @@ impl From<InvalidNodeId> for EditError {
 pub struct EditBatch {
     text_edits: Vec<ReplaceText>,
     attribute_edits: Vec<EditAttribute>,
+    removed_nodes: Vec<NodeId>,
 }
 
 impl EditBatch {
@@ -122,11 +151,13 @@ impl EditBatch {
     }
 
     pub fn len(&self) -> usize {
-        self.text_edits.len() + self.attribute_edits.len()
+        self.text_edits.len() + self.attribute_edits.len() + self.removed_nodes.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.text_edits.is_empty() && self.attribute_edits.is_empty()
+        self.text_edits.is_empty()
+            && self.attribute_edits.is_empty()
+            && self.removed_nodes.is_empty()
     }
 
     /// Replace one byte range in a built-in `Text` node.
@@ -169,6 +200,11 @@ impl EditBatch {
         });
     }
 
+    /// Remove a non-root node and its complete subtree.
+    pub fn remove_node(&mut self, node: NodeId) {
+        self.removed_nodes.push(node);
+    }
+
     fn push(&mut self, node: NodeId, range: Range<usize>, replacement: TextReplacement) {
         self.text_edits.push(ReplaceText {
             node,
@@ -186,6 +222,40 @@ impl EditBatch {
             return Ok(());
         }
 
+        if self.attribute_edits.is_empty() && self.removed_nodes.is_empty() {
+            self.sort_text_edits();
+            self.validate_text(document)?;
+            self.apply_text(document);
+            return Ok(());
+        }
+        if self.text_edits.is_empty() && self.removed_nodes.is_empty() {
+            self.sort_attribute_edits();
+            self.validate_attributes(document)?;
+            self.apply_attributes(document);
+            return Ok(());
+        }
+        if self.text_edits.is_empty() && self.attribute_edits.is_empty() {
+            self.sort_removed_nodes();
+            self.validate_removals(document)?;
+            self.apply_removals(document);
+            return Ok(());
+        }
+
+        self.sort_text_edits();
+        self.sort_attribute_edits();
+        self.sort_removed_nodes();
+        self.validate_text(document)?;
+        self.validate_attributes(document)?;
+        if !self.removed_nodes.is_empty() {
+            self.validate_removals(document)?;
+        }
+        self.apply_text(document);
+        self.apply_removals(document);
+        self.apply_attributes(document);
+        Ok(())
+    }
+
+    fn sort_text_edits(&mut self) {
         self.text_edits.sort_unstable_by_key(|edit| {
             (
                 edit.node.slot(),
@@ -195,6 +265,9 @@ impl EditBatch {
                 edit.sequence,
             )
         });
+    }
+
+    fn sort_attribute_edits(&mut self) {
         self.attribute_edits.sort_unstable_by(|left, right| {
             (left.node.slot(), left.node.generation(), &left.name).cmp(&(
                 right.node.slot(),
@@ -202,14 +275,14 @@ impl EditBatch {
                 &right.name,
             ))
         });
-
-        self.validate(document)?;
-        self.apply_text(document);
-        self.apply_attributes(document);
-        Ok(())
     }
 
-    fn validate(&self, document: &Document) -> Result<(), EditError> {
+    fn sort_removed_nodes(&mut self) {
+        self.removed_nodes
+            .sort_unstable_by_key(|node| (node.slot(), node.generation()));
+    }
+
+    fn validate_text(&self, document: &Document) -> Result<(), EditError> {
         for edits in text_groups(&self.text_edits) {
             let node_id = edits[0].node;
             let node = document.node(node_id)?;
@@ -246,8 +319,10 @@ impl EditBatch {
                 previous = Some(edit);
             }
         }
+        Ok(())
+    }
 
-        // reject problematic edit
+    fn validate_attributes(&self, document: &Document) -> Result<(), EditError> {
         for edits in attribute_groups(&self.attribute_edits) {
             let edit = &edits[0];
             document.node(edit.node)?;
@@ -256,6 +331,51 @@ impl EditBatch {
                     node: edit.node,
                     name: edit.name.clone(),
                 });
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_removals(&self, document: &Document) -> Result<(), EditError> {
+        let mut removals = HashSet::with_capacity(self.removed_nodes.len());
+        for &node in &self.removed_nodes {
+            document.node(node)?;
+            if node == document.root() {
+                return Err(EditError::CannotRemoveRoot(node));
+            }
+            if !removals.insert(node) {
+                return Err(EditError::DuplicateNodeRemoval(node));
+            }
+        }
+
+        for &descendant in &self.removed_nodes {
+            let mut ancestor = document.parent(descendant)?;
+            while let Some(node) = ancestor {
+                if removals.contains(&node) {
+                    return Err(EditError::OverlappingNodeRemovals {
+                        ancestor: node,
+                        descendant,
+                    });
+                }
+                ancestor = document.parent(node)?;
+            }
+        }
+
+        for edited in self
+            .text_edits
+            .iter()
+            .map(|edit| edit.node)
+            .chain(self.attribute_edits.iter().map(|edit| edit.node))
+        {
+            let mut current = Some(edited);
+            while let Some(node) = current {
+                if removals.contains(&node) {
+                    return Err(EditError::EditTargetsRemovedNode {
+                        removed: node,
+                        edited,
+                    });
+                }
+                current = document.parent(node)?;
             }
         }
         Ok(())
@@ -313,6 +433,12 @@ impl EditBatch {
             }
         }
     }
+
+    fn apply_removals(&self, document: &mut Document) {
+        if !self.removed_nodes.is_empty() {
+            document.remove_subtrees(&self.removed_nodes);
+        }
+    }
 }
 
 fn text_groups(edits: &[ReplaceText]) -> impl Iterator<Item = &[ReplaceText]> {
@@ -362,6 +488,18 @@ mod tests {
 
     fn content(document: &Document, node: NodeId) -> &str {
         &document.node(node).unwrap().cast::<Text>().unwrap().content
+    }
+
+    fn branched_document() -> Document {
+        let mut root = Node::new(Root::new("ab".to_owned()));
+        for content in ["a", "b"] {
+            let mut paragraph = Node::new(Paragraph);
+            paragraph.children.push(Node::new(Text {
+                content: content.to_owned(),
+            }));
+            root.children.push(paragraph);
+        }
+        Document::from_legacy("ab", root)
     }
 
     #[test]
@@ -571,5 +709,184 @@ mod tests {
         batch.commit(&mut document).unwrap();
 
         assert_eq!(document.node(text).unwrap().attrs().len(), 2);
+    }
+
+    #[test]
+    fn removes_a_complete_subtree_and_invalidates_all_ids() {
+        let mut document = branched_document();
+        let root = document.root();
+        let branches = document.children(root).unwrap();
+        let removed = branches[0];
+        let kept = branches[1];
+        let removed_text = document.children(removed).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.remove_node(removed);
+
+        batch.commit(&mut document).unwrap();
+
+        assert_eq!(document.len(), 3);
+        assert_eq!(document.children(root).unwrap(), &[kept]);
+        assert_eq!(document.parent(kept).unwrap(), Some(root));
+        assert_eq!(document.node(removed).unwrap_err(), InvalidNodeId(removed));
+        assert_eq!(
+            document.node(removed_text).unwrap_err(),
+            InvalidNodeId(removed_text)
+        );
+        let legacy = document.into_legacy();
+        assert_eq!(legacy.children.len(), 1);
+        assert_eq!(
+            legacy.children[0].children[0]
+                .cast::<Text>()
+                .unwrap()
+                .content,
+            "b"
+        );
+    }
+
+    #[test]
+    fn multiple_sibling_removals_commit_together() {
+        let mut document = branched_document();
+        let root = document.root();
+        let branches = document.children(root).unwrap().to_vec();
+        let mut batch = EditBatch::new();
+        batch.remove_node(branches[1]);
+        batch.remove_node(branches[0]);
+
+        assert_eq!(batch.len(), 2);
+        batch.commit(&mut document).unwrap();
+
+        assert_eq!(document.len(), 1);
+        assert!(document.children(root).unwrap().is_empty());
+    }
+
+    #[test]
+    fn rejects_root_duplicate_and_overlapping_removals_atomically() {
+        let mut document = branched_document();
+        let root = document.root();
+        let branch = document.children(root).unwrap()[0];
+        let text = document.children(branch).unwrap()[0];
+
+        let mut root_removal = EditBatch::new();
+        root_removal.replace_text(text, 0..1, "A");
+        root_removal.remove_node(root);
+        assert_eq!(
+            root_removal.commit(&mut document),
+            Err(EditError::CannotRemoveRoot(root))
+        );
+        assert_eq!(content(&document, text), "a");
+
+        let mut duplicate = EditBatch::new();
+        duplicate.set_attribute(root, "class", "changed");
+        duplicate.remove_node(branch);
+        duplicate.remove_node(branch);
+        assert_eq!(
+            duplicate.commit(&mut document),
+            Err(EditError::DuplicateNodeRemoval(branch))
+        );
+        assert!(document.node(root).unwrap().attrs().is_empty());
+
+        let mut overlap = EditBatch::new();
+        overlap.remove_node(branch);
+        overlap.remove_node(text);
+        assert_eq!(
+            overlap.commit(&mut document),
+            Err(EditError::OverlappingNodeRemovals {
+                ancestor: branch,
+                descendant: text,
+            })
+        );
+        assert_eq!(document.len(), 5);
+    }
+
+    #[test]
+    fn rejects_edits_inside_a_removed_subtree() {
+        let mut document = branched_document();
+        let branch = document.children(document.root()).unwrap()[0];
+        let text = document.children(branch).unwrap()[0];
+        let mut text_conflict = EditBatch::new();
+        text_conflict.remove_node(branch);
+        text_conflict.replace_text(text, 0..1, "A");
+        assert_eq!(
+            text_conflict.commit(&mut document),
+            Err(EditError::EditTargetsRemovedNode {
+                removed: branch,
+                edited: text,
+            })
+        );
+        assert_eq!(content(&document, text), "a");
+
+        let mut attribute_conflict = EditBatch::new();
+        attribute_conflict.remove_node(branch);
+        attribute_conflict.set_attribute(branch, "class", "changed");
+        assert_eq!(
+            attribute_conflict.commit(&mut document),
+            Err(EditError::EditTargetsRemovedNode {
+                removed: branch,
+                edited: branch,
+            })
+        );
+        assert!(document.node(branch).unwrap().attrs().is_empty());
+    }
+
+    #[test]
+    fn edits_outside_a_removed_subtree_commit_normally() {
+        let mut document = branched_document();
+        let root = document.root();
+        let branches = document.children(root).unwrap();
+        let removed = branches[0];
+        let kept = branches[1];
+        let kept_text = document.children(kept).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.remove_node(removed);
+        batch.replace_text(kept_text, 0..1, "B");
+        batch.set_attribute(root, "class", "edited");
+
+        batch.commit(&mut document).unwrap();
+
+        assert_eq!(content(&document, kept_text), "B");
+        assert_eq!(document.children(root).unwrap(), &[kept]);
+        assert_eq!(
+            document.node(root).unwrap().attrs(),
+            &[("class".to_owned(), "edited".to_owned())]
+        );
+    }
+
+    #[test]
+    fn stale_removal_target_is_rejected() {
+        let mut document = branched_document();
+        let removed = document.children(document.root()).unwrap()[0];
+        let mut first = EditBatch::new();
+        first.remove_node(removed);
+        first.commit(&mut document).unwrap();
+
+        let mut stale = EditBatch::new();
+        stale.remove_node(removed);
+        assert_eq!(
+            stale.commit(&mut document),
+            Err(EditError::InvalidNode(InvalidNodeId(removed)))
+        );
+    }
+
+    #[test]
+    fn deeply_nested_subtrees_are_removed_iteratively() {
+        let mut subtree = Node::new(Text {
+            content: "leaf".to_owned(),
+        });
+        for _ in 0..10_000 {
+            let mut parent = Node::new(Paragraph);
+            parent.children.push(subtree);
+            subtree = parent;
+        }
+        let mut root = Node::new(Root::new("leaf".to_owned()));
+        root.children.push(subtree);
+        let mut document = Document::from_legacy("leaf", root);
+        let subtree = document.children(document.root()).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.remove_node(subtree);
+
+        batch.commit(&mut document).unwrap();
+
+        assert_eq!(document.len(), 1);
+        assert!(document.children(document.root()).unwrap().is_empty());
     }
 }

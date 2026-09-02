@@ -87,6 +87,14 @@ fn one_attribute_per_node(document: &markdown_it::Document) -> EditBatch {
     batch
 }
 
+fn remove_top_level_subtrees(document: &markdown_it::Document) -> EditBatch {
+    let mut batch = EditBatch::new();
+    for &child in document.children(document.root()).unwrap() {
+        batch.remove_node(child);
+    }
+    batch
+}
+
 fn parser() -> markdown_it::MarkdownIt {
     let mut md = markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md);
@@ -190,6 +198,31 @@ fn benchmark(c: &mut Criterion) {
                 || {
                     let document = md.parse_document(source);
                     let batch = one_attribute_per_node(&document);
+                    (document, batch)
+                },
+                |(mut document, batch)| {
+                    batch.commit(&mut document).unwrap();
+                    black_box(document)
+                },
+                BatchSize::SmallInput,
+            )
+        });
+        group.finish();
+
+        let removed_count = document.len() - 1;
+        let mut edited = md.parse_document(source);
+        remove_top_level_subtrees(&edited)
+            .commit(&mut edited)
+            .unwrap();
+        assert_eq!(edited.len(), 1);
+        assert!(edited.children(edited.root()).unwrap().is_empty());
+        let mut group = c.benchmark_group(format!("document-subtree-remove/{}", corpus.name));
+        group.throughput(Throughput::Elements(removed_count as u64));
+        group.bench_function("validate-and-commit", |b| {
+            b.iter_batched(
+                || {
+                    let document = md.parse_document(source);
+                    let batch = remove_top_level_subtrees(&document);
                     (document, batch)
                 },
                 |(mut document, batch)| {

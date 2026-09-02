@@ -1,6 +1,7 @@
 //! Experimental arena-backed document storage.
 
 use std::any::TypeId;
+use std::collections::HashSet;
 use std::fmt::{self, Debug};
 use std::iter::FusedIterator;
 use std::sync::Arc;
@@ -359,6 +360,76 @@ impl Document {
 
     pub(crate) fn node_mut(&mut self, id: NodeId) -> Result<&mut DocumentNode, InvalidNodeId> {
         self.arena.get_mut(id).ok_or(InvalidNodeId(id))
+    }
+
+    pub(crate) fn remove_subtrees(&mut self, roots: &[NodeId]) {
+        if let [root] = roots {
+            // single root optimization
+            let parent = self
+                .arena
+                .get(*root)
+                .expect("validated subtree root remains present")
+                .parent
+                .expect("the document root cannot be removed");
+            let siblings = &mut self
+                .arena
+                .get_mut(parent)
+                .expect("validated subtree parent remains present")
+                .children;
+            let position = siblings
+                .iter()
+                .position(|child| child == root)
+                .expect("document parent links are internally consistent");
+            siblings.remove(position);
+        } else {
+            let root_set: HashSet<_> = roots.iter().copied().collect();
+            let parents: HashSet<_> = root_set
+                .iter()
+                .map(|&root| {
+                    self.arena
+                        .get(root)
+                        .expect("validated subtree root remains present")
+                        .parent
+                        .expect("the document root cannot be removed")
+                })
+                .collect();
+            for parent in parents {
+                self.arena
+                    .get_mut(parent)
+                    .expect("validated subtree parent remains present")
+                    .children
+                    .retain(|child| !root_set.contains(child));
+            }
+        }
+
+        // reverse delete (post-order traversal)
+        // child nodes are always deleted before their parent nodes.
+        // 
+        // e.g.
+        // root->(A->(A1,A2->(A21,A22)),B)
+        // turn     action      pending      nodes
+        // 0        pop B       [A]          [B]
+        // 1        pop A       [A1,A2]      [B,A]
+        // 2        pop A2      [A1,A21,A22] [B,A,A2]
+        // 3        pop A22     [A1,A21]     [B,A,A2,A22]
+        // 4        pop A21     [A1]         [B,A,A2,A22,A21]
+        // 5        pop A1      []           [B,A,A2,A22,A21,A1]
+        // deletion order: A1->A21->A22->A2->A->B
+        let mut pending = roots.to_vec();
+        let mut nodes = Vec::new();
+        while let Some(node) = pending.pop() {
+            let node = self
+                .arena
+                .get(node)
+                .expect("document child links are internally valid");
+            pending.extend(node.children.iter().copied()); // push children
+            nodes.push(node.id); // push parent
+        }
+        for node in nodes.into_iter().rev() {
+            self.arena
+                .remove(node)
+                .expect("collected subtree node remains present");
+        }
     }
 
     /// Look up a node's parent.
