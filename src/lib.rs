@@ -35,6 +35,12 @@ pub use parser::document_text::{
     TextProjection,
     TextProjectionKind,
 };
+pub use parser::document_transform::{
+    DocumentTransform,
+    DocumentTransformError,
+    DocumentTransformRegistry,
+    TransformRuleBuilder,
+};
 pub use parser::main::MarkdownIt;
 pub use parser::node::{HtmlAttribute, HtmlAttributes, Node, NodeValue};
 pub use parser::render_options::RenderOptions;

@@ -6,7 +6,11 @@ use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use markdown_it::plugins::html::html_inline::HtmlInline;
 use markdown_it::{
+    Document,
+    DocumentTransform,
+    DocumentTransformRegistry,
     EditBatch,
+    MarkdownIt,
     NodeDraft,
     NodeRef,
     StructuralEvent,
@@ -16,6 +20,26 @@ use markdown_it::{
     TextProjectionKind,
 };
 use markdown_it_benchmarks::corpus;
+
+macro_rules! empty_transform {
+    ($type:ident, $key:literal) => {
+        struct $type;
+
+        impl DocumentTransform for $type {
+            const KEY: &'static str = $key;
+
+            fn run(_: &Document) -> EditBatch {
+                EditBatch::new()
+            }
+        }
+    };
+}
+
+empty_transform!(EmptyTransform1, "empty-1");
+empty_transform!(EmptyTransform2, "empty-2");
+empty_transform!(EmptyTransform3, "empty-3");
+empty_transform!(EmptyTransform4, "empty-4");
+empty_transform!(EmptyTransform5, "empty-5");
 
 fn consume_legacy_events(node: &markdown_it::Node) {
     if node.children.is_empty() {
@@ -147,6 +171,32 @@ fn parser() -> markdown_it::MarkdownIt {
 
 fn benchmark(c: &mut Criterion) {
     let md = parser();
+
+    let empty_registry = DocumentTransformRegistry::new();
+    let mut one_transform = DocumentTransformRegistry::new();
+    one_transform.add::<EmptyTransform1>();
+    let mut five_transforms = DocumentTransformRegistry::new();
+    five_transforms.add::<EmptyTransform1>();
+    five_transforms.add::<EmptyTransform2>();
+    five_transforms.add::<EmptyTransform3>();
+    five_transforms.add::<EmptyTransform4>();
+    five_transforms.add::<EmptyTransform5>();
+    let mut empty_document = MarkdownIt::empty().parse_document("");
+    empty_registry.run(&mut empty_document).unwrap();
+    one_transform.run(&mut empty_document).unwrap();
+    five_transforms.run(&mut empty_document).unwrap();
+
+    let mut group = c.benchmark_group("document-transform-runner/empty-document");
+    group.bench_function("zero-transforms", |b| {
+        b.iter(|| empty_registry.run(black_box(&mut empty_document)).unwrap())
+    });
+    group.bench_function("one-empty-transform", |b| {
+        b.iter(|| one_transform.run(black_box(&mut empty_document)).unwrap())
+    });
+    group.bench_function("five-empty-transforms", |b| {
+        b.iter(|| five_transforms.run(black_box(&mut empty_document)).unwrap())
+    });
+    group.finish();
 
     for corpus in corpus::standard() {
         let source = corpus.source();

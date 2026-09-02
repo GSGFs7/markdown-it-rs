@@ -6,6 +6,12 @@ use crate::common::sourcemap::SourcePos;
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::{Root, *};
 use crate::parser::document::Document;
+use crate::parser::document_transform::{
+    DocumentTransform,
+    DocumentTransformError,
+    DocumentTransformRegistry,
+    TransformRuleBuilder,
+};
 use crate::parser::extset::MarkdownItExtSet;
 use crate::parser::inline::{self, InlineParser};
 use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
@@ -42,6 +48,9 @@ pub struct MarkdownIt {
     /// Default rendering options.
     pub render_options: RenderOptions,
 
+    /// Ordered transforms for arena-backed documents.
+    pub document_transforms: DocumentTransformRegistry,
+
     ruler: Ruler<RuleMark, RuleFn>,
 }
 
@@ -56,6 +65,7 @@ impl std::fmt::Debug for MarkdownIt {
             .field("max_indent", &self.max_indent)
             .field("ruler", &self.ruler)
             .field("render_options", &self.render_options)
+            .field("document_transforms", &self.document_transforms)
             .finish()
     }
 }
@@ -75,6 +85,7 @@ impl MarkdownIt {
             max_nesting: 100,
             max_indent: i32::MAX,
             render_options: RenderOptions::default(),
+            document_transforms: DocumentTransformRegistry::new(),
             ruler: Ruler::new(),
         };
 
@@ -110,6 +121,19 @@ impl MarkdownIt {
     /// moves its nodes into the arena without cloning their payloads.
     pub fn parse_document(&self, src: &str) -> Document {
         Document::from_legacy(Arc::<str>::from(src), self.parse(src))
+    }
+
+    /// Register an arena-backed document transform.
+    pub fn add_document_transform<T: DocumentTransform>(&mut self) -> TransformRuleBuilder<'_> {
+        self.document_transforms.add::<T>()
+    }
+
+    /// Explicitly run all registered document transforms in resolved order.
+    pub fn run_document_transforms(
+        &self,
+        document: &mut Document,
+    ) -> Result<(), DocumentTransformError> {
+        self.document_transforms.run(document)
     }
 
     /// Parse `src` and render it to HTML, using the options stored in the
