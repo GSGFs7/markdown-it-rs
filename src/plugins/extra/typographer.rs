@@ -89,12 +89,13 @@ pub fn add_document(md: &mut MarkdownIt) {
 }
 
 /// Arena-backed typographer transform.
+#[derive(Default)]
 pub struct TypographerDocumentTransform;
 
 impl DocumentTransform for TypographerDocumentTransform {
     const KEY: &'static str = "extra::typographer";
 
-    fn run(document: &Document) -> EditBatch {
+    fn run(&self, document: &Document) -> EditBatch {
         let mut edits = EditBatch::new();
         for event in document
             .events(document.root())
@@ -196,12 +197,13 @@ mod tests {
         assert_eq!(document.into_legacy().render(), "<p>雪… ™</p>\n");
     }
 
+    #[derive(Default)]
     struct ObserveBetweenTransforms;
 
     impl DocumentTransform for ObserveBetweenTransforms {
         const KEY: &'static str = "test::observe-between-typographer-and-smartquotes";
 
-        fn run(document: &Document) -> EditBatch {
+        fn run(&self, document: &Document) -> EditBatch {
             let mut edits = EditBatch::new();
             edits.set_attribute(
                 document.root(),

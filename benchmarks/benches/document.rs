@@ -23,12 +23,13 @@ use markdown_it_benchmarks::corpus;
 
 macro_rules! empty_transform {
     ($type:ident, $key:literal) => {
+        #[derive(Default)]
         struct $type;
 
         impl DocumentTransform for $type {
             const KEY: &'static str = $key;
 
-            fn run(_: &Document) -> EditBatch {
+            fn run(&self, _: &Document) -> EditBatch {
                 EditBatch::new()
             }
         }

@@ -94,6 +94,7 @@ pub fn add_document_with<
 pub type ClassicSmartQuotesDocumentTransform = SmartQuotesDocumentTransform<'‘', '’', '“', '”'>;
 
 /// Arena-backed smartquotes with a compile-time quote set.
+#[derive(Default)]
 pub struct SmartQuotesDocumentTransform<
     const OPEN_SINGLE_QUOTE: char,
     const CLOSE_SINGLE_QUOTE: char,
@@ -116,7 +117,7 @@ impl<
 {
     const KEY: &'static str = "extra::smartquotes";
 
-    fn run(document: &Document) -> EditBatch {
+    fn run(&self, document: &Document) -> EditBatch {
         document_edits_with::<
             OPEN_SINGLE_QUOTE,
             CLOSE_SINGLE_QUOTE,
@@ -582,12 +583,13 @@ mod tests {
         assert_eq!(document.into_legacy().render(), "<p>‹hello› «world»</p>\n");
     }
 
+    #[derive(Default)]
     struct ObserveSmartQuotes;
 
     impl DocumentTransform for ObserveSmartQuotes {
         const KEY: &'static str = "test::observe-smartquotes";
 
-        fn run(document: &Document) -> EditBatch {
+        fn run(&self, document: &Document) -> EditBatch {
             let transformed = document
                 .events(document.root())
                 .unwrap()

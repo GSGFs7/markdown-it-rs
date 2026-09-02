@@ -1,29 +1,46 @@
 //! Ordered transforms for arena-backed documents.
 
 use std::fmt;
+use std::sync::Arc;
 
 use crate::common::RuleMark;
 use crate::common::ruler::{RuleItem, Ruler};
 use crate::parser::document::Document;
 use crate::parser::document_edit::{EditBatch, EditError};
 
-type TransformFn = fn(&Document) -> EditBatch;
+trait ErasedDocumentTransform: Send + Sync {
+    fn run(&self, document: &Document) -> EditBatch;
+}
 
-#[derive(Clone, Copy)]
+impl<T: DocumentTransform> ErasedDocumentTransform for T {
+    fn run(&self, document: &Document) -> EditBatch {
+        DocumentTransform::run(self, document)
+    }
+}
+
+#[derive(Clone)]
 struct RegisteredTransform {
     key: &'static str,
-    run: TransformFn,
+    transform: Arc<dyn ErasedDocumentTransform>,
+}
+
+impl fmt::Debug for RegisteredTransform {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RegisteredTransform")
+            .field("key", &self.key)
+            .finish_non_exhaustive()
+    }
 }
 
 /// A read-only analysis that produces one atomic batch of document edits.
 ///
 /// `KEY` is the stable, user-facing identity used for ordering and error
 /// reporting. It must be non-empty and unique within a registry.
-pub trait DocumentTransform: 'static {
+pub trait DocumentTransform: Send + Sync + 'static {
     const KEY: &'static str;
     const ALIASES: &'static [&'static str] = &[];
 
-    fn run(document: &Document) -> EditBatch;
+    fn run(&self, document: &Document) -> EditBatch;
 }
 
 /// The failure produced when a registered transform's edit batch is invalid.
@@ -78,8 +95,15 @@ impl DocumentTransformRegistry {
         Self::default()
     }
 
-    /// Register `T`, returning a builder for ruler-style ordering constraints.
-    pub fn add<T: DocumentTransform>(&mut self) -> TransformRuleBuilder<'_> {
+    /// Register the default instance of `T`, returning a builder for
+    /// ruler-style ordering constraints.
+    pub fn add<T: DocumentTransform + Default>(&mut self) -> TransformRuleBuilder<'_> {
+        self.add_instance(T::default())
+    }
+
+    /// Register an owned transform instance, returning a builder for
+    /// ruler-style ordering constraints.
+    pub fn add_instance<T: DocumentTransform>(&mut self, transform: T) -> TransformRuleBuilder<'_> {
         assert!(
             !T::KEY.is_empty(),
             "document transform key must not be empty"
@@ -99,7 +123,7 @@ impl DocumentTransformRegistry {
             RuleMark::named(T::KEY),
             RegisteredTransform {
                 key: T::KEY,
-                run: T::run,
+                transform: Arc::new(transform),
             },
         );
         item.alias(RuleMark::of::<T>());
@@ -120,7 +144,7 @@ impl DocumentTransformRegistry {
     /// Run all transforms in resolved order.
     pub fn run(&self, document: &mut Document) -> Result<(), DocumentTransformError> {
         for transform in self.ruler.iter() {
-            let edits = (transform.run)(document);
+            let edits = transform.transform.run(document);
             edits
                 .commit(document)
                 .map_err(|source| DocumentTransformError {
@@ -195,6 +219,8 @@ impl<'a> TransformRuleBuilder<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::*;
     use crate::parser::inline::Text;
     use crate::{MarkdownIt, StructuralEvent};
@@ -211,30 +237,33 @@ mod tests {
         edits
     }
 
+    #[derive(Default)]
     struct First;
     impl DocumentTransform for First {
         const KEY: &'static str = "first";
         const ALIASES: &'static [&'static str] = &["opening"];
 
-        fn run(document: &Document) -> EditBatch {
+        fn run(&self, document: &Document) -> EditBatch {
             append_step(document, "1")
         }
     }
 
+    #[derive(Default)]
     struct Second;
     impl DocumentTransform for Second {
         const KEY: &'static str = "second";
 
-        fn run(document: &Document) -> EditBatch {
+        fn run(&self, document: &Document) -> EditBatch {
             append_step(document, "2")
         }
     }
 
+    #[derive(Default)]
     struct Third;
     impl DocumentTransform for Third {
         const KEY: &'static str = "third";
 
-        fn run(document: &Document) -> EditBatch {
+        fn run(&self, document: &Document) -> EditBatch {
             append_step(document, "3")
         }
     }
@@ -275,11 +304,12 @@ mod tests {
         assert_eq!(document.len(), len);
     }
 
+    #[derive(Default)]
     struct Failing;
     impl DocumentTransform for Failing {
         const KEY: &'static str = "failing";
 
-        fn run(document: &Document) -> EditBatch {
+        fn run(&self, document: &Document) -> EditBatch {
             let mut edits = EditBatch::new();
             edits.remove_node(document.root());
             edits
@@ -336,11 +366,12 @@ mod tests {
         assert_eq!(steps(&document), Some("1"));
     }
 
+    #[derive(Default)]
     struct RewriteText;
     impl DocumentTransform for RewriteText {
         const KEY: &'static str = "rewrite-text";
 
-        fn run(document: &Document) -> EditBatch {
+        fn run(&self, document: &Document) -> EditBatch {
             let mut edits = EditBatch::new();
             for event in document.events(document.root()).unwrap() {
                 if let StructuralEvent::Leaf(node) = event
@@ -365,11 +396,12 @@ mod tests {
         assert_eq!(document.into_legacy().render(), "<p>rewritten</p>\n");
     }
 
+    #[derive(Default)]
     struct DuplicateKey;
     impl DocumentTransform for DuplicateKey {
         const KEY: &'static str = "first";
 
-        fn run(_: &Document) -> EditBatch {
+        fn run(&self, _: &Document) -> EditBatch {
             EditBatch::new()
         }
     }
@@ -380,5 +412,105 @@ mod tests {
         let mut registry = DocumentTransformRegistry::new();
         registry.add::<First>();
         registry.add::<DuplicateKey>();
+    }
+
+    struct ConfiguredTransform {
+        value: String,
+    }
+
+    impl DocumentTransform for ConfiguredTransform {
+        const KEY: &'static str = "configured";
+
+        fn run(&self, document: &Document) -> EditBatch {
+            let mut edits = EditBatch::new();
+            edits.set_attribute(document.root(), "configured", self.value.clone());
+            edits
+        }
+    }
+
+    #[test]
+    fn markdown_it_registers_an_owned_configured_instance() {
+        let mut md = MarkdownIt::empty();
+        md.add_document_transform_instance(ConfiguredTransform {
+            value: "runtime value".into(),
+        });
+        let mut document = md.parse_document("");
+
+        md.run_document_transforms(&mut document).unwrap();
+
+        assert_eq!(
+            document.node(document.root()).unwrap().attrs(),
+            &[("configured".into(), "runtime value".into())]
+        );
+    }
+
+    struct DropProbe {
+        drops: Arc<AtomicUsize>,
+    }
+
+    impl Drop for DropProbe {
+        fn drop(&mut self) {
+            self.drops.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    impl DocumentTransform for DropProbe {
+        const KEY: &'static str = "drop-probe";
+
+        fn run(&self, _: &Document) -> EditBatch {
+            EditBatch::new()
+        }
+    }
+
+    #[test]
+    fn remove_invalidates_the_cache_and_drops_the_instance_once() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let mut registry = DocumentTransformRegistry::new();
+        registry.add_instance(DropProbe {
+            drops: Arc::clone(&drops),
+        });
+        let mut document = MarkdownIt::empty().parse_document("");
+        registry.run(&mut document).unwrap();
+
+        registry.remove::<DropProbe>();
+
+        assert_eq!(drops.load(Ordering::Relaxed), 1);
+    }
+
+    struct TypeAliasCollision;
+
+    impl DocumentTransform for TypeAliasCollision {
+        const KEY: &'static str = "type-alias-collision";
+
+        fn run(&self, _: &Document) -> EditBatch {
+            EditBatch::new()
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "document transform type is already registered")]
+    fn rejects_a_type_already_used_as_an_alias() {
+        let mut registry = DocumentTransformRegistry::new();
+        registry.add::<First>().alias::<TypeAliasCollision>();
+        registry.add_instance(TypeAliasCollision);
+    }
+
+    #[test]
+    fn registry_debug_does_not_require_transform_debug() {
+        let mut registry = DocumentTransformRegistry::new();
+        registry.add_instance(ConfiguredTransform {
+            value: "secret configuration".into(),
+        });
+
+        let debug = format!("{registry:?}");
+
+        assert!(debug.contains("configured"));
+        assert!(!debug.contains("secret configuration"));
+    }
+
+    #[test]
+    fn markdown_it_remains_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<MarkdownIt>();
     }
 }

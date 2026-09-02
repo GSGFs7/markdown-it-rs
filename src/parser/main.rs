@@ -124,8 +124,18 @@ impl MarkdownIt {
     }
 
     /// Register an arena-backed document transform.
-    pub fn add_document_transform<T: DocumentTransform>(&mut self) -> TransformRuleBuilder<'_> {
+    pub fn add_document_transform<T: DocumentTransform + Default>(
+        &mut self,
+    ) -> TransformRuleBuilder<'_> {
         self.document_transforms.add::<T>()
+    }
+
+    /// Register an owned arena-backed document transform instance.
+    pub fn add_document_transform_instance<T: DocumentTransform>(
+        &mut self,
+        transform: T,
+    ) -> TransformRuleBuilder<'_> {
+        self.document_transforms.add_instance(transform)
     }
 
     /// Explicitly run all registered document transforms in resolved order.
