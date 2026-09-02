@@ -567,6 +567,66 @@ impl Document {
         self.delete_subtrees(&replaced_roots);
     }
 
+    pub(crate) fn wrap_ranges(&mut self, ranges: Vec<(NodeId, NodeId, NodeDraft)>) {
+        let mut by_first = HashMap::with_capacity(ranges.len());
+        let mut affected_parents = HashSet::new();
+        for (first, last, wrapper) in ranges {
+            let parent = self
+                .arena
+                .get(first)
+                .expect("validated wrap endpoint remains present")
+                .parent
+                .expect("validated wrap endpoint is not the root");
+            let wrapper = self.insert_draft(parent, wrapper);
+            let previous = by_first.insert(first, (last, wrapper));
+            debug_assert!(previous.is_none(), "wrap ranges were validated disjoint");
+            affected_parents.insert(parent);
+        }
+
+        for parent in affected_parents {
+            let old_children = std::mem::take(
+                &mut self
+                    .arena
+                    .get_mut(parent)
+                    .expect("validated wrap parent remains present")
+                    .children,
+            );
+            let mut children = Vec::with_capacity(old_children.len());
+            let mut index = 0;
+            while index < old_children.len() {
+                let first = old_children[index];
+                let Some(&(last, wrapper)) = by_first.get(&first) else {
+                    children.push(first);
+                    index += 1;
+                    continue;
+                };
+
+                let end = old_children[index..]
+                    .iter()
+                    .position(|&node| node == last)
+                    .map(|offset| index + offset)
+                    .expect("validated wrap range remains ordered");
+                let wrapped = old_children[index..=end].to_vec();
+                for &node in &wrapped {
+                    self.arena
+                        .get_mut(node)
+                        .expect("validated wrapped node remains present")
+                        .parent = Some(wrapper);
+                }
+                self.arena
+                    .get_mut(wrapper)
+                    .expect("new wrapper remains present")
+                    .children = wrapped;
+                children.push(wrapper);
+                index = end + 1;
+            }
+            self.arena
+                .get_mut(parent)
+                .expect("validated wrap parent remains present")
+                .children = children;
+        }
+    }
+
     pub(crate) fn insert_siblings(
         &mut self,
         insertions: Vec<(NodeId, SiblingPosition, NodeDraft)>,

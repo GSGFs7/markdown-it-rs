@@ -63,6 +63,13 @@ struct ReplaceNode {
     draft: NodeDraft,
 }
 
+#[derive(Debug)]
+struct WrapRange {
+    first: NodeId,
+    last: NodeId,
+    wrapper: NodeDraft,
+}
+
 /// A validation failure that leaves the document unchanged.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EditError {
@@ -113,6 +120,38 @@ pub enum EditError {
     },
     InsertionTargetsReplacedNode {
         replaced: NodeId,
+        target: NodeId,
+    },
+    CannotWrapRoot(NodeId),
+    WrapEndpointsHaveDifferentParents {
+        first: NodeId,
+        last: NodeId,
+    },
+    ReversedWrapRange {
+        first: NodeId,
+        last: NodeId,
+    },
+    WrapperDraftHasChildren {
+        first: NodeId,
+        last: NodeId,
+    },
+    OverlappingWrapRanges {
+        first_range: (NodeId, NodeId),
+        second_range: (NodeId, NodeId),
+    },
+    WrapRangeTargetsRemovedNode {
+        removed: NodeId,
+        first: NodeId,
+        last: NodeId,
+    },
+    WrapRangeTargetsReplacedNode {
+        replaced: NodeId,
+        first: NodeId,
+        last: NodeId,
+    },
+    InsertionTargetsWrappedNode {
+        first: NodeId,
+        last: NodeId,
         target: NodeId,
     },
 }
@@ -193,6 +232,52 @@ impl fmt::Display for EditError {
                 f,
                 "insertion targets node {target:?} inside replaced subtree {replaced:?}"
             ),
+            Self::CannotWrapRoot(node) => {
+                write!(f, "cannot wrap document root {node:?}")
+            }
+            Self::WrapEndpointsHaveDifferentParents { first, last } => write!(
+                f,
+                "wrap endpoints {first:?} and {last:?} have different parents"
+            ),
+            Self::ReversedWrapRange { first, last } => {
+                write!(f, "wrap range {first:?} through {last:?} is reversed")
+            }
+            Self::WrapperDraftHasChildren { first, last } => write!(
+                f,
+                "wrapper draft for range {first:?} through {last:?} already has children"
+            ),
+            Self::OverlappingWrapRanges {
+                first_range,
+                second_range,
+            } => write!(
+                f,
+                "wrap ranges {:?} through {:?} and {:?} through {:?} overlap",
+                first_range.0, first_range.1, second_range.0, second_range.1
+            ),
+            Self::WrapRangeTargetsRemovedNode {
+                removed,
+                first,
+                last,
+            } => write!(
+                f,
+                "wrap range {first:?} through {last:?} is inside removed subtree {removed:?}"
+            ),
+            Self::WrapRangeTargetsReplacedNode {
+                replaced,
+                first,
+                last,
+            } => write!(
+                f,
+                "wrap range {first:?} through {last:?} is inside replaced subtree {replaced:?}"
+            ),
+            Self::InsertionTargetsWrappedNode {
+                first,
+                last,
+                target,
+            } => write!(
+                f,
+                "insertion targets wrapped sibling {target:?} in range {first:?} through {last:?}"
+            ),
         }
     }
 }
@@ -213,6 +298,7 @@ pub struct EditBatch {
     removed_nodes: Vec<NodeId>,
     sibling_insertions: Vec<InsertSibling>,
     node_replacements: Vec<ReplaceNode>,
+    wrap_ranges: Vec<WrapRange>,
 }
 
 impl EditBatch {
@@ -226,6 +312,7 @@ impl EditBatch {
             + self.removed_nodes.len()
             + self.sibling_insertions.len()
             + self.node_replacements.len()
+            + self.wrap_ranges.len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -234,6 +321,7 @@ impl EditBatch {
             && self.removed_nodes.is_empty()
             && self.sibling_insertions.is_empty()
             && self.node_replacements.is_empty()
+            && self.wrap_ranges.is_empty()
     }
 
     /// Replace one byte range in a built-in `Text` node.
@@ -306,6 +394,15 @@ impl EditBatch {
         self.node_replacements.push(ReplaceNode { target, draft });
     }
 
+    /// Wrap an inclusive range of ordered siblings in a childless draft.
+    pub fn wrap_range(&mut self, first: NodeId, last: NodeId, wrapper: NodeDraft) {
+        self.wrap_ranges.push(WrapRange {
+            first,
+            last,
+            wrapper,
+        });
+    }
+
     fn push(&mut self, node: NodeId, range: Range<usize>, replacement: TextReplacement) {
         self.text_edits.push(ReplaceText {
             node,
@@ -327,6 +424,7 @@ impl EditBatch {
             && self.removed_nodes.is_empty()
             && self.sibling_insertions.is_empty()
             && self.node_replacements.is_empty()
+            && self.wrap_ranges.is_empty()
         {
             self.sort_text_edits();
             self.validate_text(document)?;
@@ -337,6 +435,7 @@ impl EditBatch {
             && self.removed_nodes.is_empty()
             && self.sibling_insertions.is_empty()
             && self.node_replacements.is_empty()
+            && self.wrap_ranges.is_empty()
         {
             self.sort_attribute_edits();
             self.validate_attributes(document)?;
@@ -347,6 +446,7 @@ impl EditBatch {
             && self.attribute_edits.is_empty()
             && self.sibling_insertions.is_empty()
             && self.node_replacements.is_empty()
+            && self.wrap_ranges.is_empty()
         {
             self.sort_removed_nodes();
             self.validate_removals(document)?;
@@ -357,6 +457,7 @@ impl EditBatch {
             && self.attribute_edits.is_empty()
             && self.removed_nodes.is_empty()
             && self.node_replacements.is_empty()
+            && self.wrap_ranges.is_empty()
         {
             self.validate_insertions(document)?;
             self.apply_insertions(document);
@@ -366,10 +467,21 @@ impl EditBatch {
             && self.attribute_edits.is_empty()
             && self.removed_nodes.is_empty()
             && self.sibling_insertions.is_empty()
+            && self.wrap_ranges.is_empty()
         {
             self.sort_node_replacements();
             self.validate_replacements(document)?;
             self.apply_replacements(document);
+            return Ok(());
+        }
+        if self.text_edits.is_empty()
+            && self.attribute_edits.is_empty()
+            && self.removed_nodes.is_empty()
+            && self.sibling_insertions.is_empty()
+            && self.node_replacements.is_empty()
+        {
+            self.validate_wrap_ranges(document)?;
+            self.apply_wrap_ranges(document);
             return Ok(());
         }
 
@@ -388,9 +500,13 @@ impl EditBatch {
         if !self.node_replacements.is_empty() {
             self.validate_replacements(document)?;
         }
+        if !self.wrap_ranges.is_empty() {
+            self.validate_wrap_ranges(document)?;
+        }
         self.apply_text(document);
         self.apply_removals(document);
         self.apply_replacements(document);
+        self.apply_wrap_ranges(document);
         self.apply_insertions(document);
         self.apply_attributes(document);
         Ok(())
@@ -636,6 +752,112 @@ impl EditBatch {
         Ok(())
     }
 
+    fn validate_wrap_ranges(&self, document: &Document) -> Result<(), EditError> {
+        let mut resolved = Vec::with_capacity(self.wrap_ranges.len());
+        for range in &self.wrap_ranges {
+            let first = document.node(range.first)?;
+            let last = document.node(range.last)?;
+            let Some(first_parent) = first.parent() else {
+                return Err(EditError::CannotWrapRoot(range.first));
+            };
+            let Some(last_parent) = last.parent() else {
+                return Err(EditError::CannotWrapRoot(range.last));
+            };
+            if first_parent != last_parent {
+                return Err(EditError::WrapEndpointsHaveDifferentParents {
+                    first: range.first,
+                    last: range.last,
+                });
+            }
+            if !range.wrapper.children().is_empty() {
+                return Err(EditError::WrapperDraftHasChildren {
+                    first: range.first,
+                    last: range.last,
+                });
+            }
+
+            let siblings = document.children(first_parent)?;
+            let first_index = siblings
+                .iter()
+                .position(|&node| node == range.first)
+                .expect("document parent links are internally consistent");
+            let last_index = siblings
+                .iter()
+                .position(|&node| node == range.last)
+                .expect("document parent links are internally consistent");
+            if first_index > last_index {
+                return Err(EditError::ReversedWrapRange {
+                    first: range.first,
+                    last: range.last,
+                });
+            }
+            resolved.push((
+                first_parent,
+                first_index,
+                last_index,
+                range.first,
+                range.last,
+            ));
+        }
+
+        resolved
+            .sort_unstable_by_key(|range| (range.0.slot(), range.0.generation(), range.1, range.2));
+        for ranges in resolved.windows(2) {
+            let first = ranges[0];
+            let second = ranges[1];
+            if first.0 == second.0 && second.1 <= first.2 {
+                return Err(EditError::OverlappingWrapRanges {
+                    first_range: (first.3, first.4),
+                    second_range: (second.3, second.4),
+                });
+            }
+        }
+
+        let removals: HashSet<_> = self.removed_nodes.iter().copied().collect();
+        let replacements: HashSet<_> = self
+            .node_replacements
+            .iter()
+            .map(|replacement| replacement.target)
+            .collect();
+        for &(parent, first_index, last_index, first, last) in &resolved {
+            let siblings = document.children(parent)?;
+            for &selected in &siblings[first_index..=last_index] {
+                let mut current = Some(selected);
+                while let Some(node) = current {
+                    if removals.contains(&node) {
+                        return Err(EditError::WrapRangeTargetsRemovedNode {
+                            removed: node,
+                            first,
+                            last,
+                        });
+                    }
+                    if replacements.contains(&node) {
+                        return Err(EditError::WrapRangeTargetsReplacedNode {
+                            replaced: node,
+                            first,
+                            last,
+                        });
+                    }
+                    current = document.parent(node)?;
+                }
+            }
+        }
+
+        for insertion in &self.sibling_insertions {
+            for &(parent, first_index, last_index, first, last) in &resolved {
+                let siblings = document.children(parent)?;
+                if siblings[first_index..=last_index].contains(&insertion.target) {
+                    return Err(EditError::InsertionTargetsWrappedNode {
+                        first,
+                        last,
+                        target: insertion.target,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn apply_text(&self, document: &mut Document) {
         for edits in text_groups(&self.text_edits) {
             let node_id = edits[0].node;
@@ -712,6 +934,16 @@ impl EditBatch {
                 .map(|replacement| (replacement.target, replacement.draft))
                 .collect();
             document.replace_subtrees(replacements);
+        }
+    }
+
+    fn apply_wrap_ranges(&mut self, document: &mut Document) {
+        if !self.wrap_ranges.is_empty() {
+            let ranges = std::mem::take(&mut self.wrap_ranges)
+                .into_iter()
+                .map(|range| (range.first, range.last, range.wrapper))
+                .collect();
+            document.wrap_ranges(ranges);
         }
     }
 }
@@ -1577,6 +1809,269 @@ mod tests {
         assert_eq!(
             document.node(replaced).unwrap_err(),
             InvalidNodeId(replaced)
+        );
+    }
+
+    #[test]
+    fn wraps_an_inclusive_sibling_range_without_changing_node_ids() {
+        let mut document = document(&["a", "b", "c", "d"]);
+        let root = document.root();
+        let original = document.children(root).unwrap().to_vec();
+        let mut wrapper = NodeDraft::new(Paragraph);
+        wrapper
+            .attrs_mut()
+            .push(("class".to_owned(), "wrapper".to_owned()));
+        let mut batch = EditBatch::new();
+        batch.wrap_range(original[1], original[2], wrapper);
+
+        assert_eq!(batch.len(), 1);
+        batch.commit(&mut document).unwrap();
+
+        let children = document.children(root).unwrap();
+        assert_eq!(children.len(), 3);
+        assert_eq!(children[0], original[0]);
+        assert_eq!(children[2], original[3]);
+        let wrapper = children[1];
+        let wrapper_node = document.node(wrapper).unwrap();
+        assert!(wrapper_node.is::<Paragraph>());
+        assert!(wrapper_node.srcmap().is_none());
+        assert_eq!(
+            wrapper_node.attrs(),
+            &[("class".to_owned(), "wrapper".to_owned())]
+        );
+        assert_eq!(wrapper_node.children(), &original[1..=2]);
+        assert_eq!(document.parent(original[1]).unwrap(), Some(wrapper));
+        assert_eq!(document.parent(original[2]).unwrap(), Some(wrapper));
+        assert_eq!(content(&document, original[1]), "b");
+        assert_eq!(content(&document, original[2]), "c");
+
+        let legacy = document.into_legacy();
+        assert_eq!(legacy.children.len(), 3);
+        assert_eq!(legacy.children[1].children.len(), 2);
+    }
+
+    #[test]
+    fn wraps_multiple_disjoint_ranges_with_one_parent_rebuild() {
+        let mut document = document(&["a", "b", "c", "d", "e"]);
+        let root = document.root();
+        let original = document.children(root).unwrap().to_vec();
+        let mut batch = EditBatch::new();
+        batch.wrap_range(original[3], original[4], NodeDraft::new(Paragraph));
+        batch.wrap_range(original[0], original[1], NodeDraft::new(Paragraph));
+
+        batch.commit(&mut document).unwrap();
+
+        let children = document.children(root).unwrap();
+        assert_eq!(children.len(), 3);
+        assert_eq!(children[1], original[2]);
+        assert_eq!(document.children(children[0]).unwrap(), &original[0..=1]);
+        assert_eq!(document.children(children[2]).unwrap(), &original[3..=4]);
+        for &node in &original {
+            assert!(document.node(node).is_ok());
+        }
+    }
+
+    #[test]
+    fn wraps_ranges_under_different_parents_in_one_batch() {
+        let mut document = branched_document();
+        let branches = document.children(document.root()).unwrap().to_vec();
+        let first_text = document.children(branches[0]).unwrap()[0];
+        let second_text = document.children(branches[1]).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.wrap_range(first_text, first_text, NodeDraft::new(Paragraph));
+        batch.wrap_range(second_text, second_text, NodeDraft::new(Paragraph));
+
+        batch.commit(&mut document).unwrap();
+
+        for (branch, text) in branches.into_iter().zip([first_text, second_text]) {
+            let wrapper = document.children(branch).unwrap()[0];
+            assert_eq!(document.children(wrapper).unwrap(), &[text]);
+            assert_eq!(document.parent(text).unwrap(), Some(wrapper));
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_wrap_ranges_atomically() {
+        let mut document = document(&["a", "b", "c", "d"]);
+        let root = document.root();
+        let children = document.children(root).unwrap().to_vec();
+
+        let mut root_endpoint = EditBatch::new();
+        root_endpoint.replace_text(children[0], 0..1, "A");
+        root_endpoint.wrap_range(root, root, NodeDraft::new(Paragraph));
+        assert_eq!(
+            root_endpoint.commit(&mut document),
+            Err(EditError::CannotWrapRoot(root))
+        );
+        assert_eq!(content(&document, children[0]), "a");
+
+        let mut reversed = EditBatch::new();
+        reversed.wrap_range(children[2], children[0], NodeDraft::new(Paragraph));
+        assert_eq!(
+            reversed.commit(&mut document),
+            Err(EditError::ReversedWrapRange {
+                first: children[2],
+                last: children[0],
+            })
+        );
+
+        let mut childful_wrapper = NodeDraft::new(Paragraph);
+        childful_wrapper.push_child(text_draft("existing"));
+        let mut childful = EditBatch::new();
+        childful.wrap_range(children[0], children[1], childful_wrapper);
+        assert_eq!(
+            childful.commit(&mut document),
+            Err(EditError::WrapperDraftHasChildren {
+                first: children[0],
+                last: children[1],
+            })
+        );
+
+        let mut overlap = EditBatch::new();
+        overlap.wrap_range(children[0], children[2], NodeDraft::new(Paragraph));
+        overlap.wrap_range(children[2], children[3], NodeDraft::new(Paragraph));
+        assert_eq!(
+            overlap.commit(&mut document),
+            Err(EditError::OverlappingWrapRanges {
+                first_range: (children[0], children[2]),
+                second_range: (children[2], children[3]),
+            })
+        );
+        assert_eq!(document.children(root).unwrap(), children);
+    }
+
+    #[test]
+    fn rejects_different_parent_and_stale_wrap_endpoints() {
+        let mut document = branched_document();
+        let branches = document.children(document.root()).unwrap().to_vec();
+        let first = document.children(branches[0]).unwrap()[0];
+        let second = document.children(branches[1]).unwrap()[0];
+        let mut different_parents = EditBatch::new();
+        different_parents.wrap_range(first, second, NodeDraft::new(Paragraph));
+        assert_eq!(
+            different_parents.commit(&mut document),
+            Err(EditError::WrapEndpointsHaveDifferentParents {
+                first,
+                last: second,
+            })
+        );
+
+        let mut removal = EditBatch::new();
+        removal.remove_node(first);
+        removal.commit(&mut document).unwrap();
+        let mut stale = EditBatch::new();
+        stale.wrap_range(first, first, NodeDraft::new(Paragraph));
+        assert_eq!(
+            stale.commit(&mut document),
+            Err(EditError::InvalidNode(InvalidNodeId(first)))
+        );
+    }
+
+    #[test]
+    fn rejects_destructive_and_insertion_conflicts_with_wrap_ranges() {
+        let mut document = branched_document();
+        let branch = document.children(document.root()).unwrap()[0];
+        let text = document.children(branch).unwrap()[0];
+        let mut removal = EditBatch::new();
+        removal.remove_node(branch);
+        removal.wrap_range(text, text, NodeDraft::new(Paragraph));
+        assert_eq!(
+            removal.commit(&mut document),
+            Err(EditError::WrapRangeTargetsRemovedNode {
+                removed: branch,
+                first: text,
+                last: text,
+            })
+        );
+
+        let mut replacement = EditBatch::new();
+        replacement.replace_node(text, text_draft("replacement"));
+        replacement.wrap_range(text, text, NodeDraft::new(Paragraph));
+        assert_eq!(
+            replacement.commit(&mut document),
+            Err(EditError::WrapRangeTargetsReplacedNode {
+                replaced: text,
+                first: text,
+                last: text,
+            })
+        );
+
+        let mut insertion = EditBatch::new();
+        insertion.insert_before(text, text_draft("inserted"));
+        insertion.wrap_range(text, text, NodeDraft::new(Paragraph));
+        assert_eq!(
+            insertion.commit(&mut document),
+            Err(EditError::InsertionTargetsWrappedNode {
+                first: text,
+                last: text,
+                target: text,
+            })
+        );
+        assert_eq!(document.len(), 5);
+    }
+
+    #[test]
+    fn value_and_descendant_structure_edits_can_commit_with_wrap() {
+        let mut root = Node::new(Root::new("ab".to_owned()));
+        let mut paragraph = Node::new(Paragraph);
+        paragraph.children.push(Node::new(Text {
+            content: "a".to_owned(),
+        }));
+        paragraph.children.push(Node::new(Text {
+            content: "b".to_owned(),
+        }));
+        root.children.push(paragraph);
+        let mut document = Document::from_legacy("ab", root);
+        let root = document.root();
+        let paragraph = document.children(root).unwrap()[0];
+        let texts = document.children(paragraph).unwrap().to_vec();
+        let mut batch = EditBatch::new();
+        batch.wrap_range(paragraph, paragraph, NodeDraft::new(Paragraph));
+        batch.remove_node(texts[0]);
+        batch.insert_before(texts[1], text_draft("inserted"));
+        batch.replace_text(texts[1], 0..1, "B");
+        batch.set_attribute(paragraph, "class", "wrapped-child");
+
+        batch.commit(&mut document).unwrap();
+
+        let wrapper = document.children(root).unwrap()[0];
+        assert_eq!(document.children(wrapper).unwrap(), &[paragraph]);
+        let paragraph_children = document.children(paragraph).unwrap();
+        assert_eq!(paragraph_children.len(), 2);
+        assert_eq!(content(&document, paragraph_children[0]), "inserted");
+        assert_eq!(paragraph_children[1], texts[1]);
+        assert_eq!(content(&document, texts[1]), "B");
+        assert_eq!(
+            document.node(paragraph).unwrap().attrs(),
+            &[("class".to_owned(), "wrapped-child".to_owned())]
+        );
+    }
+
+    #[test]
+    fn wide_sibling_ranges_are_wrapped_iteratively() {
+        let mut root = Node::new(Root::new(String::new()));
+        for index in 0..10_000 {
+            root.children.push(Node::new(Text {
+                content: index.to_string(),
+            }));
+        }
+        let mut document = Document::from_legacy("", root);
+        let root = document.root();
+        let original = document.children(root).unwrap().to_vec();
+        let mut batch = EditBatch::new();
+        batch.wrap_range(original[0], original[9_999], NodeDraft::new(Paragraph));
+
+        batch.commit(&mut document).unwrap();
+
+        assert_eq!(document.len(), 10_002);
+        let wrapper = document.children(root).unwrap()[0];
+        assert_eq!(document.children(wrapper).unwrap(), original);
+        assert!(
+            document
+                .children(wrapper)
+                .unwrap()
+                .iter()
+                .all(|&node| document.parent(node).unwrap() == Some(wrapper))
         );
     }
 }
