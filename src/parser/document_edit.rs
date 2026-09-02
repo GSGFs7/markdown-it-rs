@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::ops::Range;
 
-use crate::parser::document::{Document, InvalidNodeId, NodeId};
+use crate::parser::document::{Document, InvalidNodeId, NodeDraft, NodeId, SiblingPosition};
 use crate::parser::inline::Text;
 
 #[derive(Clone, Debug)]
@@ -50,6 +50,13 @@ struct EditAttribute {
     change: AttributeChange,
 }
 
+#[derive(Debug)]
+struct InsertSibling {
+    target: NodeId,
+    position: SiblingPosition,
+    draft: NodeDraft,
+}
+
 /// A validation failure that leaves the document unchanged.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EditError {
@@ -78,6 +85,11 @@ pub enum EditError {
     EditTargetsRemovedNode {
         removed: NodeId,
         edited: NodeId,
+    },
+    CannotInsertSiblingOfRoot(NodeId),
+    InsertionTargetsRemovedNode {
+        removed: NodeId,
+        target: NodeId,
     },
 }
 
@@ -125,6 +137,13 @@ impl fmt::Display for EditError {
                 f,
                 "edit targets node {edited:?} inside removed subtree {removed:?}"
             ),
+            Self::CannotInsertSiblingOfRoot(node) => {
+                write!(f, "cannot insert a sibling of document root {node:?}")
+            }
+            Self::InsertionTargetsRemovedNode { removed, target } => write!(
+                f,
+                "insertion targets node {target:?} inside removed subtree {removed:?}"
+            ),
         }
     }
 }
@@ -138,11 +157,12 @@ impl From<InvalidNodeId> for EditError {
 }
 
 /// A batch of document edits that is validated and committed atomically.
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct EditBatch {
     text_edits: Vec<ReplaceText>,
     attribute_edits: Vec<EditAttribute>,
     removed_nodes: Vec<NodeId>,
+    sibling_insertions: Vec<InsertSibling>,
 }
 
 impl EditBatch {
@@ -151,13 +171,17 @@ impl EditBatch {
     }
 
     pub fn len(&self) -> usize {
-        self.text_edits.len() + self.attribute_edits.len() + self.removed_nodes.len()
+        self.text_edits.len()
+            + self.attribute_edits.len()
+            + self.removed_nodes.len()
+            + self.sibling_insertions.len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.text_edits.is_empty()
             && self.attribute_edits.is_empty()
             && self.removed_nodes.is_empty()
+            && self.sibling_insertions.is_empty()
     }
 
     /// Replace one byte range in a built-in `Text` node.
@@ -205,6 +229,26 @@ impl EditBatch {
         self.removed_nodes.push(node);
     }
 
+    /// Insert an owned draft immediately before `target` when the batch
+    /// commits. Insertions at the same target preserve call order.
+    pub fn insert_before(&mut self, target: NodeId, draft: NodeDraft) {
+        self.sibling_insertions.push(InsertSibling {
+            target,
+            position: SiblingPosition::Before,
+            draft,
+        });
+    }
+
+    /// Insert an owned draft immediately after `target` when the batch
+    /// commits. Insertions at the same target preserve call order.
+    pub fn insert_after(&mut self, target: NodeId, draft: NodeDraft) {
+        self.sibling_insertions.push(InsertSibling {
+            target,
+            position: SiblingPosition::After,
+            draft,
+        });
+    }
+
     fn push(&mut self, node: NodeId, range: Range<usize>, replacement: TextReplacement) {
         self.text_edits.push(ReplaceText {
             node,
@@ -222,22 +266,39 @@ impl EditBatch {
             return Ok(());
         }
 
-        if self.attribute_edits.is_empty() && self.removed_nodes.is_empty() {
+        if self.attribute_edits.is_empty()
+            && self.removed_nodes.is_empty()
+            && self.sibling_insertions.is_empty()
+        {
             self.sort_text_edits();
             self.validate_text(document)?;
             self.apply_text(document);
             return Ok(());
         }
-        if self.text_edits.is_empty() && self.removed_nodes.is_empty() {
+        if self.text_edits.is_empty()
+            && self.removed_nodes.is_empty()
+            && self.sibling_insertions.is_empty()
+        {
             self.sort_attribute_edits();
             self.validate_attributes(document)?;
             self.apply_attributes(document);
             return Ok(());
         }
-        if self.text_edits.is_empty() && self.attribute_edits.is_empty() {
+        if self.text_edits.is_empty()
+            && self.attribute_edits.is_empty()
+            && self.sibling_insertions.is_empty()
+        {
             self.sort_removed_nodes();
             self.validate_removals(document)?;
             self.apply_removals(document);
+            return Ok(());
+        }
+        if self.text_edits.is_empty()
+            && self.attribute_edits.is_empty()
+            && self.removed_nodes.is_empty()
+        {
+            self.validate_insertions(document)?;
+            self.apply_insertions(document);
             return Ok(());
         }
 
@@ -249,8 +310,12 @@ impl EditBatch {
         if !self.removed_nodes.is_empty() {
             self.validate_removals(document)?;
         }
+        if !self.sibling_insertions.is_empty() {
+            self.validate_insertions(document)?;
+        }
         self.apply_text(document);
         self.apply_removals(document);
+        self.apply_insertions(document);
         self.apply_attributes(document);
         Ok(())
     }
@@ -381,6 +446,28 @@ impl EditBatch {
         Ok(())
     }
 
+    fn validate_insertions(&self, document: &Document) -> Result<(), EditError> {
+        let removals: HashSet<_> = self.removed_nodes.iter().copied().collect();
+        for insertion in &self.sibling_insertions {
+            let target = document.node(insertion.target)?;
+            if target.parent().is_none() {
+                return Err(EditError::CannotInsertSiblingOfRoot(insertion.target));
+            }
+
+            let mut current = Some(insertion.target);
+            while let Some(node) = current {
+                if removals.contains(&node) {
+                    return Err(EditError::InsertionTargetsRemovedNode {
+                        removed: node,
+                        target: insertion.target,
+                    });
+                }
+                current = document.parent(node)?;
+            }
+        }
+        Ok(())
+    }
+
     fn apply_text(&self, document: &mut Document) {
         for edits in text_groups(&self.text_edits) {
             let node_id = edits[0].node;
@@ -437,6 +524,16 @@ impl EditBatch {
     fn apply_removals(&self, document: &mut Document) {
         if !self.removed_nodes.is_empty() {
             document.remove_subtrees(&self.removed_nodes);
+        }
+    }
+
+    fn apply_insertions(&mut self, document: &mut Document) {
+        if !self.sibling_insertions.is_empty() {
+            let insertions = std::mem::take(&mut self.sibling_insertions)
+                .into_iter()
+                .map(|insertion| (insertion.target, insertion.position, insertion.draft))
+                .collect();
+            document.insert_siblings(insertions);
         }
     }
 }
@@ -888,5 +985,159 @@ mod tests {
 
         assert_eq!(document.len(), 1);
         assert!(document.children(document.root()).unwrap().is_empty());
+    }
+
+    fn text_draft(content: &str) -> NodeDraft {
+        NodeDraft::new(Text {
+            content: content.to_owned(),
+        })
+    }
+
+    #[test]
+    fn inserts_siblings_in_stable_call_order() {
+        let mut document = document(&["a", "b"]);
+        let root = document.root();
+        let original = document.children(root).unwrap().to_vec();
+        let target = original[1];
+        let mut batch = EditBatch::new();
+        batch.insert_before(target, text_draft("before-1"));
+        batch.insert_after(target, text_draft("after-1"));
+        batch.insert_before(target, text_draft("before-2"));
+        batch.insert_after(target, text_draft("after-2"));
+
+        assert_eq!(batch.len(), 4);
+        batch.commit(&mut document).unwrap();
+
+        let children = document.children(root).unwrap();
+        let contents: Vec<_> = children
+            .iter()
+            .map(|&node| content(&document, node))
+            .collect();
+        assert_eq!(
+            contents,
+            ["a", "before-1", "before-2", "b", "after-1", "after-2"]
+        );
+        assert_eq!(children[0], original[0]);
+        assert_eq!(children[3], target);
+        for &inserted in [&children[1], &children[2], &children[4], &children[5]] {
+            assert_eq!(document.parent(inserted).unwrap(), Some(root));
+            assert!(document.node(inserted).unwrap().srcmap().is_none());
+        }
+    }
+
+    #[test]
+    fn inserts_an_owned_subtree_without_cloning_payloads() {
+        #[derive(Debug)]
+        struct NonClonePayload(&'static str);
+        impl crate::NodeValue for NonClonePayload {}
+
+        let mut document = document(&["anchor"]);
+        let root = document.root();
+        let anchor = document.children(root).unwrap()[0];
+        let mut draft = NodeDraft::new(NonClonePayload("parent"));
+        draft
+            .attrs_mut()
+            .push(("data-generated".to_owned(), "yes".to_owned()));
+        draft.push_child(text_draft("child-1"));
+        draft.push_child(text_draft("child-2"));
+        let mut batch = EditBatch::new();
+        batch.insert_before(anchor, draft);
+
+        batch.commit(&mut document).unwrap();
+
+        let inserted = document.children(root).unwrap()[0];
+        let node = document.node(inserted).unwrap();
+        assert_eq!(node.cast::<NonClonePayload>().unwrap().0, "parent");
+        assert_eq!(
+            node.attrs(),
+            &[("data-generated".to_owned(), "yes".to_owned())]
+        );
+        let children = node.children();
+        assert_eq!(content(&document, children[0]), "child-1");
+        assert_eq!(content(&document, children[1]), "child-2");
+        assert!(
+            children
+                .iter()
+                .all(|&child| document.parent(child).unwrap() == Some(inserted))
+        );
+    }
+
+    #[test]
+    fn rejects_root_and_stale_insertion_targets_atomically() {
+        let mut document = document(&["abc"]);
+        let root = document.root();
+        let text = document.children(root).unwrap()[0];
+        let mut root_target = EditBatch::new();
+        root_target.replace_text(text, 0..1, "A");
+        root_target.insert_before(root, text_draft("invalid"));
+        assert_eq!(
+            root_target.commit(&mut document),
+            Err(EditError::CannotInsertSiblingOfRoot(root))
+        );
+        assert_eq!(content(&document, text), "abc");
+        assert_eq!(document.len(), 2);
+
+        let mut removal = EditBatch::new();
+        removal.remove_node(text);
+        removal.commit(&mut document).unwrap();
+        let mut stale = EditBatch::new();
+        stale.insert_after(text, text_draft("invalid"));
+        assert_eq!(
+            stale.commit(&mut document),
+            Err(EditError::InvalidNode(InvalidNodeId(text)))
+        );
+        assert_eq!(document.len(), 1);
+    }
+
+    #[test]
+    fn rejects_insertions_inside_removed_subtrees() {
+        let mut document = branched_document();
+        let removed = document.children(document.root()).unwrap()[0];
+        let target = document.children(removed).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.remove_node(removed);
+        batch.insert_before(target, text_draft("invalid"));
+
+        assert_eq!(
+            batch.commit(&mut document),
+            Err(EditError::InsertionTargetsRemovedNode { removed, target })
+        );
+        assert_eq!(document.len(), 5);
+    }
+
+    #[test]
+    fn insertion_next_to_a_kept_subtree_can_commit_with_removal() {
+        let mut document = branched_document();
+        let root = document.root();
+        let branches = document.children(root).unwrap().to_vec();
+        let mut batch = EditBatch::new();
+        batch.remove_node(branches[0]);
+        batch.insert_before(branches[1], text_draft("inserted"));
+
+        batch.commit(&mut document).unwrap();
+
+        let children = document.children(root).unwrap();
+        assert_eq!(children.len(), 2);
+        assert_eq!(content(&document, children[0]), "inserted");
+        assert_eq!(children[1], branches[1]);
+    }
+
+    #[test]
+    fn deeply_nested_drafts_are_inserted_iteratively() {
+        let mut draft = text_draft("leaf");
+        for _ in 0..10_000 {
+            let mut parent = NodeDraft::new(Paragraph);
+            parent.push_child(draft);
+            draft = parent;
+        }
+        let mut document = document(&["anchor"]);
+        let anchor = document.children(document.root()).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.insert_before(anchor, draft);
+
+        batch.commit(&mut document).unwrap();
+
+        assert_eq!(document.len(), 10_003);
+        assert_eq!(document.children(document.root()).unwrap().len(), 2);
     }
 }

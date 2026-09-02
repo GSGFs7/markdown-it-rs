@@ -20,6 +20,7 @@ pub use parser::document::{
     Document,
     DocumentNode,
     InvalidNodeId,
+    NodeDraft,
     NodeId,
     NodeRef,
     StructuralEvent,

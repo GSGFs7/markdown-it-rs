@@ -1,13 +1,21 @@
 use std::hint::black_box;
 
-use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use markdown_it_benchmarks::corpus;
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use markdown_it::parser::inline::Text;
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use markdown_it::plugins::html::html_inline::HtmlInline;
-use markdown_it::{NodeRef, StructuralEvent, TextBoundary, TextProjection, TextProjectionKind};
-use markdown_it::{EditBatch, TextEvent};
+use markdown_it::{
+    EditBatch,
+    NodeDraft,
+    NodeRef,
+    StructuralEvent,
+    TextBoundary,
+    TextEvent,
+    TextProjection,
+    TextProjectionKind,
+};
+use markdown_it_benchmarks::corpus;
 
 fn consume_legacy_events(node: &markdown_it::Node) {
     if node.children.is_empty() {
@@ -91,6 +99,19 @@ fn remove_top_level_subtrees(document: &markdown_it::Document) -> EditBatch {
     let mut batch = EditBatch::new();
     for &child in document.children(document.root()).unwrap() {
         batch.remove_node(child);
+    }
+    batch
+}
+
+fn insert_before_top_level_nodes(document: &markdown_it::Document) -> EditBatch {
+    let mut batch = EditBatch::new();
+    for &child in document.children(document.root()).unwrap() {
+        batch.insert_before(
+            child,
+            NodeDraft::new(Text {
+                content: "generated".to_owned(),
+            }),
+        );
     }
     batch
 }
@@ -184,11 +205,10 @@ fn benchmark(c: &mut Criterion) {
         one_attribute_per_node(&edited).commit(&mut edited).unwrap();
         for event in edited.events(edited.root()).unwrap() {
             if let StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) = event {
-                assert!(
-                    node.attrs()
-                        .iter()
-                        .any(|(name, value)| name == "data-benchmark" && value == "edited")
-                );
+                assert!(node
+                    .attrs()
+                    .iter()
+                    .any(|(name, value)| name == "data-benchmark" && value == "edited"));
             }
         }
         let mut group = c.benchmark_group(format!("document-attribute-commit/{}", corpus.name));
@@ -223,6 +243,46 @@ fn benchmark(c: &mut Criterion) {
                 || {
                     let document = md.parse_document(source);
                     let batch = remove_top_level_subtrees(&document);
+                    (document, batch)
+                },
+                |(mut document, batch)| {
+                    batch.commit(&mut document).unwrap();
+                    black_box(document)
+                },
+                BatchSize::SmallInput,
+            )
+        });
+        group.finish();
+
+        let inserted_count = document.children(document.root()).unwrap().len();
+        let mut edited = md.parse_document(source);
+        let original_children = edited.children(edited.root()).unwrap().to_vec();
+        insert_before_top_level_nodes(&edited)
+            .commit(&mut edited)
+            .unwrap();
+        let edited_children = edited.children(edited.root()).unwrap();
+        assert_eq!(edited_children.len(), original_children.len() * 2);
+        let (pairs, remainder) = edited_children.as_chunks::<2>();
+        assert!(remainder.is_empty());
+        for (pair, original) in pairs.iter().zip(original_children) {
+            assert_eq!(pair[1], original);
+            assert_eq!(
+                edited
+                    .node(pair[0])
+                    .unwrap()
+                    .cast::<Text>()
+                    .unwrap()
+                    .content,
+                "generated"
+            );
+        }
+        let mut group = c.benchmark_group(format!("document-sibling-insert/{}", corpus.name));
+        group.throughput(Throughput::Elements(inserted_count as u64));
+        group.bench_function("validate-and-commit", |b| {
+            b.iter_batched(
+                || {
+                    let document = md.parse_document(source);
+                    let batch = insert_before_top_level_nodes(&document);
                     (document, batch)
                 },
                 |(mut document, batch)| {

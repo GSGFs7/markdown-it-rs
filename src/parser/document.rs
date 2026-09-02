@@ -1,7 +1,7 @@
 //! Experimental arena-backed document storage.
 
 use std::any::TypeId;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug};
 use std::iter::FusedIterator;
 use std::sync::Arc;
@@ -58,6 +58,98 @@ pub struct DocumentNode {
     attrs: HtmlAttributes,
     node_type: TypeKey,
     node_value: Box<dyn NodeValue>,
+}
+
+/// Owned node data waiting to be inserted into a [`Document`].
+///
+/// A draft does not have a [`NodeId`] until its edit batch commits. New drafts
+/// intentionally have no source mapping: generated nodes must not pretend to
+/// originate from a range in the original Markdown source.
+#[derive(Debug)]
+pub struct NodeDraft {
+    children: Vec<NodeDraft>,
+    srcmap: Option<SourcePos>,
+    ext: NodeExtSet,
+    attrs: HtmlAttributes,
+    node_type: TypeKey,
+    node_value: Box<dyn NodeValue>,
+}
+
+impl NodeDraft {
+    /// Create a generated node with no children, attributes, extensions, or
+    /// source mapping.
+    pub fn new<T: NodeValue>(value: T) -> Self {
+        Self {
+            children: Vec::new(),
+            srcmap: None,
+            ext: NodeExtSet::new(),
+            attrs: Vec::new(),
+            node_type: TypeKey::of::<T>(),
+            node_value: Box::new(value),
+        }
+    }
+
+    pub fn children(&self) -> &[NodeDraft] {
+        &self.children
+    }
+
+    pub fn children_mut(&mut self) -> &mut Vec<NodeDraft> {
+        &mut self.children
+    }
+
+    pub fn push_child(&mut self, child: NodeDraft) {
+        self.children.push(child);
+    }
+
+    pub fn srcmap(&self) -> Option<SourcePos> {
+        self.srcmap
+    }
+
+    pub fn ext(&self) -> &NodeExtSet {
+        &self.ext
+    }
+
+    pub fn ext_mut(&mut self) -> &mut NodeExtSet {
+        &mut self.ext
+    }
+
+    pub fn attrs(&self) -> &HtmlAttributes {
+        &self.attrs
+    }
+
+    pub fn attrs_mut(&mut self) -> &mut HtmlAttributes {
+        &mut self.attrs
+    }
+
+    pub fn name(&self) -> &'static str {
+        self.node_type.name
+    }
+
+    pub fn is<T: NodeValue>(&self) -> bool {
+        self.node_type.id == TypeId::of::<T>()
+    }
+
+    pub fn cast<T: NodeValue>(&self) -> Option<&T> {
+        if self.is::<T>() {
+            self.node_value.downcast_ref::<T>()
+        } else {
+            None
+        }
+    }
+
+    pub fn cast_mut<T: NodeValue>(&mut self) -> Option<&mut T> {
+        if self.is::<T>() {
+            self.node_value.downcast_mut::<T>()
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum SiblingPosition {
+    Before,
+    After,
 }
 
 impl DocumentNode {
@@ -404,7 +496,7 @@ impl Document {
 
         // reverse delete (post-order traversal)
         // child nodes are always deleted before their parent nodes.
-        // 
+        //
         // e.g.
         // root->(A->(A1,A2->(A21,A22)),B)
         // turn     action      pending      nodes
@@ -430,6 +522,103 @@ impl Document {
                 .remove(node)
                 .expect("collected subtree node remains present");
         }
+    }
+
+    pub(crate) fn insert_siblings(
+        &mut self,
+        insertions: Vec<(NodeId, SiblingPosition, NodeDraft)>,
+    ) {
+        #[derive(Default)]
+        struct InsertedSiblings {
+            before: Vec<NodeId>,
+            after: Vec<NodeId>,
+        }
+
+        // grouping
+        let mut by_target: HashMap<NodeId, InsertedSiblings> = HashMap::new();
+        let mut affected_parents = HashSet::new();
+        for (target, position, draft) in insertions {
+            let parent = self
+                .arena
+                .get(target)
+                .expect("validated insertion target remains present")
+                .parent
+                .expect("validated insertion target is not the root");
+            let inserted = self.insert_draft(parent, draft);
+            let siblings = by_target.entry(target).or_default();
+            match position {
+                SiblingPosition::Before => siblings.before.push(inserted),
+                SiblingPosition::After => siblings.after.push(inserted),
+            }
+            affected_parents.insert(parent);
+        }
+
+        // rebuild
+        for parent in affected_parents {
+            let old_children = std::mem::take(
+                &mut self
+                    .arena
+                    .get_mut(parent)
+                    .expect("validated insertion parent remains present")
+                    .children,
+            );
+            let inserted_count = old_children
+                .iter()
+                .filter_map(|child| by_target.get(child))
+                .map(|siblings| siblings.before.len() + siblings.after.len())
+                .sum::<usize>();
+            let mut children = Vec::with_capacity(old_children.len() + inserted_count);
+            for child in old_children {
+                if let Some(siblings) = by_target.get(&child) {
+                    children.extend_from_slice(&siblings.before);
+                }
+                children.push(child);
+                if let Some(siblings) = by_target.get(&child) {
+                    children.extend_from_slice(&siblings.after);
+                }
+            }
+            self.arena
+                .get_mut(parent)
+                .expect("validated insertion parent remains present")
+                .children = children;
+        }
+    }
+
+    // dfs
+    fn insert_draft(&mut self, parent: NodeId, draft: NodeDraft) -> NodeId {
+        let mut pending = vec![(parent, false, draft)];
+        let mut root = None;
+        while let Some((parent, link_to_parent, draft)) = pending.pop() {
+            let NodeDraft {
+                children,
+                srcmap,
+                ext,
+                attrs,
+                node_type,
+                node_value,
+            } = draft;
+            let id = self.arena.insert_with(|id| DocumentNode {
+                id,
+                parent: Some(parent),
+                children: Vec::with_capacity(children.len()),
+                srcmap,
+                ext,
+                attrs,
+                node_type,
+                node_value,
+            });
+            if link_to_parent {
+                self.arena
+                    .get_mut(parent)
+                    .expect("new draft parent remains present")
+                    .children
+                    .push(id);
+            } else {
+                root = Some(id);
+            }
+            pending.extend(children.into_iter().rev().map(|child| (id, true, child)));
+        }
+        root.expect("a draft always contains a root node")
     }
 
     /// Look up a node's parent.
