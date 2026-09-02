@@ -18,13 +18,16 @@ fn run(input: &str, output: &str) {
     let result = node.render();
     assert_eq!(result, output);
 
-    let document_md = &mut markdown_it::MarkdownIt::empty();
-    markdown_it::plugins::cmark::add(document_md);
-    markdown_it::plugins::html::add(document_md);
-    markdown_it::plugins::extra::typographer::add(document_md);
-    let mut document = document_md.parse_document(&source);
-    markdown_it::plugins::extra::smartquotes::transform_document(&mut document).unwrap();
-    assert_eq!(document.into_legacy().render(), output);
+    let registry_md = &mut markdown_it::MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(registry_md);
+    markdown_it::plugins::html::add(registry_md);
+    markdown_it::plugins::extra::typographer::add(registry_md);
+    markdown_it::plugins::extra::smartquotes::add_document(registry_md);
+    let mut registry_document = registry_md.parse_document(&source);
+    registry_md
+        .run_document_transforms(&mut registry_document)
+        .unwrap();
+    assert_eq!(registry_document.into_legacy().render(), output);
 
     // make sure it doesn't crash without trailing \n
     let _ = md.parse(input.trim_end());

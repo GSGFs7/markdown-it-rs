@@ -25,8 +25,8 @@ use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
 use crate::{
     Document,
+    DocumentTransform,
     EditBatch,
-    EditError,
     NodeId,
     NodeRef,
     TextBoundary,
@@ -62,39 +62,95 @@ pub fn add_with<
     .after::<InlineParserRule>();
 }
 
-/// Apply the classic smartquotes transform to an arena-backed document.
-pub fn transform_document(document: &mut Document) -> Result<(), EditError> {
-    transform_document_with::<'‘', '’', '“', '”'>(document)
+/// Register the classic smartquotes transform for explicit arena-backed
+/// document pipelines.
+///
+/// Unlike [`add`], this does not register the legacy core rule, and
+/// [`MarkdownIt::parse_document`] does not run it automatically. Call
+/// [`MarkdownIt::run_document_transforms`] after parsing.
+pub fn add_document(md: &mut MarkdownIt) {
+    add_document_with::<'‘', '’', '“', '”'>(md);
 }
 
-/// Apply a custom smartquotes set to an arena-backed document.
-pub fn transform_document_with<
+/// Register a custom smartquotes transform for explicit arena-backed
+/// document pipelines.
+pub fn add_document_with<
     const OPEN_SINGLE_QUOTE: char,
     const CLOSE_SINGLE_QUOTE: char,
     const OPEN_DOUBLE_QUOTE: char,
     const CLOSE_DOUBLE_QUOTE: char,
 >(
-    document: &mut Document,
-) -> Result<(), EditError> {
-    let mut edits = EditBatch::new();
-    {
-        let projection = TextProjection::new(document_smartquotes_projection);
-        let events = document
-            .text_events(projection)
-            .filter_map(document_relevant_event);
-        transform_events::<
-            NodeId,
-            _,
-            _,
+    md: &mut MarkdownIt,
+) {
+    md.add_document_transform::<SmartQuotesDocumentTransform<
+        OPEN_SINGLE_QUOTE,
+        CLOSE_SINGLE_QUOTE,
+        OPEN_DOUBLE_QUOTE,
+        CLOSE_DOUBLE_QUOTE,
+    >>();
+}
+
+/// The classic smartquotes transform used by [`add_document`].
+pub type ClassicSmartQuotesDocumentTransform = SmartQuotesDocumentTransform<'‘', '’', '“', '”'>;
+
+/// Arena-backed smartquotes with a compile-time quote set.
+pub struct SmartQuotesDocumentTransform<
+    const OPEN_SINGLE_QUOTE: char,
+    const CLOSE_SINGLE_QUOTE: char,
+    const OPEN_DOUBLE_QUOTE: char,
+    const CLOSE_DOUBLE_QUOTE: char,
+>;
+
+impl<
+    const OPEN_SINGLE_QUOTE: char,
+    const CLOSE_SINGLE_QUOTE: char,
+    const OPEN_DOUBLE_QUOTE: char,
+    const CLOSE_DOUBLE_QUOTE: char,
+> DocumentTransform
+    for SmartQuotesDocumentTransform<
+        OPEN_SINGLE_QUOTE,
+        CLOSE_SINGLE_QUOTE,
+        OPEN_DOUBLE_QUOTE,
+        CLOSE_DOUBLE_QUOTE,
+    >
+{
+    const KEY: &'static str = "extra::smartquotes";
+
+    fn run(document: &Document) -> EditBatch {
+        document_edits_with::<
             OPEN_SINGLE_QUOTE,
             CLOSE_SINGLE_QUOTE,
             OPEN_DOUBLE_QUOTE,
             CLOSE_DOUBLE_QUOTE,
-        >(events, |node, byte_offset, replacement| {
-            edits.replace_char(node, byte_offset..byte_offset + 1, replacement);
-        });
+        >(document)
     }
-    edits.commit(document)
+}
+
+fn document_edits_with<
+    const OPEN_SINGLE_QUOTE: char,
+    const CLOSE_SINGLE_QUOTE: char,
+    const OPEN_DOUBLE_QUOTE: char,
+    const CLOSE_DOUBLE_QUOTE: char,
+>(
+    document: &Document,
+) -> EditBatch {
+    let mut edits = EditBatch::new();
+    let projection = TextProjection::new(document_smartquotes_projection);
+    let events = document
+        .text_events(projection)
+        .filter_map(document_relevant_event);
+    transform_events::<
+        NodeId,
+        _,
+        _,
+        OPEN_SINGLE_QUOTE,
+        CLOSE_SINGLE_QUOTE,
+        OPEN_DOUBLE_QUOTE,
+        CLOSE_DOUBLE_QUOTE,
+    >(events, |node, byte_offset, replacement| {
+        edits.replace_char(node, byte_offset..byte_offset + 1, replacement);
+    });
+    edits
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -458,6 +514,8 @@ fn can_open_or_close(quote_type: QuoteType, last_char: char, next_char: char) ->
 
 #[cfg(test)]
 mod tests {
+    use crate::{Document, DocumentTransform, EditBatch, StructuralEvent};
+
     #[test]
     fn smartquotes_basics() {
         let md = &mut crate::MarkdownIt::empty();
@@ -497,13 +555,92 @@ mod tests {
     }
 
     #[test]
-    fn document_transform_supports_custom_quote_sets() {
+    fn document_registration_is_explicit_and_supports_custom_quote_sets() {
+        type LegacyClassic = super::SmartQuotesRule<'‘', '’', '“', '”'>;
+
         let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
+        super::add_document_with::<'‹', '›', '«', '»'>(md);
+        assert!(!md.has_rule::<LegacyClassic>());
+
         let mut document = md.parse_document(r#"'hello' "world""#);
+        assert_eq!(
+            document
+                .events(document.root())
+                .unwrap()
+                .filter_map(|event| match event {
+                    StructuralEvent::Leaf(node) => node
+                        .cast::<crate::parser::inline::Text>()
+                        .map(|text| text.content.as_str()),
+                    StructuralEvent::Enter(_) | StructuralEvent::Exit(_) => None,
+                })
+                .collect::<String>(),
+            r#"'hello' "world""#
+        );
 
-        super::transform_document_with::<'‹', '›', '«', '»'>(&mut document).unwrap();
-
+        md.run_document_transforms(&mut document).unwrap();
         assert_eq!(document.into_legacy().render(), "<p>‹hello› «world»</p>\n");
+    }
+
+    struct ObserveSmartQuotes;
+
+    impl DocumentTransform for ObserveSmartQuotes {
+        const KEY: &'static str = "test::observe-smartquotes";
+
+        fn run(document: &Document) -> EditBatch {
+            let transformed = document
+                .events(document.root())
+                .unwrap()
+                .any(|event| match event {
+                    StructuralEvent::Leaf(node) => node
+                        .cast::<crate::parser::inline::Text>()
+                        .is_some_and(|text| text.content.contains('“')),
+                    StructuralEvent::Enter(_) | StructuralEvent::Exit(_) => false,
+                });
+            let mut edits = EditBatch::new();
+            edits.set_attribute(
+                document.root(),
+                "observed-smartquotes",
+                transformed.to_string(),
+            );
+            edits
+        }
+    }
+
+    #[test]
+    fn registered_transform_supports_type_ordering() {
+        let md = &mut crate::MarkdownIt::empty();
+        crate::plugins::cmark::add(md);
+        md.add_document_transform::<ObserveSmartQuotes>()
+            .after::<super::ClassicSmartQuotesDocumentTransform>();
+        super::add_document(md);
+        let mut document = md.parse_document(r#""world""#);
+
+        md.run_document_transforms(&mut document).unwrap();
+
+        assert!(
+            document
+                .node(document.root())
+                .unwrap()
+                .attrs()
+                .iter()
+                .any(|(name, value)| name == "observed-smartquotes" && value == "true")
+        );
+    }
+
+    #[test]
+    fn legacy_registration_does_not_populate_document_registry() {
+        let md = &mut crate::MarkdownIt::empty();
+        crate::plugins::cmark::add(md);
+        super::add(md);
+
+        assert!(
+            !md.document_transforms
+                .contains::<super::ClassicSmartQuotesDocumentTransform>()
+        );
+        assert_eq!(
+            md.parse_document(r#""world""#).into_legacy().render(),
+            "<p>“world”</p>\n"
+        );
     }
 }

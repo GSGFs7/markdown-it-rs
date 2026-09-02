@@ -33,8 +33,8 @@ fn transform(root: &mut Node, md: &MarkdownIt) {
     <ClassicSmartQuotes as CoreRule>::run(root, md);
 }
 
-fn transform_document(document: &mut Document) {
-    smartquotes::transform_document(document).unwrap();
+fn transform_registered(document: &mut Document, md: &MarkdownIt) {
+    md.run_document_transforms(document).unwrap();
 }
 
 fn assert_transformed(mut root: Node, md: &MarkdownIt) {
@@ -46,9 +46,7 @@ fn assert_transformed(mut root: Node, md: &MarkdownIt) {
     });
 }
 
-fn assert_document_transformed(root: Node) {
-    let mut document = Document::from_legacy("", root);
-    transform_document(&mut document);
+fn assert_document_has_no_double_quotes(document: Document) {
     document.into_legacy().walk(|node, _| {
         if let Some(text) = node.cast::<Text>() {
             assert!(!text.content.contains('"'));
@@ -65,10 +63,14 @@ fn parser() -> MarkdownIt {
 
 fn benchmark(c: &mut Criterion) {
     let md = MarkdownIt::empty();
+    let mut registry_md = MarkdownIt::empty();
+    smartquotes::add_document(&mut registry_md);
     let mut group = c.benchmark_group("smartquotes-transform/one-text");
     for quote_count in [70_000, 140_000, 280_000] {
         assert_transformed(one_large_text(quote_count), &md);
-        assert_document_transformed(one_large_text(quote_count));
+        let mut registered = Document::from_legacy("", one_large_text(quote_count));
+        transform_registered(&mut registered, &registry_md);
+        assert_document_has_no_double_quotes(registered);
         group.throughput(Throughput::Elements(quote_count as u64));
         group.bench_function(format!("legacy/{quote_count}"), |b| {
             b.iter_batched(
@@ -80,11 +82,11 @@ fn benchmark(c: &mut Criterion) {
                 BatchSize::SmallInput,
             )
         });
-        group.bench_function(format!("document/{quote_count}"), |b| {
+        group.bench_function(format!("document-registry/{quote_count}"), |b| {
             b.iter_batched(
                 || Document::from_legacy("", one_large_text(quote_count)),
                 |mut document| {
-                    transform_document(black_box(&mut document));
+                    transform_registered(black_box(&mut document), black_box(&registry_md));
                     black_box(document);
                 },
                 BatchSize::SmallInput,
@@ -96,7 +98,9 @@ fn benchmark(c: &mut Criterion) {
     let mut small = c.benchmark_group("smartquotes-transform/many-text-nodes");
     for text_count in [17_500, 35_000, 70_000] {
         assert_transformed(many_small_texts(text_count), &md);
-        assert_document_transformed(many_small_texts(text_count));
+        let mut registered = Document::from_legacy("", many_small_texts(text_count));
+        transform_registered(&mut registered, &registry_md);
+        assert_document_has_no_double_quotes(registered);
         small.throughput(Throughput::Elements(text_count as u64));
         small.bench_function(format!("legacy/{text_count}"), |b| {
             b.iter_batched(
@@ -108,11 +112,11 @@ fn benchmark(c: &mut Criterion) {
                 BatchSize::SmallInput,
             )
         });
-        small.bench_function(format!("document/{text_count}"), |b| {
+        small.bench_function(format!("document-registry/{text_count}"), |b| {
             b.iter_batched(
                 || Document::from_legacy("", many_small_texts(text_count)),
                 |mut document| {
-                    transform_document(black_box(&mut document));
+                    transform_registered(black_box(&mut document), black_box(&registry_md));
                     black_box(document);
                 },
                 BatchSize::SmallInput,
@@ -127,9 +131,9 @@ fn benchmark(c: &mut Criterion) {
         let mut legacy = parser.parse(source);
         transform(&mut legacy, &parser);
         let legacy_html = legacy.render();
-        let mut document = parser.parse_document(source);
-        transform_document(&mut document);
-        assert_eq!(legacy_html, document.into_legacy().render(), "{}", corpus.name);
+        let mut registered = parser.parse_document(source);
+        transform_registered(&mut registered, &registry_md);
+        assert_eq!(legacy_html, registered.into_legacy().render(), "{}", corpus.name);
 
         let mut group = c.benchmark_group(format!("smartquotes-transform/corpus/{}", corpus.name));
         group.throughput(Throughput::Bytes(corpus.len() as u64));
@@ -143,11 +147,11 @@ fn benchmark(c: &mut Criterion) {
                 BatchSize::SmallInput,
             )
         });
-        group.bench_function("document", |b| {
+        group.bench_function("document-registry", |b| {
             b.iter_batched(
                 || parser.parse_document(source),
                 |mut document| {
-                    transform_document(black_box(&mut document));
+                    transform_registered(black_box(&mut document), black_box(&registry_md));
                     black_box(document);
                 },
                 BatchSize::SmallInput,
