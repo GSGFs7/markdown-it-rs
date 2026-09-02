@@ -6,7 +6,7 @@ use markdown_it::parser::inline::Text;
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use markdown_it::plugins::html::html_inline::HtmlInline;
-use markdown_it::{NodeRef, TextBoundary, TextProjection, TextProjectionKind};
+use markdown_it::{NodeRef, StructuralEvent, TextBoundary, TextProjection, TextProjectionKind};
 use markdown_it::{EditBatch, TextEvent};
 
 fn consume_legacy_events(node: &markdown_it::Node) {
@@ -69,6 +69,19 @@ fn one_edit_per_text_node(document: &markdown_it::Document) -> EditBatch {
                 previous = Some(node);
             }
             _ => {}
+        }
+    }
+    batch
+}
+
+fn one_attribute_per_node(document: &markdown_it::Document) -> EditBatch {
+    let mut batch = EditBatch::new();
+    for event in document.events(document.root()).unwrap() {
+        match event {
+            StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => {
+                batch.set_attribute(node.id(), "data-benchmark", "edited");
+            }
+            StructuralEvent::Exit(_) => {}
         }
     }
     batch
@@ -147,6 +160,36 @@ fn benchmark(c: &mut Criterion) {
                 || {
                     let document = md.parse_document(source);
                     let batch = one_edit_per_text_node(&document);
+                    (document, batch)
+                },
+                |(mut document, batch)| {
+                    batch.commit(&mut document).unwrap();
+                    black_box(document)
+                },
+                BatchSize::SmallInput,
+            )
+        });
+        group.finish();
+
+        let attribute_count = document.len();
+        let mut edited = md.parse_document(source);
+        one_attribute_per_node(&edited).commit(&mut edited).unwrap();
+        for event in edited.events(edited.root()).unwrap() {
+            if let StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) = event {
+                assert!(
+                    node.attrs()
+                        .iter()
+                        .any(|(name, value)| name == "data-benchmark" && value == "edited")
+                );
+            }
+        }
+        let mut group = c.benchmark_group(format!("document-attribute-commit/{}", corpus.name));
+        group.throughput(Throughput::Elements(attribute_count as u64));
+        group.bench_function("validate-and-commit", |b| {
+            b.iter_batched(
+                || {
+                    let document = md.parse_document(source);
+                    let batch = one_attribute_per_node(&document);
                     (document, batch)
                 },
                 |(mut document, batch)| {

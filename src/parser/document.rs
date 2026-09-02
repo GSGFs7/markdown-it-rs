@@ -84,6 +84,10 @@ impl DocumentNode {
         &self.attrs
     }
 
+    pub(crate) fn attrs_mut(&mut self) -> &mut HtmlAttributes {
+        &mut self.attrs
+    }
+
     pub fn name(&self) -> &'static str {
         self.node_type.name
     }
@@ -577,9 +581,13 @@ mod tests {
 
     #[test]
     fn structural_events_reject_a_stale_root() {
-        let root = Node::new(Root::new(String::new()));
+        let mut root = Node::new(Root::new("text".to_owned()));
+        root.children.push(Node::new(Text {
+            content: "text".to_owned(),
+        }));
         let mut document = Document::from_legacy("", root);
         let root = document.root();
+        let text = document.children(root).unwrap()[0];
         assert!(document.arena.remove(root).is_some());
 
         assert_eq!(
@@ -595,6 +603,18 @@ mod tests {
         assert_eq!(
             batch.commit(&mut document),
             Err(EditError::InvalidNode(super::InvalidNodeId(root)))
+        );
+
+        let mut batch = EditBatch::new();
+        batch.replace_text(text, 0..1, "T");
+        batch.set_attribute(root, "class", "stale");
+        assert_eq!(
+            batch.commit(&mut document),
+            Err(EditError::InvalidNode(super::InvalidNodeId(root)))
+        );
+        assert_eq!(
+            document.node(text).unwrap().cast::<Text>().unwrap().content,
+            "text"
         );
     }
 

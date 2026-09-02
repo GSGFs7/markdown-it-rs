@@ -36,6 +36,19 @@ struct ReplaceText {
     sequence: usize,
 }
 
+#[derive(Clone, Debug)]
+enum AttributeChange {
+    Set(String),
+    Remove,
+}
+
+#[derive(Clone, Debug)]
+struct EditAttribute {
+    node: NodeId,
+    name: String,
+    change: AttributeChange,
+}
+
 /// A validation failure that leaves the document unchanged.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EditError {
@@ -51,6 +64,10 @@ pub enum EditError {
         second: Range<usize>,
     },
     TextLengthOverflow(NodeId),
+    ConflictingAttributeEdits {
+        node: NodeId,
+        name: String,
+    },
 }
 
 impl fmt::Display for EditError {
@@ -74,6 +91,12 @@ impl fmt::Display for EditError {
             Self::TextLengthOverflow(node) => {
                 write!(f, "edited text length overflows usize for node {node:?}")
             }
+            Self::ConflictingAttributeEdits { node, name } => {
+                write!(
+                    f,
+                    "conflicting edits for attribute {name:?} on node {node:?}"
+                )
+            }
         }
     }
 }
@@ -86,10 +109,11 @@ impl From<InvalidNodeId> for EditError {
     }
 }
 
-/// A batch of text edits that is validated and committed atomically.
+/// A batch of document edits that is validated and committed atomically.
 #[derive(Clone, Debug, Default)]
 pub struct EditBatch {
     text_edits: Vec<ReplaceText>,
+    attribute_edits: Vec<EditAttribute>,
 }
 
 impl EditBatch {
@@ -98,11 +122,11 @@ impl EditBatch {
     }
 
     pub fn len(&self) -> usize {
-        self.text_edits.len()
+        self.text_edits.len() + self.attribute_edits.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.text_edits.is_empty()
+        self.text_edits.is_empty() && self.attribute_edits.is_empty()
     }
 
     /// Replace one byte range in a built-in `Text` node.
@@ -121,6 +145,30 @@ impl EditBatch {
         self.push(node, range, TextReplacement::Char(replacement));
     }
 
+    /// Set an attribute, replacing every existing value with the same exact
+    /// name with one value.
+    pub fn set_attribute(
+        &mut self,
+        node: NodeId,
+        name: impl Into<String>,
+        value: impl Into<String>,
+    ) {
+        self.attribute_edits.push(EditAttribute {
+            node,
+            name: name.into(),
+            change: AttributeChange::Set(value.into()),
+        });
+    }
+
+    /// Remove every attribute with the same exact name.
+    pub fn remove_attribute(&mut self, node: NodeId, name: impl Into<String>) {
+        self.attribute_edits.push(EditAttribute {
+            node,
+            name: name.into(),
+            change: AttributeChange::Remove,
+        });
+    }
+
     fn push(&mut self, node: NodeId, range: Range<usize>, replacement: TextReplacement) {
         self.text_edits.push(ReplaceText {
             node,
@@ -134,7 +182,7 @@ impl EditBatch {
     ///
     /// Any returned error leaves `document` unchanged.
     pub fn commit(mut self, document: &mut Document) -> Result<(), EditError> {
-        if self.text_edits.is_empty() {
+        if self.is_empty() {
             return Ok(());
         }
 
@@ -147,14 +195,22 @@ impl EditBatch {
                 edit.sequence,
             )
         });
+        self.attribute_edits.sort_unstable_by(|left, right| {
+            (left.node.slot(), left.node.generation(), &left.name).cmp(&(
+                right.node.slot(),
+                right.node.generation(),
+                &right.name,
+            ))
+        });
 
         self.validate(document)?;
-        self.apply(document);
+        self.apply_text(document);
+        self.apply_attributes(document);
         Ok(())
     }
 
     fn validate(&self, document: &Document) -> Result<(), EditError> {
-        for edits in groups(&self.text_edits) {
+        for edits in text_groups(&self.text_edits) {
             let node_id = edits[0].node;
             let node = document.node(node_id)?;
             let Some(text) = node.cast::<Text>() else {
@@ -190,11 +246,23 @@ impl EditBatch {
                 previous = Some(edit);
             }
         }
+
+        // reject problematic edit
+        for edits in attribute_groups(&self.attribute_edits) {
+            let edit = &edits[0];
+            document.node(edit.node)?;
+            if edits.len() > 1 {
+                return Err(EditError::ConflictingAttributeEdits {
+                    node: edit.node,
+                    name: edit.name.clone(),
+                });
+            }
+        }
         Ok(())
     }
 
-    fn apply(&self, document: &mut Document) {
-        for edits in groups(&self.text_edits) {
+    fn apply_text(&self, document: &mut Document) {
+        for edits in text_groups(&self.text_edits) {
             let node_id = edits[0].node;
             let text = document
                 .node_mut(node_id)
@@ -216,15 +284,58 @@ impl EditBatch {
             text.content = content;
         }
     }
+
+    fn apply_attributes(self, document: &mut Document) {
+        for edit in self.attribute_edits {
+            let attrs = document
+                .node_mut(edit.node)
+                .expect("validated attribute edit node remains present")
+                .attrs_mut();
+            match edit.change {
+                AttributeChange::Set(value) => {
+                    if let Some(index) = attrs.iter().position(|attr| attr.0 == edit.name) {
+                        attrs[index].1 = value;
+                        let mut kept = false;
+                        attrs.retain(|attr| {
+                            if attr.0 == edit.name {
+                                let keep = !kept;
+                                kept = true;
+                                keep
+                            } else {
+                                true
+                            }
+                        });
+                    } else {
+                        attrs.push((edit.name, value));
+                    }
+                }
+                AttributeChange::Remove => attrs.retain(|attr| attr.0 != edit.name),
+            }
+        }
+    }
 }
 
-fn groups(edits: &[ReplaceText]) -> impl Iterator<Item = &[ReplaceText]> {
+fn text_groups(edits: &[ReplaceText]) -> impl Iterator<Item = &[ReplaceText]> {
     let mut remaining = edits;
     std::iter::from_fn(move || {
         let first = remaining.first()?;
         let end = remaining
             .iter()
             .position(|edit| edit.node != first.node)
+            .unwrap_or(remaining.len());
+        let (group, rest) = remaining.split_at(end);
+        remaining = rest;
+        Some(group)
+    })
+}
+
+fn attribute_groups(edits: &[EditAttribute]) -> impl Iterator<Item = &[EditAttribute]> {
+    let mut remaining = edits;
+    std::iter::from_fn(move || {
+        let first = remaining.first()?;
+        let end = remaining
+            .iter()
+            .position(|edit| edit.node != first.node || edit.name != first.name)
             .unwrap_or(remaining.len());
         let (group, rest) = remaining.split_at(end);
         remaining = rest;
@@ -361,5 +472,104 @@ mod tests {
         EditBatch::new().commit(&mut document).unwrap();
         let text = document.children(document.root()).unwrap()[0];
         assert_eq!(content(&document, text), "unchanged");
+    }
+
+    #[test]
+    fn sets_removes_and_normalizes_attributes() {
+        let mut root = Node::new(Root::new("text".to_owned()));
+        let mut text = Node::new(Text {
+            content: "text".to_owned(),
+        });
+        text.attrs = vec![
+            ("class".to_owned(), "old".to_owned()),
+            ("id".to_owned(), "remove-me".to_owned()),
+            ("class".to_owned(), "duplicate".to_owned()),
+            ("data-key".to_owned(), "kept".to_owned()),
+        ];
+        root.children.push(text);
+        let mut document = Document::from_legacy("text", root);
+        let text = document.children(document.root()).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.set_attribute(text, "class", "new");
+        batch.remove_attribute(text, "id");
+        batch.set_attribute(text, "title", "added");
+
+        batch.commit(&mut document).unwrap();
+
+        assert_eq!(
+            document.node(text).unwrap().attrs(),
+            &[
+                ("class".to_owned(), "new".to_owned()),
+                ("data-key".to_owned(), "kept".to_owned()),
+                ("title".to_owned(), "added".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn text_and_attribute_edits_commit_together() {
+        let mut document = document(&["abc"]);
+        let text = document.children(document.root()).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.replace_text(text, 0..1, "A");
+        batch.set_attribute(text, "data-state", "edited");
+
+        assert_eq!(batch.len(), 2);
+        batch.commit(&mut document).unwrap();
+
+        assert_eq!(content(&document, text), "Abc");
+        assert_eq!(
+            document.node(text).unwrap().attrs(),
+            &[("data-state".to_owned(), "edited".to_owned())]
+        );
+    }
+
+    #[test]
+    fn conflicting_attribute_edits_leave_text_and_attributes_unchanged() {
+        let mut document = document(&["abc"]);
+        let text = document.children(document.root()).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.replace_text(text, 0..1, "A");
+        batch.set_attribute(text, "class", "first");
+        batch.remove_attribute(text, "class");
+
+        assert_eq!(
+            batch.commit(&mut document),
+            Err(EditError::ConflictingAttributeEdits {
+                node: text,
+                name: "class".to_owned(),
+            })
+        );
+        assert_eq!(content(&document, text), "abc");
+        assert!(document.node(text).unwrap().attrs().is_empty());
+    }
+
+    #[test]
+    fn invalid_text_edit_leaves_attributes_unchanged() {
+        let mut document = document(&["雪"]);
+        let text = document.children(document.root()).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.set_attribute(text, "class", "new");
+        batch.replace_text(text, 1..2, "invalid UTF-8 boundary");
+
+        assert!(matches!(
+            batch.commit(&mut document),
+            Err(EditError::InvalidTextRange { node, .. }) if node == text
+        ));
+        assert_eq!(content(&document, text), "雪");
+        assert!(document.node(text).unwrap().attrs().is_empty());
+    }
+
+    #[test]
+    fn different_attribute_names_and_case_are_independent() {
+        let mut document = document(&["text"]);
+        let text = document.children(document.root()).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.set_attribute(text, "class", "lower");
+        batch.set_attribute(text, "CLASS", "upper");
+
+        batch.commit(&mut document).unwrap();
+
+        assert_eq!(document.node(text).unwrap().attrs().len(), 2);
     }
 }
