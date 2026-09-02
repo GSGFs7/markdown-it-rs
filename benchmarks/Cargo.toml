@@ -24,6 +24,11 @@ path = "benches/smartquotes.rs"
 harness = false
 
 [[bench]]
+name = "typographer"
+path = "benches/typographer.rs"
+harness = false
+
+[[bench]]
 name = "document"
 path = "benches/document.rs"
 harness = false

@@ -1,4 +1,4 @@
-fn run_with(input: &str, output: &str, configure: impl FnOnce(&mut markdown_it::MarkdownIt)) {
+fn run_with(input: &str, output: &str, configure: impl Fn(&mut markdown_it::MarkdownIt)) {
     let output = if output.is_empty() {
         "".to_owned()
     } else {
@@ -16,6 +16,15 @@ fn run_with(input: &str, output: &str, configure: impl FnOnce(&mut markdown_it::
 
     let result = node.render();
     assert_eq!(result, output);
+
+    let document_md = &mut markdown_it::MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(document_md);
+    markdown_it::plugins::html::add(document_md);
+    configure(document_md);
+    markdown_it::plugins::extra::typographer::add_document(document_md);
+    let mut document = document_md.parse_document(&(input.to_owned() + "\n"));
+    document_md.run_document_transforms(&mut document).unwrap();
+    assert_eq!(document.into_legacy().render(), output);
 
     // make sure it doesn't crash without trailing \n
     let _ = md.parse(input.trim_end());
