@@ -57,6 +57,12 @@ struct InsertSibling {
     draft: NodeDraft,
 }
 
+#[derive(Debug)]
+struct ReplaceNode {
+    target: NodeId,
+    draft: NodeDraft,
+}
+
 /// A validation failure that leaves the document unchanged.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EditError {
@@ -89,6 +95,24 @@ pub enum EditError {
     CannotInsertSiblingOfRoot(NodeId),
     InsertionTargetsRemovedNode {
         removed: NodeId,
+        target: NodeId,
+    },
+    CannotReplaceRoot(NodeId),
+    DuplicateNodeReplacement(NodeId),
+    OverlappingNodeReplacements {
+        ancestor: NodeId,
+        descendant: NodeId,
+    },
+    ConflictingNodeRemovalAndReplacement {
+        removed: NodeId,
+        replaced: NodeId,
+    },
+    EditTargetsReplacedNode {
+        replaced: NodeId,
+        edited: NodeId,
+    },
+    InsertionTargetsReplacedNode {
+        replaced: NodeId,
         target: NodeId,
     },
 }
@@ -144,6 +168,31 @@ impl fmt::Display for EditError {
                 f,
                 "insertion targets node {target:?} inside removed subtree {removed:?}"
             ),
+            Self::CannotReplaceRoot(node) => {
+                write!(f, "cannot replace document root {node:?}")
+            }
+            Self::DuplicateNodeReplacement(node) => {
+                write!(f, "node {node:?} is replaced more than once")
+            }
+            Self::OverlappingNodeReplacements {
+                ancestor,
+                descendant,
+            } => write!(
+                f,
+                "cannot replace both ancestor {ancestor:?} and descendant {descendant:?}"
+            ),
+            Self::ConflictingNodeRemovalAndReplacement { removed, replaced } => write!(
+                f,
+                "cannot remove subtree {removed:?} and replace overlapping node {replaced:?}"
+            ),
+            Self::EditTargetsReplacedNode { replaced, edited } => write!(
+                f,
+                "edit targets node {edited:?} inside replaced subtree {replaced:?}"
+            ),
+            Self::InsertionTargetsReplacedNode { replaced, target } => write!(
+                f,
+                "insertion targets node {target:?} inside replaced subtree {replaced:?}"
+            ),
         }
     }
 }
@@ -163,6 +212,7 @@ pub struct EditBatch {
     attribute_edits: Vec<EditAttribute>,
     removed_nodes: Vec<NodeId>,
     sibling_insertions: Vec<InsertSibling>,
+    node_replacements: Vec<ReplaceNode>,
 }
 
 impl EditBatch {
@@ -175,6 +225,7 @@ impl EditBatch {
             + self.attribute_edits.len()
             + self.removed_nodes.len()
             + self.sibling_insertions.len()
+            + self.node_replacements.len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -182,6 +233,7 @@ impl EditBatch {
             && self.attribute_edits.is_empty()
             && self.removed_nodes.is_empty()
             && self.sibling_insertions.is_empty()
+            && self.node_replacements.is_empty()
     }
 
     /// Replace one byte range in a built-in `Text` node.
@@ -249,6 +301,11 @@ impl EditBatch {
         });
     }
 
+    /// Replace a non-root node and its complete subtree with an owned draft.
+    pub fn replace_node(&mut self, target: NodeId, draft: NodeDraft) {
+        self.node_replacements.push(ReplaceNode { target, draft });
+    }
+
     fn push(&mut self, node: NodeId, range: Range<usize>, replacement: TextReplacement) {
         self.text_edits.push(ReplaceText {
             node,
@@ -269,6 +326,7 @@ impl EditBatch {
         if self.attribute_edits.is_empty()
             && self.removed_nodes.is_empty()
             && self.sibling_insertions.is_empty()
+            && self.node_replacements.is_empty()
         {
             self.sort_text_edits();
             self.validate_text(document)?;
@@ -278,6 +336,7 @@ impl EditBatch {
         if self.text_edits.is_empty()
             && self.removed_nodes.is_empty()
             && self.sibling_insertions.is_empty()
+            && self.node_replacements.is_empty()
         {
             self.sort_attribute_edits();
             self.validate_attributes(document)?;
@@ -287,6 +346,7 @@ impl EditBatch {
         if self.text_edits.is_empty()
             && self.attribute_edits.is_empty()
             && self.sibling_insertions.is_empty()
+            && self.node_replacements.is_empty()
         {
             self.sort_removed_nodes();
             self.validate_removals(document)?;
@@ -296,15 +356,27 @@ impl EditBatch {
         if self.text_edits.is_empty()
             && self.attribute_edits.is_empty()
             && self.removed_nodes.is_empty()
+            && self.node_replacements.is_empty()
         {
             self.validate_insertions(document)?;
             self.apply_insertions(document);
+            return Ok(());
+        }
+        if self.text_edits.is_empty()
+            && self.attribute_edits.is_empty()
+            && self.removed_nodes.is_empty()
+            && self.sibling_insertions.is_empty()
+        {
+            self.sort_node_replacements();
+            self.validate_replacements(document)?;
+            self.apply_replacements(document);
             return Ok(());
         }
 
         self.sort_text_edits();
         self.sort_attribute_edits();
         self.sort_removed_nodes();
+        self.sort_node_replacements();
         self.validate_text(document)?;
         self.validate_attributes(document)?;
         if !self.removed_nodes.is_empty() {
@@ -313,8 +385,12 @@ impl EditBatch {
         if !self.sibling_insertions.is_empty() {
             self.validate_insertions(document)?;
         }
+        if !self.node_replacements.is_empty() {
+            self.validate_replacements(document)?;
+        }
         self.apply_text(document);
         self.apply_removals(document);
+        self.apply_replacements(document);
         self.apply_insertions(document);
         self.apply_attributes(document);
         Ok(())
@@ -345,6 +421,12 @@ impl EditBatch {
     fn sort_removed_nodes(&mut self) {
         self.removed_nodes
             .sort_unstable_by_key(|node| (node.slot(), node.generation()));
+    }
+
+    fn sort_node_replacements(&mut self) {
+        self.node_replacements.sort_unstable_by_key(|replacement| {
+            (replacement.target.slot(), replacement.target.generation())
+        });
     }
 
     fn validate_text(&self, document: &Document) -> Result<(), EditError> {
@@ -468,6 +550,92 @@ impl EditBatch {
         Ok(())
     }
 
+    fn validate_replacements(&self, document: &Document) -> Result<(), EditError> {
+        let mut replacements = HashSet::with_capacity(self.node_replacements.len());
+        for replacement in &self.node_replacements {
+            document.node(replacement.target)?; // check InvalidNode
+            if replacement.target == document.root() {
+                return Err(EditError::CannotReplaceRoot(replacement.target));
+            }
+            if !replacements.insert(replacement.target) {
+                return Err(EditError::DuplicateNodeReplacement(replacement.target));
+            }
+        }
+
+        // not allow ancestor/descendant overlap
+        for replacement in &self.node_replacements {
+            let mut ancestor = document.parent(replacement.target)?;
+            while let Some(node) = ancestor {
+                if replacements.contains(&node) {
+                    return Err(EditError::OverlappingNodeReplacements {
+                        ancestor: node,
+                        descendant: replacement.target,
+                    });
+                }
+                ancestor = document.parent(node)?;
+            }
+        }
+
+        // bidirectional detection with delete
+        let removals: HashSet<_> = self.removed_nodes.iter().copied().collect();
+        for replacement in &self.node_replacements {
+            let mut current = Some(replacement.target);
+            while let Some(node) = current {
+                if removals.contains(&node) {
+                    return Err(EditError::ConflictingNodeRemovalAndReplacement {
+                        removed: node,
+                        replaced: replacement.target,
+                    });
+                }
+                current = document.parent(node)?;
+            }
+        }
+        for &removed in &self.removed_nodes {
+            let mut current = Some(removed);
+            while let Some(node) = current {
+                if replacements.contains(&node) {
+                    return Err(EditError::ConflictingNodeRemovalAndReplacement {
+                        removed,
+                        replaced: node,
+                    });
+                }
+                current = document.parent(node)?;
+            }
+        }
+
+        for edited in self
+            .text_edits
+            .iter()
+            .map(|edit| edit.node)
+            .chain(self.attribute_edits.iter().map(|edit| edit.node))
+        {
+            let mut current = Some(edited);
+            while let Some(node) = current {
+                if replacements.contains(&node) {
+                    return Err(EditError::EditTargetsReplacedNode {
+                        replaced: node,
+                        edited,
+                    });
+                }
+                current = document.parent(node)?;
+            }
+        }
+
+        for insertion in &self.sibling_insertions {
+            let mut current = Some(insertion.target);
+            while let Some(node) = current {
+                if replacements.contains(&node) {
+                    return Err(EditError::InsertionTargetsReplacedNode {
+                        replaced: node,
+                        target: insertion.target,
+                    });
+                }
+                current = document.parent(node)?;
+            }
+        }
+        Ok(())
+    }
+
     fn apply_text(&self, document: &mut Document) {
         for edits in text_groups(&self.text_edits) {
             let node_id = edits[0].node;
@@ -534,6 +702,16 @@ impl EditBatch {
                 .map(|insertion| (insertion.target, insertion.position, insertion.draft))
                 .collect();
             document.insert_siblings(insertions);
+        }
+    }
+
+    fn apply_replacements(&mut self, document: &mut Document) {
+        if !self.node_replacements.is_empty() {
+            let replacements = std::mem::take(&mut self.node_replacements)
+                .into_iter()
+                .map(|replacement| (replacement.target, replacement.draft))
+                .collect();
+            document.replace_subtrees(replacements);
         }
     }
 }
@@ -1139,5 +1317,266 @@ mod tests {
 
         assert_eq!(document.len(), 10_003);
         assert_eq!(document.children(document.root()).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn replaces_a_complete_subtree_in_place_and_invalidates_old_ids() {
+        let mut document = branched_document();
+        let root = document.root();
+        let original = document.children(root).unwrap().to_vec();
+        let replaced = original[0];
+        let replaced_child = document.children(replaced).unwrap()[0];
+        let mut draft = NodeDraft::new(Paragraph);
+        draft.push_child(text_draft("replacement"));
+        let mut batch = EditBatch::new();
+        batch.replace_node(replaced, draft);
+
+        assert_eq!(batch.len(), 1);
+        batch.commit(&mut document).unwrap();
+
+        let children = document.children(root).unwrap();
+        assert_eq!(children.len(), 2);
+        assert_eq!(children[1], original[1]);
+        let replacement = children[0];
+        assert_ne!(replacement, replaced);
+        assert!(document.node(replacement).unwrap().is::<Paragraph>());
+        assert_eq!(document.parent(replacement).unwrap(), Some(root));
+        let replacement_child = document.children(replacement).unwrap()[0];
+        assert_eq!(content(&document, replacement_child), "replacement");
+        assert_eq!(
+            document.parent(replacement_child).unwrap(),
+            Some(replacement)
+        );
+        assert_eq!(
+            document.node(replaced).unwrap_err(),
+            InvalidNodeId(replaced)
+        );
+        assert_eq!(
+            document.node(replaced_child).unwrap_err(),
+            InvalidNodeId(replaced_child)
+        );
+
+        let legacy = document.into_legacy();
+        assert_eq!(legacy.children.len(), 2);
+        assert_eq!(
+            legacy.children[0].children[0]
+                .cast::<Text>()
+                .unwrap()
+                .content,
+            "replacement"
+        );
+    }
+
+    #[test]
+    fn multiple_sibling_replacements_preserve_structural_order() {
+        let mut document = document(&["a", "b", "c"]);
+        let root = document.root();
+        let original = document.children(root).unwrap().to_vec();
+        let mut batch = EditBatch::new();
+        batch.replace_node(original[2], text_draft("C"));
+        batch.replace_node(original[0], text_draft("A"));
+
+        batch.commit(&mut document).unwrap();
+
+        let children = document.children(root).unwrap();
+        let contents: Vec<_> = children
+            .iter()
+            .map(|&node| content(&document, node))
+            .collect();
+        assert_eq!(contents, ["A", "b", "C"]);
+        assert_eq!(children[1], original[1]);
+        assert!(document.node(original[0]).is_err());
+        assert!(document.node(original[2]).is_err());
+    }
+
+    #[test]
+    fn rejects_root_stale_duplicate_and_overlapping_replacements_atomically() {
+        let mut document = branched_document();
+        let root = document.root();
+        let branch = document.children(root).unwrap()[0];
+        let text = document.children(branch).unwrap()[0];
+
+        let mut root_replacement = EditBatch::new();
+        root_replacement.replace_text(text, 0..1, "A");
+        root_replacement.replace_node(root, text_draft("invalid"));
+        assert_eq!(
+            root_replacement.commit(&mut document),
+            Err(EditError::CannotReplaceRoot(root))
+        );
+        assert_eq!(content(&document, text), "a");
+
+        let mut duplicate = EditBatch::new();
+        duplicate.set_attribute(root, "class", "changed");
+        duplicate.replace_node(branch, text_draft("first"));
+        duplicate.replace_node(branch, text_draft("second"));
+        assert_eq!(
+            duplicate.commit(&mut document),
+            Err(EditError::DuplicateNodeReplacement(branch))
+        );
+        assert!(document.node(root).unwrap().attrs().is_empty());
+
+        let mut overlap = EditBatch::new();
+        overlap.replace_node(branch, text_draft("ancestor"));
+        overlap.replace_node(text, text_draft("descendant"));
+        assert_eq!(
+            overlap.commit(&mut document),
+            Err(EditError::OverlappingNodeReplacements {
+                ancestor: branch,
+                descendant: text,
+            })
+        );
+        assert_eq!(document.len(), 5);
+
+        let mut replace = EditBatch::new();
+        replace.replace_node(branch, text_draft("replacement"));
+        replace.commit(&mut document).unwrap();
+        let mut stale = EditBatch::new();
+        stale.replace_node(branch, text_draft("invalid"));
+        assert_eq!(
+            stale.commit(&mut document),
+            Err(EditError::InvalidNode(InvalidNodeId(branch)))
+        );
+    }
+
+    #[test]
+    fn rejects_edits_and_insertions_inside_replaced_subtrees() {
+        let mut document = branched_document();
+        let branch = document.children(document.root()).unwrap()[0];
+        let text = document.children(branch).unwrap()[0];
+        let mut text_conflict = EditBatch::new();
+        text_conflict.replace_node(branch, text_draft("replacement"));
+        text_conflict.replace_text(text, 0..1, "A");
+        assert_eq!(
+            text_conflict.commit(&mut document),
+            Err(EditError::EditTargetsReplacedNode {
+                replaced: branch,
+                edited: text,
+            })
+        );
+        assert_eq!(content(&document, text), "a");
+
+        let mut attribute_conflict = EditBatch::new();
+        attribute_conflict.replace_node(branch, text_draft("replacement"));
+        attribute_conflict.set_attribute(branch, "class", "changed");
+        assert_eq!(
+            attribute_conflict.commit(&mut document),
+            Err(EditError::EditTargetsReplacedNode {
+                replaced: branch,
+                edited: branch,
+            })
+        );
+        assert!(document.node(branch).unwrap().attrs().is_empty());
+
+        let mut insertion_conflict = EditBatch::new();
+        insertion_conflict.replace_node(branch, text_draft("replacement"));
+        insertion_conflict.insert_before(text, text_draft("inserted"));
+        assert_eq!(
+            insertion_conflict.commit(&mut document),
+            Err(EditError::InsertionTargetsReplacedNode {
+                replaced: branch,
+                target: text,
+            })
+        );
+        assert_eq!(document.len(), 5);
+    }
+
+    #[test]
+    fn rejects_overlapping_removal_and_replacement_in_both_directions() {
+        let mut document = branched_document();
+        let branch = document.children(document.root()).unwrap()[0];
+        let text = document.children(branch).unwrap()[0];
+        let mut same_target = EditBatch::new();
+        same_target.remove_node(branch);
+        same_target.replace_node(branch, text_draft("replacement"));
+        assert_eq!(
+            same_target.commit(&mut document),
+            Err(EditError::ConflictingNodeRemovalAndReplacement {
+                removed: branch,
+                replaced: branch,
+            })
+        );
+        assert_eq!(document.len(), 5);
+
+        let mut remove_ancestor = EditBatch::new();
+        remove_ancestor.remove_node(branch);
+        remove_ancestor.replace_node(text, text_draft("replacement"));
+        assert_eq!(
+            remove_ancestor.commit(&mut document),
+            Err(EditError::ConflictingNodeRemovalAndReplacement {
+                removed: branch,
+                replaced: text,
+            })
+        );
+        assert_eq!(document.len(), 5);
+
+        let mut replace_ancestor = EditBatch::new();
+        replace_ancestor.replace_node(branch, text_draft("replacement"));
+        replace_ancestor.remove_node(text);
+        assert_eq!(
+            replace_ancestor.commit(&mut document),
+            Err(EditError::ConflictingNodeRemovalAndReplacement {
+                removed: text,
+                replaced: branch,
+            })
+        );
+        assert_eq!(document.len(), 5);
+    }
+
+    #[test]
+    fn disjoint_structural_and_value_edits_commit_together() {
+        let mut document = document(&["a", "b", "c"]);
+        let root = document.root();
+        let original = document.children(root).unwrap().to_vec();
+        let mut batch = EditBatch::new();
+        batch.remove_node(original[0]);
+        batch.replace_node(original[1], text_draft("replacement"));
+        batch.insert_before(original[2], text_draft("inserted"));
+        batch.replace_text(original[2], 0..1, "C");
+        batch.set_attribute(root, "class", "edited");
+
+        batch.commit(&mut document).unwrap();
+
+        let children = document.children(root).unwrap();
+        let contents: Vec<_> = children
+            .iter()
+            .map(|&node| content(&document, node))
+            .collect();
+        assert_eq!(contents, ["replacement", "inserted", "C"]);
+        assert_eq!(children[2], original[2]);
+        assert_eq!(
+            document.node(root).unwrap().attrs(),
+            &[("class".to_owned(), "edited".to_owned())]
+        );
+    }
+
+    #[test]
+    fn deeply_nested_subtrees_can_be_replaced_iteratively() {
+        let mut old_subtree = Node::new(Text {
+            content: "old".to_owned(),
+        });
+        let mut draft = text_draft("new");
+        for _ in 0..10_000 {
+            let mut old_parent = Node::new(Paragraph);
+            old_parent.children.push(old_subtree);
+            old_subtree = old_parent;
+            let mut draft_parent = NodeDraft::new(Paragraph);
+            draft_parent.push_child(draft);
+            draft = draft_parent;
+        }
+        let mut root = Node::new(Root::new("old".to_owned()));
+        root.children.push(old_subtree);
+        let mut document = Document::from_legacy("old", root);
+        let replaced = document.children(document.root()).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.replace_node(replaced, draft);
+
+        batch.commit(&mut document).unwrap();
+
+        assert_eq!(document.len(), 10_002);
+        assert_eq!(document.children(document.root()).unwrap().len(), 1);
+        assert_eq!(
+            document.node(replaced).unwrap_err(),
+            InvalidNodeId(replaced)
+        );
     }
 }

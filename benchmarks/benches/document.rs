@@ -116,6 +116,19 @@ fn insert_before_top_level_nodes(document: &markdown_it::Document) -> EditBatch 
     batch
 }
 
+fn replace_top_level_subtrees(document: &markdown_it::Document) -> EditBatch {
+    let mut batch = EditBatch::new();
+    for &child in document.children(document.root()).unwrap() {
+        batch.replace_node(
+            child,
+            NodeDraft::new(Text {
+                content: "generated".to_owned(),
+            }),
+        );
+    }
+    batch
+}
+
 fn parser() -> markdown_it::MarkdownIt {
     let mut md = markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md);
@@ -283,6 +296,38 @@ fn benchmark(c: &mut Criterion) {
                 || {
                     let document = md.parse_document(source);
                     let batch = insert_before_top_level_nodes(&document);
+                    (document, batch)
+                },
+                |(mut document, batch)| {
+                    batch.commit(&mut document).unwrap();
+                    black_box(document)
+                },
+                BatchSize::SmallInput,
+            )
+        });
+        group.finish();
+
+        let replaced_node_count = document.len() - 1;
+        let mut edited = md.parse_document(source);
+        let old_roots = edited.children(edited.root()).unwrap().to_vec();
+        replace_top_level_subtrees(&edited)
+            .commit(&mut edited)
+            .unwrap();
+        assert_eq!(edited.len(), old_roots.len() + 1);
+        assert!(old_roots.iter().all(|&node| edited.node(node).is_err()));
+        for &node in edited.children(edited.root()).unwrap() {
+            assert_eq!(
+                edited.node(node).unwrap().cast::<Text>().unwrap().content,
+                "generated"
+            );
+        }
+        let mut group = c.benchmark_group(format!("document-subtree-replace/{}", corpus.name));
+        group.throughput(Throughput::Elements(replaced_node_count as u64));
+        group.bench_function("validate-and-commit", |b| {
+            b.iter_batched(
+                || {
+                    let document = md.parse_document(source);
+                    let batch = replace_top_level_subtrees(&document);
                     (document, batch)
                 },
                 |(mut document, batch)| {

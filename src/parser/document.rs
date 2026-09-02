@@ -494,6 +494,10 @@ impl Document {
             }
         }
 
+        self.delete_subtrees(roots);
+    }
+
+    fn delete_subtrees(&mut self, roots: &[NodeId]) {
         // reverse delete (post-order traversal)
         // child nodes are always deleted before their parent nodes.
         //
@@ -522,6 +526,45 @@ impl Document {
                 .remove(node)
                 .expect("collected subtree node remains present");
         }
+    }
+
+    pub(crate) fn replace_subtrees(&mut self, replacements: Vec<(NodeId, NodeDraft)>) {
+        let mut by_target = HashMap::with_capacity(replacements.len());
+        let mut affected_parents = HashSet::new();
+        let mut replaced_roots = Vec::with_capacity(replacements.len());
+        // insert new subtree
+        for (target, draft) in replacements {
+            let parent = self
+                .arena
+                .get(target)
+                .expect("validated replacement target remains present")
+                .parent
+                .expect("validated replacement target is not the root");
+            let replacement = self.insert_draft(parent, draft);
+            let previous = by_target.insert(target, replacement);
+            debug_assert!(
+                previous.is_none(),
+                "replacement targets were validated unique"
+            );
+            affected_parents.insert(parent);
+            replaced_roots.push(target);
+        }
+
+        // replace old
+        for parent in affected_parents {
+            let children = &mut self
+                .arena
+                .get_mut(parent)
+                .expect("validated replacement parent remains present")
+                .children;
+            for child in children {
+                if let Some(&replacement) = by_target.get(child) {
+                    *child = replacement;
+                }
+            }
+        }
+
+        self.delete_subtrees(&replaced_roots);
     }
 
     pub(crate) fn insert_siblings(
