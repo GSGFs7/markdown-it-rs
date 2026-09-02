@@ -3,6 +3,19 @@ use std::hint::black_box;
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use markdown_it_benchmarks::corpus;
 
+fn consume_legacy_events(node: &markdown_it::Node) {
+    if node.children.is_empty() {
+        black_box(node.name());
+        return;
+    }
+
+    black_box(node.name());
+    for child in &node.children {
+        consume_legacy_events(child);
+    }
+    black_box(node.name());
+}
+
 fn parser() -> markdown_it::MarkdownIt {
     let mut md = markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md);
@@ -33,6 +46,22 @@ fn benchmark(c: &mut Criterion) {
                 |root| black_box(markdown_it::Document::from_legacy(black_box(source), root)),
                 BatchSize::SmallInput,
             )
+        });
+        group.finish();
+
+        let legacy = md.parse(source);
+        let document = md.parse_document(source);
+        let mut group = c.benchmark_group(format!("document-events/{}", corpus.name));
+        group.throughput(Throughput::Elements(document.len() as u64));
+        group.bench_function("legacy-structural-dfs", |b| {
+            b.iter(|| consume_legacy_events(black_box(&legacy)))
+        });
+        group.bench_function("arena-structural-events", |b| {
+            b.iter(|| {
+                for event in document.events(document.root()).unwrap() {
+                    black_box(event.node().name());
+                }
+            })
         });
         group.finish();
     }

@@ -2,6 +2,7 @@
 
 use std::any::TypeId;
 use std::fmt::{self, Debug};
+use std::iter::FusedIterator;
 use std::sync::Arc;
 
 use crate::common::TypeKey;
@@ -99,6 +100,80 @@ impl DocumentNode {
         }
     }
 }
+
+/// Borrowed view of a node produced by a structural traversal.
+pub type NodeRef<'a> = &'a DocumentNode;
+
+/// One step in a depth-first structural traversal.
+///
+/// Nodes with children produce a balanced `Enter` / `Exit` pair. Nodes
+/// without children produce exactly one `Leaf` event.
+#[derive(Clone, Copy, Debug)]
+pub enum StructuralEvent<'a> {
+    Enter(NodeRef<'a>),
+    Leaf(NodeRef<'a>),
+    Exit(NodeRef<'a>),
+}
+
+impl<'a> StructuralEvent<'a> {
+    pub fn node(&self) -> NodeRef<'a> {
+        match self {
+            Self::Enter(node) | Self::Leaf(node) | Self::Exit(node) => node,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct EventFrame<'a> {
+    node: NodeRef<'a>,
+    children: std::slice::Iter<'a, NodeId>,
+}
+
+/// Lazy depth-first iterator over a document subtree.
+///
+/// The iterator allocates only a stack proportional to the current nesting
+/// depth. The document's parent/children links remain the sole structural
+/// source of truth.
+#[derive(Debug)]
+pub struct StructuralEvents<'a> {
+    document: &'a Document,
+    stack: Vec<EventFrame<'a>>,
+    pending: Option<StructuralEvent<'a>>,
+}
+
+impl<'a> Iterator for StructuralEvents<'a> {
+    type Item = StructuralEvent<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(event) = self.pending.take() {
+            return Some(event);
+        }
+
+        let frame = self.stack.last_mut()?;
+        let node = frame.node;
+
+        if let Some(&child) = frame.children.next() {
+            let child = self
+                .document
+                .arena
+                .get(child)
+                .expect("document tree is internally valid");
+            if child.children.is_empty() {
+                return Some(StructuralEvent::Leaf(child));
+            }
+            self.stack.push(EventFrame {
+                node: child,
+                children: child.children.iter(),
+            });
+            return Some(StructuralEvent::Enter(child));
+        }
+
+        self.stack.pop();
+        Some(StructuralEvent::Exit(node))
+    }
+}
+
+impl FusedIterator for StructuralEvents<'_> {}
 
 #[derive(Debug)]
 struct Slot<T> {
@@ -280,6 +355,26 @@ impl Document {
         Ok(self.node(id)?.children())
     }
 
+    /// Lazily traverse a node and its descendants in depth-first order.
+    pub fn events(&self, root: NodeId) -> Result<StructuralEvents<'_>, InvalidNodeId> {
+        let root = self.node(root)?;
+        let mut stack = Vec::with_capacity(16);
+        let pending = if root.children.is_empty() {
+            Some(StructuralEvent::Leaf(root))
+        } else {
+            stack.push(EventFrame {
+                node: root,
+                children: root.children.iter(),
+            });
+            Some(StructuralEvent::Enter(root))
+        };
+        Ok(StructuralEvents {
+            document: self,
+            stack,
+            pending,
+        })
+    }
+
     /// Rebuild the legacy tree, consuming this document.
     pub fn into_legacy(mut self) -> Node {
         self.take_legacy(self.root)
@@ -313,7 +408,7 @@ impl Document {
 mod tests {
     use std::mem::size_of;
 
-    use super::{Arena, Document, DocumentNode};
+    use super::{Arena, Document, DocumentNode, StructuralEvent};
     use crate::parser::core::Root;
     use crate::parser::inline::Text;
     use crate::plugins::cmark::block::paragraph::Paragraph;
@@ -396,6 +491,80 @@ mod tests {
     }
 
     #[test]
+    fn structural_events_are_ordered_and_balanced() {
+        let mut root = Node::new(Root::new("hello".to_owned()));
+        let mut paragraph = Node::new(Paragraph);
+        paragraph.children.push(Node::new(Text {
+            content: "first".to_owned(),
+        }));
+        paragraph.children.push(Node::new(Text {
+            content: "second".to_owned(),
+        }));
+        root.children.push(paragraph);
+
+        let document = Document::from_legacy("hello", root);
+        let root = document.root();
+        let paragraph = document.children(root).unwrap()[0];
+        let children = document.children(paragraph).unwrap();
+        let events = document.events(document.root()).unwrap();
+        let actual: Vec<_> = events
+            .map(|event| match event {
+                StructuralEvent::Enter(node) => ("enter", node.id()),
+                StructuralEvent::Leaf(node) => ("leaf", node.id()),
+                StructuralEvent::Exit(node) => ("exit", node.id()),
+            })
+            .collect();
+
+        assert_eq!(
+            actual,
+            [
+                ("enter", root),
+                ("enter", paragraph),
+                ("leaf", children[0]),
+                ("leaf", children[1]),
+                ("exit", paragraph),
+                ("exit", root),
+            ]
+        );
+    }
+
+    #[test]
+    fn structural_events_can_start_at_a_subtree_or_leaf() {
+        let mut root = Node::new(Root::new("hello".to_owned()));
+        let mut paragraph = Node::new(Paragraph);
+        paragraph.children.push(Node::new(Text {
+            content: "hello".to_owned(),
+        }));
+        root.children.push(paragraph);
+
+        let document = Document::from_legacy("hello", root);
+        let paragraph = document.children(document.root()).unwrap()[0];
+        let text = document.children(paragraph).unwrap()[0];
+
+        assert!(matches!(
+            document.events(paragraph).unwrap().next(),
+            Some(StructuralEvent::Enter(node)) if node.id() == paragraph
+        ));
+        assert!(matches!(
+            document.events(text).unwrap().collect::<Vec<_>>().as_slice(),
+            [StructuralEvent::Leaf(node)] if node.id() == text
+        ));
+    }
+
+    #[test]
+    fn structural_events_reject_a_stale_root() {
+        let root = Node::new(Root::new(String::new()));
+        let mut document = Document::from_legacy("", root);
+        let root = document.root();
+        assert!(document.arena.remove(root).is_some());
+
+        assert_eq!(
+            document.events(root).unwrap_err(),
+            super::InvalidNodeId(root)
+        );
+    }
+
+    #[test]
     fn layout_sizes_are_visible_to_the_arena_design() {
         // Keep this measurement close to the storage definition so future
         // layout changes cannot happen without an explicit review point.
@@ -420,5 +589,38 @@ mod tests {
 
         assert_eq!(document.source(), source);
         assert_eq!(document.into_legacy().render(), expected);
+    }
+
+    #[test]
+    fn parsed_document_events_visit_every_node_once() {
+        use std::collections::HashSet;
+
+        let mut md = MarkdownIt::empty();
+        plugins::cmark::add(&mut md);
+        plugins::html::add(&mut md);
+        let document = md.parse_document("# Heading\n\nA *small* [link](url).\n\n---\n");
+        let mut stack = Vec::new();
+        let mut visited = HashSet::new();
+
+        for event in document.events(document.root()).unwrap() {
+            let node = event.node();
+            match event {
+                StructuralEvent::Enter(_) => {
+                    assert_eq!(node.parent(), stack.last().copied());
+                    assert!(visited.insert(node.id()));
+                    stack.push(node.id());
+                }
+                StructuralEvent::Leaf(_) => {
+                    assert_eq!(node.parent(), stack.last().copied());
+                    assert!(visited.insert(node.id()));
+                }
+                StructuralEvent::Exit(_) => {
+                    assert_eq!(stack.pop(), Some(node.id()));
+                }
+            }
+        }
+
+        assert!(stack.is_empty());
+        assert_eq!(visited.len(), document.len());
     }
 }
