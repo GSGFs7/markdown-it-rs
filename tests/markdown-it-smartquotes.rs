@@ -9,13 +9,22 @@ fn run(input: &str, output: &str) {
     markdown_it::plugins::html::add(md);
     markdown_it::plugins::extra::typographer::add(md);
     markdown_it::plugins::extra::smartquotes::add(md);
-    let node = md.parse(&(input.to_owned() + "\n"));
+    let source = input.to_owned() + "\n";
+    let node = md.parse(&source);
 
     // make sure we have sourcemaps for everything
     node.walk(|node, _| assert!(node.srcmap.is_some()));
 
     let result = node.render();
     assert_eq!(result, output);
+
+    let document_md = &mut markdown_it::MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(document_md);
+    markdown_it::plugins::html::add(document_md);
+    markdown_it::plugins::extra::typographer::add(document_md);
+    let mut document = document_md.parse_document(&source);
+    markdown_it::plugins::extra::smartquotes::transform_document(&mut document).unwrap();
+    assert_eq!(document.into_legacy().render(), output);
 
     // make sure it doesn't crash without trailing \n
     let _ = md.parse(input.trim_end());
