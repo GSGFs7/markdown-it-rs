@@ -99,6 +99,14 @@ impl DocumentNode {
             None
         }
     }
+
+    pub(crate) fn cast_mut<T: NodeValue>(&mut self) -> Option<&mut T> {
+        if self.is::<T>() {
+            self.node_value.downcast_mut::<T>()
+        } else {
+            None
+        }
+    }
 }
 
 /// Borrowed view of a node produced by a structural traversal.
@@ -345,6 +353,10 @@ impl Document {
         self.arena.get(id).ok_or(InvalidNodeId(id))
     }
 
+    pub(crate) fn node_mut(&mut self, id: NodeId) -> Result<&mut DocumentNode, InvalidNodeId> {
+        self.arena.get_mut(id).ok_or(InvalidNodeId(id))
+    }
+
     /// Look up a node's parent.
     pub fn parent(&self, id: NodeId) -> Result<Option<NodeId>, InvalidNodeId> {
         Ok(self.node(id)?.parent())
@@ -412,7 +424,15 @@ mod tests {
     use crate::parser::core::Root;
     use crate::parser::inline::Text;
     use crate::plugins::cmark::block::paragraph::Paragraph;
-    use crate::{MarkdownIt, Node, TextProjection, TextProjectionKind, plugins};
+    use crate::{
+        EditBatch,
+        EditError,
+        MarkdownIt,
+        Node,
+        TextProjection,
+        TextProjectionKind,
+        plugins,
+    };
 
     fn transparent_text_projection(_: super::NodeRef<'_>) -> TextProjectionKind<'_> {
         TextProjectionKind::Transparent
@@ -570,6 +590,12 @@ mod tests {
             document.text_events_from(root, TextProjection::new(transparent_text_projection)),
             Err(error) if error == super::InvalidNodeId(root)
         ));
+        let mut batch = EditBatch::new();
+        batch.replace_text(root, 0..0, "stale");
+        assert_eq!(
+            batch.commit(&mut document),
+            Err(EditError::InvalidNode(super::InvalidNodeId(root)))
+        );
     }
 
     #[test]

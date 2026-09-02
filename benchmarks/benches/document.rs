@@ -7,6 +7,7 @@ use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use markdown_it::plugins::html::html_inline::HtmlInline;
 use markdown_it::{NodeRef, TextBoundary, TextProjection, TextProjectionKind};
+use markdown_it::{EditBatch, TextEvent};
 
 fn consume_legacy_events(node: &markdown_it::Node) {
     if node.children.is_empty() {
@@ -50,6 +51,27 @@ fn consume_legacy_text_events(node: &markdown_it::Node, nesting_level: u32) {
         consume_legacy_text_events(child, nesting_level + 1);
     }
     black_box(("exit", node.name(), nesting_level));
+}
+
+fn one_edit_per_text_node(document: &markdown_it::Document) -> EditBatch {
+    let mut batch = EditBatch::new();
+    let mut previous = None;
+    for event in document.text_events(TextProjection::new(text_projection)) {
+        match event {
+            TextEvent::Char {
+                node,
+                byte_offset,
+                ch,
+                writable: true,
+                ..
+            } if previous != Some(node) => {
+                batch.replace_char(node, byte_offset..byte_offset + ch.len_utf8(), ch);
+                previous = Some(node);
+            }
+            _ => {}
+        }
+    }
+    batch
 }
 
 fn parser() -> markdown_it::MarkdownIt {
@@ -114,6 +136,25 @@ fn benchmark(c: &mut Criterion) {
                     black_box(event);
                 }
             })
+        });
+        group.finish();
+
+        let edit_count = one_edit_per_text_node(&document).len();
+        let mut group = c.benchmark_group(format!("document-text-commit/{}", corpus.name));
+        group.throughput(Throughput::Elements(edit_count as u64));
+        group.bench_function("validate-and-commit", |b| {
+            b.iter_batched(
+                || {
+                    let document = md.parse_document(source);
+                    let batch = one_edit_per_text_node(&document);
+                    (document, batch)
+                },
+                |(mut document, batch)| {
+                    batch.commit(&mut document).unwrap();
+                    black_box(document)
+                },
+                BatchSize::SmallInput,
+            )
         });
         group.finish();
     }
