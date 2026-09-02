@@ -2,6 +2,11 @@ use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use markdown_it_benchmarks::corpus;
+use markdown_it::parser::inline::Text;
+use markdown_it::plugins::cmark::block::paragraph::Paragraph;
+use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
+use markdown_it::plugins::html::html_inline::HtmlInline;
+use markdown_it::{NodeRef, TextBoundary, TextProjection, TextProjectionKind};
 
 fn consume_legacy_events(node: &markdown_it::Node) {
     if node.children.is_empty() {
@@ -14,6 +19,37 @@ fn consume_legacy_events(node: &markdown_it::Node) {
         consume_legacy_events(child);
     }
     black_box(node.name());
+}
+
+fn text_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> {
+    if let Some(text) = node.cast::<Text>() {
+        TextProjectionKind::Writable(&text.content)
+    } else if let Some(html) = node.cast::<HtmlInline>() {
+        TextProjectionKind::ReadOnly(&html.content)
+    } else if node.is::<Paragraph>() || node.is::<Hardbreak>() || node.is::<Softbreak>() {
+        TextProjectionKind::Boundary(TextBoundary::Space)
+    } else {
+        TextProjectionKind::Transparent
+    }
+}
+
+fn consume_legacy_text_events(node: &markdown_it::Node, nesting_level: u32) {
+    black_box(("enter", node.name(), nesting_level));
+    if let Some(text) = node.cast::<Text>() {
+        for (byte_offset, ch) in text.content.char_indices() {
+            black_box((byte_offset, ch, true, nesting_level));
+        }
+    } else if let Some(html) = node.cast::<HtmlInline>() {
+        for (byte_offset, ch) in html.content.char_indices() {
+            black_box((byte_offset, ch, false, nesting_level));
+        }
+    } else if node.is::<Paragraph>() || node.is::<Hardbreak>() || node.is::<Softbreak>() {
+        black_box(TextBoundary::Space);
+    }
+    for child in &node.children {
+        consume_legacy_text_events(child, nesting_level + 1);
+    }
+    black_box(("exit", node.name(), nesting_level));
 }
 
 fn parser() -> markdown_it::MarkdownIt {
@@ -60,6 +96,22 @@ fn benchmark(c: &mut Criterion) {
             b.iter(|| {
                 for event in document.events(document.root()).unwrap() {
                     black_box(event.node().name());
+                }
+            })
+        });
+        group.finish();
+
+        let projection = TextProjection::new(text_projection);
+        let event_count = document.text_events(projection).count();
+        let mut group = c.benchmark_group(format!("document-text-events/{}", corpus.name));
+        group.throughput(Throughput::Elements(event_count as u64));
+        group.bench_function("legacy-text-projection", |b| {
+            b.iter(|| consume_legacy_text_events(black_box(&legacy), 0))
+        });
+        group.bench_function("arena-text-projection", |b| {
+            b.iter(|| {
+                for event in document.text_events(projection) {
+                    black_box(event);
                 }
             })
         });

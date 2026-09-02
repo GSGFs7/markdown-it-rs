@@ -25,6 +25,14 @@ pub use parser::document::{
     StructuralEvent,
     StructuralEvents,
 };
+pub use parser::document_text::{
+    TextBoundary,
+    TextClassifier,
+    TextEvent,
+    TextEvents,
+    TextProjection,
+    TextProjectionKind,
+};
 pub use parser::main::MarkdownIt;
 pub use parser::node::{HtmlAttribute, HtmlAttributes, Node, NodeValue};
 pub use parser::render_options::RenderOptions;

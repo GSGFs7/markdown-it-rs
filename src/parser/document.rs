@@ -412,7 +412,11 @@ mod tests {
     use crate::parser::core::Root;
     use crate::parser::inline::Text;
     use crate::plugins::cmark::block::paragraph::Paragraph;
-    use crate::{MarkdownIt, Node, plugins};
+    use crate::{MarkdownIt, Node, TextProjection, TextProjectionKind, plugins};
+
+    fn transparent_text_projection(_: super::NodeRef<'_>) -> TextProjectionKind<'_> {
+        TextProjectionKind::Transparent
+    }
 
     #[test]
     fn stale_id_cannot_access_reused_slot() {
@@ -562,6 +566,10 @@ mod tests {
             document.events(root).unwrap_err(),
             super::InvalidNodeId(root)
         );
+        assert!(matches!(
+            document.text_events_from(root, TextProjection::new(transparent_text_projection)),
+            Err(error) if error == super::InvalidNodeId(root)
+        ));
     }
 
     #[test]

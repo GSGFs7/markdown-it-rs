@@ -37,6 +37,7 @@
 pub mod block;
 pub mod core;
 pub mod document;
+pub mod document_text;
 pub mod extset;
 pub mod inline;
 pub mod linkfmt;
