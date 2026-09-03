@@ -636,9 +636,46 @@ impl Document {
         insertions: Vec<(NodeId, SiblingPosition, NodeDraft)>,
     ) {
         #[derive(Default)]
+        enum SiblingList {
+            #[default]
+            Empty,
+            One(NodeId),
+            Many(Vec<NodeId>),
+        }
+
+        impl SiblingList {
+            fn push(&mut self, node: NodeId) {
+                match self {
+                    Self::Empty => *self = Self::One(node),
+                    Self::One(first) => {
+                        let first = *first;
+                        *self = Self::Many(vec![first, node]);
+                    }
+                    Self::Many(nodes) => nodes.push(node),
+                }
+            }
+
+            fn len(&self) -> usize {
+                match self {
+                    Self::Empty => 0,
+                    Self::One(_) => 1,
+                    Self::Many(nodes) => nodes.len(),
+                }
+            }
+
+            fn append_to(&self, children: &mut Vec<NodeId>) {
+                match self {
+                    Self::Empty => {}
+                    Self::One(node) => children.push(*node),
+                    Self::Many(nodes) => children.extend_from_slice(nodes),
+                }
+            }
+        }
+
+        #[derive(Default)]
         struct InsertedSiblings {
-            before: Vec<NodeId>,
-            after: Vec<NodeId>,
+            before: SiblingList,
+            after: SiblingList,
         }
 
         // grouping
@@ -677,11 +714,11 @@ impl Document {
             let mut children = Vec::with_capacity(old_children.len() + inserted_count);
             for child in old_children {
                 if let Some(siblings) = by_target.get(&child) {
-                    children.extend_from_slice(&siblings.before);
+                    siblings.before.append_to(&mut children);
                 }
                 children.push(child);
                 if let Some(siblings) = by_target.get(&child) {
-                    children.extend_from_slice(&siblings.after);
+                    siblings.after.append_to(&mut children);
                 }
             }
             self.arena

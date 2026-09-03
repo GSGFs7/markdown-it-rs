@@ -57,6 +57,31 @@ struct EditSourceMap {
     source_map: Option<SourcePos>,
 }
 
+#[derive(Debug, Default)]
+struct NodePatchSet {
+    text: Vec<ReplaceText>,
+    attributes: Vec<EditAttribute>,
+    source_maps: Vec<EditSourceMap>,
+}
+
+impl NodePatchSet {
+    fn len(&self) -> usize {
+        self.text.len() + self.attributes.len() + self.source_maps.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.text.is_empty() && self.attributes.is_empty() && self.source_maps.is_empty()
+    }
+
+    fn edited_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.text
+            .iter()
+            .map(|edit| edit.node)
+            .chain(self.attributes.iter().map(|edit| edit.node))
+            .chain(self.source_maps.iter().map(|edit| edit.node))
+    }
+}
+
 #[derive(Debug)]
 struct InsertSibling {
     target: NodeId,
@@ -75,6 +100,27 @@ struct WrapRange {
     first: NodeId,
     last: NodeId,
     wrapper: NodeDraft,
+}
+
+#[derive(Debug, Default)]
+struct StructuralEditSet {
+    removals: Vec<NodeId>,
+    insertions: Vec<InsertSibling>,
+    replacements: Vec<ReplaceNode>,
+    wraps: Vec<WrapRange>,
+}
+
+impl StructuralEditSet {
+    fn len(&self) -> usize {
+        self.removals.len() + self.insertions.len() + self.replacements.len() + self.wraps.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.removals.is_empty()
+            && self.insertions.is_empty()
+            && self.replacements.is_empty()
+            && self.wraps.is_empty()
+    }
 }
 
 /// A validation failure that leaves the document unchanged.
@@ -314,13 +360,8 @@ impl From<InvalidNodeId> for EditError {
 /// A batch of document edits that is validated and committed atomically.
 #[derive(Debug, Default)]
 pub struct EditBatch {
-    text_edits: Vec<ReplaceText>,
-    attribute_edits: Vec<EditAttribute>,
-    source_map_edits: Vec<EditSourceMap>,
-    removed_nodes: Vec<NodeId>,
-    sibling_insertions: Vec<InsertSibling>,
-    node_replacements: Vec<ReplaceNode>,
-    wrap_ranges: Vec<WrapRange>,
+    node_patches: NodePatchSet,
+    structural_edits: StructuralEditSet,
 }
 
 impl EditBatch {
@@ -329,23 +370,11 @@ impl EditBatch {
     }
 
     pub fn len(&self) -> usize {
-        self.text_edits.len()
-            + self.attribute_edits.len()
-            + self.source_map_edits.len()
-            + self.removed_nodes.len()
-            + self.sibling_insertions.len()
-            + self.node_replacements.len()
-            + self.wrap_ranges.len()
+        self.node_patches.len() + self.structural_edits.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.text_edits.is_empty()
-            && self.attribute_edits.is_empty()
-            && self.source_map_edits.is_empty()
-            && self.removed_nodes.is_empty()
-            && self.sibling_insertions.is_empty()
-            && self.node_replacements.is_empty()
-            && self.wrap_ranges.is_empty()
+        self.node_patches.is_empty() && self.structural_edits.is_empty()
     }
 
     /// Replace one byte range in a built-in `Text` node.
@@ -372,7 +401,7 @@ impl EditBatch {
         name: impl Into<String>,
         value: impl Into<String>,
     ) {
-        self.attribute_edits.push(EditAttribute {
+        self.node_patches.attributes.push(EditAttribute {
             node,
             name: name.into(),
             change: AttributeChange::Set(value.into()),
@@ -381,7 +410,7 @@ impl EditBatch {
 
     /// Remove every attribute with the same exact name.
     pub fn remove_attribute(&mut self, node: NodeId, name: impl Into<String>) {
-        self.attribute_edits.push(EditAttribute {
+        self.node_patches.attributes.push(EditAttribute {
             node,
             name: name.into(),
             change: AttributeChange::Remove,
@@ -390,19 +419,20 @@ impl EditBatch {
 
     /// Set or clear a node's source mapping.
     pub fn set_source_map(&mut self, node: NodeId, source_map: Option<SourcePos>) {
-        self.source_map_edits
+        self.node_patches
+            .source_maps
             .push(EditSourceMap { node, source_map });
     }
 
     /// Remove a non-root node and its complete subtree.
     pub fn remove_node(&mut self, node: NodeId) {
-        self.removed_nodes.push(node);
+        self.structural_edits.removals.push(node);
     }
 
     /// Insert an owned draft immediately before `target` when the batch
     /// commits. Insertions at the same target preserve call order.
     pub fn insert_before(&mut self, target: NodeId, draft: NodeDraft) {
-        self.sibling_insertions.push(InsertSibling {
+        self.structural_edits.insertions.push(InsertSibling {
             target,
             position: SiblingPosition::Before,
             draft,
@@ -412,7 +442,7 @@ impl EditBatch {
     /// Insert an owned draft immediately after `target` when the batch
     /// commits. Insertions at the same target preserve call order.
     pub fn insert_after(&mut self, target: NodeId, draft: NodeDraft) {
-        self.sibling_insertions.push(InsertSibling {
+        self.structural_edits.insertions.push(InsertSibling {
             target,
             position: SiblingPosition::After,
             draft,
@@ -421,12 +451,14 @@ impl EditBatch {
 
     /// Replace a non-root node and its complete subtree with an owned draft.
     pub fn replace_node(&mut self, target: NodeId, draft: NodeDraft) {
-        self.node_replacements.push(ReplaceNode { target, draft });
+        self.structural_edits
+            .replacements
+            .push(ReplaceNode { target, draft });
     }
 
     /// Wrap an inclusive range of ordered siblings in a childless draft.
     pub fn wrap_range(&mut self, first: NodeId, last: NodeId, wrapper: NodeDraft) {
-        self.wrap_ranges.push(WrapRange {
+        self.structural_edits.wraps.push(WrapRange {
             first,
             last,
             wrapper,
@@ -434,11 +466,11 @@ impl EditBatch {
     }
 
     fn push(&mut self, node: NodeId, range: Range<usize>, replacement: TextReplacement) {
-        self.text_edits.push(ReplaceText {
+        self.node_patches.text.push(ReplaceText {
             node,
             range,
             replacement,
-            sequence: self.text_edits.len(),
+            sequence: self.node_patches.text.len(),
         });
     }
 
@@ -450,83 +482,66 @@ impl EditBatch {
             return Ok(());
         }
 
-        if self.attribute_edits.is_empty()
-            && self.source_map_edits.is_empty()
-            && self.removed_nodes.is_empty()
-            && self.sibling_insertions.is_empty()
-            && self.node_replacements.is_empty()
-            && self.wrap_ranges.is_empty()
+        if self.node_patches.attributes.is_empty()
+            && self.node_patches.source_maps.is_empty()
+            && self.structural_edits.is_empty()
         {
             self.sort_text_edits();
             self.validate_text(document)?;
             self.apply_text(document);
             return Ok(());
         }
-        if self.text_edits.is_empty()
-            && self.source_map_edits.is_empty()
-            && self.removed_nodes.is_empty()
-            && self.sibling_insertions.is_empty()
-            && self.node_replacements.is_empty()
-            && self.wrap_ranges.is_empty()
+        if self.node_patches.text.is_empty()
+            && self.node_patches.source_maps.is_empty()
+            && self.structural_edits.is_empty()
         {
             self.sort_attribute_edits();
             self.validate_attributes(document)?;
             self.apply_attributes(document);
             return Ok(());
         }
-        if self.text_edits.is_empty()
-            && self.attribute_edits.is_empty()
-            && self.removed_nodes.is_empty()
-            && self.sibling_insertions.is_empty()
-            && self.node_replacements.is_empty()
-            && self.wrap_ranges.is_empty()
+        if self.node_patches.text.is_empty()
+            && self.node_patches.attributes.is_empty()
+            && self.structural_edits.is_empty()
         {
             self.sort_source_map_edits();
             self.validate_source_maps(document)?;
             self.apply_source_maps(document);
             return Ok(());
         }
-        if self.text_edits.is_empty()
-            && self.attribute_edits.is_empty()
-            && self.source_map_edits.is_empty()
-            && self.sibling_insertions.is_empty()
-            && self.node_replacements.is_empty()
-            && self.wrap_ranges.is_empty()
+        if self.node_patches.is_empty()
+            && self.structural_edits.insertions.is_empty()
+            && self.structural_edits.replacements.is_empty()
+            && self.structural_edits.wraps.is_empty()
         {
             self.sort_removed_nodes();
             self.validate_removals(document)?;
             self.apply_removals(document);
             return Ok(());
         }
-        if self.text_edits.is_empty()
-            && self.attribute_edits.is_empty()
-            && self.source_map_edits.is_empty()
-            && self.removed_nodes.is_empty()
-            && self.node_replacements.is_empty()
-            && self.wrap_ranges.is_empty()
+        if self.node_patches.is_empty()
+            && self.structural_edits.removals.is_empty()
+            && self.structural_edits.replacements.is_empty()
+            && self.structural_edits.wraps.is_empty()
         {
             self.validate_insertions(document)?;
             self.apply_insertions(document);
             return Ok(());
         }
-        if self.text_edits.is_empty()
-            && self.attribute_edits.is_empty()
-            && self.source_map_edits.is_empty()
-            && self.removed_nodes.is_empty()
-            && self.sibling_insertions.is_empty()
-            && self.wrap_ranges.is_empty()
+        if self.node_patches.is_empty()
+            && self.structural_edits.removals.is_empty()
+            && self.structural_edits.insertions.is_empty()
+            && self.structural_edits.wraps.is_empty()
         {
             self.sort_node_replacements();
             self.validate_replacements(document)?;
             self.apply_replacements(document);
             return Ok(());
         }
-        if self.text_edits.is_empty()
-            && self.attribute_edits.is_empty()
-            && self.source_map_edits.is_empty()
-            && self.removed_nodes.is_empty()
-            && self.sibling_insertions.is_empty()
-            && self.node_replacements.is_empty()
+        if self.node_patches.is_empty()
+            && self.structural_edits.removals.is_empty()
+            && self.structural_edits.insertions.is_empty()
+            && self.structural_edits.replacements.is_empty()
         {
             self.validate_wrap_ranges(document)?;
             self.apply_wrap_ranges(document);
@@ -541,16 +556,16 @@ impl EditBatch {
         self.validate_text(document)?;
         self.validate_attributes(document)?;
         self.validate_source_maps(document)?;
-        if !self.removed_nodes.is_empty() {
+        if !self.structural_edits.removals.is_empty() {
             self.validate_removals(document)?;
         }
-        if !self.sibling_insertions.is_empty() {
+        if !self.structural_edits.insertions.is_empty() {
             self.validate_insertions(document)?;
         }
-        if !self.node_replacements.is_empty() {
+        if !self.structural_edits.replacements.is_empty() {
             self.validate_replacements(document)?;
         }
-        if !self.wrap_ranges.is_empty() {
+        if !self.structural_edits.wraps.is_empty() {
             self.validate_wrap_ranges(document)?;
         }
         self.apply_text(document);
@@ -564,7 +579,7 @@ impl EditBatch {
     }
 
     fn sort_text_edits(&mut self) {
-        self.text_edits.sort_unstable_by_key(|edit| {
+        self.node_patches.text.sort_unstable_by_key(|edit| {
             (
                 edit.node.slot(),
                 edit.node.generation(),
@@ -576,33 +591,39 @@ impl EditBatch {
     }
 
     fn sort_attribute_edits(&mut self) {
-        self.attribute_edits.sort_unstable_by(|left, right| {
-            (left.node.slot(), left.node.generation(), &left.name).cmp(&(
-                right.node.slot(),
-                right.node.generation(),
-                &right.name,
-            ))
-        });
+        self.node_patches
+            .attributes
+            .sort_unstable_by(|left, right| {
+                (left.node.slot(), left.node.generation(), &left.name).cmp(&(
+                    right.node.slot(),
+                    right.node.generation(),
+                    &right.name,
+                ))
+            });
     }
 
     fn sort_source_map_edits(&mut self) {
-        self.source_map_edits
+        self.node_patches
+            .source_maps
             .sort_unstable_by_key(|edit| (edit.node.slot(), edit.node.generation()));
     }
 
     fn sort_removed_nodes(&mut self) {
-        self.removed_nodes
+        self.structural_edits
+            .removals
             .sort_unstable_by_key(|node| (node.slot(), node.generation()));
     }
 
     fn sort_node_replacements(&mut self) {
-        self.node_replacements.sort_unstable_by_key(|replacement| {
-            (replacement.target.slot(), replacement.target.generation())
-        });
+        self.structural_edits
+            .replacements
+            .sort_unstable_by_key(|replacement| {
+                (replacement.target.slot(), replacement.target.generation())
+            });
     }
 
     fn validate_text(&self, document: &Document) -> Result<(), EditError> {
-        for edits in text_groups(&self.text_edits) {
+        for edits in text_groups(&self.node_patches.text) {
             let node_id = edits[0].node;
             let node = document.node(node_id)?;
             let Some(text) = node.cast::<Text>() else {
@@ -642,7 +663,7 @@ impl EditBatch {
     }
 
     fn validate_attributes(&self, document: &Document) -> Result<(), EditError> {
-        for edits in attribute_groups(&self.attribute_edits) {
+        for edits in attribute_groups(&self.node_patches.attributes) {
             let edit = &edits[0];
             document.node(edit.node)?;
             if edits.len() > 1 {
@@ -657,7 +678,7 @@ impl EditBatch {
 
     fn validate_source_maps(&self, document: &Document) -> Result<(), EditError> {
         let mut previous = None;
-        for edit in &self.source_map_edits {
+        for edit in &self.node_patches.source_maps {
             document.node(edit.node)?;
             if previous == Some(edit.node) {
                 return Err(EditError::ConflictingSourceMapEdits { node: edit.node });
@@ -682,8 +703,8 @@ impl EditBatch {
     }
 
     fn validate_removals(&self, document: &Document) -> Result<(), EditError> {
-        let mut removals = HashSet::with_capacity(self.removed_nodes.len());
-        for &node in &self.removed_nodes {
+        let mut removals = HashSet::with_capacity(self.structural_edits.removals.len());
+        for &node in &self.structural_edits.removals {
             document.node(node)?;
             if node == document.root() {
                 return Err(EditError::CannotRemoveRoot(node));
@@ -693,7 +714,7 @@ impl EditBatch {
             }
         }
 
-        for &descendant in &self.removed_nodes {
+        for &descendant in &self.structural_edits.removals {
             let mut ancestor = document.parent(descendant)?;
             while let Some(node) = ancestor {
                 if removals.contains(&node) {
@@ -706,13 +727,7 @@ impl EditBatch {
             }
         }
 
-        for edited in self
-            .text_edits
-            .iter()
-            .map(|edit| edit.node)
-            .chain(self.attribute_edits.iter().map(|edit| edit.node))
-            .chain(self.source_map_edits.iter().map(|edit| edit.node))
-        {
+        for edited in self.node_patches.edited_nodes() {
             let mut current = Some(edited);
             while let Some(node) = current {
                 if removals.contains(&node) {
@@ -728,8 +743,8 @@ impl EditBatch {
     }
 
     fn validate_insertions(&self, document: &Document) -> Result<(), EditError> {
-        let removals: HashSet<_> = self.removed_nodes.iter().copied().collect();
-        for insertion in &self.sibling_insertions {
+        let removals: HashSet<_> = self.structural_edits.removals.iter().copied().collect();
+        for insertion in &self.structural_edits.insertions {
             let target = document.node(insertion.target)?;
             if target.parent().is_none() {
                 return Err(EditError::CannotInsertSiblingOfRoot(insertion.target));
@@ -750,8 +765,8 @@ impl EditBatch {
     }
 
     fn validate_replacements(&self, document: &Document) -> Result<(), EditError> {
-        let mut replacements = HashSet::with_capacity(self.node_replacements.len());
-        for replacement in &self.node_replacements {
+        let mut replacements = HashSet::with_capacity(self.structural_edits.replacements.len());
+        for replacement in &self.structural_edits.replacements {
             document.node(replacement.target)?; // check InvalidNode
             if replacement.target == document.root() {
                 return Err(EditError::CannotReplaceRoot(replacement.target));
@@ -762,7 +777,7 @@ impl EditBatch {
         }
 
         // not allow ancestor/descendant overlap
-        for replacement in &self.node_replacements {
+        for replacement in &self.structural_edits.replacements {
             let mut ancestor = document.parent(replacement.target)?;
             while let Some(node) = ancestor {
                 if replacements.contains(&node) {
@@ -776,8 +791,8 @@ impl EditBatch {
         }
 
         // bidirectional detection with delete
-        let removals: HashSet<_> = self.removed_nodes.iter().copied().collect();
-        for replacement in &self.node_replacements {
+        let removals: HashSet<_> = self.structural_edits.removals.iter().copied().collect();
+        for replacement in &self.structural_edits.replacements {
             let mut current = Some(replacement.target);
             while let Some(node) = current {
                 if removals.contains(&node) {
@@ -789,7 +804,7 @@ impl EditBatch {
                 current = document.parent(node)?;
             }
         }
-        for &removed in &self.removed_nodes {
+        for &removed in &self.structural_edits.removals {
             let mut current = Some(removed);
             while let Some(node) = current {
                 if replacements.contains(&node) {
@@ -802,13 +817,7 @@ impl EditBatch {
             }
         }
 
-        for edited in self
-            .text_edits
-            .iter()
-            .map(|edit| edit.node)
-            .chain(self.attribute_edits.iter().map(|edit| edit.node))
-            .chain(self.source_map_edits.iter().map(|edit| edit.node))
-        {
+        for edited in self.node_patches.edited_nodes() {
             let mut current = Some(edited);
             while let Some(node) = current {
                 if replacements.contains(&node) {
@@ -821,7 +830,7 @@ impl EditBatch {
             }
         }
 
-        for insertion in &self.sibling_insertions {
+        for insertion in &self.structural_edits.insertions {
             let mut current = Some(insertion.target);
             while let Some(node) = current {
                 if replacements.contains(&node) {
@@ -837,8 +846,8 @@ impl EditBatch {
     }
 
     fn validate_wrap_ranges(&self, document: &Document) -> Result<(), EditError> {
-        let mut resolved = Vec::with_capacity(self.wrap_ranges.len());
-        for range in &self.wrap_ranges {
+        let mut resolved = Vec::with_capacity(self.structural_edits.wraps.len());
+        for range in &self.structural_edits.wraps {
             let first = document.node(range.first)?;
             let last = document.node(range.last)?;
             let Some(first_parent) = first.parent() else {
@@ -897,9 +906,10 @@ impl EditBatch {
             }
         }
 
-        let removals: HashSet<_> = self.removed_nodes.iter().copied().collect();
+        let removals: HashSet<_> = self.structural_edits.removals.iter().copied().collect();
         let replacements: HashSet<_> = self
-            .node_replacements
+            .structural_edits
+            .replacements
             .iter()
             .map(|replacement| replacement.target)
             .collect();
@@ -927,7 +937,7 @@ impl EditBatch {
             }
         }
 
-        for insertion in &self.sibling_insertions {
+        for insertion in &self.structural_edits.insertions {
             for &(parent, first_index, last_index, first, last) in &resolved {
                 let siblings = document.children(parent)?;
                 if siblings[first_index..=last_index].contains(&insertion.target) {
@@ -943,7 +953,7 @@ impl EditBatch {
     }
 
     fn apply_text(&self, document: &mut Document) {
-        for edits in text_groups(&self.text_edits) {
+        for edits in text_groups(&self.node_patches.text) {
             let node_id = edits[0].node;
             let text = document
                 .node_mut(node_id)
@@ -983,8 +993,8 @@ impl EditBatch {
         }
     }
 
-    fn apply_attributes(self, document: &mut Document) {
-        for edit in self.attribute_edits {
+    fn apply_attributes(&mut self, document: &mut Document) {
+        for edit in self.node_patches.attributes.drain(..) {
             let attrs = document
                 .node_mut(edit.node)
                 .expect("validated attribute edit node remains present")
@@ -1013,7 +1023,7 @@ impl EditBatch {
     }
 
     fn apply_source_maps(&mut self, document: &mut Document) {
-        for edit in self.source_map_edits.drain(..) {
+        for edit in self.node_patches.source_maps.drain(..) {
             document
                 .node_mut(edit.node)
                 .expect("validated source map edit node remains present")
@@ -1022,14 +1032,14 @@ impl EditBatch {
     }
 
     fn apply_removals(&self, document: &mut Document) {
-        if !self.removed_nodes.is_empty() {
-            document.remove_subtrees(&self.removed_nodes);
+        if !self.structural_edits.removals.is_empty() {
+            document.remove_subtrees(&self.structural_edits.removals);
         }
     }
 
     fn apply_insertions(&mut self, document: &mut Document) {
-        if !self.sibling_insertions.is_empty() {
-            let insertions = std::mem::take(&mut self.sibling_insertions)
+        if !self.structural_edits.insertions.is_empty() {
+            let insertions = std::mem::take(&mut self.structural_edits.insertions)
                 .into_iter()
                 .map(|insertion| (insertion.target, insertion.position, insertion.draft))
                 .collect();
@@ -1038,8 +1048,8 @@ impl EditBatch {
     }
 
     fn apply_replacements(&mut self, document: &mut Document) {
-        if !self.node_replacements.is_empty() {
-            let replacements = std::mem::take(&mut self.node_replacements)
+        if !self.structural_edits.replacements.is_empty() {
+            let replacements = std::mem::take(&mut self.structural_edits.replacements)
                 .into_iter()
                 .map(|replacement| (replacement.target, replacement.draft))
                 .collect();
@@ -1048,8 +1058,8 @@ impl EditBatch {
     }
 
     fn apply_wrap_ranges(&mut self, document: &mut Document) {
-        if !self.wrap_ranges.is_empty() {
-            let ranges = std::mem::take(&mut self.wrap_ranges)
+        if !self.structural_edits.wraps.is_empty() {
+            let ranges = std::mem::take(&mut self.structural_edits.wraps)
                 .into_iter()
                 .map(|range| (range.first, range.last, range.wrapper))
                 .collect();
