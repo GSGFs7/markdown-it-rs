@@ -39,6 +39,11 @@ path = "benches/sourcepos.rs"
 harness = false
 
 [[bench]]
+name = "tasklist"
+path = "benches/tasklist.rs"
+harness = false
+
+[[bench]]
 name = "document"
 path = "benches/document.rs"
 harness = false

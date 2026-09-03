@@ -1,11 +1,30 @@
 //! Task list syntax, like `- [ ] todo` and `- [x] done`.
 
+use crate::common::sourcemap::SourcePos;
 use crate::parser::core::CoreRule;
+use crate::parser::document::{Document, NodeDraft, NodeId, StructuralEvent};
+use crate::parser::document_edit::EditBatch;
+use crate::parser::document_transform::DocumentTransform;
 use crate::parser::inline::Text;
 use crate::parser::inline::builtin::InlineParserRule;
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{HtmlAttributes, Node, NodeValue};
 use crate::plugins::cmark::block::list::{BulletList, ListItem, OrderedList};
 use crate::plugins::cmark::block::paragraph::Paragraph;
-use crate::{MarkdownIt, Node, NodeValue};
+use crate::plugins::sourcepos::SourcePosDocumentTransform;
+
+// --- pub method ---
+
+pub fn add(md: &mut MarkdownIt) {
+    // after all the inline rule
+    // make sure we are get the final AST
+    md.add_rule::<TaskListScanner>().after::<InlineParserRule>();
+}
+
+pub fn add_document(md: &mut MarkdownIt) {
+    md.add_document_transform::<TaskListDocumentTransform>()
+        .before::<SourcePosDocumentTransform>();
+}
 
 #[derive(Debug)]
 pub struct TaskListMarker {
@@ -30,8 +49,6 @@ impl NodeValue for TaskListMarker {
         fmt.text_raw(" ");
     }
 }
-
-// --- scanner ---
 
 #[doc(hidden)]
 pub struct TaskListScanner;
@@ -136,8 +153,7 @@ impl TaskListScanner {
         };
 
         inline_nodes.insert(0, Node::new(TaskListMarker { checked }));
-        item.attrs
-            .push(("class".into(), "task-list-item".to_owned()));
+        add_class(&mut item.attrs, "task-list-item");
 
         Some(())
     }
@@ -155,8 +171,7 @@ impl TaskListScanner {
             }
         }
         if contains_task {
-            node.attrs
-                .push(("class".into(), "contains-task-list".to_owned()));
+            add_class(&mut node.attrs, "contains-task-list");
         }
     }
 }
@@ -172,25 +187,185 @@ impl CoreRule for TaskListScanner {
     }
 }
 
-// --- pub method ---
+#[derive(Clone, Copy, Debug)]
+struct TaskItemPlan {
+    item: NodeId,
+    text: NodeId,
+    marker_target: NodeId,
+    checked: bool,
+    marker_len: usize,
+    text_len: usize,
+    source_map: Option<SourcePos>,
+}
 
-pub fn add(md: &mut MarkdownIt) {
-    // after all the inline rule
-    // make sure we are get the final AST
-    md.add_rule::<TaskListScanner>().after::<InlineParserRule>();
+/// Arena-backed task-list transform.
+#[derive(Debug, Default)]
+pub struct TaskListDocumentTransform;
+
+impl DocumentTransform for TaskListDocumentTransform {
+    const KEY: &'static str = "extra::tasklist";
+    const ALIASES: &'static [&'static str] = &["tasklist", "task_list"];
+
+    fn run(&self, document: &Document) -> EditBatch {
+        let mut edits = EditBatch::new();
+
+        for event in document.events(document.root()).unwrap() {
+            let list = match event {
+                StructuralEvent::Enter(node)
+                    if node.is::<BulletList>() || node.is::<OrderedList>() =>
+                {
+                    node
+                }
+                _ => continue,
+            };
+
+            let mut contains_task = false;
+            for &item in list.children() {
+                let Some(plan) = task_item_plan(document, item) else {
+                    continue;
+                };
+                contains_task = true;
+
+                if plan.marker_len == plan.text_len {
+                    if plan.marker_target == plan.text {
+                        edits.replace_node(plan.text, marker_draft(plan.checked));
+                    } else {
+                        edits.remove_node(plan.text);
+                        edits.insert_before(plan.marker_target, marker_draft(plan.checked));
+                    }
+                } else {
+                    edits.replace_text(plan.text, 0..plan.marker_len, "");
+                    if let Some(source_map) = plan.source_map {
+                        let (start, end) = source_map.get_byte_offsets();
+                        edits.set_source_map(
+                            plan.text,
+                            Some(SourcePos::new(start + plan.marker_len, end)),
+                        );
+                    }
+                    edits.insert_before(plan.marker_target, marker_draft(plan.checked));
+                }
+
+                let item_node = document.node(plan.item).unwrap();
+                edits.set_attribute(
+                    plan.item,
+                    "class",
+                    merged_class(item_node.attrs(), "task-list-item"),
+                );
+            }
+
+            if contains_task {
+                edits.set_attribute(
+                    list.id(),
+                    "class",
+                    merged_class(list.attrs(), "contains-task-list"),
+                );
+            }
+        }
+
+        edits
+    }
+}
+
+// --- helper ---
+
+// check if it is a task list item
+fn task_item_plan(document: &Document, item: NodeId) -> Option<TaskItemPlan> {
+    let item_node = document.node(item).ok()?;
+    if !item_node.is::<ListItem>() {
+        return None;
+    }
+
+    let first = *item_node.children().first()?;
+    let first_node = document.node(first).ok()?;
+    let (text, marker_target) = if first_node.is::<Paragraph>() {
+        (*first_node.children().first()?, first)
+    } else {
+        (first, first)
+    };
+    let text_node = document.node(text).ok()?;
+    let text_value = text_node.cast::<Text>()?;
+    let (checked, marker_len) = TaskListScanner::marker_len(&text_value.content)?;
+
+    Some(TaskItemPlan {
+        item,
+        text,
+        marker_target,
+        checked,
+        marker_len,
+        text_len: text_value.content.len(),
+        source_map: text_node.srcmap(),
+    })
+}
+
+fn marker_draft(checked: bool) -> NodeDraft {
+    NodeDraft::new(TaskListMarker { checked })
+}
+
+fn merged_class(attrs: &HtmlAttributes, class: &str) -> String {
+    let mut value = attrs
+        .iter()
+        .filter(|attribute| attribute.0 == "class")
+        .map(|attribute| attribute.1.as_str())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !value.split_ascii_whitespace().any(|token| token == class) {
+        if !value.is_empty() {
+            value.push(' ');
+        }
+        value.push_str(class);
+    }
+    value
+}
+
+fn add_class(attrs: &mut HtmlAttributes, class: &str) {
+    let value = merged_class(attrs, class);
+    if let Some(index) = attrs.iter().position(|attribute| attribute.0 == "class") {
+        attrs[index].1 = value;
+        let mut kept = false;
+        attrs.retain(|attribute| {
+            if attribute.0 == "class" {
+                let keep = !kept;
+                kept = true;
+                keep
+            } else {
+                true
+            }
+        });
+    } else {
+        attrs.push(("class".into(), value));
+    }
 }
 
 // --- unit test ---
 
 #[cfg(test)]
 mod tests {
-    fn run(input: &str, output: &str) {
-        let md = &mut crate::MarkdownIt::empty();
-        crate::plugins::cmark::add(md);
-        crate::plugins::extra::tasklist::add(md);
+    use super::{TaskListDocumentTransform, TaskListScanner};
+    use crate::parser::core::CoreRule;
+    use crate::plugins::cmark::block::list::{BulletList, ListItem};
+    use crate::{Document, MarkdownIt, Node};
 
-        let html = md.parse(input).render();
-        assert_eq!(html, output);
+    fn parser() -> MarkdownIt {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::add(&mut md);
+        md
+    }
+
+    fn run(input: &str, output: &str) {
+        let mut legacy = parser();
+        crate::plugins::extra::tasklist::add(&mut legacy);
+        let legacy_html = legacy.parse(input).render();
+
+        let parser = parser();
+        let mut transforms = MarkdownIt::empty();
+        crate::plugins::extra::tasklist::add_document(&mut transforms);
+        let mut document = parser.parse_document(input);
+        transforms.run_document_transforms(&mut document).unwrap();
+        let document_html = document.into_legacy().render();
+
+        assert_eq!(legacy_html, output);
+        assert_eq!(document_html, legacy_html);
     }
 
     #[test]
@@ -287,13 +462,25 @@ mod tests {
 
     #[test]
     fn stripped_marker_updates_text_source_map() {
-        let md = &mut crate::MarkdownIt::empty();
-        crate::plugins::cmark::add(md);
-        crate::plugins::extra::tasklist::add(md);
+        let mut md = parser();
+        crate::plugins::extra::tasklist::add(&mut md);
 
         let ast = md.parse("- [ ] todo");
         let text = &ast.children[0].children[0].children[1];
 
+        assert_eq!(
+            text.cast::<crate::parser::inline::Text>().unwrap().content,
+            "todo",
+        );
+        assert_eq!(text.srcmap.unwrap().get_byte_offsets(), (6, 10));
+
+        let parser = parser();
+        let mut transforms = MarkdownIt::empty();
+        crate::plugins::extra::tasklist::add_document(&mut transforms);
+        let mut document = parser.parse_document("- [ ] todo");
+        transforms.run_document_transforms(&mut document).unwrap();
+        let ast = document.into_legacy();
+        let text = &ast.children[0].children[0].children[1];
         assert_eq!(
             text.cast::<crate::parser::inline::Text>().unwrap().content,
             "todo",
@@ -312,5 +499,76 @@ mod tests {
     #[test]
     fn not_at_start() {
         run("- a [x] task", "<ul>\n<li>a [x] task</li>\n</ul>\n");
+    }
+
+    #[test]
+    fn existing_classes_are_preserved_and_normalized() {
+        let parser = parser();
+        let source = "- [x] done";
+        let mut legacy = parser.parse(source);
+        add_existing_classes(&mut legacy);
+        TaskListScanner::run(&mut legacy, &parser);
+
+        let mut document_root = parser.parse(source);
+        add_existing_classes(&mut document_root);
+        let mut document = Document::from_legacy(source, document_root);
+        let mut transforms = MarkdownIt::empty();
+        super::add_document(&mut transforms);
+        transforms.run_document_transforms(&mut document).unwrap();
+
+        let legacy_html = legacy.render();
+        assert_eq!(document.into_legacy().render(), legacy_html);
+        assert!(legacy_html.contains(r#"<ul class="outer contains-task-list">"#));
+        assert!(legacy_html.contains(r#"<li class="item task-list-item">"#));
+        assert_eq!(legacy_html.matches("class=\"outer").count(), 1);
+    }
+
+    #[test]
+    fn document_runner_is_explicit_and_legacy_registration_is_separate() {
+        let base_parser = parser();
+        let mut transforms = MarkdownIt::empty();
+        super::add_document(&mut transforms);
+        let document = base_parser.parse_document("- [ ] todo");
+        assert_eq!(
+            document.into_legacy().render(),
+            "<ul>\n<li>[ ] todo</li>\n</ul>\n"
+        );
+
+        let mut legacy = parser();
+        super::add(&mut legacy);
+        assert!(
+            !legacy
+                .document_transforms
+                .contains::<TaskListDocumentTransform>()
+        );
+    }
+
+    #[test]
+    fn tasklist_runs_before_sourcepos_when_registered_in_reverse() {
+        let source = "- [x] done";
+        let mut legacy = parser();
+        super::add(&mut legacy);
+        crate::plugins::sourcepos::add(&mut legacy);
+        let legacy_html = legacy.parse(source).render();
+
+        let parser = parser();
+        let mut transforms = MarkdownIt::empty();
+        crate::plugins::sourcepos::add_document(&mut transforms);
+        super::add_document(&mut transforms);
+        let mut document = parser.parse_document(source);
+        transforms.run_document_transforms(&mut document).unwrap();
+
+        assert_eq!(document.into_legacy().render(), legacy_html);
+    }
+
+    fn add_existing_classes(root: &mut Node) {
+        root.walk_mut(|node, _| {
+            if node.is::<BulletList>() {
+                node.attrs.push(("class".into(), "outer".into()));
+                node.attrs.push(("class".into(), String::new()));
+            } else if node.is::<ListItem>() {
+                node.attrs.push(("class".into(), "item".into()));
+            }
+        });
     }
 }

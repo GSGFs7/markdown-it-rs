@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::ops::Range;
 
+use crate::common::sourcemap::SourcePos;
 use crate::parser::document::{Document, InvalidNodeId, NodeDraft, NodeId, SiblingPosition};
 use crate::parser::inline::Text;
 
@@ -50,6 +51,12 @@ struct EditAttribute {
     change: AttributeChange,
 }
 
+#[derive(Clone, Debug)]
+struct EditSourceMap {
+    node: NodeId,
+    source_map: Option<SourcePos>,
+}
+
 #[derive(Debug)]
 struct InsertSibling {
     target: NodeId,
@@ -88,6 +95,14 @@ pub enum EditError {
     ConflictingAttributeEdits {
         node: NodeId,
         name: String,
+    },
+    ConflictingSourceMapEdits {
+        node: NodeId,
+    },
+    InvalidSourceMap {
+        node: NodeId,
+        start: usize,
+        end: usize,
     },
     CannotRemoveRoot(NodeId),
     DuplicateNodeRemoval(NodeId),
@@ -182,6 +197,12 @@ impl fmt::Display for EditError {
                     f,
                     "conflicting edits for attribute {name:?} on node {node:?}"
                 )
+            }
+            Self::ConflictingSourceMapEdits { node } => {
+                write!(f, "conflicting source map edits on node {node:?}")
+            }
+            Self::InvalidSourceMap { node, start, end } => {
+                write!(f, "invalid source map {start}..{end} for node {node:?}")
             }
             Self::CannotRemoveRoot(node) => {
                 write!(f, "cannot remove document root {node:?}")
@@ -295,6 +316,7 @@ impl From<InvalidNodeId> for EditError {
 pub struct EditBatch {
     text_edits: Vec<ReplaceText>,
     attribute_edits: Vec<EditAttribute>,
+    source_map_edits: Vec<EditSourceMap>,
     removed_nodes: Vec<NodeId>,
     sibling_insertions: Vec<InsertSibling>,
     node_replacements: Vec<ReplaceNode>,
@@ -309,6 +331,7 @@ impl EditBatch {
     pub fn len(&self) -> usize {
         self.text_edits.len()
             + self.attribute_edits.len()
+            + self.source_map_edits.len()
             + self.removed_nodes.len()
             + self.sibling_insertions.len()
             + self.node_replacements.len()
@@ -318,6 +341,7 @@ impl EditBatch {
     pub fn is_empty(&self) -> bool {
         self.text_edits.is_empty()
             && self.attribute_edits.is_empty()
+            && self.source_map_edits.is_empty()
             && self.removed_nodes.is_empty()
             && self.sibling_insertions.is_empty()
             && self.node_replacements.is_empty()
@@ -362,6 +386,12 @@ impl EditBatch {
             name: name.into(),
             change: AttributeChange::Remove,
         });
+    }
+
+    /// Set or clear a node's source mapping.
+    pub fn set_source_map(&mut self, node: NodeId, source_map: Option<SourcePos>) {
+        self.source_map_edits
+            .push(EditSourceMap { node, source_map });
     }
 
     /// Remove a non-root node and its complete subtree.
@@ -421,6 +451,7 @@ impl EditBatch {
         }
 
         if self.attribute_edits.is_empty()
+            && self.source_map_edits.is_empty()
             && self.removed_nodes.is_empty()
             && self.sibling_insertions.is_empty()
             && self.node_replacements.is_empty()
@@ -432,6 +463,7 @@ impl EditBatch {
             return Ok(());
         }
         if self.text_edits.is_empty()
+            && self.source_map_edits.is_empty()
             && self.removed_nodes.is_empty()
             && self.sibling_insertions.is_empty()
             && self.node_replacements.is_empty()
@@ -444,6 +476,19 @@ impl EditBatch {
         }
         if self.text_edits.is_empty()
             && self.attribute_edits.is_empty()
+            && self.removed_nodes.is_empty()
+            && self.sibling_insertions.is_empty()
+            && self.node_replacements.is_empty()
+            && self.wrap_ranges.is_empty()
+        {
+            self.sort_source_map_edits();
+            self.validate_source_maps(document)?;
+            self.apply_source_maps(document);
+            return Ok(());
+        }
+        if self.text_edits.is_empty()
+            && self.attribute_edits.is_empty()
+            && self.source_map_edits.is_empty()
             && self.sibling_insertions.is_empty()
             && self.node_replacements.is_empty()
             && self.wrap_ranges.is_empty()
@@ -455,6 +500,7 @@ impl EditBatch {
         }
         if self.text_edits.is_empty()
             && self.attribute_edits.is_empty()
+            && self.source_map_edits.is_empty()
             && self.removed_nodes.is_empty()
             && self.node_replacements.is_empty()
             && self.wrap_ranges.is_empty()
@@ -465,6 +511,7 @@ impl EditBatch {
         }
         if self.text_edits.is_empty()
             && self.attribute_edits.is_empty()
+            && self.source_map_edits.is_empty()
             && self.removed_nodes.is_empty()
             && self.sibling_insertions.is_empty()
             && self.wrap_ranges.is_empty()
@@ -476,6 +523,7 @@ impl EditBatch {
         }
         if self.text_edits.is_empty()
             && self.attribute_edits.is_empty()
+            && self.source_map_edits.is_empty()
             && self.removed_nodes.is_empty()
             && self.sibling_insertions.is_empty()
             && self.node_replacements.is_empty()
@@ -487,10 +535,12 @@ impl EditBatch {
 
         self.sort_text_edits();
         self.sort_attribute_edits();
+        self.sort_source_map_edits();
         self.sort_removed_nodes();
         self.sort_node_replacements();
         self.validate_text(document)?;
         self.validate_attributes(document)?;
+        self.validate_source_maps(document)?;
         if !self.removed_nodes.is_empty() {
             self.validate_removals(document)?;
         }
@@ -508,6 +558,7 @@ impl EditBatch {
         self.apply_replacements(document);
         self.apply_wrap_ranges(document);
         self.apply_insertions(document);
+        self.apply_source_maps(document);
         self.apply_attributes(document);
         Ok(())
     }
@@ -532,6 +583,11 @@ impl EditBatch {
                 &right.name,
             ))
         });
+    }
+
+    fn sort_source_map_edits(&mut self) {
+        self.source_map_edits
+            .sort_unstable_by_key(|edit| (edit.node.slot(), edit.node.generation()));
     }
 
     fn sort_removed_nodes(&mut self) {
@@ -599,6 +655,32 @@ impl EditBatch {
         Ok(())
     }
 
+    fn validate_source_maps(&self, document: &Document) -> Result<(), EditError> {
+        let mut previous = None;
+        for edit in &self.source_map_edits {
+            document.node(edit.node)?;
+            if previous == Some(edit.node) {
+                return Err(EditError::ConflictingSourceMapEdits { node: edit.node });
+            }
+            if let Some(source_map) = edit.source_map {
+                let (start, end) = source_map.get_byte_offsets();
+                if start > end
+                    || end > document.source().len()
+                    || !document.source().is_char_boundary(start)
+                    || !document.source().is_char_boundary(end)
+                {
+                    return Err(EditError::InvalidSourceMap {
+                        node: edit.node,
+                        start,
+                        end,
+                    });
+                }
+            }
+            previous = Some(edit.node);
+        }
+        Ok(())
+    }
+
     fn validate_removals(&self, document: &Document) -> Result<(), EditError> {
         let mut removals = HashSet::with_capacity(self.removed_nodes.len());
         for &node in &self.removed_nodes {
@@ -629,6 +711,7 @@ impl EditBatch {
             .iter()
             .map(|edit| edit.node)
             .chain(self.attribute_edits.iter().map(|edit| edit.node))
+            .chain(self.source_map_edits.iter().map(|edit| edit.node))
         {
             let mut current = Some(edited);
             while let Some(node) = current {
@@ -724,6 +807,7 @@ impl EditBatch {
             .iter()
             .map(|edit| edit.node)
             .chain(self.attribute_edits.iter().map(|edit| edit.node))
+            .chain(self.source_map_edits.iter().map(|edit| edit.node))
         {
             let mut current = Some(edited);
             while let Some(node) = current {
@@ -867,6 +951,23 @@ impl EditBatch {
                 .cast_mut::<Text>()
                 .expect("validated edit node remains a Text node");
 
+            if let [edit] = edits {
+                match &edit.replacement {
+                    TextReplacement::String(replacement) => {
+                        text.content
+                            .replace_range(edit.range.clone(), replacement.as_str());
+                    }
+                    TextReplacement::Char(replacement) => {
+                        let mut encoded = [0; 4];
+                        text.content.replace_range(
+                            edit.range.clone(),
+                            replacement.encode_utf8(&mut encoded),
+                        );
+                    }
+                }
+                continue;
+            }
+
             let capacity = edits.iter().fold(text.content.len(), |len, edit| {
                 len - (edit.range.end - edit.range.start) + edit.replacement.len()
             });
@@ -908,6 +1009,15 @@ impl EditBatch {
                 }
                 AttributeChange::Remove => attrs.retain(|attr| attr.0 != edit.name),
             }
+        }
+    }
+
+    fn apply_source_maps(&mut self, document: &mut Document) {
+        for edit in self.source_map_edits.drain(..) {
+            document
+                .node_mut(edit.node)
+                .expect("validated source map edit node remains present")
+                .set_srcmap(edit.source_map);
         }
     }
 
@@ -1170,6 +1280,67 @@ mod tests {
     }
 
     #[test]
+    fn text_attribute_and_source_map_edits_commit_together() {
+        let mut document = document(&["abc"]);
+        let text = document.children(document.root()).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.replace_text(text, 0..1, "A");
+        batch.set_attribute(text, "data-state", "edited");
+        batch.set_source_map(text, Some(SourcePos::new(1, 3)));
+
+        assert_eq!(batch.len(), 3);
+        batch.commit(&mut document).unwrap();
+
+        assert_eq!(content(&document, text), "Abc");
+        assert_eq!(
+            document
+                .node(text)
+                .unwrap()
+                .srcmap()
+                .unwrap()
+                .get_byte_offsets(),
+            (1, 3)
+        );
+    }
+
+    #[test]
+    fn conflicting_source_map_edits_leave_other_edits_unchanged() {
+        let mut document = document(&["abc"]);
+        let text = document.children(document.root()).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.replace_text(text, 0..1, "A");
+        batch.set_source_map(text, Some(SourcePos::new(1, 2)));
+        batch.set_source_map(text, None);
+
+        assert_eq!(
+            batch.commit(&mut document),
+            Err(EditError::ConflictingSourceMapEdits { node: text })
+        );
+        assert_eq!(content(&document, text), "abc");
+        assert!(document.node(text).unwrap().srcmap().is_none());
+    }
+
+    #[test]
+    fn invalid_source_map_leaves_attributes_unchanged() {
+        let mut document = document(&["雪"]);
+        let text = document.children(document.root()).unwrap()[0];
+        let mut batch = EditBatch::new();
+        batch.set_attribute(text, "class", "new");
+        batch.set_source_map(text, Some(SourcePos::new(1, 2)));
+
+        assert_eq!(
+            batch.commit(&mut document),
+            Err(EditError::InvalidSourceMap {
+                node: text,
+                start: 1,
+                end: 2,
+            })
+        );
+        assert!(document.node(text).unwrap().attrs().is_empty());
+        assert!(document.node(text).unwrap().srcmap().is_none());
+    }
+
+    #[test]
     fn conflicting_attribute_edits_leave_text_and_attributes_unchanged() {
         let mut document = document(&["abc"]);
         let text = document.children(document.root()).unwrap()[0];
@@ -1333,6 +1504,18 @@ mod tests {
             })
         );
         assert!(document.node(branch).unwrap().attrs().is_empty());
+
+        let mut source_map_conflict = EditBatch::new();
+        source_map_conflict.remove_node(branch);
+        source_map_conflict.set_source_map(text, None);
+        assert_eq!(
+            source_map_conflict.commit(&mut document),
+            Err(EditError::EditTargetsRemovedNode {
+                removed: branch,
+                edited: text,
+            })
+        );
+        assert!(document.node(text).unwrap().srcmap().is_none());
     }
 
     #[test]
@@ -1698,6 +1881,17 @@ mod tests {
             })
         );
         assert!(document.node(branch).unwrap().attrs().is_empty());
+
+        let mut source_map_conflict = EditBatch::new();
+        source_map_conflict.replace_node(branch, text_draft("replacement"));
+        source_map_conflict.set_source_map(text, None);
+        assert_eq!(
+            source_map_conflict.commit(&mut document),
+            Err(EditError::EditTargetsReplacedNode {
+                replaced: branch,
+                edited: text,
+            })
+        );
 
         let mut insertion_conflict = EditBatch::new();
         insertion_conflict.replace_node(branch, text_draft("replacement"));

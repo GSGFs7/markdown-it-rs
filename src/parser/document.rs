@@ -169,6 +169,10 @@ impl DocumentNode {
         self.srcmap
     }
 
+    pub(crate) fn set_srcmap(&mut self, srcmap: Option<SourcePos>) {
+        self.srcmap = srcmap;
+    }
+
     pub fn ext(&self) -> &NodeExtSet {
         &self.ext
     }
