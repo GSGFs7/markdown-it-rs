@@ -2,8 +2,8 @@ use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use markdown_it::parser::core::CoreRule;
-use markdown_it::plugins::sourcepos::{self, SyntaxPosRule};
-use markdown_it::{Document, MarkdownIt, Node};
+use markdown_it::plugins::sourcepos::{self, SourcePosDocumentTransform, SyntaxPosRule};
+use markdown_it::{Document, DocumentTransform, EditBatch, MarkdownIt, Node, StructuralEvent};
 use markdown_it_benchmarks::corpus;
 
 fn transform_legacy(root: &mut Node, md: &MarkdownIt) {
@@ -23,6 +23,7 @@ fn parser() -> MarkdownIt {
 
 fn benchmark(c: &mut Criterion) {
     let parser = parser();
+    let transform = SourcePosDocumentTransform;
     let mut document_transforms = MarkdownIt::empty();
     sourcepos::add_document(&mut document_transforms);
     let standard = corpus::standard();
@@ -59,8 +60,74 @@ fn benchmark(c: &mut Criterion) {
                 BatchSize::SmallInput,
             )
         });
+        group.bench_function("document-build-edits", |b| {
+            let document = parser.parse_document(source);
+            // Diagnostic phase only: its timing includes dropping the
+            // uncommitted batch, so it is not additive with document-commit.
+            b.iter(|| black_box(transform.run(black_box(&document))))
+        });
+        group.bench_function("document-commit", |b| {
+            b.iter_batched(
+                || {
+                    let document = parser.parse_document(source);
+                    let edits = transform.run(&document);
+                    (document, edits)
+                },
+                |(mut document, edits)| {
+                    edits.commit(black_box(&mut document)).unwrap();
+                    black_box(document);
+                },
+                BatchSize::SmallInput,
+            )
+        });
+        group.bench_function("document-commit-ordered", |b| {
+            // Use a constant value on every node to isolate the effect of
+            // attribute edit ordering from source-position formatting.
+            b.iter_batched(
+                || attribute_commit_input(&parser, source, false),
+                |(mut document, edits)| {
+                    edits.commit(black_box(&mut document)).unwrap();
+                    black_box(document);
+                },
+                BatchSize::SmallInput,
+            )
+        });
+        group.bench_function("document-commit-reversed", |b| {
+            b.iter_batched(
+                || attribute_commit_input(&parser, source, true),
+                |(mut document, edits)| {
+                    edits.commit(black_box(&mut document)).unwrap();
+                    black_box(document);
+                },
+                BatchSize::SmallInput,
+            )
+        });
         group.finish();
     }
+}
+
+fn attribute_commit_input(
+    parser: &MarkdownIt,
+    source: &str,
+    reversed: bool,
+) -> (Document, EditBatch) {
+    let document = parser.parse_document(source);
+    let mut nodes: Vec<_> = document
+        .events(document.root())
+        .unwrap()
+        .filter_map(|event| match event {
+            StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => Some(node.id()),
+            StructuralEvent::Exit(_) => None,
+        })
+        .collect();
+    if reversed {
+        nodes.reverse();
+    }
+    let mut edits = EditBatch::new();
+    for node in nodes {
+        edits.set_attribute(node, "data-profile", "value");
+    }
+    (document, edits)
 }
 
 criterion_group!(benches, benchmark);
