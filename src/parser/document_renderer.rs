@@ -610,6 +610,57 @@ mod tests {
     }
 
     #[test]
+    fn commonmark_inline_renderers_match_legacy_html() {
+        let sources = [
+            "plain *em **strong** text* end",
+            "`<code> & value`",
+            "soft\nbreak and hard  \nbreak",
+            "[label *em*](https://example.com/?a=1&b=2 \"a title\")",
+            "![alt *em* <b>raw</b>](image.png \"image title\")",
+            "<https://example.com/?a=1&b=2> <hello@example.com>",
+        ];
+
+        for xhtml_out in [false, true] {
+            for breaks in [false, true] {
+                let mut md = MarkdownIt::empty();
+                crate::plugins::cmark::add(&mut md);
+                crate::plugins::html::add(&mut md);
+                md.render_options.xhtml_out = xhtml_out;
+                md.render_options.breaks = breaks;
+
+                for source in sources {
+                    let expected = md.parse(source).render();
+                    let document = md.parse_document(source);
+                    assert_eq!(
+                        md.render_document(&document).unwrap(),
+                        expected,
+                        "direct renderer differs for {source:?} with options {:?}",
+                        md.render_options
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn inline_renderers_preserve_document_transform_attributes() {
+        let source = "**strong** [link](https://example.com) ![alt](image.png)  \nnext";
+
+        let mut legacy = MarkdownIt::empty();
+        crate::plugins::cmark::add(&mut legacy);
+        crate::plugins::sourcepos::add(&mut legacy);
+        let expected = legacy.render(source);
+
+        let mut direct = MarkdownIt::empty();
+        crate::plugins::cmark::add(&mut direct);
+        crate::plugins::sourcepos::add_document(&mut direct);
+        let mut document = direct.parse_document(source);
+        direct.run_document_transforms(&mut document).unwrap();
+
+        assert_eq!(direct.render_document(&document).unwrap(), expected);
+    }
+
+    #[test]
     fn unknown_container_transparently_renders_children() {
         let md = MarkdownIt::empty();
         let mut root = Node::new(UnknownContainer);

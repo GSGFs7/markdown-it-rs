@@ -7,12 +7,40 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    write_html_close,
+    write_html_open,
+};
 use crate::parser::inline::{InlineRule, InlineState, TextSpecial};
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 
 #[derive(Debug)]
 pub struct Autolink {
     pub url: String,
+}
+
+struct AutolinkDocumentRenderer;
+
+impl DocumentNodeRenderer<Autolink> for AutolinkDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        link: &Autolink,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        let mut attrs = node.attrs().clone();
+        attrs.push(("href".into(), link.url.clone()));
+        write_html_open(output, "a", &attrs)?;
+        context.render_children(node.id(), output)?;
+        write_html_close(output, "a")
+    }
 }
 
 impl NodeValue for Autolink {
@@ -28,6 +56,7 @@ impl NodeValue for Autolink {
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<AutolinkScanner>();
+    md.add_document_renderer::<Autolink, _>("html", AutolinkDocumentRenderer);
 }
 
 static AUTOLINK_RE: LazyLock<Regex> =

@@ -4,12 +4,38 @@
 //!
 //! <https://spec.commonmark.org/0.30/#code-span>
 use crate::generics::inline::code_pair;
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    write_html_close,
+    write_html_open,
+};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 
 #[derive(Debug)]
 pub struct CodeInline {
     pub marker: char,
     pub marker_len: usize,
+}
+
+struct CodeInlineDocumentRenderer;
+
+impl DocumentNodeRenderer<CodeInline> for CodeInlineDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        _: &CodeInline,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        write_html_open(output, "code", node.attrs())?;
+        context.render_children(node.id(), output)?;
+        write_html_close(output, "code")
+    }
 }
 
 impl NodeValue for CodeInline {
@@ -27,4 +53,5 @@ pub fn add(md: &mut MarkdownIt) {
             marker_len: len,
         })
     });
+    md.add_document_renderer::<CodeInline, _>("html", CodeInlineDocumentRenderer);
 }

@@ -4,11 +4,35 @@
 //!
 //!  - <https://spec.commonmark.org/0.30/#hard-line-breaks>
 //!  - <https://spec.commonmark.org/0.30/#soft-line-breaks>
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    write_html_self_close,
+};
 use crate::parser::inline::{InlineRule, InlineState};
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 
 #[derive(Debug)]
 pub struct Hardbreak;
+
+struct HardbreakDocumentRenderer;
+
+impl DocumentNodeRenderer<Hardbreak> for HardbreakDocumentRenderer {
+    fn render(
+        &self,
+        _: NodeRef<'_>,
+        _: &Hardbreak,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        write_html_self_close(output, "br", &[], context.options().xhtml_out)?;
+        context.cr(output)
+    }
+}
 
 impl NodeValue for Hardbreak {
     fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
@@ -20,6 +44,23 @@ impl NodeValue for Hardbreak {
 #[derive(Debug)]
 pub struct Softbreak;
 
+struct SoftbreakDocumentRenderer;
+
+impl DocumentNodeRenderer<Softbreak> for SoftbreakDocumentRenderer {
+    fn render(
+        &self,
+        _: NodeRef<'_>,
+        _: &Softbreak,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        if context.options().breaks {
+            write_html_self_close(output, "br", &[], context.options().xhtml_out)?;
+        }
+        context.cr(output)
+    }
+}
+
 impl NodeValue for Softbreak {
     fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
         fmt.softbreak();
@@ -28,6 +69,8 @@ impl NodeValue for Softbreak {
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<NewlineScanner>();
+    md.add_document_renderer::<Hardbreak, _>("html", HardbreakDocumentRenderer);
+    md.add_document_renderer::<Softbreak, _>("html", SoftbreakDocumentRenderer);
 }
 
 #[doc(hidden)]
