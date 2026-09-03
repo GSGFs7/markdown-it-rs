@@ -16,7 +16,9 @@ use downcast_rs::{Downcast, impl_downcast};
 use crate::common::utils::{normalize_reference, unescape_all};
 use crate::generics::inline::full_link;
 use crate::parser::block::{BlockRule, BlockState};
-use crate::{MarkdownIt, Node, NodeValue};
+use crate::parser::document_renderer::EmptyDocumentRenderer;
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
 
 /// Storage for parsed references
 ///
@@ -207,6 +209,7 @@ impl ReferenceMapEntry {
 /// Add plugin that parses markdown link references
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<ReferenceScanner>();
+    md.add_document_renderer::<Definition, _>("html", EmptyDocumentRenderer);
 }
 
 #[derive(Debug)]

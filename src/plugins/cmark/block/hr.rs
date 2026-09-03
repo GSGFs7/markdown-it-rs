@@ -4,12 +4,37 @@
 //!
 //! <https://spec.commonmark.org/0.30/#thematic-breaks>
 use crate::parser::block::{BlockRule, BlockState};
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    write_html_self_close,
+};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 
 #[derive(Debug)]
 pub struct ThematicBreak {
     pub marker: char,
     pub marker_len: usize,
+}
+
+struct ThematicBreakDocumentRenderer;
+
+impl DocumentNodeRenderer<ThematicBreak> for ThematicBreakDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        _: &ThematicBreak,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        context.cr(output)?;
+        write_html_self_close(output, "hr", node.attrs(), context.options().xhtml_out)?;
+        context.cr(output)
+    }
 }
 
 impl NodeValue for ThematicBreak {
@@ -22,6 +47,7 @@ impl NodeValue for ThematicBreak {
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HrScanner>();
+    md.add_document_renderer::<ThematicBreak, _>("html", ThematicBreakDocumentRenderer);
 }
 
 #[doc(hidden)]

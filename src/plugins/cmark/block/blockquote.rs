@@ -5,11 +5,54 @@
 //! <https://spec.commonmark.org/0.30/#block-quotes>
 use crate::common::utils::find_indent_of;
 use crate::parser::block::{BlockRule, BlockState};
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    write_html_close,
+    write_html_open,
+};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 use crate::plugins::cmark::block::reference::Definition;
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 #[derive(Debug)]
 pub struct Blockquote;
+
+struct BlockquoteDocumentRenderer;
+
+impl DocumentNodeRenderer<Blockquote> for BlockquoteDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        _: &Blockquote,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        context.cr(output)?;
+        write_html_open(output, "blockquote", node.attrs())?;
+
+        let mut only_invisible_definitions = !node.children().is_empty();
+        for &child in node.children() {
+            if !context.document().node(child)?.is::<Definition>() {
+                only_invisible_definitions = false;
+                break;
+            }
+        }
+        if !only_invisible_definitions || context.options().xhtml_out {
+            context.cr(output)?;
+            context.render_children(node.id(), output)?;
+            context.cr(output)?;
+        } else {
+            context.render_children(node.id(), output)?;
+        }
+
+        write_html_close(output, "blockquote")?;
+        context.cr(output)
+    }
+}
 
 impl NodeValue for Blockquote {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
@@ -39,6 +82,7 @@ impl NodeValue for Blockquote {
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<BlockquoteScanner>();
+    md.add_document_renderer::<Blockquote, _>("html", BlockquoteDocumentRenderer);
 }
 
 #[doc(hidden)]

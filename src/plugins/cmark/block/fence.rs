@@ -5,7 +5,18 @@
 //! <https://spec.commonmark.org/0.30/#code-fence>
 use crate::common::utils::unescape_all;
 use crate::parser::block::{BlockRule, BlockState};
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    write_html_close,
+    write_html_open,
+    write_html_text,
+};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 
 #[derive(Debug)]
 pub struct CodeFence {
@@ -14,6 +25,38 @@ pub struct CodeFence {
     pub marker_len: usize,
     pub content: String,
     pub lang_prefix: String,
+}
+
+struct CodeFenceDocumentRenderer;
+
+impl DocumentNodeRenderer<CodeFence> for CodeFenceDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        fence: &CodeFence,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        let info = unescape_all(&fence.info);
+        let lang_name = info.split_whitespace().next().unwrap_or("");
+        let mut attrs = node.attrs().clone();
+        let lang_prefix = context
+            .options()
+            .lang_prefix
+            .as_deref()
+            .unwrap_or(&fence.lang_prefix);
+        if !lang_name.is_empty() {
+            attrs.push(("class".into(), format!("{lang_prefix}{lang_name}")));
+        }
+
+        context.cr(output)?;
+        write_html_open(output, "pre", &[])?;
+        write_html_open(output, "code", &attrs)?;
+        write_html_text(output, &fence.content)?;
+        write_html_close(output, "code")?;
+        write_html_close(output, "pre")?;
+        context.cr(output)
+    }
 }
 
 impl NodeValue for CodeFence {
@@ -52,6 +95,7 @@ impl Default for FenceSettings {
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<FenceScanner>();
+    md.add_document_renderer::<CodeFence, _>("html", CodeFenceDocumentRenderer);
 }
 
 pub fn set_lang_prefix(md: &mut MarkdownIt, lang_prefix: impl Into<String>) {

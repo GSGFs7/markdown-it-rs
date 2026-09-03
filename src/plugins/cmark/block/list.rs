@@ -8,14 +8,42 @@
 //!  - <https://spec.commonmark.org/0.30/#list-items>
 use crate::common::utils::find_indent_of;
 use crate::parser::block::{BlockRule, BlockState};
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    write_html_close,
+    write_html_open,
+};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 use crate::plugins::cmark::block::hr::HrScanner;
 use crate::plugins::cmark::block::paragraph::Paragraph;
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 #[derive(Debug)]
 pub struct OrderedList {
     pub start: u32,
     pub marker: char,
+}
+
+struct OrderedListDocumentRenderer;
+
+impl DocumentNodeRenderer<OrderedList> for OrderedListDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        list: &OrderedList,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        let mut attrs = node.attrs().clone();
+        if list.start != 1 {
+            attrs.push(("start".into(), list.start.to_string()));
+        }
+        render_list_container(node, context, output, "ol", &attrs)
+    }
 }
 
 impl NodeValue for OrderedList {
@@ -41,6 +69,20 @@ pub struct BulletList {
     pub marker: char,
 }
 
+struct BulletListDocumentRenderer;
+
+impl DocumentNodeRenderer<BulletList> for BulletListDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        _: &BulletList,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        render_list_container(node, context, output, "ul", node.attrs())
+    }
+}
+
 impl NodeValue for BulletList {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         fmt.cr();
@@ -56,6 +98,39 @@ impl NodeValue for BulletList {
 #[derive(Debug)]
 pub struct ListItem;
 
+struct ListItemDocumentRenderer;
+
+impl DocumentNodeRenderer<ListItem> for ListItemDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        _: &ListItem,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        write_html_open(output, "li", node.attrs())?;
+        context.render_children(node.id(), output)?;
+        write_html_close(output, "li")?;
+        context.cr(output)
+    }
+}
+
+fn render_list_container(
+    node: NodeRef<'_>,
+    context: &mut DocumentRenderContext<'_>,
+    output: &mut dyn std::fmt::Write,
+    tag: &str,
+    attrs: &[crate::HtmlAttribute],
+) -> Result<(), DocumentRenderError> {
+    context.cr(output)?;
+    write_html_open(output, tag, attrs)?;
+    context.cr(output)?;
+    context.render_children(node.id(), output)?;
+    context.cr(output)?;
+    write_html_close(output, tag)?;
+    context.cr(output)
+}
+
 impl NodeValue for ListItem {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         fmt.open("li", &node.attrs);
@@ -67,6 +142,9 @@ impl NodeValue for ListItem {
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<ListScanner>().after::<HrScanner>();
+    md.add_document_renderer::<OrderedList, _>("html", OrderedListDocumentRenderer);
+    md.add_document_renderer::<BulletList, _>("html", BulletListDocumentRenderer);
+    md.add_document_renderer::<ListItem, _>("html", ListItemDocumentRenderer);
 }
 
 #[doc(hidden)]

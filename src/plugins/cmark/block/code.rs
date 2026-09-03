@@ -4,13 +4,44 @@
 //!
 //! <https://spec.commonmark.org/0.30/#indented-code-block>
 use crate::parser::block::{BlockRule, BlockState};
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    write_html_close,
+    write_html_open,
+    write_html_text,
+};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 
 const CODE_INDENT: i32 = 4;
 
 #[derive(Debug)]
 pub struct CodeBlock {
     pub content: String,
+}
+
+struct CodeBlockDocumentRenderer;
+
+impl DocumentNodeRenderer<CodeBlock> for CodeBlockDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        code: &CodeBlock,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        context.cr(output)?;
+        write_html_open(output, "pre", &[])?;
+        write_html_open(output, "code", node.attrs())?;
+        write_html_text(output, &code.content)?;
+        write_html_close(output, "code")?;
+        write_html_close(output, "pre")?;
+        context.cr(output)
+    }
 }
 
 impl NodeValue for CodeBlock {
@@ -27,6 +58,7 @@ impl NodeValue for CodeBlock {
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<CodeScanner>();
+    md.add_document_renderer::<CodeBlock, _>("html", CodeBlockDocumentRenderer);
     md.max_indent = CODE_INDENT;
 }
 

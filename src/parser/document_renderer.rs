@@ -1,6 +1,7 @@
 //! Format-specific rendering for arena-backed documents.
 
 use std::any::TypeId;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::fmt::{self, Write};
 use std::marker::PhantomData;
@@ -8,7 +9,7 @@ use std::marker::PhantomData;
 use crate::common::utils::escape_html;
 use crate::parser::document::{Document, DocumentNode, InvalidNodeId, NodeId, NodeRef};
 use crate::parser::extset::RenderExtSet;
-use crate::parser::node::{HtmlAttributes, NodeValue};
+use crate::parser::node::{HtmlAttribute, NodeValue};
 use crate::parser::render_options::RenderOptions;
 
 // --- error ---
@@ -210,48 +211,64 @@ impl DocumentRendererRegistry {
         format: &str,
         options: &RenderOptions,
     ) -> Result<String, DocumentRenderError> {
-        let mut output = String::new();
+        let mut result = String::new();
         let mut ext = RenderExtSet::new();
-        let renderers = self.formats.get(format);
-        render_node(
+        let line_start = Cell::new(true);
+        let mut output = TrackedWriter {
+            inner: &mut result,
+            line_start: &line_start,
+        };
+        let shared = RenderShared {
             document,
-            renderers,
+            renderers: self.formats.get(format),
             format,
             options,
-            &mut ext,
-            document.root(),
-            &mut output,
-        )?;
-        Ok(output)
+            line_start: &line_start,
+        };
+        render_node(&shared, &mut ext, document.root(), &mut output)?;
+        Ok(result)
     }
 }
 
 // --- engine ---
 
-/// Recursive services shared by node renderers for one render operation.
-pub struct DocumentRenderContext<'a> {
+struct RenderShared<'a> {
     document: &'a Document,
     renderers: Option<&'a FormatRenderers>,
     format: &'a str,
     options: &'a RenderOptions,
+    line_start: &'a Cell<bool>,
+}
+
+/// Recursive services shared by node renderers for one render operation.
+pub struct DocumentRenderContext<'a> {
+    shared: &'a RenderShared<'a>,
     ext: &'a mut RenderExtSet,
 }
 
 impl DocumentRenderContext<'_> {
     pub fn document(&self) -> &Document {
-        self.document
+        self.shared.document
     }
 
     pub fn format(&self) -> &str {
-        self.format
+        self.shared.format
     }
 
     pub fn options(&self) -> &RenderOptions {
-        self.options
+        self.shared.options
     }
 
     pub fn ext(&mut self) -> &mut RenderExtSet {
         self.ext
+    }
+
+    /// Write one line ending unless the output is already at the start of a line.
+    pub fn cr(&mut self, output: &mut dyn Write) -> Result<(), DocumentRenderError> {
+        if !self.shared.line_start.get() {
+            output.write_char('\n')?;
+        }
+        Ok(())
     }
 
     pub fn render_node(
@@ -259,15 +276,7 @@ impl DocumentRenderContext<'_> {
         node: NodeId,
         output: &mut dyn Write,
     ) -> Result<(), DocumentRenderError> {
-        render_node(
-            self.document,
-            self.renderers,
-            self.format,
-            self.options,
-            self.ext,
-            node,
-            output,
-        )
+        render_node(self.shared, self.ext, node, output)
     }
 
     pub fn render_children(
@@ -275,17 +284,9 @@ impl DocumentRenderContext<'_> {
         node: NodeId,
         output: &mut dyn Write,
     ) -> Result<(), DocumentRenderError> {
-        for &child in self.document.children(node)? {
+        for &child in self.shared.document.children(node)? {
             stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
-                render_node(
-                    self.document,
-                    self.renderers,
-                    self.format,
-                    self.options,
-                    self.ext,
-                    child,
-                    output,
-                )
+                render_node(self.shared, self.ext, child, output)
             })?;
         }
         Ok(())
@@ -294,20 +295,20 @@ impl DocumentRenderContext<'_> {
 
 // recursive rendering nodes
 fn render_node(
-    document: &Document,
-    renderers: Option<&FormatRenderers>,
-    format: &str,
-    options: &RenderOptions,
+    shared: &RenderShared<'_>,
     ext: &mut RenderExtSet,
     id: NodeId,
     output: &mut dyn Write,
 ) -> Result<(), DocumentRenderError> {
-    let node = document.node(id)?;
-    let Some(renderer) = renderers.and_then(|renderers| renderers.get(&node.type_id())) else {
+    let node = shared.document.node(id)?;
+    let Some(renderer) = shared
+        .renderers
+        .and_then(|renderers| renderers.get(&node.type_id()))
+    else {
         if node.children().is_empty() {
             // leaf but no renderer
             return Err(DocumentRenderError::MissingRenderer {
-                format: format.to_owned(),
+                format: shared.format.to_owned(),
                 node: id,
                 node_name: node.name(),
             });
@@ -315,20 +316,14 @@ fn render_node(
         // transparent downward traversal
         for &child in node.children() {
             stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
-                render_node(document, renderers, format, options, ext, child, output)
+                render_node(shared, ext, child, output)
             })?;
         }
         return Ok(());
     };
 
     // render the shell (<h1>,<em>,...)
-    let mut context = DocumentRenderContext {
-        document,
-        renderers,
-        format,
-        options,
-        ext,
-    };
+    let mut context = DocumentRenderContext { shared, ext };
     renderer.render(node, &mut context, output)
 }
 
@@ -345,6 +340,20 @@ impl<T: NodeValue> DocumentNodeRenderer<T> for TransparentDocumentRenderer {
         output: &mut dyn Write,
     ) -> Result<(), DocumentRenderError> {
         context.render_children(node.id(), output)
+    }
+}
+
+pub(crate) struct EmptyDocumentRenderer;
+
+impl<T: NodeValue> DocumentNodeRenderer<T> for EmptyDocumentRenderer {
+    fn render(
+        &self,
+        _: &DocumentNode,
+        _: &T,
+        _: &mut DocumentRenderContext<'_>,
+        _: &mut dyn Write,
+    ) -> Result<(), DocumentRenderError> {
+        Ok(())
     }
 }
 
@@ -376,18 +385,19 @@ impl<T: NodeValue> DocumentNodeRenderer<T> for HtmlBlockElementDocumentRenderer 
         context: &mut DocumentRenderContext<'_>,
         output: &mut dyn Write,
     ) -> Result<(), DocumentRenderError> {
+        context.cr(output)?;
         write!(output, "<{}", self.0)?;
         write_html_attrs(output, node.attrs())?;
         output.write_char('>')?;
         context.render_children(node.id(), output)?;
-        writeln!(output, "</{}>", self.0)?;
-        Ok(())
+        write!(output, "</{}>", self.0)?;
+        context.cr(output)
     }
 }
 
-fn write_html_attrs(
+pub(crate) fn write_html_attrs(
     output: &mut dyn Write,
-    attrs: &HtmlAttributes,
+    attrs: &[HtmlAttribute],
 ) -> Result<(), DocumentRenderError> {
     let mut values = HashMap::<&str, Vec<&str>>::new();
     let mut order = Vec::with_capacity(attrs.len());
@@ -420,6 +430,63 @@ fn write_html_attrs(
         }
     }
     Ok(())
+}
+
+pub(crate) fn write_html_open(
+    output: &mut dyn Write,
+    tag: &str,
+    attrs: &[HtmlAttribute],
+) -> Result<(), DocumentRenderError> {
+    write!(output, "<{tag}")?;
+    write_html_attrs(output, attrs)?;
+    output.write_char('>')?;
+    Ok(())
+}
+
+pub(crate) fn write_html_close(
+    output: &mut dyn Write,
+    tag: &str,
+) -> Result<(), DocumentRenderError> {
+    write!(output, "</{tag}>")?;
+    Ok(())
+}
+
+pub(crate) fn write_html_self_close(
+    output: &mut dyn Write,
+    tag: &str,
+    attrs: &[HtmlAttribute],
+    xhtml: bool,
+) -> Result<(), DocumentRenderError> {
+    write!(output, "<{tag}")?;
+    write_html_attrs(output, attrs)?;
+    if xhtml {
+        output.write_str(" /")?;
+    }
+    output.write_char('>')?;
+    Ok(())
+}
+
+pub(crate) fn write_html_text(
+    output: &mut dyn Write,
+    value: &str,
+) -> Result<(), DocumentRenderError> {
+    output.write_str(&escape_html(value))?;
+    Ok(())
+}
+
+struct TrackedWriter<'a> {
+    inner: &'a mut String,
+    line_start: &'a Cell<bool>,
+}
+
+impl Write for TrackedWriter<'_> {
+    fn write_str(&mut self, value: &str) -> fmt::Result {
+        self.inner.push_str(value);
+        if let Some(last) = value.as_bytes().last() {
+            self.line_start.set(*last == b'\n');
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -490,6 +557,56 @@ mod tests {
             md.render_document(&document).unwrap(),
             "<p class=\"one two\">hello</p>\n"
         );
+    }
+
+    #[test]
+    fn commonmark_block_renderers_match_legacy_html() {
+        let sources = [
+            "# atx\n\nsetext\n------\n",
+            "> quoted\n>\n> second\n",
+            "> [label]: /destination\n",
+            "1. first\n2. second\n\n7. seven\n",
+            "- outer\n  - inner\n",
+            "---\n",
+            "    <indented> & code\n",
+            "```rust extra\nfn main() { <tag> }\n```\n",
+            "[label]: /destination \"title\"\n",
+        ];
+
+        for mut md in [
+            MarkdownIt::new(),
+            MarkdownIt::with_preset(crate::Preset::CommonMark),
+        ] {
+            md.render_options.lang_prefix = Some("lang-".into());
+            for source in sources {
+                let expected = md.parse(source).render();
+                let document = md.parse_document(source);
+                assert_eq!(
+                    md.render_document(&document).unwrap(),
+                    expected,
+                    "direct renderer differs for {source:?} with options {:?}",
+                    md.render_options
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn block_renderers_preserve_document_transform_attributes() {
+        let source = "# heading\n\n> quote\n\n3. item\n\n---\n\n    code\n\n```rs\nfenced\n```\n";
+
+        let mut legacy = MarkdownIt::empty();
+        crate::plugins::cmark::add(&mut legacy);
+        crate::plugins::sourcepos::add(&mut legacy);
+        let expected = legacy.render(source);
+
+        let mut direct = MarkdownIt::empty();
+        crate::plugins::cmark::add(&mut direct);
+        crate::plugins::sourcepos::add_document(&mut direct);
+        let mut document = direct.parse_document(source);
+        direct.run_document_transforms(&mut document).unwrap();
+
+        assert_eq!(direct.render_document(&document).unwrap(), expected);
     }
 
     #[test]

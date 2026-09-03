@@ -4,12 +4,44 @@
 //!
 //! <https://spec.commonmark.org/0.30/#atx-heading>
 use crate::parser::block::{BlockRule, BlockState};
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    write_html_close,
+    write_html_open,
+};
 use crate::parser::inline::InlineRoot;
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 
 #[derive(Debug)]
 pub struct ATXHeading {
     pub level: u8,
+}
+
+struct ATXHeadingDocumentRenderer;
+
+impl DocumentNodeRenderer<ATXHeading> for ATXHeadingDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        heading: &ATXHeading,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        static TAG: [&str; 6] = ["h1", "h2", "h3", "h4", "h5", "h6"];
+        debug_assert!((1..=6).contains(&heading.level));
+        let tag = TAG[heading.level as usize - 1];
+
+        context.cr(output)?;
+        write_html_open(output, tag, node.attrs())?;
+        context.render_children(node.id(), output)?;
+        write_html_close(output, tag)?;
+        context.cr(output)
+    }
 }
 
 impl NodeValue for ATXHeading {
@@ -27,6 +59,7 @@ impl NodeValue for ATXHeading {
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HeadingScanner>();
+    md.add_document_renderer::<ATXHeading, _>("html", ATXHeadingDocumentRenderer);
 }
 
 #[doc(hidden)]

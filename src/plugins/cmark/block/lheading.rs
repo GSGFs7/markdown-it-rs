@@ -4,14 +4,46 @@
 //!
 //! <https://spec.commonmark.org/0.30/#setext-headings>
 use crate::parser::block::{BlockRule, BlockState};
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    write_html_close,
+    write_html_open,
+};
 use crate::parser::inline::InlineRoot;
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 use crate::plugins::cmark::block::paragraph::ParagraphScanner;
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 #[derive(Debug)]
 pub struct SetextHeader {
     pub level: u8,
     pub marker: char,
+}
+
+struct SetextHeaderDocumentRenderer;
+
+impl DocumentNodeRenderer<SetextHeader> for SetextHeaderDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        heading: &SetextHeader,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        static TAG: [&str; 2] = ["h1", "h2"];
+        debug_assert!((1..=2).contains(&heading.level));
+        let tag = TAG[heading.level as usize - 1];
+
+        context.cr(output)?;
+        write_html_open(output, tag, node.attrs())?;
+        context.render_children(node.id(), output)?;
+        write_html_close(output, tag)?;
+        context.cr(output)
+    }
 }
 
 impl NodeValue for SetextHeader {
@@ -32,6 +64,7 @@ pub fn add(md: &mut MarkdownIt) {
         .add_rule::<LHeadingScanner>()
         .before::<ParagraphScanner>()
         .after_all();
+    md.add_document_renderer::<SetextHeader, _>("html", SetextHeaderDocumentRenderer);
 }
 
 #[doc(hidden)]
