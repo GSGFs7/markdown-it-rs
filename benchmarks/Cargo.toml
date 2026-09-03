@@ -48,4 +48,9 @@ name = "document"
 path = "benches/document.rs"
 harness = false
 
+[[bench]]
+name = "document_render"
+path = "benches/document_render.rs"
+harness = false
+
 [workspace]

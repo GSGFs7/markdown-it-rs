@@ -12,7 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_BASELINE = "markdown-it-rs"
-PHASE_ORDER = {"parse": 0, "render": 1, "parse-render": 2}
+PHASE_ORDER = {
+    "parse": 0,
+    "render": 1,
+    "parse-render": 2,
+    "document-render": 3,
+    "document-end-to-end": 4,
+}
 CORPUS_ORDER = {
     "small-real-world": 0,
     "commonmark-spec": 1,
@@ -27,6 +33,9 @@ ENGINE_ORDER = {
     "comrak-0.52": 3,
     "pulldown-cmark-0.13": 4,
     "markdown-rs-1.0": 5,
+    "arena-direct": 6,
+    "arena-bridge": 7,
+    "legacy-tree": 8,
 }
 
 
@@ -174,7 +183,7 @@ def markdown_report(results: list[Result], baseline_engine: str, dataset: str) -
     lines = [
         "# Criterion benchmark summary",
         "",
-        f"Relative speed baseline: `{baseline_engine}`.",
+        f"Dataset: `{dataset}`. Relative speed baseline: `{baseline_engine}`.",
         "",
     ]
     for corpus in corpora:
