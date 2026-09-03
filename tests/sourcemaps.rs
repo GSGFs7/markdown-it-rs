@@ -1,13 +1,23 @@
 use markdown_it::Node;
 use markdown_it::common::sourcemap::SourceWithLineStarts;
+use markdown_it::parser::core::CoreRule;
+use markdown_it::plugins::sourcepos::SyntaxPosRule;
 
 fn run(input: &str, f: fn(&Node, SourceWithLineStarts)) {
     let md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(md);
     markdown_it::plugins::html::add(md);
-    let node = md.parse(input);
+    let mut node = md.parse(input);
     node.walk(|node, _| assert!(node.srcmap.is_some()));
     f(&node, SourceWithLineStarts::new(input));
+
+    SyntaxPosRule::run(&mut node, md);
+    let legacy_html = node.render();
+    let mut document = md.parse_document(input);
+    let mut transforms = markdown_it::MarkdownIt::empty();
+    markdown_it::plugins::sourcepos::add_document(&mut transforms);
+    transforms.run_document_transforms(&mut document).unwrap();
+    assert_eq!(document.into_legacy().render(), legacy_html);
 }
 
 fn getmap(node: &Node, map: &SourceWithLineStarts) -> ((u32, u32), (u32, u32)) {
