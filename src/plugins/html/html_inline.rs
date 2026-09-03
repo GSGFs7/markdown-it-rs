@@ -2,8 +2,16 @@
 //!
 //! <https://spec.commonmark.org/0.30/#raw-html>
 use super::utils::regexps::*;
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+};
 use crate::parser::inline::{InlineRule, InlineState};
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 
 #[derive(Debug, Default)]
 struct HtmlInlineScanCache {
@@ -15,6 +23,21 @@ pub struct HtmlInline {
     pub content: String,
 }
 
+struct HtmlInlineDocumentRenderer;
+
+impl DocumentNodeRenderer<HtmlInline> for HtmlInlineDocumentRenderer {
+    fn render(
+        &self,
+        _: NodeRef<'_>,
+        value: &HtmlInline,
+        _: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        output.write_str(&value.content)?;
+        Ok(())
+    }
+}
+
 impl NodeValue for HtmlInline {
     fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
         fmt.text_raw(&self.content);
@@ -23,6 +46,7 @@ impl NodeValue for HtmlInline {
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<HtmlInlineScanner>();
+    md.add_document_renderer::<HtmlInline, _>("html", HtmlInlineDocumentRenderer);
 }
 
 #[doc(hidden)]

@@ -3,10 +3,20 @@
 //! <https://github.github.com/gfm/#tables-extension->
 use crate::common::sourcemap::SourcePos;
 use crate::parser::block::{BlockRule, BlockState};
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    write_html_close,
+    write_html_open,
+};
 use crate::parser::inline::InlineRoot;
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 use crate::plugins::cmark::block::heading::HeadingScanner;
 use crate::plugins::cmark::block::list::ListScanner;
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 // Limit the number of empty cells synthesized for short table rows. Without
 // this cap, a table with N header columns and N one-cell body rows produces
@@ -19,6 +29,33 @@ const MAX_AUTOCOMPLETED_CELLS: usize = 0x10000;
 #[derive(Debug)]
 pub struct Table {
     pub alignments: Vec<ColumnAlignment>,
+}
+
+struct TableDocumentRenderer;
+
+impl DocumentNodeRenderer<Table> for TableDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        value: &Table,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        let old_context = context.ext().remove::<TableRenderContext>();
+        context.ext().insert(TableRenderContext {
+            head: false,
+            alignments: value.alignments.clone(),
+            index: 0,
+        });
+
+        let result = render_block_container(node, context, output, "table");
+
+        context.ext().remove::<TableRenderContext>();
+        if let Some(old_context) = old_context {
+            context.ext().insert(old_context);
+        }
+        result
+    }
 }
 
 impl NodeValue for Table {
@@ -52,6 +89,29 @@ pub struct TableRenderContext {
 #[derive(Debug)]
 pub struct TableHead;
 
+struct TableHeadDocumentRenderer;
+
+impl DocumentNodeRenderer<TableHead> for TableHeadDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        _: &TableHead,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        context
+            .ext()
+            .get_or_insert_default::<TableRenderContext>()
+            .head = true;
+        let result = render_block_container(node, context, output, "thead");
+        context
+            .ext()
+            .get_or_insert_default::<TableRenderContext>()
+            .head = false;
+        result
+    }
+}
+
 impl NodeValue for TableHead {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         let ctx = fmt.ext().get_or_insert_default::<TableRenderContext>();
@@ -73,6 +133,20 @@ impl NodeValue for TableHead {
 #[derive(Debug)]
 pub struct TableBody;
 
+struct TableBodyDocumentRenderer;
+
+impl DocumentNodeRenderer<TableBody> for TableBodyDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        _: &TableBody,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        render_block_container(node, context, output, "tbody")
+    }
+}
+
 impl NodeValue for TableBody {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         fmt.cr();
@@ -87,6 +161,24 @@ impl NodeValue for TableBody {
 
 #[derive(Debug)]
 pub struct TableRow;
+
+struct TableRowDocumentRenderer;
+
+impl DocumentNodeRenderer<TableRow> for TableRowDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        _: &TableRow,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        context
+            .ext()
+            .get_or_insert_default::<TableRenderContext>()
+            .index = 0;
+        render_block_container(node, context, output, "tr")
+    }
+}
 
 impl NodeValue for TableRow {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
@@ -105,6 +197,55 @@ impl NodeValue for TableRow {
 
 #[derive(Debug)]
 pub struct TableCell;
+
+struct TableCellDocumentRenderer;
+
+impl DocumentNodeRenderer<TableCell> for TableCellDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        _: &TableCell,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        let table_context = context.ext().get_or_insert_default::<TableRenderContext>();
+        let tag = if table_context.head { "th" } else { "td" };
+        let alignment = table_context
+            .alignments
+            .get(table_context.index)
+            .copied()
+            .unwrap_or_default();
+        table_context.index += 1;
+
+        let mut attrs = node.attrs().to_vec();
+        match alignment {
+            ColumnAlignment::None => (),
+            ColumnAlignment::Left => attrs.push(("style".into(), "text-align:left".to_owned())),
+            ColumnAlignment::Right => attrs.push(("style".into(), "text-align:right".to_owned())),
+            ColumnAlignment::Center => attrs.push(("style".into(), "text-align:center".to_owned())),
+        }
+
+        write_html_open(output, tag, &attrs)?;
+        context.render_children(node.id(), output)?;
+        write_html_close(output, tag)?;
+        context.cr(output)
+    }
+}
+
+fn render_block_container(
+    node: NodeRef<'_>,
+    context: &mut DocumentRenderContext<'_>,
+    output: &mut dyn std::fmt::Write,
+    tag: &str,
+) -> Result<(), DocumentRenderError> {
+    context.cr(output)?;
+    write_html_open(output, tag, node.attrs())?;
+    context.cr(output)?;
+    context.render_children(node.id(), output)?;
+    context.cr(output)?;
+    write_html_close(output, tag)?;
+    context.cr(output)
+}
 
 impl NodeValue for TableCell {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
@@ -134,6 +275,11 @@ pub fn add(md: &mut MarkdownIt) {
         .add_rule::<TableScanner>()
         .before::<ListScanner>()
         .before::<HeadingScanner>();
+    md.add_document_renderer::<Table, _>("html", TableDocumentRenderer);
+    md.add_document_renderer::<TableHead, _>("html", TableHeadDocumentRenderer);
+    md.add_document_renderer::<TableBody, _>("html", TableBodyDocumentRenderer);
+    md.add_document_renderer::<TableRow, _>("html", TableRowDocumentRenderer);
+    md.add_document_renderer::<TableCell, _>("html", TableCellDocumentRenderer);
 }
 
 #[doc(hidden)]

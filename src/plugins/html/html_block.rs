@@ -8,11 +8,35 @@ use regex::Regex;
 use super::utils::blocks::*;
 use super::utils::regexps::*;
 use crate::parser::block::{BlockRule, BlockState};
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::parser::document::NodeRef;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 
 #[derive(Debug)]
 pub struct HtmlBlock {
     pub content: String,
+}
+
+struct HtmlBlockDocumentRenderer;
+
+impl DocumentNodeRenderer<HtmlBlock> for HtmlBlockDocumentRenderer {
+    fn render(
+        &self,
+        _: NodeRef<'_>,
+        value: &HtmlBlock,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut dyn std::fmt::Write,
+    ) -> Result<(), DocumentRenderError> {
+        context.cr(output)?;
+        output.write_str(&value.content)?;
+        context.cr(output)
+    }
 }
 
 impl NodeValue for HtmlBlock {
@@ -25,6 +49,7 @@ impl NodeValue for HtmlBlock {
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HtmlBlockScanner>();
+    md.add_document_renderer::<HtmlBlock, _>("html", HtmlBlockDocumentRenderer);
 }
 
 struct HTMLSequence {

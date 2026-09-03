@@ -5,7 +5,8 @@ fn run(input: &str, output: &str) {
         output.to_owned() + "\n"
     };
     let md = &mut markdown_it::MarkdownIt::with_preset(markdown_it::Preset::CommonMark);
-    let node = md.parse(&(input.to_owned() + "\n"));
+    let source = input.to_owned() + "\n";
+    let node = md.parse(&source);
 
     // make sure we have sourcemaps for everything
     node.walk(|node, _| assert!(node.srcmap.is_some()));
@@ -13,9 +14,12 @@ fn run(input: &str, output: &str) {
     let result = node.render();
     assert_eq!(result, output);
 
+    let document = md.parse_document(&source);
+    assert_eq!(md.render_document(&document).unwrap(), result);
+
     // The CJK-friendly amendment must not change any original CommonMark case.
     markdown_it::plugins::cjk_friendly::add(md);
-    assert_eq!(md.render(&(input.to_owned() + "\n")), result);
+    assert_eq!(md.render(&source), result);
 
     // make sure it doesn't crash without trailing \n
     let _ = md.parse(input.trim_end());
