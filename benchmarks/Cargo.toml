@@ -29,6 +29,11 @@ path = "benches/typographer.rs"
 harness = false
 
 [[bench]]
+name = "heading_anchors"
+path = "benches/heading_anchors.rs"
+harness = false
+
+[[bench]]
 name = "document"
 path = "benches/document.rs"
 harness = false
