@@ -4,6 +4,7 @@ use std::any::TypeId;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::fmt::{self, Write};
+use std::hash::{BuildHasherDefault, Hasher};
 use std::marker::PhantomData;
 
 use crate::common::utils::escape_html;
@@ -115,7 +116,37 @@ trait ErasedDocumentNodeRenderer: Send + Sync {
 
 // --- machinery ---
 
-type FormatRenderers = HashMap<TypeId, Box<dyn ErasedDocumentNodeRenderer>>;
+#[derive(Default)]
+struct TypeIdHasher(u64);
+
+impl Hasher for TypeIdHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        // Fallback for a future TypeId Hash implementation that does not use
+        // one of the integer-specific Hasher methods.
+        let mut hash = self.0 ^ 0xcbf2_9ce4_8422_2325;
+        for &byte in bytes {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        self.0 = hash;
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = self.0.rotate_left(5) ^ value;
+    }
+
+    fn write_u128(&mut self, value: u128) {
+        self.write_u64(value as u64);
+        self.write_u64((value >> 64) as u64);
+    }
+}
+
+type FormatRenderers =
+    HashMap<TypeId, Box<dyn ErasedDocumentNodeRenderer>, BuildHasherDefault<TypeIdHasher>>;
 
 struct TypedDocumentNodeRenderer<T, R> {
     renderer: R,
