@@ -4,11 +4,16 @@
 //!
 //! <https://spec.commonmark.org/0.30/#paragraph>
 use crate::parser::block::{BlockRule, BlockState};
+use crate::parser::document_renderer::HtmlBlockElementDocumentRenderer;
 use crate::parser::inline::InlineRoot;
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<ParagraphScanner>().after_all();
+    md.document_renderers
+        .add::<Paragraph, _>("html", HtmlBlockElementDocumentRenderer("p"));
 }
 
 #[derive(Debug)]

@@ -4,12 +4,20 @@
 use regex::{self, Regex};
 
 use crate::parser::inline::{InlineRule, InlineState};
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
 
 #[derive(Debug)]
 /// Plain text AST node.
 pub struct Text {
     pub content: String,
+}
+
+impl AsRef<str> for Text {
+    fn as_ref(&self) -> &str {
+        &self.content
+    }
 }
 
 impl NodeValue for Text {
@@ -24,6 +32,12 @@ pub struct TextSpecial {
     pub content: String,
     pub markup: String,
     pub info: &'static str,
+}
+
+impl AsRef<str> for TextSpecial {
+    fn as_ref(&self) -> &str {
+        &self.content
+    }
 }
 
 impl NodeValue for TextSpecial {

@@ -27,6 +27,12 @@ pub use parser::document::{
     StructuralEvents,
 };
 pub use parser::document_edit::{EditBatch, EditError};
+pub use parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    DocumentRendererRegistry,
+};
 pub use parser::document_text::{
     TextBoundary,
     TextClassifier,

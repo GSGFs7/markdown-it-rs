@@ -38,6 +38,7 @@ pub mod block;
 pub mod core;
 pub mod document;
 pub mod document_edit;
+pub mod document_renderer;
 pub mod document_text;
 pub mod document_transform;
 pub mod extset;

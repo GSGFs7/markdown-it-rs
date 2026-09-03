@@ -6,6 +6,13 @@ use crate::common::sourcemap::SourcePos;
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::{Root, *};
 use crate::parser::document::Document;
+use crate::parser::document_renderer::{
+    DocumentNodeRenderer,
+    DocumentRenderError,
+    DocumentRendererRegistry,
+    HtmlTextDocumentRenderer,
+    TransparentDocumentRenderer,
+};
 use crate::parser::document_transform::{
     DocumentTransform,
     DocumentTransformError,
@@ -13,9 +20,9 @@ use crate::parser::document_transform::{
     TransformRuleBuilder,
 };
 use crate::parser::extset::MarkdownItExtSet;
-use crate::parser::inline::{self, InlineParser};
+use crate::parser::inline::{self, InlineParser, Text, TextSpecial};
 use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
-use crate::parser::node::Node;
+use crate::parser::node::{Node, NodeValue};
 use crate::parser::render_options::RenderOptions;
 use crate::plugins::presets::{Preset, PresetConfig};
 
@@ -51,6 +58,9 @@ pub struct MarkdownIt {
     /// Ordered transforms for arena-backed documents.
     pub document_transforms: DocumentTransformRegistry,
 
+    /// Format-specific renderers for arena-backed documents.
+    pub document_renderers: DocumentRendererRegistry,
+
     ruler: Ruler<RuleMark, RuleFn>,
 }
 
@@ -66,6 +76,7 @@ impl std::fmt::Debug for MarkdownIt {
             .field("ruler", &self.ruler)
             .field("render_options", &self.render_options)
             .field("document_transforms", &self.document_transforms)
+            .field("document_renderers", &self.document_renderers)
             .finish()
     }
 }
@@ -77,6 +88,11 @@ impl MarkdownIt {
     }
 
     pub fn empty() -> Self {
+        let mut document_renderers = DocumentRendererRegistry::new();
+        document_renderers.add::<Root, _>("html", TransparentDocumentRenderer);
+        document_renderers.add::<Text, _>("html", HtmlTextDocumentRenderer);
+        document_renderers.add::<TextSpecial, _>("html", HtmlTextDocumentRenderer);
+
         let mut md = Self {
             block: BlockParser::new(),
             inline: InlineParser::new(),
@@ -86,6 +102,7 @@ impl MarkdownIt {
             max_indent: i32::MAX,
             render_options: RenderOptions::default(),
             document_transforms: DocumentTransformRegistry::new(),
+            document_renderers,
             ruler: Ruler::new(),
         };
 
@@ -144,6 +161,27 @@ impl MarkdownIt {
         document: &mut Document,
     ) -> Result<(), DocumentTransformError> {
         self.document_transforms.run(document)
+    }
+
+    /// Register or replace a renderer for one payload type and output format.
+    pub fn add_document_renderer<T, R>(&mut self, format: impl Into<String>, renderer: R) -> bool
+    where
+        T: NodeValue,
+        R: DocumentNodeRenderer<T>,
+    {
+        self.document_renderers.add::<T, R>(format, renderer)
+    }
+
+    /// Render an arena-backed document directly as HTML.
+    pub fn render_document(&self, document: &Document) -> Result<String, DocumentRenderError> {
+        let output = self
+            .document_renderers
+            .render(document, "html", &self.render_options)?;
+        if output.contains('\0') {
+            Ok(output.replace('\0', "\u{FFFD}"))
+        } else {
+            Ok(output)
+        }
     }
 
     /// Parse `src` and render it to HTML, using the options stored in the

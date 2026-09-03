@@ -189,6 +189,10 @@ impl DocumentNode {
         self.node_type.name
     }
 
+    pub(crate) fn type_id(&self) -> TypeId {
+        self.node_type.id
+    }
+
     pub fn is<T: NodeValue>(&self) -> bool {
         self.node_type.id == TypeId::of::<T>()
     }
