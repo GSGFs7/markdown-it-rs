@@ -471,6 +471,27 @@ pub(crate) fn write_html_attrs(
     output: &mut DocumentWriter,
     attrs: &[HtmlAttribute],
 ) -> Result<(), DocumentRenderError> {
+    const LINEAR_SCAN_LIMIT: usize = 8;
+
+    // small list, using linear scan. avoid hashmap overhead.
+    // O(n^2), but very fast with small data.
+    if attrs.len() <= LINEAR_SCAN_LIMIT {
+        for (index, (name, _)) in attrs.iter().enumerate() {
+            // deduplication
+            if attrs[..index].iter().any(|(previous, _)| previous == name) {
+                continue;
+            }
+            write_html_attr_group(
+                output,
+                name,
+                attrs
+                    .iter()
+                    .filter_map(|(candidate, value)| (candidate == name).then_some(value.as_str())),
+            )?;
+        }
+        return Ok(());
+    }
+
     let mut values = HashMap::<&str, Vec<&str>>::new();
     let mut order = Vec::with_capacity(attrs.len());
     for (name, value) in attrs {
@@ -481,24 +502,29 @@ pub(crate) fn write_html_attrs(
         let Some(parts) = values.remove(name) else {
             continue;
         };
-        if name == "class" {
-            write!(
-                output,
-                " {}=\"{}\"",
-                escape_html(name),
-                escape_html(&parts.join(" "))
-            )?;
-        } else if name == "style" {
-            write!(
-                output,
-                " {}=\"{}\"",
-                escape_html(name),
-                escape_html(&parts.join(";"))
-            )?;
-        } else {
-            for value in parts {
-                write!(output, " {}=\"{}\"", escape_html(name), escape_html(value))?;
+        write_html_attr_group(output, name, parts.into_iter())?;
+    }
+    Ok(())
+}
+
+fn write_html_attr_group<'a>(
+    output: &mut DocumentWriter,
+    name: &str,
+    values: impl Iterator<Item = &'a str>,
+) -> Result<(), DocumentRenderError> {
+    if name == "class" || name == "style" {
+        write!(output, " {}=\"", escape_html(name))?;
+        let separator = if name == "class" { ' ' } else { ';' };
+        for (index, value) in values.enumerate() {
+            if index != 0 {
+                output.write_char(separator)?;
             }
+            output.write_str(&escape_html(value))?;
+        }
+        output.write_char('"')?;
+    } else {
+        for value in values {
+            write!(output, " {}=\"{}\"", escape_html(name), escape_html(value))?;
         }
     }
     Ok(())
@@ -630,6 +656,34 @@ mod tests {
                 .render(&document, "html", &RenderOptions::default())
                 .unwrap(),
             "first\nsecond\n"
+        );
+    }
+
+    #[test]
+    fn html_attrs_preserve_grouping_order_and_escaping_on_both_paths() {
+        let small = vec![
+            ("class".into(), "first".into()),
+            ("id".into(), "one".into()),
+            ("class".into(), "second".into()),
+            ("style".into(), "color:<red>".into()),
+            ("title".into(), "<&>".into()),
+            ("style".into(), "display:block".into()),
+            ("id".into(), "two".into()),
+        ];
+        let mut output = DocumentWriter::new();
+        super::write_html_attrs(&mut output, &small).unwrap();
+        assert_eq!(
+            output.finish(),
+            " class=\"first second\" id=\"one\" id=\"two\" style=\"color:&lt;red&gt;;display:block\" title=\"&lt;&amp;&gt;\""
+        );
+
+        let mut large = small;
+        large.extend([("data-a".into(), "a".into()), ("data-b".into(), "b".into())]);
+        let mut output = DocumentWriter::new();
+        super::write_html_attrs(&mut output, &large).unwrap();
+        assert_eq!(
+            output.finish(),
+            " class=\"first second\" id=\"one\" id=\"two\" style=\"color:&lt;red&gt;;display:block\" title=\"&lt;&amp;&gt;\" data-a=\"a\" data-b=\"b\""
         );
     }
 

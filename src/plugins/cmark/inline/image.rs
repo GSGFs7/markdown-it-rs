@@ -77,7 +77,7 @@ fn collect_alt_text(node: &Node) -> String {
 }
 
 // collect alt text, ignore marker
-// 
+//
 // e.g.
 // raw: "![a *b* c](x)"
 // children: [text "a ", emph(text "b"), text " c"]
