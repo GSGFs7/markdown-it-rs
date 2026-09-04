@@ -11,6 +11,7 @@ use crate::parser::document_renderer::{
     DocumentRenderError,
     DocumentRendererRegistry,
     HtmlTextDocumentRenderer,
+    PlainTextDocumentRenderer,
     TransparentDocumentRenderer,
 };
 use crate::parser::document_transform::{
@@ -92,6 +93,9 @@ impl MarkdownIt {
         document_renderers.add::<Root, _>("html", TransparentDocumentRenderer);
         document_renderers.add::<Text, _>("html", HtmlTextDocumentRenderer);
         document_renderers.add::<TextSpecial, _>("html", HtmlTextDocumentRenderer);
+        document_renderers.add::<Root, _>("text", TransparentDocumentRenderer);
+        document_renderers.add::<Text, _>("text", PlainTextDocumentRenderer);
+        document_renderers.add::<TextSpecial, _>("text", PlainTextDocumentRenderer);
 
         let mut md = Self {
             block: BlockParser::new(),
@@ -172,16 +176,30 @@ impl MarkdownIt {
         self.document_renderers.add::<T, R>(format, renderer)
     }
 
-    /// Render an arena-backed document directly as HTML.
-    pub fn render_document(&self, document: &Document) -> Result<String, DocumentRenderError> {
+    /// Render an arena-backed document directly with the renderers registered
+    /// for `format`.
+    ///
+    /// The built-in format keys are `"html"` and `"text"`. The latter
+    /// currently provides the Root/Text vertical slice; plugins that add leaf
+    /// payloads must register their plain-text behavior explicitly.
+    pub fn render_document_as(
+        &self,
+        document: &Document,
+        format: &str,
+    ) -> Result<String, DocumentRenderError> {
         let output = self
             .document_renderers
-            .render(document, "html", &self.render_options)?;
+            .render(document, format, &self.render_options)?;
         if output.contains('\0') {
             Ok(output.replace('\0', "\u{FFFD}"))
         } else {
             Ok(output)
         }
+    }
+
+    /// Render an arena-backed document directly as HTML.
+    pub fn render_document(&self, document: &Document) -> Result<String, DocumentRenderError> {
+        self.render_document_as(document, "html")
     }
 
     /// Parse `src` and render it to HTML, using the options stored in the

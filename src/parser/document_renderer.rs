@@ -447,6 +447,24 @@ where
     }
 }
 
+pub(crate) struct PlainTextDocumentRenderer;
+
+impl<T> DocumentNodeRenderer<T> for PlainTextDocumentRenderer
+where
+    T: NodeValue + AsRef<str>,
+{
+    fn render(
+        &self,
+        _: &DocumentNode,
+        value: &T,
+        _: &mut DocumentRenderContext<'_>,
+        output: &mut DocumentWriter,
+    ) -> Result<(), DocumentRenderError> {
+        output.write_str(value.as_ref())?;
+        Ok(())
+    }
+}
+
 pub(crate) struct HtmlBlockElementDocumentRenderer(pub(crate) &'static str);
 
 impl<T: NodeValue> DocumentNodeRenderer<T> for HtmlBlockElementDocumentRenderer {
@@ -637,12 +655,17 @@ mod tests {
             "hello &lt;world&gt;\n"
         );
         assert_eq!(
+            md.render_document_as(&document, "text").unwrap(),
+            "hello <world>\n"
+        );
+        assert_eq!(
             md.render_document(&document).unwrap(),
             "hello &lt;world&gt;\n"
         );
 
         let nul = md.parse_document("\0");
         assert_eq!(md.render_document(&nul).unwrap(), "\u{FFFD}\n");
+        assert_eq!(md.render_document_as(&nul, "text").unwrap(), "\u{FFFD}\n");
     }
 
     #[test]
@@ -814,6 +837,7 @@ mod tests {
         let document = Document::from_legacy("", root);
 
         assert_eq!(md.render_document(&document).unwrap(), "child");
+        assert_eq!(md.render_document_as(&document, "text").unwrap(), "child");
     }
 
     #[test]
@@ -854,5 +878,35 @@ mod tests {
         );
         assert!(registry.remove::<UnknownLeaf>("plain"));
         assert!(!registry.contains::<UnknownLeaf>("plain"));
+    }
+
+    #[test]
+    fn markdown_it_selects_and_isolates_renderer_formats() {
+        let document = Document::from_legacy("", Node::new(UnknownLeaf("value")));
+        let mut md = MarkdownIt::empty();
+        md.add_document_renderer::<UnknownLeaf, _>("html", UnknownLeafRenderer("html"));
+        md.add_document_renderer::<UnknownLeaf, _>("text", UnknownLeafRenderer("text"));
+
+        assert_eq!(md.render_document(&document).unwrap(), "html:value");
+        assert_eq!(
+            md.render_document_as(&document, "text").unwrap(),
+            "text:value"
+        );
+
+        md.add_document_renderer::<UnknownLeaf, _>("text", UnknownLeafRenderer("override"));
+        assert_eq!(md.render_document(&document).unwrap(), "html:value");
+        assert_eq!(
+            md.render_document_as(&document, "text").unwrap(),
+            "override:value"
+        );
+
+        assert!(matches!(
+            md.render_document_as(&document, "missing"),
+            Err(DocumentRenderError::MissingRenderer {
+                format,
+                node_name,
+                ..
+            }) if format == "missing" && node_name == std::any::type_name::<UnknownLeaf>()
+        ));
     }
 }
