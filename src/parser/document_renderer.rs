@@ -1,6 +1,7 @@
 //! Format-specific rendering for arena-backed documents.
 
 use std::any::TypeId;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{self, Write};
 use std::hash::{BuildHasherDefault, Hasher};
@@ -250,6 +251,7 @@ impl DocumentRendererRegistry {
             renderers: self.formats.get(format),
             format,
             options,
+            scratch_nodes: RefCell::new(Vec::new()),
         };
         render_node(&shared, &mut ext, document.root(), &mut output)?;
         Ok(output.finish())
@@ -263,6 +265,7 @@ struct RenderShared<'a> {
     renderers: Option<&'a FormatRenderers>,
     format: &'a str,
     options: &'a RenderOptions,
+    scratch_nodes: RefCell<Vec<NodeId>>,
 }
 
 /// Output buffer supplied to [`DocumentNodeRenderer`] implementations.
@@ -320,6 +323,18 @@ impl DocumentRenderContext<'_> {
 
     pub fn ext(&mut self) -> &mut RenderExtSet {
         self.ext
+    }
+
+    // reduce memory overhead
+    pub(crate) fn with_scratch_node_stack<R>(
+        &self,
+        f: impl FnOnce(&Document, &mut Vec<NodeId>) -> R,
+    ) -> R {
+        let mut stack = self.shared.scratch_nodes.borrow_mut();
+        stack.clear();
+        let result = f(self.shared.document, &mut stack);
+        stack.clear();
+        result
     }
 
     /// Write one line ending unless the output is already at the start of a line.

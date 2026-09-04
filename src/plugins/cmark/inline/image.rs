@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#images>
 use crate::generics::inline::full_link;
-use crate::parser::document::{Document, NodeId, NodeRef, StructuralEvent};
+use crate::parser::document::NodeRef;
 use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -36,10 +36,7 @@ impl DocumentNodeRenderer<Image> for ImageDocumentRenderer {
     ) -> Result<(), DocumentRenderError> {
         let mut attrs = node.attrs().clone();
         attrs.push(("src".into(), image.url.clone()));
-        attrs.push((
-            "alt".into(),
-            collect_document_alt_text(context.document(), node.id())?,
-        ));
+        attrs.push(("alt".into(), collect_document_alt_text(context, node)?));
         if let Some(title) = &image.title {
             attrs.push(("title".into(), title.clone()));
         }
@@ -79,27 +76,44 @@ fn collect_alt_text(node: &Node) -> String {
     result
 }
 
+// collect alt text, ignore marker
+// 
+// e.g.
+// raw: "![a *b* c](x)"
+// children: [text "a ", emph(text "b"), text " c"]
+// result: "a b c"
 fn collect_document_alt_text(
-    document: &Document,
-    image: NodeId,
+    context: &DocumentRenderContext<'_>,
+    image: NodeRef<'_>,
 ) -> Result<String, DocumentRenderError> {
-    let mut result = String::new();
-    for event in document.events(image)? {
-        let node = match event {
-            StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => node,
-            StructuralEvent::Exit(_) => continue,
-        };
-        if let Some(text) = node.cast::<Text>() {
-            result.push_str(&text.content);
-        } else if let Some(text) = node.cast::<TextSpecial>() {
-            result.push_str(&text.content);
-        } else if let Some(html) = node.cast::<HtmlInline>() {
-            result.push_str(&html.content);
-        } else if node.is::<Softbreak>() || node.is::<Hardbreak>() {
-            result.push('\n');
+    context.with_scratch_node_stack(|document, stack| {
+        // reverse order in, original order out
+        stack.extend(image.children().iter().rev().copied());
+        let mut result = String::new();
+
+        while let Some(id) = stack.pop() {
+            let node = document.node(id)?;
+
+            // pre-order dfs
+            stack.extend(node.children().iter().rev().copied());
+
+            append_document_alt_node(&mut result, node);
         }
+
+        Ok(result)
+    })
+}
+
+fn append_document_alt_node(result: &mut String, node: NodeRef<'_>) {
+    if let Some(text) = node.cast::<Text>() {
+        result.push_str(&text.content);
+    } else if let Some(text) = node.cast::<TextSpecial>() {
+        result.push_str(&text.content);
+    } else if let Some(html) = node.cast::<HtmlInline>() {
+        result.push_str(&html.content);
+    } else if node.is::<Softbreak>() || node.is::<Hardbreak>() {
+        result.push('\n');
     }
-    Ok(result)
 }
 
 pub fn add(md: &mut MarkdownIt) {
