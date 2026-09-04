@@ -105,6 +105,10 @@ impl NodeDraft {
         self.srcmap
     }
 
+    pub(crate) fn set_srcmap(&mut self, srcmap: Option<SourcePos>) {
+        self.srcmap = srcmap;
+    }
+
     pub fn ext(&self) -> &NodeExtSet {
         &self.ext
     }
@@ -408,6 +412,19 @@ impl Document {
             },
         };
         document.root = document.insert_legacy(None, root);
+        document
+    }
+
+    pub(crate) fn from_draft(source: impl Into<Arc<str>>, root: NodeDraft) -> Self {
+        let mut document = Self {
+            source: source.into(),
+            arena: Arena::new(),
+            root: NodeId {
+                slot: u32::MAX,
+                generation: u32::MAX,
+            },
+        };
+        document.root = document.insert_draft_with_parent(None, root);
         document
     }
 
@@ -734,7 +751,15 @@ impl Document {
 
     // dfs
     fn insert_draft(&mut self, parent: NodeId, draft: NodeDraft) -> NodeId {
-        let mut pending = vec![(parent, false, draft)];
+        self.insert_draft_with_parent(Some(parent), draft)
+    }
+
+    fn insert_draft_with_parent(
+        &mut self,
+        root_parent: Option<NodeId>,
+        draft: NodeDraft,
+    ) -> NodeId {
+        let mut pending = vec![(root_parent, false, draft)];
         let mut root = None;
         while let Some((parent, link_to_parent, draft)) = pending.pop() {
             let NodeDraft {
@@ -747,7 +772,7 @@ impl Document {
             } = draft;
             let id = self.arena.insert_with(|id| DocumentNode {
                 id,
-                parent: Some(parent),
+                parent,
                 children: Vec::with_capacity(children.len()),
                 srcmap,
                 ext,
@@ -757,14 +782,19 @@ impl Document {
             });
             if link_to_parent {
                 self.arena
-                    .get_mut(parent)
+                    .get_mut(parent.expect("a linked draft always has a parent"))
                     .expect("new draft parent remains present")
                     .children
                     .push(id);
             } else {
                 root = Some(id);
             }
-            pending.extend(children.into_iter().rev().map(|child| (id, true, child)));
+            pending.extend(
+                children
+                    .into_iter()
+                    .rev()
+                    .map(|child| (Some(id), true, child)),
+            );
         }
         root.expect("a draft always contains a root node")
     }

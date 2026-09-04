@@ -49,6 +49,11 @@ path = "benches/document.rs"
 harness = false
 
 [[bench]]
+name = "document_parse"
+path = "benches/document_parse.rs"
+harness = false
+
+[[bench]]
 name = "document_render"
 path = "benches/document_render.rs"
 harness = false

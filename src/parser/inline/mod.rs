@@ -15,7 +15,7 @@ pub use self::state::*;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::parser::extset::{InlineRootExtSet, RootExtSet};
-use crate::parser::inline::builtin::skip_text::TextScannerImpl;
+use crate::parser::inline::builtin::skip_text::{TextScanner, TextScannerImpl};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeEmpty};
 
@@ -95,6 +95,10 @@ pub struct InlineParser {
 impl InlineParser {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub(crate) fn supports_direct_text_fallback(&self) -> bool {
+        self.ruler.len() == 1 && self.ruler.contains(RuleMark::of::<TextScanner>())
     }
 
     #[inline]

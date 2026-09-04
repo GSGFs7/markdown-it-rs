@@ -6,6 +6,7 @@ use crate::common::sourcemap::SourcePos;
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::{Root, *};
 use crate::parser::document::Document;
+use crate::parser::document_parser::{DocumentParseContext, DocumentParseError};
 use crate::parser::document_renderer::{
     DebugTreeDocumentRenderer,
     DocumentNodeRenderer,
@@ -144,6 +145,33 @@ impl MarkdownIt {
     /// moves its nodes into the arena without cloning their payloads.
     pub fn parse_document(&self, src: &str) -> Document {
         Document::from_legacy(Arc::<str>::from(src), self.parse(src))
+    }
+
+    /// Parse directly into arena storage when every configured parser rule has
+    /// a migrated implementation.
+    ///
+    /// This transitional entry point currently supports only the text fallback
+    /// configuration produced by [`MarkdownIt::empty`]. It returns an error
+    /// instead of ignoring CommonMark or third-party rules that have not yet
+    /// been migrated.
+    #[doc(hidden)]
+    pub fn parse_document_direct(&self, src: &str) -> Result<Document, DocumentParseError> {
+        let has_builtin_core_rules = self.ruler.len() == 2
+            && self
+                .ruler
+                .contains(RuleMark::of::<block::builtin::BlockParserRule>())
+            && self
+                .ruler
+                .contains(RuleMark::of::<inline::builtin::InlineParserRule>());
+        if !has_builtin_core_rules
+            || !self.block.supports_direct_text_fallback()
+            || !self.inline.supports_direct_text_fallback()
+            || !self.ext.is_empty()
+        {
+            return Err(DocumentParseError::UnsupportedConfiguration);
+        }
+
+        Ok(DocumentParseContext::new(src, &self.render_options).parse_text_fallback())
     }
 
     /// Register an arena-backed document transform.

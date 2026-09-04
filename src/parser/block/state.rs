@@ -238,7 +238,7 @@ impl<'a, 'b> BlockState<'a, 'b> {
     }
 }
 
-fn build_line_offsets(src: &str) -> Vec<LineOffset> {
+pub(crate) fn build_line_offsets(src: &str) -> Vec<LineOffset> {
     let bytes = src.as_bytes();
     let mut result = Vec::new();
     let mut line_start = 0;

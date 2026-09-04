@@ -108,6 +108,10 @@ impl BlockParser {
         Self::default()
     }
 
+    pub(crate) fn supports_direct_text_fallback(&self) -> bool {
+        self.ruler.is_empty()
+    }
+
     #[cfg(test)]
     fn rules_for(&self, marker: char) -> &[RuleFns] {
         self.dispatch
