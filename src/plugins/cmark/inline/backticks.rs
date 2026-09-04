@@ -30,7 +30,7 @@ impl DocumentNodeRenderer<CodeInline> for CodeInlineDocumentRenderer {
         node: NodeRef<'_>,
         _: &CodeInline,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         write_html_open(output, "code", node.attrs())?;
         context.render_children(node.id(), output)?;

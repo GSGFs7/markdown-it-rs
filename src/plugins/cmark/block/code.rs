@@ -32,7 +32,7 @@ impl DocumentNodeRenderer<CodeBlock> for CodeBlockDocumentRenderer {
         node: NodeRef<'_>,
         code: &CodeBlock,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         context.cr(output)?;
         write_html_open(output, "pre", &[])?;

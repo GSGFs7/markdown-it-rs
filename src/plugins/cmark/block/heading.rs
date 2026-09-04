@@ -30,7 +30,7 @@ impl DocumentNodeRenderer<ATXHeading> for ATXHeadingDocumentRenderer {
         node: NodeRef<'_>,
         heading: &ATXHeading,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         static TAG: [&str; 6] = ["h1", "h2", "h3", "h4", "h5", "h6"];
         debug_assert!((1..=6).contains(&heading.level));

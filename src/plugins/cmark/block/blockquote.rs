@@ -29,7 +29,7 @@ impl DocumentNodeRenderer<Blockquote> for BlockquoteDocumentRenderer {
         node: NodeRef<'_>,
         _: &Blockquote,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         context.cr(output)?;
         write_html_open(output, "blockquote", node.attrs())?;

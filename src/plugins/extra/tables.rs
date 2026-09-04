@@ -39,7 +39,7 @@ impl DocumentNodeRenderer<Table> for TableDocumentRenderer {
         node: NodeRef<'_>,
         value: &Table,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         let old_context = context.ext().remove::<TableRenderContext>();
         context.ext().insert(TableRenderContext {
@@ -97,7 +97,7 @@ impl DocumentNodeRenderer<TableHead> for TableHeadDocumentRenderer {
         node: NodeRef<'_>,
         _: &TableHead,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         context
             .ext()
@@ -141,7 +141,7 @@ impl DocumentNodeRenderer<TableBody> for TableBodyDocumentRenderer {
         node: NodeRef<'_>,
         _: &TableBody,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         render_block_container(node, context, output, "tbody")
     }
@@ -170,7 +170,7 @@ impl DocumentNodeRenderer<TableRow> for TableRowDocumentRenderer {
         node: NodeRef<'_>,
         _: &TableRow,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         context
             .ext()
@@ -206,7 +206,7 @@ impl DocumentNodeRenderer<TableCell> for TableCellDocumentRenderer {
         node: NodeRef<'_>,
         _: &TableCell,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         let table_context = context.ext().get_or_insert_default::<TableRenderContext>();
         let tag = if table_context.head { "th" } else { "td" };
@@ -235,7 +235,7 @@ impl DocumentNodeRenderer<TableCell> for TableCellDocumentRenderer {
 fn render_block_container(
     node: NodeRef<'_>,
     context: &mut DocumentRenderContext<'_>,
-    output: &mut dyn std::fmt::Write,
+    output: &mut crate::DocumentWriter,
     tag: &str,
 ) -> Result<(), DocumentRenderError> {
     context.cr(output)?;

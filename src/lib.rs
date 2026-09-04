@@ -32,6 +32,7 @@ pub use parser::document_renderer::{
     DocumentRenderContext,
     DocumentRenderError,
     DocumentRendererRegistry,
+    DocumentWriter,
 };
 pub use parser::document_text::{
     TextBoundary,

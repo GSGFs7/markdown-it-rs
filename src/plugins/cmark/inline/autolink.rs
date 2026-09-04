@@ -33,7 +33,7 @@ impl DocumentNodeRenderer<Autolink> for AutolinkDocumentRenderer {
         node: NodeRef<'_>,
         link: &Autolink,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         let mut attrs = node.attrs().clone();
         attrs.push(("href".into(), link.url.clone()));

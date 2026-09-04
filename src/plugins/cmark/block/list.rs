@@ -36,7 +36,7 @@ impl DocumentNodeRenderer<OrderedList> for OrderedListDocumentRenderer {
         node: NodeRef<'_>,
         list: &OrderedList,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         let mut attrs = node.attrs().clone();
         if list.start != 1 {
@@ -77,7 +77,7 @@ impl DocumentNodeRenderer<BulletList> for BulletListDocumentRenderer {
         node: NodeRef<'_>,
         _: &BulletList,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         render_list_container(node, context, output, "ul", node.attrs())
     }
@@ -106,7 +106,7 @@ impl DocumentNodeRenderer<ListItem> for ListItemDocumentRenderer {
         node: NodeRef<'_>,
         _: &ListItem,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         write_html_open(output, "li", node.attrs())?;
         context.render_children(node.id(), output)?;
@@ -118,7 +118,7 @@ impl DocumentNodeRenderer<ListItem> for ListItemDocumentRenderer {
 fn render_list_container(
     node: NodeRef<'_>,
     context: &mut DocumentRenderContext<'_>,
-    output: &mut dyn std::fmt::Write,
+    output: &mut crate::DocumentWriter,
     tag: &str,
     attrs: &[crate::HtmlAttribute],
 ) -> Result<(), DocumentRenderError> {

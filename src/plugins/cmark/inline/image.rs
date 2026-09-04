@@ -32,7 +32,7 @@ impl DocumentNodeRenderer<Image> for ImageDocumentRenderer {
         node: NodeRef<'_>,
         image: &Image,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         let mut attrs = node.attrs().clone();
         attrs.push(("src".into(), image.url.clone()));

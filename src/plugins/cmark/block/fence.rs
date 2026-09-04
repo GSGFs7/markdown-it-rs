@@ -35,7 +35,7 @@ impl DocumentNodeRenderer<CodeFence> for CodeFenceDocumentRenderer {
         node: NodeRef<'_>,
         fence: &CodeFence,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         let info = unescape_all(&fence.info);
         let lang_name = info.split_whitespace().next().unwrap_or("");

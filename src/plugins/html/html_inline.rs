@@ -1,6 +1,8 @@
 //! HTML inline syntax from CommonMark
 //!
 //! <https://spec.commonmark.org/0.30/#raw-html>
+use std::fmt::Write;
+
 use super::utils::regexps::*;
 use crate::parser::document::NodeRef;
 use crate::parser::document_renderer::{
@@ -31,7 +33,7 @@ impl DocumentNodeRenderer<HtmlInline> for HtmlInlineDocumentRenderer {
         _: NodeRef<'_>,
         value: &HtmlInline,
         _: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         output.write_str(&value.content)?;
         Ok(())

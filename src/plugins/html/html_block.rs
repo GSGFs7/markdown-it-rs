@@ -1,6 +1,7 @@
 //! HTML block syntax from CommonMark
 //!
 //! <https://spec.commonmark.org/0.30/#html-blocks>
+use std::fmt::Write;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -31,7 +32,7 @@ impl DocumentNodeRenderer<HtmlBlock> for HtmlBlockDocumentRenderer {
         _: NodeRef<'_>,
         value: &HtmlBlock,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         context.cr(output)?;
         output.write_str(&value.content)?;

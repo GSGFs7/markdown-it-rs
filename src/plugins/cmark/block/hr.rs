@@ -29,7 +29,7 @@ impl DocumentNodeRenderer<ThematicBreak> for ThematicBreakDocumentRenderer {
         node: NodeRef<'_>,
         _: &ThematicBreak,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         context.cr(output)?;
         write_html_self_close(output, "hr", node.attrs(), context.options().xhtml_out)?;

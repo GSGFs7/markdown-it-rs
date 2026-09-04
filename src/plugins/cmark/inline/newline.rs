@@ -27,7 +27,7 @@ impl DocumentNodeRenderer<Hardbreak> for HardbreakDocumentRenderer {
         _: NodeRef<'_>,
         _: &Hardbreak,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         write_html_self_close(output, "br", &[], context.options().xhtml_out)?;
         context.cr(output)
@@ -52,7 +52,7 @@ impl DocumentNodeRenderer<Softbreak> for SoftbreakDocumentRenderer {
         _: NodeRef<'_>,
         _: &Softbreak,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         if context.options().breaks {
             write_html_self_close(output, "br", &[], context.options().xhtml_out)?;

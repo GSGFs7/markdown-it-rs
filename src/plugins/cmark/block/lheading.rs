@@ -32,7 +32,7 @@ impl DocumentNodeRenderer<SetextHeader> for SetextHeaderDocumentRenderer {
         node: NodeRef<'_>,
         heading: &SetextHeader,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         static TAG: [&str; 2] = ["h1", "h2"];
         debug_assert!((1..=2).contains(&heading.level));

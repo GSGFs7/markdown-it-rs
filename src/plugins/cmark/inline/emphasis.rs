@@ -29,7 +29,7 @@ impl DocumentNodeRenderer<Em> for EmDocumentRenderer {
         node: NodeRef<'_>,
         _: &Em,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         render_inline_container(node, context, output, "em")
     }
@@ -56,7 +56,7 @@ impl DocumentNodeRenderer<Strong> for StrongDocumentRenderer {
         node: NodeRef<'_>,
         _: &Strong,
         context: &mut DocumentRenderContext<'_>,
-        output: &mut dyn std::fmt::Write,
+        output: &mut crate::DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         render_inline_container(node, context, output, "strong")
     }
@@ -65,7 +65,7 @@ impl DocumentNodeRenderer<Strong> for StrongDocumentRenderer {
 fn render_inline_container(
     node: NodeRef<'_>,
     context: &mut DocumentRenderContext<'_>,
-    output: &mut dyn std::fmt::Write,
+    output: &mut crate::DocumentWriter,
     tag: &str,
 ) -> Result<(), DocumentRenderError> {
     write_html_open(output, tag, node.attrs())?;
