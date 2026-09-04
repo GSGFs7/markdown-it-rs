@@ -7,6 +7,7 @@ use crate::parser::block::{self, BlockParser};
 use crate::parser::core::{Root, *};
 use crate::parser::document::Document;
 use crate::parser::document_renderer::{
+    DebugTreeDocumentRenderer,
     DocumentNodeRenderer,
     DocumentRenderError,
     DocumentRendererRegistry,
@@ -96,6 +97,7 @@ impl MarkdownIt {
         document_renderers.add::<Root, _>("text", TransparentDocumentRenderer);
         document_renderers.add::<Text, _>("text", PlainTextDocumentRenderer);
         document_renderers.add::<TextSpecial, _>("text", PlainTextDocumentRenderer);
+        document_renderers.add::<Root, _>("debug", DebugTreeDocumentRenderer);
 
         let mut md = Self {
             block: BlockParser::new(),
@@ -179,9 +181,10 @@ impl MarkdownIt {
     /// Render an arena-backed document directly with the renderers registered
     /// for `format`.
     ///
-    /// The built-in format keys are `"html"` and `"text"`. Standard syntax
-    /// plugins register both formats; plugins that add leaf payloads must
-    /// register their plain-text behavior explicitly.
+    /// The built-in format keys are `"html"`, `"text"`, and `"debug"`.
+    /// Standard syntax plugins register HTML and plain-text behavior; plugins
+    /// that add leaf payloads must register both explicitly. The diagnostic
+    /// debug tree traverses all descendants without per-payload registration.
     pub fn render_document_as(
         &self,
         document: &Document,

@@ -8,7 +8,15 @@ use std::hash::{BuildHasherDefault, Hasher};
 use std::marker::PhantomData;
 
 use crate::common::utils::escape_html;
-use crate::parser::document::{Document, DocumentNode, InvalidNodeId, NodeId, NodeRef};
+use crate::parser::core::Root;
+use crate::parser::document::{
+    Document,
+    DocumentNode,
+    InvalidNodeId,
+    NodeId,
+    NodeRef,
+    StructuralEvent,
+};
 use crate::parser::extset::RenderExtSet;
 use crate::parser::node::{HtmlAttribute, NodeValue};
 use crate::parser::render_options::RenderOptions;
@@ -492,6 +500,62 @@ impl<T: NodeValue> DocumentNodeRenderer<T> for PlainTextBreakDocumentRenderer {
         output: &mut DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         context.cr(output)
+    }
+}
+
+/// Diagnostic tree renderer for the built-in document root.
+///
+/// It owns the complete structural traversal so custom descendant payloads do
+/// not need a per-type `"debug"` registration.
+pub(crate) struct DebugTreeDocumentRenderer;
+
+impl DocumentNodeRenderer<Root> for DebugTreeDocumentRenderer {
+    // in "# heading *em*" it like:
+    // container type=markdown_it::parser::core::root::Root id=NodeId(0:0) srcmap=0..14 attrs=[]
+    //   container type=markdown_it::plugins::cmark::block::heading::ATXHeading id=NodeId(1:0) srcmap=0..14 attrs=[]
+    //     leaf type=markdown_it::parser::inline::builtin::skip_text::Text id=NodeId(2:0) srcmap=2..10 attrs=[]
+    //       container type=markdown_it::plugins::cmark::inline::emphasis::Em id=NodeId(3:0) srcmap=10..14 attrs=[]
+    //         leaf type=markdown_it::parser::inline::builtin::skip_text::Text id=NodeId(11..13)
+    fn render(
+        &self,
+        node: &DocumentNode,
+        _: &Root,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut DocumentWriter,
+    ) -> Result<(), DocumentRenderError> {
+        let mut depth = 0;
+        for event in context.document().events(node.id())? {
+            let (kind, current) = match event {
+                StructuralEvent::Enter(current) => ("container", current),
+                StructuralEvent::Leaf(current) => ("leaf", current),
+                StructuralEvent::Exit(_) => {
+                    depth -= 1;
+                    continue;
+                }
+            };
+
+            for _ in 0..depth {
+                output.write_str("  ")?;
+            }
+            write!(
+                output,
+                "{kind} type={} id={:?} srcmap=",
+                current.name(),
+                current.id()
+            )?;
+            if let Some(srcmap) = current.srcmap() {
+                let (start, end) = srcmap.get_byte_offsets();
+                write!(output, "{start}..{end}")?;
+            } else {
+                output.write_char('-')?;
+            }
+            writeln!(output, " attrs={:?}", current.attrs())?;
+
+            if matches!(event, StructuralEvent::Enter(_)) {
+                depth += 1;
+            }
+        }
+        Ok(())
     }
 }
 
