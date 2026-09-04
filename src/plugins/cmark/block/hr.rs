@@ -9,6 +9,7 @@ use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
+    PlainTextBreakDocumentRenderer,
     write_html_self_close,
 };
 use crate::parser::main::MarkdownIt;
@@ -48,6 +49,7 @@ impl NodeValue for ThematicBreak {
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HrScanner>();
     md.add_document_renderer::<ThematicBreak, _>("html", ThematicBreakDocumentRenderer);
+    md.add_document_renderer::<ThematicBreak, _>("text", PlainTextBreakDocumentRenderer);
 }
 
 #[doc(hidden)]

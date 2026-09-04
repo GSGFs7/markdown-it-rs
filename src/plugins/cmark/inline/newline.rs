@@ -9,6 +9,7 @@ use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
+    PlainTextBreakDocumentRenderer,
     write_html_self_close,
 };
 use crate::parser::inline::{InlineRule, InlineState};
@@ -71,6 +72,8 @@ pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<NewlineScanner>();
     md.add_document_renderer::<Hardbreak, _>("html", HardbreakDocumentRenderer);
     md.add_document_renderer::<Softbreak, _>("html", SoftbreakDocumentRenderer);
+    md.add_document_renderer::<Hardbreak, _>("text", PlainTextBreakDocumentRenderer);
+    md.add_document_renderer::<Softbreak, _>("text", PlainTextBreakDocumentRenderer);
 }
 
 #[doc(hidden)]

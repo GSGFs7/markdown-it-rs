@@ -9,6 +9,7 @@ use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
+    TransparentDocumentRenderer,
     write_html_close,
     write_html_open,
 };
@@ -54,4 +55,5 @@ pub fn add(md: &mut MarkdownIt) {
         })
     });
     md.add_document_renderer::<CodeInline, _>("html", CodeInlineDocumentRenderer);
+    md.add_document_renderer::<CodeInline, _>("text", TransparentDocumentRenderer);
 }

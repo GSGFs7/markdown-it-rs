@@ -210,6 +210,7 @@ impl ReferenceMapEntry {
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<ReferenceScanner>();
     md.add_document_renderer::<Definition, _>("html", EmptyDocumentRenderer);
+    md.add_document_renderer::<Definition, _>("text", EmptyDocumentRenderer);
 }
 
 #[derive(Debug)]

@@ -9,6 +9,7 @@ use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
+    TransparentDocumentRenderer,
     write_html_close,
     write_html_open,
 };
@@ -88,4 +89,6 @@ pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'_', 2, false>(md, || Node::new(Strong { marker: '_' }));
     md.add_document_renderer::<Em, _>("html", EmDocumentRenderer);
     md.add_document_renderer::<Strong, _>("html", StrongDocumentRenderer);
+    md.add_document_renderer::<Em, _>("text", TransparentDocumentRenderer);
+    md.add_document_renderer::<Strong, _>("text", TransparentDocumentRenderer);
 }

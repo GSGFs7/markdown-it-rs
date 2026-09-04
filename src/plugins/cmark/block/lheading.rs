@@ -9,6 +9,7 @@ use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
+    PlainTextBlockDocumentRenderer,
     write_html_close,
     write_html_open,
 };
@@ -65,6 +66,7 @@ pub fn add(md: &mut MarkdownIt) {
         .before::<ParagraphScanner>()
         .after_all();
     md.add_document_renderer::<SetextHeader, _>("html", SetextHeaderDocumentRenderer);
+    md.add_document_renderer::<SetextHeader, _>("text", PlainTextBlockDocumentRenderer);
 }
 
 #[doc(hidden)]

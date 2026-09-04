@@ -13,6 +13,7 @@ use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
+    PlainTextBlockDocumentRenderer,
     write_html_close,
     write_html_open,
 };
@@ -145,6 +146,9 @@ pub fn add(md: &mut MarkdownIt) {
     md.add_document_renderer::<OrderedList, _>("html", OrderedListDocumentRenderer);
     md.add_document_renderer::<BulletList, _>("html", BulletListDocumentRenderer);
     md.add_document_renderer::<ListItem, _>("html", ListItemDocumentRenderer);
+    md.add_document_renderer::<OrderedList, _>("text", PlainTextBlockDocumentRenderer);
+    md.add_document_renderer::<BulletList, _>("text", PlainTextBlockDocumentRenderer);
+    md.add_document_renderer::<ListItem, _>("text", PlainTextBlockDocumentRenderer);
 }
 
 #[doc(hidden)]

@@ -1,6 +1,8 @@
 //! GFM tables
 //!
 //! <https://github.github.com/gfm/#tables-extension->
+use std::fmt::Write;
+
 use crate::common::sourcemap::SourcePos;
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::document::NodeRef;
@@ -8,6 +10,8 @@ use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
+    PlainTextBlockDocumentRenderer,
+    TransparentDocumentRenderer,
     write_html_close,
     write_html_open,
 };
@@ -180,6 +184,27 @@ impl DocumentNodeRenderer<TableRow> for TableRowDocumentRenderer {
     }
 }
 
+struct TableRowTextRenderer;
+
+impl DocumentNodeRenderer<TableRow> for TableRowTextRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        _: &TableRow,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut crate::DocumentWriter,
+    ) -> Result<(), DocumentRenderError> {
+        context.cr(output)?;
+        for (index, &cell) in node.children().iter().enumerate() {
+            if index != 0 {
+                output.write_char('\t')?;
+            }
+            context.render_node(cell, output)?;
+        }
+        context.cr(output)
+    }
+}
+
 impl NodeValue for TableRow {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         let ctx = fmt.ext().get_or_insert_default::<TableRenderContext>();
@@ -280,6 +305,11 @@ pub fn add(md: &mut MarkdownIt) {
     md.add_document_renderer::<TableBody, _>("html", TableBodyDocumentRenderer);
     md.add_document_renderer::<TableRow, _>("html", TableRowDocumentRenderer);
     md.add_document_renderer::<TableCell, _>("html", TableCellDocumentRenderer);
+    md.add_document_renderer::<Table, _>("text", PlainTextBlockDocumentRenderer);
+    md.add_document_renderer::<TableHead, _>("text", TransparentDocumentRenderer);
+    md.add_document_renderer::<TableBody, _>("text", TransparentDocumentRenderer);
+    md.add_document_renderer::<TableRow, _>("text", TableRowTextRenderer);
+    md.add_document_renderer::<TableCell, _>("text", TransparentDocumentRenderer);
 }
 
 #[doc(hidden)]

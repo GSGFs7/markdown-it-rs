@@ -3,6 +3,8 @@
 //! ` ```lang ` or `~~~lang`
 //!
 //! <https://spec.commonmark.org/0.30/#code-fence>
+use std::fmt::Write;
+
 use crate::common::utils::unescape_all;
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::document::NodeRef;
@@ -59,6 +61,22 @@ impl DocumentNodeRenderer<CodeFence> for CodeFenceDocumentRenderer {
     }
 }
 
+struct CodeFenceTextRenderer;
+
+impl DocumentNodeRenderer<CodeFence> for CodeFenceTextRenderer {
+    fn render(
+        &self,
+        _: NodeRef<'_>,
+        fence: &CodeFence,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut crate::DocumentWriter,
+    ) -> Result<(), DocumentRenderError> {
+        context.cr(output)?;
+        output.write_str(&fence.content)?;
+        context.cr(output)
+    }
+}
+
 impl NodeValue for CodeFence {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         let info = unescape_all(&self.info);
@@ -96,6 +114,7 @@ impl Default for FenceSettings {
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<FenceScanner>();
     md.add_document_renderer::<CodeFence, _>("html", CodeFenceDocumentRenderer);
+    md.add_document_renderer::<CodeFence, _>("text", CodeFenceTextRenderer);
 }
 
 pub fn set_lang_prefix(md: &mut MarkdownIt, lang_prefix: impl Into<String>) {

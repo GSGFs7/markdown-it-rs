@@ -40,6 +40,21 @@ impl DocumentNodeRenderer<HtmlInline> for HtmlInlineDocumentRenderer {
     }
 }
 
+struct HtmlInlineTextRenderer;
+
+impl DocumentNodeRenderer<HtmlInline> for HtmlInlineTextRenderer {
+    fn render(
+        &self,
+        _: NodeRef<'_>,
+        value: &HtmlInline,
+        _: &mut DocumentRenderContext<'_>,
+        output: &mut crate::DocumentWriter,
+    ) -> Result<(), DocumentRenderError> {
+        output.write_str(&value.content)?;
+        Ok(())
+    }
+}
+
 impl NodeValue for HtmlInline {
     fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
         fmt.text_raw(&self.content);
@@ -49,6 +64,7 @@ impl NodeValue for HtmlInline {
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<HtmlInlineScanner>();
     md.add_document_renderer::<HtmlInline, _>("html", HtmlInlineDocumentRenderer);
+    md.add_document_renderer::<HtmlInline, _>("text", HtmlInlineTextRenderer);
 }
 
 #[doc(hidden)]

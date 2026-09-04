@@ -9,6 +9,7 @@ use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
+    PlainTextBlockDocumentRenderer,
     write_html_close,
     write_html_open,
 };
@@ -60,6 +61,7 @@ impl NodeValue for ATXHeading {
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HeadingScanner>();
     md.add_document_renderer::<ATXHeading, _>("html", ATXHeadingDocumentRenderer);
+    md.add_document_renderer::<ATXHeading, _>("text", PlainTextBlockDocumentRenderer);
 }
 
 #[doc(hidden)]

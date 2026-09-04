@@ -14,6 +14,7 @@ fn run(input: &str, output: &str) {
 
     let document = md.parse_document(&source);
     assert_eq!(md.render_document(&document).unwrap(), actual);
+    md.render_document_as(&document, "text").unwrap();
 }
 
 ///////////////////////////////////////////////////////////////////////////

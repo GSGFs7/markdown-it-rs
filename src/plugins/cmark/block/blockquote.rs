@@ -10,6 +10,7 @@ use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
+    PlainTextBlockDocumentRenderer,
     write_html_close,
     write_html_open,
 };
@@ -83,6 +84,7 @@ impl NodeValue for Blockquote {
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<BlockquoteScanner>();
     md.add_document_renderer::<Blockquote, _>("html", BlockquoteDocumentRenderer);
+    md.add_document_renderer::<Blockquote, _>("text", PlainTextBlockDocumentRenderer);
 }
 
 #[doc(hidden)]

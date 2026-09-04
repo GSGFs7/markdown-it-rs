@@ -40,6 +40,22 @@ impl DocumentNodeRenderer<HtmlBlock> for HtmlBlockDocumentRenderer {
     }
 }
 
+struct HtmlBlockTextRenderer;
+
+impl DocumentNodeRenderer<HtmlBlock> for HtmlBlockTextRenderer {
+    fn render(
+        &self,
+        _: NodeRef<'_>,
+        value: &HtmlBlock,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut crate::DocumentWriter,
+    ) -> Result<(), DocumentRenderError> {
+        context.cr(output)?;
+        output.write_str(&value.content)?;
+        context.cr(output)
+    }
+}
+
 impl NodeValue for HtmlBlock {
     fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
         fmt.cr();
@@ -51,6 +67,7 @@ impl NodeValue for HtmlBlock {
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HtmlBlockScanner>();
     md.add_document_renderer::<HtmlBlock, _>("html", HtmlBlockDocumentRenderer);
+    md.add_document_renderer::<HtmlBlock, _>("text", HtmlBlockTextRenderer);
 }
 
 struct HTMLSequence {

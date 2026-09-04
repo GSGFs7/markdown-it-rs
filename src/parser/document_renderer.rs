@@ -465,6 +465,36 @@ where
     }
 }
 
+pub(crate) struct PlainTextBlockDocumentRenderer;
+
+impl<T: NodeValue> DocumentNodeRenderer<T> for PlainTextBlockDocumentRenderer {
+    fn render(
+        &self,
+        node: &DocumentNode,
+        _: &T,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut DocumentWriter,
+    ) -> Result<(), DocumentRenderError> {
+        context.cr(output)?;
+        context.render_children(node.id(), output)?;
+        context.cr(output)
+    }
+}
+
+pub(crate) struct PlainTextBreakDocumentRenderer;
+
+impl<T: NodeValue> DocumentNodeRenderer<T> for PlainTextBreakDocumentRenderer {
+    fn render(
+        &self,
+        _: &DocumentNode,
+        _: &T,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut DocumentWriter,
+    ) -> Result<(), DocumentRenderError> {
+        context.cr(output)
+    }
+}
+
 pub(crate) struct HtmlBlockElementDocumentRenderer(pub(crate) &'static str);
 
 impl<T: NodeValue> DocumentNodeRenderer<T> for HtmlBlockElementDocumentRenderer {

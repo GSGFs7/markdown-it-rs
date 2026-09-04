@@ -5,6 +5,7 @@ use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
+    TransparentDocumentRenderer,
     write_html_close,
     write_html_open,
 };
@@ -44,4 +45,5 @@ impl NodeValue for Strikethrough {
 pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'~', 2, true>(md, || Node::new(Strikethrough { marker: '~' }));
     md.add_document_renderer::<Strikethrough, _>("html", StrikethroughDocumentRenderer);
+    md.add_document_renderer::<Strikethrough, _>("text", TransparentDocumentRenderer);
 }

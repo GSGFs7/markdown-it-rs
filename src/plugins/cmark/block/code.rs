@@ -3,6 +3,8 @@
 //! Parses anything indented with 4 spaces.
 //!
 //! <https://spec.commonmark.org/0.30/#indented-code-block>
+use std::fmt::Write;
+
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::document::NodeRef;
 use crate::parser::document_renderer::{
@@ -44,6 +46,22 @@ impl DocumentNodeRenderer<CodeBlock> for CodeBlockDocumentRenderer {
     }
 }
 
+struct CodeBlockTextRenderer;
+
+impl DocumentNodeRenderer<CodeBlock> for CodeBlockTextRenderer {
+    fn render(
+        &self,
+        _: NodeRef<'_>,
+        code: &CodeBlock,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut crate::DocumentWriter,
+    ) -> Result<(), DocumentRenderError> {
+        context.cr(output)?;
+        output.write_str(&code.content)?;
+        context.cr(output)
+    }
+}
+
 impl NodeValue for CodeBlock {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         fmt.cr();
@@ -59,6 +77,7 @@ impl NodeValue for CodeBlock {
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<CodeScanner>();
     md.add_document_renderer::<CodeBlock, _>("html", CodeBlockDocumentRenderer);
+    md.add_document_renderer::<CodeBlock, _>("text", CodeBlockTextRenderer);
     md.max_indent = CODE_INDENT;
 }
 

@@ -179,9 +179,9 @@ impl MarkdownIt {
     /// Render an arena-backed document directly with the renderers registered
     /// for `format`.
     ///
-    /// The built-in format keys are `"html"` and `"text"`. The latter
-    /// currently provides the Root/Text vertical slice; plugins that add leaf
-    /// payloads must register their plain-text behavior explicitly.
+    /// The built-in format keys are `"html"` and `"text"`. Standard syntax
+    /// plugins register both formats; plugins that add leaf payloads must
+    /// register their plain-text behavior explicitly.
     pub fn render_document_as(
         &self,
         document: &Document,

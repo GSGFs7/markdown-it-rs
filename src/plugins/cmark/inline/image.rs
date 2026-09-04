@@ -9,6 +9,7 @@ use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
+    TransparentDocumentRenderer,
     write_html_self_close,
 };
 use crate::parser::inline::{Text, TextSpecial};
@@ -124,4 +125,5 @@ pub fn add(md: &mut MarkdownIt) {
         })
     });
     md.add_document_renderer::<Image, _>("html", ImageDocumentRenderer);
+    md.add_document_renderer::<Image, _>("text", TransparentDocumentRenderer);
 }

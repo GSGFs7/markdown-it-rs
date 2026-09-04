@@ -12,6 +12,7 @@ use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
+    TransparentDocumentRenderer,
     write_html_close,
     write_html_open,
 };
@@ -57,6 +58,7 @@ impl NodeValue for Autolink {
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<AutolinkScanner>();
     md.add_document_renderer::<Autolink, _>("html", AutolinkDocumentRenderer);
+    md.add_document_renderer::<Autolink, _>("text", TransparentDocumentRenderer);
 }
 
 static AUTOLINK_RE: LazyLock<Regex> =
