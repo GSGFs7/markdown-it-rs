@@ -806,6 +806,7 @@ name = "markdown-it-rs-linkify"
 version = "0.1.0"
 dependencies = [
  "linkify",
+ "unicode-general-category",
 ]
 
 [[package]]

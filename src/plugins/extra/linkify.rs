@@ -509,6 +509,27 @@ mod tests {
     }
 
     #[test]
+    fn protocol_relative_boundaries_match_linkify_it() {
+        for input in [
+            "x//example.com",
+            "http:////example.com",
+            "////example.com",
+            "组//example.com",
+        ] {
+            run(input, &format!("<p>{input}</p>"));
+        }
+
+        run(
+            "。//example.com",
+            "<p>。<a href=\"//example.com\">//example.com</a></p>",
+        );
+        run(
+            "//example.com//other.org",
+            "<p><a href=\"//example.com//other.org\">//example.com//other.org</a></p>",
+        );
+    }
+
+    #[test]
     fn short_email_with_beautifier_does_not_panic() {
         let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
