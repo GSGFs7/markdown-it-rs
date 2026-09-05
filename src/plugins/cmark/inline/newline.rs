@@ -4,7 +4,8 @@
 //!
 //!  - <https://spec.commonmark.org/0.30/#hard-line-breaks>
 //!  - <https://spec.commonmark.org/0.30/#soft-line-breaks>
-use crate::parser::document::NodeRef;
+use crate::parser::document::{NodeDraft, NodeRef};
+use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -12,7 +13,7 @@ use crate::parser::document_renderer::{
     PlainTextBreakDocumentRenderer,
     write_html_self_close,
 };
-use crate::parser::inline::{InlineRule, InlineState};
+use crate::parser::inline::{DocumentInlineRule, InlineRule, InlineState};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
@@ -70,6 +71,7 @@ impl NodeValue for Softbreak {
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<NewlineScanner>();
+    md.inline.add_document_rule::<NewlineScanner>();
     md.add_document_renderer::<Hardbreak, _>("html", HardbreakDocumentRenderer);
     md.add_document_renderer::<Softbreak, _>("html", SoftbreakDocumentRenderer);
     md.add_document_renderer::<Hardbreak, _>("text", PlainTextBreakDocumentRenderer);
@@ -78,6 +80,31 @@ pub fn add(md: &mut MarkdownIt) {
 
 #[doc(hidden)]
 pub struct NewlineScanner;
+
+impl DocumentInlineRule for NewlineScanner {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        let mut chars = state.src[state.pos..state.pos_max].chars();
+        if chars.next()? != '\n' {
+            return None;
+        }
+        let end = state.pos + 1 + chars.take_while(|ch| matches!(ch, ' ' | '\t')).count();
+        let spaces = state
+            .trailing_text()
+            .bytes()
+            .rev()
+            .take_while(|&ch| ch == b' ')
+            .count();
+        state.pop_trailing_text(spaces);
+        let node = if spaces >= 2 {
+            NodeDraft::new(Hardbreak)
+        } else {
+            NodeDraft::new(Softbreak)
+        };
+        state.pos -= spaces;
+        Some((Some(node), end - state.pos))
+    }
+}
+
 impl InlineRule for NewlineScanner {
     const MARKER: char = '\n';
     const NAMES: &'static [&'static str] = &["newline"];

@@ -144,8 +144,10 @@ impl<'a, 'b> InlineState<'a, 'b> {
             // modify the token and reinsert it later
             text.content.truncate(text.content.len() - count);
             if let Some(map) = node.srcmap {
-                let (map_start, map_end) = map.get_byte_offsets();
-                let map_end = self.get_source_pos_for(map_end - count);
+                let (map_start, _) = map.get_byte_offsets();
+                // `pos` is an inline offset; the existing source span already
+                // contains original-source offsets and must not be mapped twice.
+                let map_end = self.get_source_pos_for(self.pos - count);
                 node.srcmap = Some(SourcePos::new(map_start, map_end));
             }
             self.node.children.push(node);

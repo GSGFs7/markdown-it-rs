@@ -91,9 +91,89 @@ fn direct_parser_rejects_unmigrated_syntax_rules() {
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
-    markdown_it::plugins::cmark::inline::newline::add(&mut partial_inline);
+    markdown_it::plugins::cmark::inline::entity::add(&mut partial_inline);
     assert!(matches!(
         partial_inline.parse_document_direct("soft\nbreak"),
         Err(DocumentParseError::UnsupportedConfiguration)
     ));
+}
+
+#[test]
+fn direct_breaks_and_escapes_preserve_output_and_source_maps() {
+    for paragraph in [false, true] {
+        for breaks in [false, true] {
+            for xhtml in [false, true] {
+                let mut md = MarkdownIt::empty();
+                if paragraph {
+                    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+                }
+                markdown_it::plugins::cmark::inline::newline::add(&mut md);
+                markdown_it::plugins::cmark::inline::escape::add(&mut md);
+                md.render_options.breaks = breaks;
+                md.render_options.xhtml_out = xhtml;
+                for source in [
+                    "",
+                    "a\nb",
+                    "a \nb",
+                    "a  \nb",
+                    "a    \n  b",
+                    "a\\\nb",
+                    "a\\  \nb",
+                    "a\\\\\nb",
+                    "a\\*b\\雪",
+                    "雪\r\n次  \r\n行",
+                    "  雪  \n\t次",
+                    "a\nb  \nc",
+                    "first\n\nsecond  \nthird",
+                    "\\\nnext",
+                    "\\",
+                    "end  ",
+                ] {
+                    assert_direct_matches_bridge(&md, source);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn direct_zero_nesting_matches_legacy() {
+    let mut md = MarkdownIt::empty();
+    md.max_nesting = 0;
+    assert_direct_matches_bridge(&md, "text\n");
+}
+
+#[test]
+fn trailing_space_removal_maps_inline_offsets_once() {
+    use markdown_it::parser::inline::Text;
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::inline::newline::add(&mut md);
+    let source = "雪\r\n次  \r\n行";
+    for document in [
+        md.parse_document(source),
+        md.parse_document_direct(source).unwrap(),
+    ] {
+        let spans: Vec<_> = document
+            .events(document.root())
+            .unwrap()
+            .filter_map(|event| {
+                let node = event.node();
+                node.cast::<Text>().map(|text| {
+                    (
+                        text.content.clone(),
+                        node.srcmap().unwrap().get_byte_offsets(),
+                    )
+                })
+            })
+            .collect();
+        assert_eq!(
+            spans,
+            vec![
+                ("雪".into(), (0, 3)),
+                ("次".into(), (5, 8)),
+                ("行".into(), (12, 15))
+            ]
+        );
+    }
 }

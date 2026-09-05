@@ -4,16 +4,52 @@
 //! of the line.
 //!
 //! <https://spec.commonmark.org/0.30/#backslash-escapes>
-use crate::parser::inline::{InlineRule, InlineState, TextSpecial};
+use crate::parser::document::NodeDraft;
+use crate::parser::document_parser::DocumentInlineState;
+use crate::parser::inline::{DocumentInlineRule, InlineRule, InlineState, TextSpecial};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::Node;
 use crate::plugins::cmark::inline::newline::Hardbreak;
-use crate::{MarkdownIt, Node};
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<EscapeScanner>();
+    md.inline.add_document_rule::<EscapeScanner>();
 }
 
 #[doc(hidden)]
 pub struct EscapeScanner;
+impl DocumentInlineRule for EscapeScanner {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        let mut chars = state.src[state.pos..state.pos_max].chars();
+        if chars.next()? != '\\' {
+            return None;
+        }
+        match chars.next()? {
+            '\n' => {
+                let len = 2 + chars.take_while(|ch| matches!(ch, ' ' | '\t')).count();
+                Some((Some(NodeDraft::new(Hardbreak)), len))
+            }
+            ' ' => None,
+            ch => {
+                let markup = format!("\\{ch}");
+                let content = if ch.is_ascii_punctuation() {
+                    ch.to_string()
+                } else {
+                    markup.clone()
+                };
+                Some((
+                    Some(NodeDraft::new(TextSpecial {
+                        content,
+                        markup,
+                        info: "escape",
+                    })),
+                    1 + ch.len_utf8(),
+                ))
+            }
+        }
+    }
+}
+
 impl InlineRule for EscapeScanner {
     const MARKER: char = '\\';
     const NAMES: &'static [&'static str] = &["escape"];

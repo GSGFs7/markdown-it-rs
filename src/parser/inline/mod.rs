@@ -115,6 +115,10 @@ impl InlineParser {
         self.text_charmap.contains_key(&marker)
     }
 
+    pub(crate) fn has_only_text_rule(&self) -> bool {
+        self.ruler.len() == 1 && self.has_rule::<builtin::TextScanner>()
+    }
+
     #[inline]
     fn rules_for(&self, marker: char) -> &[RuleFns] {
         self.dispatch

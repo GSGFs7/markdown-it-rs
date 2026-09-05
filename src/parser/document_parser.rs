@@ -114,6 +114,9 @@ impl<'a> DocumentBlockState<'a> {
 
     fn tokenize(&mut self) {
         while self.line < self.line_max {
+            if self.md.max_nesting == 0 {
+                break;
+            }
             self.line = self.skip_empty_lines(self.line);
             if self.line >= self.line_max {
                 break;
@@ -304,6 +307,20 @@ impl<'a> DocumentInlineState<'a> {
 
     pub(crate) fn is_rule_marker(&self, marker: char) -> bool {
         self.md.inline.is_document_marker(marker)
+    }
+
+    pub(crate) fn trailing_text(&self) -> &str {
+        self.pending_text
+            .map_or("", |(start, end)| &self.src[start..end])
+    }
+
+    pub(crate) fn pop_trailing_text(&mut self, count: usize) {
+        if count == 0 {
+            return;
+        }
+        let (start, end) = self.pending_text.expect("trailing text must exist");
+        assert!(count <= end - start && self.src.is_char_boundary(end - count));
+        self.pending_text = (start < end - count).then_some((start, end - count));
     }
 
     pub(crate) fn push_text(&mut self, start: usize, end: usize) {

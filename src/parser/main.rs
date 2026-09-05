@@ -150,8 +150,8 @@ impl MarkdownIt {
     /// Parse directly into arena storage when every configured parser rule has
     /// a migrated implementation.
     ///
-    /// This transitional entry point currently supports the text fallback and
-    /// paragraph rules. It returns an error instead of ignoring CommonMark or
+    /// This transitional entry point currently supports text, paragraphs,
+    /// newlines and backslash escapes. It returns an error instead of ignoring CommonMark or
     /// third-party rules that have not yet been migrated.
     #[doc(hidden)]
     pub fn parse_document_direct(&self, src: &str) -> Result<Document, DocumentParseError> {
@@ -174,7 +174,7 @@ impl MarkdownIt {
             .document_rules()
             .ok_or(DocumentParseError::UnsupportedConfiguration)?;
 
-        if block_rules.is_empty() {
+        if block_rules.is_empty() && self.inline.has_only_text_rule() && self.max_nesting > 0 {
             return Ok(DocumentParseContext::new(src, &self.render_options).parse_text_fallback());
         }
 
