@@ -91,11 +91,39 @@ fn direct_parser_rejects_unmigrated_syntax_rules() {
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
-    markdown_it::plugins::cmark::inline::entity::add(&mut partial_inline);
+    markdown_it::plugins::cmark::inline::emphasis::add(&mut partial_inline);
     assert!(matches!(
         partial_inline.parse_document_direct("soft\nbreak"),
         Err(DocumentParseError::UnsupportedConfiguration)
     ));
+}
+
+#[test]
+fn direct_entities_preserve_output_and_source_maps() {
+    for paragraph in [false, true] {
+        let mut md = MarkdownIt::empty();
+        if paragraph {
+            markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+        }
+        markdown_it::plugins::cmark::inline::entity::add(&mut md);
+        markdown_it::plugins::cmark::inline::escape::add(&mut md);
+
+        for source in [
+            "",
+            "&amp;",
+            "before &copy; after",
+            "&AElig;&NotEqualTilde;",
+            "&#0; &#32; &#9;",
+            "&#x41; &#X1F雪; &#x1F4A9;",
+            "&#xD800; &#x110000; &#9999999; &#xFFFFFFFF;",
+            "&unknown; &amp &; &#; &#x;",
+            "&amp;&amp;",
+            "\\&amp; &amp;",
+            "雪&amp;雨\n&#x96EA;",
+        ] {
+            assert_direct_matches_bridge(&md, source);
+        }
+    }
 }
 
 #[test]

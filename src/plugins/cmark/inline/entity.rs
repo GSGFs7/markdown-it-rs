@@ -8,11 +8,14 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::common::utils::{get_entity_from_str, is_valid_entity_code};
-use crate::parser::inline::{InlineRule, InlineState, TextSpecial};
+use crate::parser::document::NodeDraft;
+use crate::parser::document_parser::DocumentInlineState;
+use crate::parser::inline::{DocumentInlineRule, InlineRule, InlineState, TextSpecial};
 use crate::{MarkdownIt, Node};
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<EntityScanner>();
+    md.inline.add_document_rule::<EntityScanner>();
 }
 
 static DIGITAL_RE: LazyLock<Regex> =
@@ -25,8 +28,8 @@ static NAMED_RE: LazyLock<Regex> =
 pub struct EntityScanner;
 
 impl EntityScanner {
-    fn parse_digital_entity(state: &mut InlineState) -> Option<(Node, usize)> {
-        let capture = DIGITAL_RE.captures(&state.src[state.pos..])?;
+    fn parse_digital_entity(src: &str) -> Option<(TextSpecial, usize)> {
+        let capture = DIGITAL_RE.captures(src)?;
         let entity_len = capture[0].len();
         let entity = &capture[1];
         #[allow(clippy::from_str_radix_10)]
@@ -44,27 +47,51 @@ impl EntityScanner {
 
         let markup_str = capture[0].to_owned();
 
-        let node = Node::new(TextSpecial {
-            content: content_str,
-            markup: markup_str,
-            info: "entity",
-        });
-        Some((node, entity_len))
+        Some((
+            TextSpecial {
+                content: content_str,
+                markup: markup_str,
+                info: "entity",
+            },
+            entity_len,
+        ))
     }
 
-    fn parse_named_entity(state: &mut InlineState) -> Option<(Node, usize)> {
-        let capture = NAMED_RE.captures(&state.src[state.pos..])?;
+    fn parse_named_entity(src: &str) -> Option<(TextSpecial, usize)> {
+        let capture = NAMED_RE.captures(src)?;
         let str = get_entity_from_str(&capture[0])?;
         let entity_len = capture[0].len();
         let markup_str = capture[0].to_owned();
         let content_str = (*str).to_owned();
 
-        let node = Node::new(TextSpecial {
-            content: content_str,
-            markup: markup_str,
-            info: "entity",
-        });
-        Some((node, entity_len))
+        Some((
+            TextSpecial {
+                content: content_str,
+                markup: markup_str,
+                info: "entity",
+            },
+            entity_len,
+        ))
+    }
+
+    fn parse(src: &str) -> Option<(TextSpecial, usize)> {
+        let mut chars = src.chars();
+        if chars.next()? != '&' {
+            return None;
+        }
+
+        if let Some('#') = chars.next() {
+            Self::parse_digital_entity(src)
+        } else {
+            Self::parse_named_entity(src)
+        }
+    }
+}
+
+impl DocumentInlineRule for EntityScanner {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        let (entity, len) = Self::parse(&state.src[state.pos..state.pos_max])?;
+        Some((Some(NodeDraft::new(entity)), len))
     }
 }
 
@@ -73,15 +100,7 @@ impl InlineRule for EntityScanner {
     const NAMES: &'static [&'static str] = &["entity"];
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next().unwrap() != '&' {
-            return None;
-        }
-
-        if let Some('#') = chars.next() {
-            Self::parse_digital_entity(state)
-        } else {
-            Self::parse_named_entity(state)
-        }
+        let (entity, len) = Self::parse(&state.src[state.pos..state.pos_max])?;
+        Some((Node::new(entity), len))
     }
 }
