@@ -1,7 +1,7 @@
 // reference to exist CodeFence & CodeSpan rule in the code base
 
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::inline::{InlineRule, InlineState};
+use crate::parser::inline::{InlineState, LegacyInlineRule};
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 #[derive(Debug)]
@@ -143,7 +143,7 @@ impl NodeValue for MathInline {
 #[doc(hidden)]
 pub struct MathInlineScanner;
 
-impl InlineRule for MathInlineScanner {
+impl LegacyInlineRule for MathInlineScanner {
     const MARKER: char = '$';
     const NAMES: &'static [&'static str] = &["math_inline"];
 
@@ -197,7 +197,7 @@ impl InlineRule for MathInlineScanner {
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<MathBlockScanner>();
-    md.inline.add_rule::<MathInlineScanner>();
+    md.inline.add_legacy_rule::<MathInlineScanner>();
 }
 
 #[cfg(test)]

@@ -1,15 +1,26 @@
-use crate::parser::core::rule_builder;
 use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::node::Node;
 
-/// Each member of inline rule chain must implement this trait
+/// An arena-backed inline parser rule.
 pub trait InlineRule: 'static {
     /// First character that can activate this rule.
     ///
     /// Use `'\0'` for a wildcard rule that must be considered at every input
     /// position. A non-wildcard rule is only called when the current character
     /// matches this marker.
+    const MARKER: char;
+    const NAMES: &'static [&'static str] = &[];
+
+    /// Inspect the current position and return a draft plus consumed byte length.
+    ///
+    /// The parser advances the state and assigns the draft's source map. Returning
+    /// `None` declines the match; a successful match may omit a draft when it only
+    /// updates parser state.
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)>;
+}
+
+pub(crate) trait LegacyInlineRule: 'static {
     const MARKER: char;
     const NAMES: &'static [&'static str] = &[];
 
@@ -20,8 +31,13 @@ pub trait InlineRule: 'static {
     fn run(state: &mut super::InlineState) -> Option<(Node, usize)>;
 }
 
-pub(crate) trait DocumentInlineRule: 'static {
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)>;
+crate::parser::core::rule_builder!(InlineRule);
+
+#[allow(dead_code)]
+mod legacy_builder {
+    use super::LegacyInlineRule;
+
+    crate::parser::core::rule_builder!(LegacyInlineRule);
 }
 
-rule_builder!(InlineRule);
+pub(crate) use legacy_builder::RuleBuilder as LegacyRuleBuilder;

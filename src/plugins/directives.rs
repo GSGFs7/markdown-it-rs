@@ -70,7 +70,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::inline::{InlineRule, InlineState};
+use crate::parser::inline::{InlineState, LegacyInlineRule};
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 // --- render ---
@@ -165,7 +165,7 @@ impl NodeValue for ContainerDirective {
 
 // --- scanner ---
 
-impl InlineRule for TextDirective {
+impl LegacyInlineRule for TextDirective {
     const MARKER: char = ':';
     const NAMES: &'static [&'static str] = &["text_directive"];
 
@@ -572,7 +572,7 @@ fn parse_attrs(src: &str) -> Option<(Attrs, usize)> {
 // --- pub method ---
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_rule::<TextDirective>();
+    md.inline.add_legacy_rule::<TextDirective>();
     md.block.add_rule::<LeafDirectiveScanner>();
     md.block.add_rule::<ContainerDirectiveScanner>();
 }

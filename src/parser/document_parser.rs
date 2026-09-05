@@ -236,7 +236,7 @@ impl<'a> DocumentBlockState<'a> {
     }
 }
 
-pub(crate) struct DocumentInlineState<'a> {
+pub struct DocumentInlineState<'a> {
     pub(crate) src: String,
     pub(crate) pos: usize,
     pub(crate) pos_max: usize,
@@ -248,6 +248,11 @@ pub(crate) struct DocumentInlineState<'a> {
 }
 
 impl<'a> DocumentInlineState<'a> {
+    /// The unconsumed inline source visible to the current rule.
+    pub fn remaining(&self) -> &str {
+        &self.src[self.pos..self.pos_max]
+    }
+
     fn parse(
         src: String,
         mapping: Vec<(usize, usize)>,

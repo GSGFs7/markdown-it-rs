@@ -42,7 +42,7 @@
 //!
 //! If you define two structures with the same marker, only the first one will work.
 //!
-use crate::parser::inline::{InlineRule, InlineState, Text};
+use crate::parser::inline::{InlineState, LegacyInlineRule, Text};
 use crate::{MarkdownIt, Node};
 
 #[derive(Debug, Default, Clone)]
@@ -56,7 +56,7 @@ struct CodePairConfig<const MARKER: char>(fn(usize) -> Node);
 pub fn add_with<const MARKER: char>(md: &mut MarkdownIt, f: fn(length: usize) -> Node) {
     md.ext.insert(CodePairConfig::<MARKER>(f));
 
-    let builder = md.inline.add_rule::<CodePairScanner<MARKER>>();
+    let builder = md.inline.add_legacy_rule::<CodePairScanner<MARKER>>();
     if MARKER == '`' {
         builder.alias_named("backticks");
     }
@@ -64,7 +64,7 @@ pub fn add_with<const MARKER: char>(md: &mut MarkdownIt, f: fn(length: usize) ->
 
 #[doc(hidden)]
 pub struct CodePairScanner<const MARKER: char>;
-impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
+impl<const MARKER: char> LegacyInlineRule for CodePairScanner<MARKER> {
     const MARKER: char = MARKER;
     const NAMES: &'static [&'static str] = &["code_pair"];
 

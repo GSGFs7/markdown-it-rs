@@ -10,7 +10,7 @@ use crate::parser::document_renderer::{
     DocumentRenderContext,
     DocumentRenderError,
 };
-use crate::parser::inline::{InlineRule, InlineState};
+use crate::parser::inline::{InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
@@ -62,14 +62,14 @@ impl NodeValue for HtmlInline {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_rule::<HtmlInlineScanner>();
+    md.inline.add_legacy_rule::<HtmlInlineScanner>();
     md.add_document_renderer::<HtmlInline, _>("html", HtmlInlineDocumentRenderer);
     md.add_document_renderer::<HtmlInline, _>("text", HtmlInlineTextRenderer);
 }
 
 #[doc(hidden)]
 pub struct HtmlInlineScanner;
-impl InlineRule for HtmlInlineScanner {
+impl LegacyInlineRule for HtmlInlineScanner {
     const MARKER: char = '<';
     const NAMES: &'static [&'static str] = &["html_inline"];
 

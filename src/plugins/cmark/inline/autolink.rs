@@ -16,7 +16,7 @@ use crate::parser::document_renderer::{
     write_html_close,
     write_html_open,
 };
-use crate::parser::inline::{InlineRule, InlineState, TextSpecial};
+use crate::parser::inline::{InlineState, LegacyInlineRule, TextSpecial};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
@@ -56,7 +56,7 @@ impl NodeValue for Autolink {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_rule::<AutolinkScanner>();
+    md.inline.add_legacy_rule::<AutolinkScanner>();
     md.add_document_renderer::<Autolink, _>("html", AutolinkDocumentRenderer);
     md.add_document_renderer::<Autolink, _>("text", TransparentDocumentRenderer);
 }
@@ -70,7 +70,7 @@ static EMAIL_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 #[doc(hidden)]
 pub struct AutolinkScanner;
-impl InlineRule for AutolinkScanner {
+impl LegacyInlineRule for AutolinkScanner {
     const MARKER: char = '<';
     const NAMES: &'static [&'static str] = &["autolink"];
 

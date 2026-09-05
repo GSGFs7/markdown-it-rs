@@ -151,8 +151,8 @@ impl MarkdownIt {
     /// a migrated implementation.
     ///
     /// This transitional entry point currently supports text, paragraphs,
-    /// newlines and backslash escapes. It returns an error instead of ignoring CommonMark or
-    /// third-party rules that have not yet been migrated.
+    /// newlines, backslash escapes, entities, and arena-backed third-party inline rules. It
+    /// returns an error instead of ignoring syntax rules that have not yet been migrated.
     #[doc(hidden)]
     pub fn parse_document_direct(&self, src: &str) -> Result<Document, DocumentParseError> {
         let has_builtin_core_rules = self.ruler.len() == 2

@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 pub use self::builtin::inline_parser::InlineRoot;
 pub use self::builtin::skip_text::{Text, TextSpecial};
 pub use self::rule::*;
-pub use self::state::*;
+pub(crate) use self::state::{DelimiterRun, InlineState, set_delimiter_scanner};
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::parser::extset::{InlineRootExtSet, RootExtSet};
@@ -30,7 +30,7 @@ pub(crate) type DocumentRuleFn = fn(
 #[derive(Clone, Copy)]
 #[doc(hidden)]
 pub struct RuleEntry {
-    legacy: RuleFns,
+    legacy: Option<RuleFns>,
     document: Option<DocumentRuleFn>,
 }
 
@@ -49,8 +49,9 @@ impl InlineDispatch {
         rules: impl Iterator<Item = (char, &'a RuleEntry)>,
         markers: impl Iterator<Item = char>,
     ) -> Self {
-        let ordered: Vec<(char, RuleFns)> =
-            rules.map(|(marker, rule)| (marker, rule.legacy)).collect();
+        let ordered: Vec<(char, RuleFns)> = rules
+            .filter_map(|(marker, rule)| rule.legacy.map(|legacy| (marker, legacy)))
+            .collect();
         let wildcard: Vec<RuleFns> = ordered
             .iter()
             .filter(|(marker, _)| *marker == '\0')
@@ -241,38 +242,58 @@ impl InlineParser {
         state.node
     }
 
-    fn add_rule_entry<T: InlineRule>(
+    fn add_rule_entry<T: 'static>(
         &mut self,
+        marker: char,
+        names: &'static [&'static str],
+        legacy: Option<RuleFns>,
         document: Option<DocumentRuleFn>,
-    ) -> RuleBuilder<'_, RuleEntry> {
+    ) -> &mut crate::common::ruler::RuleItem<RuleMark, RuleEntry> {
         self.dispatch = OnceLock::new();
-        if T::MARKER != '\0' {
+        if marker != '\0' {
             self.text_impl = OnceLock::new();
-            let charvec = self.text_charmap.entry(T::MARKER).or_default();
+            let charvec = self.text_charmap.entry(marker).or_default();
             charvec.push(RuleMark::of::<T>());
         }
 
-        let item = self.ruler.add(
-            RuleMark::of::<T>(),
-            RuleEntry {
-                legacy: (T::check, T::run),
-                document,
-            },
-        );
-        for name in T::NAMES {
+        let item = self
+            .ruler
+            .add(RuleMark::of::<T>(), RuleEntry { legacy, document });
+        for name in names {
             item.alias(RuleMark::named(*name));
         }
+        item
+    }
+
+    /// Register an arena-backed rule used by [`MarkdownIt::parse_document_direct`].
+    ///
+    /// The legacy [`MarkdownIt::parse`] path does not execute rules registered through
+    /// this API.
+    pub fn add_rule<T: InlineRule>(&mut self) -> RuleBuilder<'_, RuleEntry> {
+        let item =
+            self.add_rule_entry::<T>(T::MARKER, T::NAMES, None, Some(<T as InlineRule>::run));
         RuleBuilder::new(item)
     }
 
-    pub fn add_rule<T: InlineRule>(&mut self) -> RuleBuilder<'_, RuleEntry> {
-        self.add_rule_entry::<T>(None)
+    pub(crate) fn add_legacy_rule<T: LegacyInlineRule>(
+        &mut self,
+    ) -> LegacyRuleBuilder<'_, RuleEntry> {
+        let item = self.add_rule_entry::<T>(T::MARKER, T::NAMES, Some((T::check, T::run)), None);
+        LegacyRuleBuilder::new(item)
     }
 
-    pub(crate) fn add_rule_with_document<T: InlineRule + DocumentInlineRule>(
+    pub(crate) fn add_migrated_rule<T: InlineRule + LegacyInlineRule>(
         &mut self,
     ) -> RuleBuilder<'_, RuleEntry> {
-        self.add_rule_entry::<T>(Some(<T as DocumentInlineRule>::run))
+        debug_assert_eq!(<T as InlineRule>::MARKER, <T as LegacyInlineRule>::MARKER);
+        debug_assert_eq!(<T as InlineRule>::NAMES, <T as LegacyInlineRule>::NAMES);
+        let item = self.add_rule_entry::<T>(
+            <T as InlineRule>::MARKER,
+            <T as InlineRule>::NAMES,
+            Some((<T as LegacyInlineRule>::check, <T as LegacyInlineRule>::run)),
+            Some(<T as InlineRule>::run),
+        );
+        RuleBuilder::new(item)
     }
 
     pub fn has_rule<T: InlineRule>(&self) -> bool {
@@ -280,13 +301,26 @@ impl InlineParser {
     }
 
     pub fn remove_rule<T: InlineRule>(&mut self) {
+        self.remove_rule_entry::<T>(T::MARKER);
+    }
+
+    pub(crate) fn has_legacy_rule<T: LegacyInlineRule>(&self) -> bool {
+        self.ruler.contains(RuleMark::of::<T>())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn remove_legacy_rule<T: LegacyInlineRule>(&mut self) {
+        self.remove_rule_entry::<T>(T::MARKER);
+    }
+
+    fn remove_rule_entry<T: 'static>(&mut self, marker: char) {
         self.dispatch = OnceLock::new();
-        if T::MARKER != '\0' {
+        if marker != '\0' {
             self.text_impl = OnceLock::new();
-            let mut charvec = self.text_charmap.remove(&T::MARKER).unwrap_or_default();
+            let mut charvec = self.text_charmap.remove(&marker).unwrap_or_default();
             charvec.retain(|x| *x != RuleMark::of::<T>());
             if !charvec.is_empty() {
-                self.text_charmap.insert(T::MARKER, charvec);
+                self.text_charmap.insert(marker, charvec);
             }
         }
 
@@ -307,7 +341,7 @@ mod tests {
 
     macro_rules! empty_rule {
         ($rule:ty, $marker:expr) => {
-            impl InlineRule for $rule {
+            impl LegacyInlineRule for $rule {
                 const MARKER: char = $marker;
 
                 fn run(_: &mut InlineState) -> Option<(Node, usize)> {
@@ -324,7 +358,9 @@ mod tests {
     empty_rule!(DirectAtRule, '@');
     empty_rule!(DirectHashRule, '#');
 
-    impl DocumentInlineRule for DirectAtRule {
+    impl InlineRule for DirectAtRule {
+        const MARKER: char = '@';
+
         fn run(
             _: &mut crate::parser::document_parser::DocumentInlineState<'_>,
         ) -> Option<(Option<crate::NodeDraft>, usize)> {
@@ -332,7 +368,9 @@ mod tests {
         }
     }
 
-    impl DocumentInlineRule for DirectHashRule {
+    impl InlineRule for DirectHashRule {
+        const MARKER: char = '#';
+
         fn run(
             _: &mut crate::parser::document_parser::DocumentInlineState<'_>,
         ) -> Option<(Option<crate::NodeDraft>, usize)> {
@@ -340,7 +378,7 @@ mod tests {
         }
     }
 
-    fn check_id<T: InlineRule>() -> usize {
+    fn check_id<T: LegacyInlineRule>() -> usize {
         T::check as fn(&mut InlineState) -> Option<usize> as usize
     }
 
@@ -348,16 +386,16 @@ mod tests {
         rules.iter().map(|rule| rule.0 as usize).collect()
     }
 
-    fn document_id<T: DocumentInlineRule>() -> usize {
-        <T as DocumentInlineRule>::run as DocumentRuleFn as usize
+    fn document_id<T: InlineRule>() -> usize {
+        <T as InlineRule>::run as DocumentRuleFn as usize
     }
 
     #[test]
     fn dispatch_filters_rules_without_changing_order() {
         let mut parser = InlineParser::new();
-        parser.add_rule::<HashRule>();
-        parser.add_rule::<AtRule>().alias_named("at");
-        parser.add_rule::<WildcardRule>().after::<AtRule>();
+        parser.add_legacy_rule::<HashRule>();
+        parser.add_legacy_rule::<AtRule>().alias_named("at");
+        parser.add_legacy_rule::<WildcardRule>().after::<AtRule>();
 
         assert_eq!(
             check_ids(parser.rules_for('@')),
@@ -376,8 +414,8 @@ mod tests {
     #[test]
     fn dispatch_supports_unicode_and_invalidates_on_changes() {
         let mut parser = InlineParser::new();
-        parser.add_rule::<AtRule>();
-        parser.add_rule::<WildcardRule>().after_all();
+        parser.add_legacy_rule::<AtRule>();
+        parser.add_legacy_rule::<WildcardRule>().after_all();
 
         // Compile the first dispatch table before mutating the ruler.
         assert_eq!(
@@ -385,13 +423,15 @@ mod tests {
             vec![check_id::<WildcardRule>()]
         );
 
-        parser.add_rule::<SnowRule>().before::<WildcardRule>();
+        parser
+            .add_legacy_rule::<SnowRule>()
+            .before::<WildcardRule>();
         assert_eq!(
             check_ids(parser.rules_for('雪')),
             vec![check_id::<SnowRule>(), check_id::<WildcardRule>()]
         );
 
-        parser.remove_rule::<AtRule>();
+        parser.remove_legacy_rule::<AtRule>();
         assert_eq!(
             check_ids(parser.rules_for('@')),
             vec![check_id::<WildcardRule>()]
@@ -401,9 +441,9 @@ mod tests {
     #[test]
     fn document_callbacks_share_rule_order_and_lifecycle() {
         let mut parser = InlineParser::new();
-        parser.add_rule_with_document::<DirectAtRule>();
+        parser.add_migrated_rule::<DirectAtRule>();
         parser
-            .add_rule_with_document::<DirectHashRule>()
+            .add_migrated_rule::<DirectHashRule>()
             .before::<DirectAtRule>();
 
         let rules = parser.document_rules().unwrap();
@@ -415,9 +455,9 @@ mod tests {
             ]
         );
 
-        parser.add_rule::<SnowRule>();
+        parser.add_legacy_rule::<SnowRule>();
         assert!(parser.document_rules().is_none());
-        parser.remove_rule::<SnowRule>();
+        parser.remove_legacy_rule::<SnowRule>();
         assert_eq!(parser.document_rules().unwrap().len(), 2);
     }
 }

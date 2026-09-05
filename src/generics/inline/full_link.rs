@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 
 use crate::common::utils::unescape_all;
-use crate::parser::inline::{InlineRule, InlineState};
+use crate::parser::inline::{InlineState, LegacyInlineRule};
 use crate::plugins::cmark::block::reference::ReferenceMap;
 use crate::{MarkdownIt, Node};
 
@@ -28,9 +28,9 @@ pub fn add<const ENABLE_NESTED: bool>(
     f: fn(url: Option<String>, title: Option<String>) -> Node,
 ) {
     md.ext.insert(LinkCfg::<'\0'>(f));
-    md.inline.add_rule::<LinkScanner<ENABLE_NESTED>>();
-    if !md.inline.has_rule::<LinkScannerEnd>() {
-        md.inline.add_rule::<LinkScannerEnd>();
+    md.inline.add_legacy_rule::<LinkScanner<ENABLE_NESTED>>();
+    if !md.inline.has_legacy_rule::<LinkScannerEnd>() {
+        md.inline.add_legacy_rule::<LinkScannerEnd>();
     }
 }
 
@@ -42,18 +42,18 @@ pub fn add_prefix<const PREFIX: char, const ENABLE_NESTED: bool>(
     md.ext.insert(LinkCfg::<PREFIX>(f));
     let builder = md
         .inline
-        .add_rule::<LinkPrefixScanner<PREFIX, ENABLE_NESTED>>();
+        .add_legacy_rule::<LinkPrefixScanner<PREFIX, ENABLE_NESTED>>();
     if PREFIX == '!' {
         builder.alias_named("image");
     }
-    if !md.inline.has_rule::<LinkScannerEnd>() {
-        md.inline.add_rule::<LinkScannerEnd>();
+    if !md.inline.has_legacy_rule::<LinkScannerEnd>() {
+        md.inline.add_legacy_rule::<LinkScannerEnd>();
     }
 }
 
 #[doc(hidden)]
 pub struct LinkScanner<const ENABLE_NESTED: bool>;
-impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
+impl<const ENABLE_NESTED: bool> LegacyInlineRule for LinkScanner<ENABLE_NESTED> {
     const MARKER: char = '[';
     const NAMES: &'static [&'static str] = &["link"];
 
@@ -77,7 +77,7 @@ impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
 
 #[doc(hidden)]
 pub struct LinkPrefixScanner<const PREFIX: char, const ENABLE_NESTED: bool>;
-impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
+impl<const PREFIX: char, const ENABLE_NESTED: bool> LegacyInlineRule
     for LinkPrefixScanner<PREFIX, ENABLE_NESTED>
 {
     const MARKER: char = PREFIX;
@@ -111,7 +111,7 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
 /// this rule makes sure that parser is stopped on "]" character,
 /// but it actually doesn't do anything
 pub struct LinkScannerEnd;
-impl InlineRule for LinkScannerEnd {
+impl LegacyInlineRule for LinkScannerEnd {
     const MARKER: char = ']';
     const NAMES: &'static [&'static str] = &["link_end"];
 

@@ -13,7 +13,7 @@ use crate::parser::document_renderer::{
     PlainTextBreakDocumentRenderer,
     write_html_self_close,
 };
-use crate::parser::inline::{DocumentInlineRule, InlineRule, InlineState};
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
@@ -70,7 +70,7 @@ impl NodeValue for Softbreak {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_rule_with_document::<NewlineScanner>();
+    md.inline.add_migrated_rule::<NewlineScanner>();
     md.add_document_renderer::<Hardbreak, _>("html", HardbreakDocumentRenderer);
     md.add_document_renderer::<Softbreak, _>("html", SoftbreakDocumentRenderer);
     md.add_document_renderer::<Hardbreak, _>("text", PlainTextBreakDocumentRenderer);
@@ -80,7 +80,10 @@ pub fn add(md: &mut MarkdownIt) {
 #[doc(hidden)]
 pub struct NewlineScanner;
 
-impl DocumentInlineRule for NewlineScanner {
+impl InlineRule for NewlineScanner {
+    const MARKER: char = '\n';
+    const NAMES: &'static [&'static str] = &["newline"];
+
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();
         if chars.next()? != '\n' {
@@ -104,7 +107,7 @@ impl DocumentInlineRule for NewlineScanner {
     }
 }
 
-impl InlineRule for NewlineScanner {
+impl LegacyInlineRule for NewlineScanner {
     const MARKER: char = '\n';
     const NAMES: &'static [&'static str] = &["newline"];
 

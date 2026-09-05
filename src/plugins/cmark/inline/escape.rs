@@ -6,18 +6,21 @@
 //! <https://spec.commonmark.org/0.30/#backslash-escapes>
 use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::inline::{DocumentInlineRule, InlineRule, InlineState, TextSpecial};
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, TextSpecial};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::Node;
 use crate::plugins::cmark::inline::newline::Hardbreak;
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_rule_with_document::<EscapeScanner>();
+    md.inline.add_migrated_rule::<EscapeScanner>();
 }
 
 #[doc(hidden)]
 pub struct EscapeScanner;
-impl DocumentInlineRule for EscapeScanner {
+impl InlineRule for EscapeScanner {
+    const MARKER: char = '\\';
+    const NAMES: &'static [&'static str] = &["escape"];
+
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();
         if chars.next()? != '\\' {
@@ -49,7 +52,7 @@ impl DocumentInlineRule for EscapeScanner {
     }
 }
 
-impl InlineRule for EscapeScanner {
+impl LegacyInlineRule for EscapeScanner {
     const MARKER: char = '\\';
     const NAMES: &'static [&'static str] = &["escape"];
 

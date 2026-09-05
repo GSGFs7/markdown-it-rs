@@ -53,7 +53,7 @@ use std::collections::{HashMap, HashSet};
 use crate::common::utils::normalize_reference;
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::core::CoreRule;
-use crate::parser::inline::{InlineRule, InlineState};
+use crate::parser::inline::{InlineState, LegacyInlineRule};
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 // [^1]: somthing
@@ -215,7 +215,7 @@ impl BlockRule for FootnoteDefinitionScanner {
 
 struct FootnoteReferenceScanner;
 
-impl InlineRule for FootnoteReferenceScanner {
+impl LegacyInlineRule for FootnoteReferenceScanner {
     const MARKER: char = '[';
     const NAMES: &'static [&'static str] = &["footnote_reference"];
 
@@ -253,7 +253,7 @@ impl InlineRule for FootnoteReferenceScanner {
 // ^[inline note]
 struct FootnoteInlineScanner;
 
-impl InlineRule for FootnoteInlineScanner {
+impl LegacyInlineRule for FootnoteInlineScanner {
     const MARKER: char = '^';
     const NAMES: &'static [&'static str] = &["footnote_inline"];
 
@@ -598,10 +598,10 @@ pub fn add(md: &mut MarkdownIt) {
         .add_rule::<FootnoteDefinitionScanner>()
         .before::<crate::plugins::cmark::block::reference::ReferenceScanner>();
     md.inline
-        .add_rule::<FootnoteInlineScanner>()
+        .add_legacy_rule::<FootnoteInlineScanner>()
         .before_named("link");
     md.inline
-        .add_rule::<FootnoteReferenceScanner>()
+        .add_legacy_rule::<FootnoteReferenceScanner>()
         // [...] contains [^...]
         // let footnote rule try it first
         .before_named("link");

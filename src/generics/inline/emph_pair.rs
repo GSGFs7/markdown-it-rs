@@ -51,7 +51,7 @@ use std::cmp::min;
 use crate::common::sourcemap::SourcePos;
 use crate::parser::core::CoreRule;
 use crate::parser::inline::builtin::InlineParserRule;
-use crate::parser::inline::{InlineRule, InlineState, Text};
+use crate::parser::inline::{InlineState, LegacyInlineRule, Text};
 use crate::{MarkdownIt, Node, NodeValue};
 
 #[derive(Debug, Default)]
@@ -94,7 +94,7 @@ pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool
         pair_config.inserted = true;
         let builder = md
             .inline
-            .add_rule::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>();
+            .add_legacy_rule::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>();
         if MARKER == '*' || MARKER == '_' {
             builder.alias_named("emphasis");
         } else if MARKER == '~' {
@@ -111,7 +111,7 @@ pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool
 
 #[doc(hidden)]
 pub struct EmphPairScanner<const MARKER: char, const CAN_SPLIT_WORD: bool>;
-impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
+impl<const MARKER: char, const CAN_SPLIT_WORD: bool> LegacyInlineRule
     for EmphPairScanner<MARKER, CAN_SPLIT_WORD>
 {
     const MARKER: char = MARKER;

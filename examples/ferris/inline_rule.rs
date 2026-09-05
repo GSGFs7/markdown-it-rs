@@ -1,7 +1,21 @@
 // Replaces `(\/)` with `🦀`.
 
-use markdown_it::parser::inline::{InlineRule, InlineState};
-use markdown_it::{MarkdownIt, Node, NodeValue, Renderer};
+use std::fmt::Write;
+
+use markdown_it::parser::inline::InlineRule;
+use markdown_it::{
+    DocumentInlineState,
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    DocumentWriter,
+    MarkdownIt,
+    Node,
+    NodeDraft,
+    NodeRef,
+    NodeValue,
+    Renderer,
+};
 
 const CRAB_CLAW: &str = r#"(\/)"#;
 
@@ -25,6 +39,21 @@ impl NodeValue for InlineFerris {
     }
 }
 
+struct InlineFerrisDocumentRenderer;
+
+impl DocumentNodeRenderer<InlineFerris> for InlineFerrisDocumentRenderer {
+    fn render(
+        &self,
+        _: NodeRef<'_>,
+        _: &InlineFerris,
+        _: &mut DocumentRenderContext<'_>,
+        output: &mut DocumentWriter,
+    ) -> Result<(), DocumentRenderError> {
+        output.write_str("<span class=\"ferris-inline\">🦀</span>")?;
+        Ok(())
+    }
+}
+
 // This is an extension for the inline subparser.
 struct FerrisInlineScanner;
 
@@ -36,25 +65,25 @@ impl InlineRule for FerrisInlineScanner {
     // This is a custom function that will be invoked on every character
     // in an inline context.
     //
-    // It should look for `state.src` exactly at position `state.pos`
-    // and report if your custom structure appears there.
+    // It should inspect `state.remaining()` and report if your custom structure
+    // appears at the current position.
     //
     // If custom structure is found, it:
-    //  - creates a new `Node` in AST
+    //  - creates a new `NodeDraft`
     //  - returns length of it
     //
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let input = &state.src[state.pos..state.pos_max]; // look for stuff at state.pos
-        if !input.starts_with(CRAB_CLAW) {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        if !state.remaining().starts_with(CRAB_CLAW) {
             return None;
-        } // return None if it's not found
+        }
 
         // return new node and length of this structure
-        Some((Node::new(InlineFerris), CRAB_CLAW.len()))
+        Some((Some(NodeDraft::new(InlineFerris)), CRAB_CLAW.len()))
     }
 }
 
 pub fn add(md: &mut MarkdownIt) {
     // insert this rule into inline subparser
     md.inline.add_rule::<FerrisInlineScanner>();
+    md.add_document_renderer::<InlineFerris, _>("html", InlineFerrisDocumentRenderer);
 }

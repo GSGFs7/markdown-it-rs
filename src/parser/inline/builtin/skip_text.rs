@@ -5,7 +5,7 @@ use regex::{self, Regex};
 
 use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::inline::{DocumentInlineRule, InlineRule, InlineState};
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
@@ -49,12 +49,13 @@ impl NodeValue for TextSpecial {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline
-        .add_rule_with_document::<TextScanner>()
-        .before_all();
+    md.inline.add_migrated_rule::<TextScanner>().before_all();
 }
 
-impl DocumentInlineRule for TextScanner {
+impl InlineRule for TextScanner {
+    const MARKER: char = '\0';
+    const NAMES: &'static [&'static str] = &["text"];
+
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         let len = state.src[state.pos..state.pos_max]
             .char_indices()
@@ -157,7 +158,7 @@ impl TextScanner {
     }
 }
 
-impl InlineRule for TextScanner {
+impl LegacyInlineRule for TextScanner {
     const MARKER: char = '\0';
     const NAMES: &'static [&'static str] = &["text"];
 

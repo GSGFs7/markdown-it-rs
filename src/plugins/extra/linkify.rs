@@ -6,7 +6,7 @@ use linkify::{LinkKind, Linkify};
 
 use crate::parser::core::{CoreRule, Root};
 use crate::parser::inline::builtin::InlineParserRule;
-use crate::parser::inline::{InlineRule, InlineState, TextSpecial};
+use crate::parser::inline::{InlineState, LegacyInlineRule, TextSpecial};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
@@ -45,9 +45,9 @@ pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
         .before::<InlineParserRule>()
         .before_all();
 
-    md.inline.add_rule::<LinkifyScanner>();
-    md.inline.add_rule::<LinkifyFuzzyScanner>();
-    md.inline.add_rule::<LinkifyEmailScanner>();
+    md.inline.add_legacy_rule::<LinkifyScanner>();
+    md.inline.add_legacy_rule::<LinkifyFuzzyScanner>();
+    md.inline.add_legacy_rule::<LinkifyEmailScanner>();
 }
 
 type LinkifyState = Vec<LinkifyPosition>;
@@ -115,7 +115,7 @@ impl LinkifyMode {
 
 #[doc(hidden)]
 pub struct LinkifyScanner;
-impl InlineRule for LinkifyScanner {
+impl LegacyInlineRule for LinkifyScanner {
     const MARKER: char = ':';
     const NAMES: &'static [&'static str] = &["linkify"];
 
@@ -136,7 +136,7 @@ impl InlineRule for LinkifyScanner {
 
 #[doc(hidden)]
 pub struct LinkifyFuzzyScanner;
-impl InlineRule for LinkifyFuzzyScanner {
+impl LegacyInlineRule for LinkifyFuzzyScanner {
     const MARKER: char = '.';
     const NAMES: &'static [&'static str] = &["linkify_fuzzy"];
 
@@ -155,7 +155,7 @@ impl InlineRule for LinkifyFuzzyScanner {
 
 #[doc(hidden)]
 pub struct LinkifyEmailScanner;
-impl InlineRule for LinkifyEmailScanner {
+impl LegacyInlineRule for LinkifyEmailScanner {
     const MARKER: char = '@';
     const NAMES: &'static [&'static str] = &["linkify_email"];
 

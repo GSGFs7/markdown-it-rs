@@ -139,8 +139,8 @@ mod markdown_it_rs_extras {
     fn test_node_ext_propagation() {
         use markdown_it::parser::block::{BlockRule, BlockState};
         use markdown_it::parser::core::CoreRule;
-        use markdown_it::parser::inline::{InlineRule, InlineState};
-        use markdown_it::{MarkdownIt, Node};
+        use markdown_it::parser::inline::{InlineRule, Text};
+        use markdown_it::{DocumentInlineState, MarkdownIt, Node, NodeDraft};
 
         #[derive(Debug, Default)]
         struct NodeErrors(Vec<&'static str>);
@@ -148,10 +148,16 @@ mod markdown_it_rs_extras {
         impl InlineRule for MyInlineRule {
             const MARKER: char = '@';
 
-            fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-                let err = state.node.ext.get_or_insert_default::<NodeErrors>();
+            fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+                if !state.remaining().starts_with('@') {
+                    return None;
+                }
+                let mut node = NodeDraft::new(Text {
+                    content: "@".into(),
+                });
+                let err = node.ext_mut().get_or_insert_default::<NodeErrors>();
                 err.0.push("inline");
-                None
+                Some((Some(node), 1))
             }
         }
 
@@ -175,7 +181,6 @@ mod markdown_it_rs_extras {
         let md = &mut markdown_it::MarkdownIt::empty();
         markdown_it::plugins::cmark::add(md);
 
-        md.inline.add_rule::<MyInlineRule>();
         md.block.add_rule::<MyBlockRule>();
         md.add_rule::<MyCoreRule>().after_all();
 
@@ -189,7 +194,18 @@ mod markdown_it_rs_extras {
             }
         });
 
-        assert_eq!(collected, vec!["inline", "block", "core"],);
+        assert_eq!(collected, vec!["block", "core"],);
+
+        let mut direct_md = MarkdownIt::empty();
+        direct_md.inline.add_rule::<MyInlineRule>();
+        let document = direct_md.parse_document_direct("@").unwrap();
+        let collected: Vec<_> = document
+            .events(document.root())
+            .unwrap()
+            .filter_map(|event| event.node().ext().get::<NodeErrors>())
+            .flat_map(|errors| errors.0.iter().copied())
+            .collect();
+        assert_eq!(collected, vec!["inline"]);
     }
 
     #[test]

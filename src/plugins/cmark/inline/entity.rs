@@ -10,11 +10,11 @@ use regex::Regex;
 use crate::common::utils::{get_entity_from_str, is_valid_entity_code};
 use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::inline::{DocumentInlineRule, InlineRule, InlineState, TextSpecial};
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, TextSpecial};
 use crate::{MarkdownIt, Node};
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_rule_with_document::<EntityScanner>();
+    md.inline.add_migrated_rule::<EntityScanner>();
 }
 
 static DIGITAL_RE: LazyLock<Regex> =
@@ -87,14 +87,17 @@ impl EntityScanner {
     }
 }
 
-impl DocumentInlineRule for EntityScanner {
+impl InlineRule for EntityScanner {
+    const MARKER: char = '&';
+    const NAMES: &'static [&'static str] = &["entity"];
+
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         let (entity, len) = Self::parse(&state.src[state.pos..state.pos_max])?;
         Some((Some(NodeDraft::new(entity)), len))
     }
 }
 
-impl InlineRule for EntityScanner {
+impl LegacyInlineRule for EntityScanner {
     const MARKER: char = '&';
     const NAMES: &'static [&'static str] = &["entity"];
 
