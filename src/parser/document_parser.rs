@@ -12,6 +12,7 @@ use crate::parser::block::{
 };
 use crate::parser::core::Root;
 use crate::parser::document::{Document, NodeDraft};
+use crate::parser::extset::InlineRootExtSet;
 use crate::parser::inline::{DocumentRuleFn as DocumentInlineRuleFn, Text};
 use crate::parser::main::MarkdownIt;
 use crate::parser::render_options::RenderOptions;
@@ -242,6 +243,7 @@ pub struct DocumentInlineState<'a> {
     pub(crate) pos_max: usize,
     md: &'a MarkdownIt,
     mapping: Vec<(usize, usize)>,
+    pub(crate) inline_ext: InlineRootExtSet,
     rules: &'a [DocumentInlineRuleFn],
     nodes: Vec<NodeDraft>,
     pending_text: Option<(usize, usize)>,
@@ -251,6 +253,11 @@ impl<'a> DocumentInlineState<'a> {
     /// The unconsumed inline source visible to the current rule.
     pub fn remaining(&self) -> &str {
         &self.src[self.pos..self.pos_max]
+    }
+
+    /// Parser instance that owns this inline rule.
+    pub fn markdown_it(&self) -> &MarkdownIt {
+        self.md
     }
 
     fn parse(
@@ -265,6 +272,7 @@ impl<'a> DocumentInlineState<'a> {
             src,
             md,
             mapping,
+            inline_ext: InlineRootExtSet::new(),
             rules,
             nodes: Vec::new(),
             pending_text: None,
@@ -378,7 +386,7 @@ impl<'a> DocumentInlineState<'a> {
         self.mapping[line].1 + (pos - self.mapping[line].0)
     }
 
-    fn get_map(&self, start: usize, end: usize) -> Option<SourcePos> {
+    pub(crate) fn get_map(&self, start: usize, end: usize) -> Option<SourcePos> {
         Some(SourcePos::new(self.source_pos(start), self.source_pos(end)))
     }
 }

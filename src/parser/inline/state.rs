@@ -96,6 +96,13 @@ impl<'a, 'b> InlineState<'a, 'b> {
         result
     }
 
+    pub(crate) fn with_inline_ext<T>(
+        &mut self,
+        f: impl FnOnce(&str, usize, usize, &mut InlineRootExtSet) -> T,
+    ) -> T {
+        f(&self.src, self.pos, self.pos_max, self.inline_ext)
+    }
+
     fn trim_src(&mut self) {
         let mut chars = self.src.as_bytes().iter();
         while let Some(b' ' | b'\t') = chars.next_back() {

@@ -1,5 +1,5 @@
 use markdown_it::parser::core::Root;
-use markdown_it::{DocumentParseError, MarkdownIt};
+use markdown_it::{DocumentParseError, MarkdownIt, NodeDraft, StructuralEvent};
 
 fn assert_direct_matches_bridge(md: &MarkdownIt, source: &str) {
     let bridged = md.parse_document(source);
@@ -162,6 +162,76 @@ fn direct_breaks_and_escapes_preserve_output_and_source_maps() {
             }
         }
     }
+}
+
+#[test]
+fn direct_code_spans_preserve_output_structure_and_source_maps() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::inline::backticks::add(&mut md);
+
+    for source in [
+        "`foo`",
+        "before `` foo ` bar `` after",
+        "` `` ` and `  ``  `",
+        "` a` `b ` `   `",
+        "`\u{a0}雪\u{a0}`",
+        "``\nfoo\nbar  \nbaz\n``",
+        "``\nfoo \n``",
+        "`foo   bar \nbaz`",
+        "`foo\\`bar`",
+        "```foo``",
+        "雪 `代码` 雨",
+    ] {
+        assert_direct_matches_bridge(&md, source);
+    }
+
+    let document = md.parse_document_direct("foo ```bar``` baz").unwrap();
+    let mut spans = document
+        .events(document.root())
+        .unwrap()
+        .filter_map(|event| {
+            if matches!(event, StructuralEvent::Exit(_)) {
+                return None;
+            }
+            let node = event.node();
+            if node.is::<markdown_it::plugins::cmark::inline::backticks::CodeInline>()
+                || node.is::<markdown_it::parser::inline::Text>()
+            {
+                Some((node.name(), node.srcmap().unwrap().get_byte_offsets()))
+            } else {
+                None
+            }
+        });
+    assert_eq!(spans.next().unwrap().1, (0, 4));
+    assert_eq!(spans.next().unwrap().1, (4, 13));
+    assert_eq!(spans.next().unwrap().1, (7, 10));
+    assert_eq!(spans.next().unwrap().1, (13, 17));
+    assert!(spans.next().is_none());
+}
+
+#[test]
+fn code_pair_factory_uses_drafts_and_supports_unicode_markers() {
+    use markdown_it::{Node, NodeValue, Renderer};
+
+    #[derive(Debug)]
+    struct CustomCode(usize);
+
+    impl NodeValue for CustomCode {
+        fn render(&self, node: &Node, renderer: &mut dyn Renderer) {
+            renderer.text(&format!("{}:", self.0));
+            renderer.contents(&node.children);
+        }
+    }
+
+    let mut md = MarkdownIt::empty();
+    markdown_it::generics::inline::code_pair::add_with::<'🦀'>(&mut md, |len| {
+        NodeDraft::new(CustomCode(len))
+    });
+    let source = "a 🦀 雪 🦀 b 🦀🦀x🦀🦀";
+    let direct = md.parse_document_direct(source).unwrap();
+    assert_eq!(direct.into_legacy().render(), "a 1:雪 b 2:x\n");
+    assert_eq!(md.parse(source).render(), "a 1:雪 b 2:x\n");
 }
 
 #[test]

@@ -148,6 +148,25 @@ impl NodeDraft {
             None
         }
     }
+
+    pub(crate) fn into_legacy(self) -> Node {
+        let Self {
+            children,
+            srcmap,
+            ext,
+            attrs,
+            node_type,
+            node_value,
+        } = self;
+        Node::from_parts(NodeParts {
+            children: children.into_iter().map(Self::into_legacy).collect(),
+            srcmap,
+            ext,
+            attrs,
+            node_type,
+            node_value,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

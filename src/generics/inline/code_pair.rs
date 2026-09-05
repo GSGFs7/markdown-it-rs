@@ -7,13 +7,13 @@
 //! You add a custom structure by using [add_with] function, which takes following arguments:
 //!  - `MARKER` - marker character
 //!  - `md` - parser instance
-//!  - `f` - function that should return your custom [Node]
+//!  - `f` - function that should return your custom [NodeDraft]
 //!
 //! Here is an example of a rule turning `%foo%` into `🦀foo🦀`:
 //!
 //! ```rust
 //! use markdown_it::generics::inline::code_pair;
-//! use markdown_it::{MarkdownIt, Node, NodeValue, Renderer};
+//! use markdown_it::{MarkdownIt, Node, NodeDraft, NodeValue, Renderer};
 //!
 //! #[derive(Debug)]
 //! struct Ferris;
@@ -26,8 +26,8 @@
 //! }
 //!
 //! let md = &mut MarkdownIt::empty();
-//! code_pair::add_with::<'%'>(md, |_| Node::new(Ferris));
-//! let html = md.parse("hello %world%").render();
+//! code_pair::add_with::<'%'>(md, |_| NodeDraft::new(Ferris));
+//! let html = md.parse_document_direct("hello %world%").unwrap().into_legacy().render();
 //! assert_eq!(html.trim(), "hello 🦀world🦀");
 //! ```
 //!
@@ -42,7 +42,9 @@
 //!
 //! If you define two structures with the same marker, only the first one will work.
 //!
-use crate::parser::inline::{InlineState, LegacyInlineRule, Text};
+use crate::parser::document::NodeDraft;
+use crate::parser::document_parser::DocumentInlineState;
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, Text};
 use crate::{MarkdownIt, Node};
 
 #[derive(Debug, Default, Clone)]
@@ -51,12 +53,12 @@ struct CodePairCache<const MARKER: char> {
     max: Vec<usize>,
 }
 #[derive(Debug)]
-struct CodePairConfig<const MARKER: char>(fn(usize) -> Node);
+struct CodePairConfig<const MARKER: char>(fn(usize) -> NodeDraft);
 
-pub fn add_with<const MARKER: char>(md: &mut MarkdownIt, f: fn(length: usize) -> Node) {
+pub fn add_with<const MARKER: char>(md: &mut MarkdownIt, f: fn(length: usize) -> NodeDraft) {
     md.ext.insert(CodePairConfig::<MARKER>(f));
 
-    let builder = md.inline.add_legacy_rule::<CodePairScanner<MARKER>>();
+    let builder = md.inline.add_migrated_rule::<CodePairScanner<MARKER>>();
     if MARKER == '`' {
         builder.alias_named("backticks");
     }
@@ -64,6 +66,34 @@ pub fn add_with<const MARKER: char>(md: &mut MarkdownIt, f: fn(length: usize) ->
 
 #[doc(hidden)]
 pub struct CodePairScanner<const MARKER: char>;
+impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
+    const MARKER: char = MARKER;
+    const NAMES: &'static [&'static str] = &["code_pair"];
+
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        let matched = scan_code_pair::<MARKER>(
+            &state.src,
+            state.pos,
+            state.pos_max,
+            state.trailing_text().ends_with(MARKER),
+            &mut state.inline_ext,
+        )?;
+        let f = state
+            .markdown_it()
+            .ext
+            .get::<CodePairConfig<MARKER>>()
+            .unwrap()
+            .0;
+        let mut node = f(matched.marker_len);
+        let mut text = NodeDraft::new(Text {
+            content: matched.content,
+        });
+        text.set_srcmap(state.get_map(matched.content_start, matched.content_end));
+        node.push_child(text);
+        Some((Some(node), matched.consumed))
+    }
+}
+
 impl<const MARKER: char> LegacyInlineRule for CodePairScanner<MARKER> {
     const MARKER: char = MARKER;
     const NAMES: &'static [&'static str] = &["code_pair"];
@@ -71,7 +101,7 @@ impl<const MARKER: char> LegacyInlineRule for CodePairScanner<MARKER> {
     fn check(state: &mut InlineState) -> Option<usize> {
         // avoid polluting cache
         let old_cache = state.inline_ext.get::<CodePairCache<MARKER>>().cloned();
-        let result = Self::run(state).map(|(_, len)| len);
+        let result = <Self as LegacyInlineRule>::run(state).map(|(_, len)| len);
 
         if let Some(cache) = old_cache {
             state.inline_ext.insert(cache);
@@ -83,87 +113,95 @@ impl<const MARKER: char> LegacyInlineRule for CodePairScanner<MARKER> {
     }
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next().unwrap() != MARKER {
-            return None;
-        }
-        if state.trailing_text_get().ends_with(MARKER) {
-            return None;
-        }
-
-        let mut pos = state.pos + 1;
-
-        // scan marker length
-        while Some(MARKER) == chars.next() {
-            pos += 1;
-        }
-
-        // backtick length => last seen position
-        let backticks = state
-            .inline_ext
-            .get_or_insert_default::<CodePairCache<MARKER>>();
-        let opener_len = pos - state.pos;
-
-        if backticks.scanned && backticks.max.get(opener_len).copied().unwrap_or(0) <= state.pos {
-            // performance note: adding entire sequence into pending is 5x faster,
-            // but it will interfere with other rules working on the same char;
-            // and it is extremely rare that user would put a thousand "`" in text
-            return None;
-        }
-
-        let mut match_start;
-        let mut match_end = pos;
-
-        // Nothing found in the cache, scan until the end of the line (or until marker is found)
-        while let Some(p) = state.src[match_end..state.pos_max].find(MARKER) {
-            match_start = match_end + p;
-
-            // scan marker length
-            match_end = match_start + 1;
-            chars = state.src[match_end..state.pos_max].chars();
-
-            while Some(MARKER) == chars.next() {
-                match_end += 1;
-            }
-
-            let closer_len = match_end - match_start;
-
-            if closer_len == opener_len {
-                // found matching closer length
-                let mut content = state.src[pos..match_start].to_owned().replace('\n', " ");
-                if content.starts_with(' ')
-                    && content.ends_with(' ')
-                    && content.chars().any(|ch| ch != ' ')
-                {
-                    content[1..content.len() - 1]
-                        .to_owned()
-                        .clone_into(&mut content);
-                    pos += 1;
-                    match_start -= 1;
-                }
-
-                let f = state.md.ext.get::<CodePairConfig<MARKER>>().unwrap().0;
-                let mut node = f(opener_len);
-
-                let mut inner_node = Node::new(Text { content });
-                inner_node.srcmap = state.get_map(pos, match_start);
-                node.children.push(inner_node);
-
-                return Some((node, match_end - state.pos));
-            }
-
-            // Some different length found, put it in cache as upper limit of where closer can be found
-            let backticks = state.inline_ext.get_mut::<CodePairCache<MARKER>>().unwrap();
-            while backticks.max.len() <= closer_len {
-                backticks.max.push(0);
-            }
-            backticks.max[closer_len] = match_start;
-        }
-
-        // Scanned through the end, didn't find anything
-        let backticks = state.inline_ext.get_mut::<CodePairCache<MARKER>>().unwrap();
-        backticks.scanned = true;
-
-        None
+        let follows_marker = state.trailing_text_get().ends_with(MARKER);
+        let matched = state.with_inline_ext(|src, pos, pos_max, inline_ext| {
+            scan_code_pair::<MARKER>(src, pos, pos_max, follows_marker, inline_ext)
+        })?;
+        let f = state.md.ext.get::<CodePairConfig<MARKER>>().unwrap().0;
+        let mut node = f(matched.marker_len).into_legacy();
+        let mut text = Node::new(Text {
+            content: matched.content,
+        });
+        text.srcmap = state.get_map(matched.content_start, matched.content_end);
+        node.children.push(text);
+        Some((node, matched.consumed))
     }
+}
+
+struct CodePairMatch {
+    marker_len: usize,
+    consumed: usize,
+    content_start: usize,
+    content_end: usize,
+    content: String,
+}
+
+fn scan_code_pair<const MARKER: char>(
+    src: &str,
+    start: usize,
+    end: usize,
+    follows_marker: bool,
+    inline_ext: &mut crate::parser::extset::InlineRootExtSet,
+) -> Option<CodePairMatch> {
+    let marker_width = MARKER.len_utf8();
+    if !src[start..end].starts_with(MARKER) || follows_marker {
+        return None;
+    }
+
+    let mut content_start = start;
+    let mut marker_len = 0;
+    while src[content_start..end].starts_with(MARKER) {
+        marker_len += 1;
+        content_start += marker_width;
+    }
+
+    let cache = inline_ext.get_or_insert_default::<CodePairCache<MARKER>>();
+    if cache.scanned && cache.max.get(marker_len).copied().unwrap_or(0) <= start {
+        return None;
+    }
+
+    let mut search = content_start;
+    while let Some(offset) = src[search..end].find(MARKER) {
+        let closer_start = search + offset;
+        let mut closer_end = closer_start;
+        let mut closer_len = 0;
+        while src[closer_end..end].starts_with(MARKER) {
+            closer_len += 1;
+            closer_end += marker_width;
+        }
+
+        if closer_len == marker_len {
+            let mut mapped_start = content_start;
+            let mut mapped_end = closer_start;
+            let mut content = src[content_start..closer_start].replace('\n', " ");
+            if content.starts_with(' ')
+                && content.ends_with(' ')
+                && content.chars().any(|ch| ch != ' ')
+            {
+                content = content[1..content.len() - 1].to_owned();
+                mapped_start += 1;
+                mapped_end -= 1;
+            }
+            return Some(CodePairMatch {
+                marker_len,
+                consumed: closer_end - start,
+                content_start: mapped_start,
+                content_end: mapped_end,
+                content,
+            });
+        }
+
+        let cache = inline_ext.get_mut::<CodePairCache<MARKER>>().unwrap();
+        while cache.max.len() <= closer_len {
+            cache.max.push(0);
+        }
+        cache.max[closer_len] = closer_start;
+        search = closer_end;
+    }
+
+    inline_ext
+        .get_mut::<CodePairCache<MARKER>>()
+        .unwrap()
+        .scanned = true;
+    None
 }

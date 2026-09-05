@@ -151,8 +151,9 @@ impl MarkdownIt {
     /// a migrated implementation.
     ///
     /// This transitional entry point currently supports text, paragraphs,
-    /// newlines, backslash escapes, entities, and arena-backed third-party inline rules. It
-    /// returns an error instead of ignoring syntax rules that have not yet been migrated.
+    /// newlines, backslash escapes, entities, code spans, and arena-backed third-party inline
+    /// rules. It returns an error instead of ignoring syntax rules that have not yet been
+    /// migrated.
     #[doc(hidden)]
     pub fn parse_document_direct(&self, src: &str) -> Result<Document, DocumentParseError> {
         let has_builtin_core_rules = self.ruler.len() == 2
@@ -162,7 +163,7 @@ impl MarkdownIt {
             && self
                 .ruler
                 .contains(RuleMark::of::<inline::builtin::InlineParserRule>());
-        if !has_builtin_core_rules || !self.ext.is_empty() {
+        if !has_builtin_core_rules {
             return Err(DocumentParseError::UnsupportedConfiguration);
         }
         let block_rules = self
