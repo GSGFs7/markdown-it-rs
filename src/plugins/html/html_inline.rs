@@ -4,16 +4,24 @@
 use std::fmt::Write;
 
 use super::utils::regexps::*;
+use crate::NodeDraft;
 use crate::parser::document::NodeRef;
 use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
 };
-use crate::parser::inline::{InlineState, LegacyInlineRule};
+use crate::parser::extset::InlineRootExtSet;
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
+
+pub fn add(md: &mut MarkdownIt) {
+    md.inline.add_migrated_rule::<HtmlInlineScanner>();
+    md.add_document_renderer::<HtmlInline, _>("html", HtmlInlineDocumentRenderer);
+    md.add_document_renderer::<HtmlInline, _>("text", HtmlInlineTextRenderer);
+}
 
 #[derive(Debug, Default)]
 struct HtmlInlineScanCache {
@@ -61,70 +69,112 @@ impl NodeValue for HtmlInline {
     }
 }
 
-pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_legacy_rule::<HtmlInlineScanner>();
-    md.add_document_renderer::<HtmlInline, _>("html", HtmlInlineDocumentRenderer);
-    md.add_document_renderer::<HtmlInline, _>("text", HtmlInlineTextRenderer);
-}
-
 #[doc(hidden)]
 pub struct HtmlInlineScanner;
+
+impl InlineRule for HtmlInlineScanner {
+    const MARKER: char = '<';
+    const NAMES: &'static [&'static str] = &["html_inline"];
+
+    fn run(
+        state: &mut crate::DocumentInlineState<'_>,
+    ) -> Option<(Option<crate::NodeDraft>, usize)> {
+        let matched =
+            scan_html_inline(&state.src, state.pos, state.pos_max, &mut state.inline_ext)?;
+
+        state.link_level += matched.link_level_delta;
+
+        Some((
+            Some(NodeDraft::new(HtmlInline {
+                content: matched.content,
+            })),
+            matched.consumed,
+        ))
+    }
+}
+
 impl LegacyInlineRule for HtmlInlineScanner {
     const MARKER: char = '<';
     const NAMES: &'static [&'static str] = &["html_inline"];
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        // Check start
-        let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next().unwrap() != '<' {
-            return None;
-        }
+        let matched = state.with_inline_ext(|src, pos, pos_max, inline_ext| {
+            scan_html_inline(src, pos, pos_max, inline_ext)
+        })?;
 
-        // Quick fail on second char
-        let Some('!' | '?' | '/' | 'A'..='Z' | 'a'..='z') = chars.next() else {
-            return None;
-        };
+        state.link_level += matched.link_level_delta;
 
-        // this avoid complexity reach O(n^2)
-        // <!--<!--<!--...-->...
-        // ^^^^           ^^^
-        //   |             |
-        // only find there two, skip the middle part.
-        let rest = &state.src[state.pos..state.pos_max];
-        if rest.starts_with("<!--") && !rest.starts_with("<!-->") && !rest.starts_with("<!--->") {
-            let cached_miss = state
-                .inline_ext
-                .get::<HtmlInlineScanCache>()
-                .and_then(|cache| cache.no_comment_closer_range)
-                .is_some_and(|(start, end)| state.pos >= start && state.pos_max <= end);
-
-            if cached_miss {
-                return None;
-            }
-
-            if !rest.contains("-->") {
-                state
-                    .inline_ext
-                    .get_or_insert_default::<HtmlInlineScanCache>()
-                    .no_comment_closer_range = Some((state.pos, state.pos_max));
-                return None;
-            }
-        }
-
-        let capture = HTML_TAG_RE.captures(rest)?.get(0).unwrap().as_str();
-        let capture_len = capture.len();
-
-        let content = capture.to_owned();
-
-        if HTML_LINK_OPEN.is_match(&content) {
-            state.link_level += 1;
-        } else if HTML_LINK_CLOSE.is_match(&content) {
-            state.link_level -= 1;
-        }
-
-        let node = Node::new(HtmlInline { content });
-        Some((node, capture_len))
+        Some((
+            Node::new(HtmlInline {
+                content: matched.content,
+            }),
+            matched.consumed,
+        ))
     }
+}
+
+struct HtmlInlineMatch {
+    content: String,
+    consumed: usize,
+    link_level_delta: i32,
+}
+
+fn scan_html_inline(
+    src: &str,
+    pos: usize,
+    pos_max: usize,
+    inline_ext: &mut InlineRootExtSet,
+) -> Option<HtmlInlineMatch> {
+    let rest = &src[pos..pos_max];
+    let mut chars = rest.chars();
+    // Check start
+    if chars.next()? != '<' {
+        return None;
+    }
+
+    // Quick fail on second char
+    let Some('!' | '?' | '/' | 'A'..='Z' | 'a'..='z') = chars.next() else {
+        return None;
+    };
+
+    // this avoid complexity reach O(n^2)
+    // <!--<!--<!--...-->...
+    // ^^^^           ^^^
+    //   |             |
+    // only find there two, skip the middle part.
+    if rest.starts_with("<!--") && !rest.starts_with("<!-->") && !rest.starts_with("<!--->") {
+        let cached_miss = inline_ext
+            .get::<HtmlInlineScanCache>()
+            .and_then(|cache| cache.no_comment_closer_range)
+            .is_some_and(|(start, end)| pos >= start && pos_max <= end);
+        if cached_miss {
+            return None;
+        }
+
+        if !rest.contains("-->") {
+            inline_ext
+                .get_or_insert_default::<HtmlInlineScanCache>()
+                .no_comment_closer_range = Some((pos, pos_max));
+            return None;
+        }
+    }
+
+    let capture = HTML_TAG_RE.captures(rest)?.get(0)?.as_str();
+    let content = capture.to_owned();
+
+    let link_level_delta = if HTML_LINK_OPEN.is_match(&content) {
+        1
+    } else if HTML_LINK_CLOSE.is_match(&content) {
+        -1
+    } else {
+        0
+    };
+
+    Some(HtmlInlineMatch {
+        content,
+        consumed: capture.len(),
+        link_level_delta,
+    })
 }
 
 #[cfg(test)]

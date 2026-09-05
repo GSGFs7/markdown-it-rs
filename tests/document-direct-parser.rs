@@ -275,3 +275,47 @@ fn trailing_space_removal_maps_inline_offsets_once() {
         );
     }
 }
+
+#[test]
+fn direct_html_inline_and_autolinks_match_the_legacy_bridge() {
+    let mut md = MarkdownIt::empty();
+
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::inline::autolink::add(&mut md);
+    markdown_it::plugins::html::html_inline::add(&mut md);
+
+    for source in [
+        "<https://example.com>",
+        "<foo@example.com>",
+        "<a href='target'>text</a>",
+        "<br>",
+        "<br />",
+        "<!-- comment -->",
+        "<!-- internal -- hyphens -->",
+        "<!--> short",
+        "<!---> short",
+        "<?processing instruction?>",
+        "<!DOCTYPE html>",
+        "<![CDATA[<tag>]]>",
+        "<3",
+        "<invalid attribute=>",
+        "<!-- unclosed",
+        "before <em>雪</em> after",
+        "before <!-- multi\nline --> after",
+        "<a>inside <https://example.com></a>",
+    ] {
+        assert_direct_matches_bridge(&md, source);
+    }
+}
+
+#[test]
+fn direct_html_inline_caches_unclosed_comments() {
+    let mut md = MarkdownIt::empty();
+
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::inline::autolink::add(&mut md);
+    markdown_it::plugins::html::html_inline::add(&mut md);
+
+    let source = format!("{} tail", "<!--".repeat(8192));
+    assert_direct_matches_bridge(&md, &source);
+}
