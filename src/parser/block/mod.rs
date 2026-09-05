@@ -22,6 +22,12 @@ type RuleFns = (
     fn(&mut BlockState) -> Option<(Node, usize)>,
 );
 type RuleEntry = (&'static [char], RuleFns);
+pub(crate) type DocumentRuleFns = (
+    fn(&mut crate::parser::document_parser::DocumentBlockState<'_>) -> Option<()>,
+    fn(
+        &mut crate::parser::document_parser::DocumentBlockState<'_>,
+    ) -> Option<(crate::NodeDraft, usize)>,
+);
 
 #[derive(Debug)]
 struct BlockDispatch {
@@ -100,6 +106,7 @@ impl BlockDispatch {
 /// Block-level tokenizer.
 pub struct BlockParser {
     ruler: Ruler<RuleMark, RuleEntry>,
+    document_rules: HashMap<RuleMark, DocumentRuleFns>,
     dispatch: OnceLock<BlockDispatch>,
 }
 
@@ -108,8 +115,14 @@ impl BlockParser {
         Self::default()
     }
 
-    pub(crate) fn supports_direct_text_fallback(&self) -> bool {
-        self.ruler.is_empty()
+    pub(crate) fn document_rules(&self) -> Option<Vec<DocumentRuleFns>> {
+        if self.document_rules.len() != self.ruler.len() {
+            return None;
+        }
+        self.ruler
+            .iter_with_marks()
+            .map(|(mark, _)| self.document_rules.get(mark).copied())
+            .collect()
     }
 
     #[cfg(test)]
@@ -239,6 +252,12 @@ impl BlockParser {
         RuleBuilder::new(item)
     }
 
+    pub(crate) fn add_document_rule<T: DocumentBlockRule>(&mut self) -> bool {
+        self.document_rules
+            .insert(RuleMark::of::<T>(), (T::check, T::run))
+            .is_some()
+    }
+
     pub fn has_rule<T: BlockRule>(&self) -> bool {
         self.ruler.contains(RuleMark::of::<T>())
     }
@@ -246,6 +265,7 @@ impl BlockParser {
     pub fn remove_rule<T: BlockRule>(&mut self) {
         self.dispatch = OnceLock::new();
         self.ruler.remove(RuleMark::of::<T>());
+        self.document_rules.remove(&RuleMark::of::<T>());
     }
 }
 

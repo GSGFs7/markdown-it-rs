@@ -3,7 +3,9 @@
 //! This is the default rule if nothing else matches.
 //!
 //! <https://spec.commonmark.org/0.30/#paragraph>
-use crate::parser::block::{BlockRule, BlockState};
+use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::document::NodeDraft;
+use crate::parser::document_parser::DocumentBlockState;
 use crate::parser::document_renderer::{
     HtmlBlockElementDocumentRenderer,
     PlainTextBlockDocumentRenderer,
@@ -15,9 +17,46 @@ use crate::parser::renderer::Renderer;
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<ParagraphScanner>().after_all();
+    md.block.add_document_rule::<ParagraphScanner>();
     md.document_renderers
         .add::<Paragraph, _>("html", HtmlBlockElementDocumentRenderer("p"));
     md.add_document_renderer::<Paragraph, _>("text", PlainTextBlockDocumentRenderer);
+}
+
+impl DocumentBlockRule for ParagraphScanner {
+    fn check(_: &mut DocumentBlockState<'_>) -> Option<()> {
+        None
+    }
+
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+        let start_line = state.line;
+        let mut next_line = start_line;
+
+        loop {
+            next_line += 1;
+            if next_line >= state.line_max || state.is_empty(next_line) {
+                break;
+            }
+            if state.line_indent(next_line) >= state.md.max_indent
+                || state.line_offsets[next_line].indent_nonspace < 0
+            {
+                continue;
+            }
+
+            let old_line = state.line;
+            state.line = next_line;
+            let interrupted = state.test_rules_at_line();
+            state.line = old_line;
+            if interrupted {
+                break;
+            }
+        }
+
+        let (content, mapping) = state.get_lines(start_line, next_line, state.blk_indent, false);
+        let mut paragraph = NodeDraft::new(Paragraph);
+        *paragraph.children_mut() = state.parse_inline(content, mapping);
+        Some((paragraph, next_line - start_line))
+    }
 }
 
 #[derive(Debug)]

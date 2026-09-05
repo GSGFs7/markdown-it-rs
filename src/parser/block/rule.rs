@@ -1,5 +1,7 @@
 use crate::Node;
 use crate::parser::core::rule_builder;
+use crate::parser::document::NodeDraft;
+use crate::parser::document_parser::DocumentBlockState;
 
 /// Each member of block rule chain must implement this trait
 pub trait BlockRule: 'static {
@@ -17,6 +19,14 @@ pub trait BlockRule: 'static {
     }
 
     fn run(state: &mut super::BlockState) -> Option<(Node, usize)>;
+}
+
+pub(crate) trait DocumentBlockRule: 'static {
+    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+        Self::run(state).map(|_| ())
+    }
+
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)>;
 }
 
 rule_builder!(BlockRule);

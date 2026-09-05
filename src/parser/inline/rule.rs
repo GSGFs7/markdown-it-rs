@@ -1,4 +1,6 @@
 use crate::parser::core::rule_builder;
+use crate::parser::document::NodeDraft;
+use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::node::Node;
 
 /// Each member of inline rule chain must implement this trait
@@ -16,6 +18,10 @@ pub trait InlineRule: 'static {
     }
 
     fn run(state: &mut super::InlineState) -> Option<(Node, usize)>;
+}
+
+pub(crate) trait DocumentInlineRule: 'static {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)>;
 }
 
 rule_builder!(InlineRule);

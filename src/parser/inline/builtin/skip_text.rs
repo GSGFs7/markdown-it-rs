@@ -3,7 +3,9 @@
 //!
 use regex::{self, Regex};
 
-use crate::parser::inline::{InlineRule, InlineState};
+use crate::parser::document::NodeDraft;
+use crate::parser::document_parser::DocumentInlineState;
+use crate::parser::inline::{DocumentInlineRule, InlineRule, InlineState};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
@@ -48,6 +50,21 @@ impl NodeValue for TextSpecial {
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<TextScanner>().before_all();
+    md.inline.add_document_rule::<TextScanner>();
+}
+
+impl DocumentInlineRule for TextScanner {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        let len = state.src[state.pos..state.pos_max]
+            .char_indices()
+            .find_map(|(offset, marker)| state.is_rule_marker(marker).then_some(offset))
+            .unwrap_or(state.pos_max - state.pos);
+        if len == 0 {
+            return None;
+        }
+        state.push_text(state.pos, state.pos + len);
+        Some((None, len))
+    }
 }
 
 #[derive(Debug)]

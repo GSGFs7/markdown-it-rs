@@ -66,44 +66,53 @@ fn measure<T>(operation: impl FnOnce() -> T) -> (T, AllocationStats) {
     (result, stats)
 }
 
-fn print_row(corpus: &str, path: &str, stats: AllocationStats) {
+fn print_row(configuration: &str, corpus: &str, path: &str, stats: AllocationStats) {
     println!(
-        "| {corpus} | {path} | {} | {} |",
+        "| {configuration} | {corpus} | {path} | {} | {} |",
         stats.allocations, stats.allocated_bytes,
     );
 }
 
 fn main() {
-    let md = MarkdownIt::empty();
-    println!("| Corpus | Path | Allocations | Requested bytes |");
-    println!("| --- | --- | ---: | ---: |");
+    let empty = MarkdownIt::empty();
+    let mut paragraph = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut paragraph);
+    println!("| Configuration | Corpus | Path | Allocations | Requested bytes |");
+    println!("| --- | --- | --- | ---: | ---: |");
 
-    for corpus in corpus::standard() {
-        let source = corpus.source();
+    for (configuration, md) in [("text-fallback", empty), ("paragraph-text", paragraph)] {
+        for corpus in corpus::standard() {
+            let source = corpus.source();
 
-        // Warm lazy parser state before enabling the counter.
-        let expected = md.parse(source).render();
-        assert_eq!(
-            md.render_document(&md.parse_document_direct(source).unwrap())
-                .unwrap(),
-            expected
-        );
+            // Warm lazy parser state before enabling the counter.
+            let expected = md.parse(source).render();
+            assert_eq!(
+                md.render_document(&md.parse_document_direct(source).unwrap())
+                    .unwrap(),
+                expected
+            );
 
-        let (legacy, legacy_stats) = measure(|| md.parse(black_box(source)));
-        print_row(corpus.name, "legacy-tree", legacy_stats);
+            let (legacy, legacy_stats) = measure(|| md.parse(black_box(source)));
+            print_row(configuration, corpus.name, "legacy-tree", legacy_stats);
 
-        let (bridged, bridge_stats) = measure(|| md.parse_document(black_box(source)));
-        let bridge_nodes = bridged.len();
-        assert_eq!(md.render_document(&bridged).unwrap(), expected);
-        print_row(corpus.name, "legacy-arena-bridge", bridge_stats);
+            let (bridged, bridge_stats) = measure(|| md.parse_document(black_box(source)));
+            let bridge_nodes = bridged.len();
+            assert_eq!(md.render_document(&bridged).unwrap(), expected);
+            print_row(
+                configuration,
+                corpus.name,
+                "legacy-arena-bridge",
+                bridge_stats,
+            );
 
-        let (direct, direct_stats) =
-            measure(|| md.parse_document_direct(black_box(source)).unwrap());
-        let direct_nodes = direct.len();
-        assert_eq!(md.render_document(&direct).unwrap(), expected);
-        assert_eq!(direct_nodes, bridge_nodes);
-        print_row(corpus.name, "arena-direct-text", direct_stats);
+            let (direct, direct_stats) =
+                measure(|| md.parse_document_direct(black_box(source)).unwrap());
+            let direct_nodes = direct.len();
+            assert_eq!(md.render_document(&direct).unwrap(), expected);
+            assert_eq!(direct_nodes, bridge_nodes);
+            print_row(configuration, corpus.name, "arena-direct", direct_stats);
 
-        black_box(legacy);
+            black_box(legacy);
+        }
     }
 }

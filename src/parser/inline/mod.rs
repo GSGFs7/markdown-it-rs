@@ -15,7 +15,7 @@ pub use self::state::*;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::parser::extset::{InlineRootExtSet, RootExtSet};
-use crate::parser::inline::builtin::skip_text::{TextScanner, TextScannerImpl};
+use crate::parser::inline::builtin::skip_text::TextScannerImpl;
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeEmpty};
 
@@ -23,6 +23,9 @@ type RuleFns = (
     fn(&mut InlineState) -> Option<usize>,
     fn(&mut InlineState) -> Option<(Node, usize)>,
 );
+pub(crate) type DocumentRuleFn = fn(
+    &mut crate::parser::document_parser::DocumentInlineState<'_>,
+) -> Option<(Option<crate::NodeDraft>, usize)>;
 
 /// dispatcher
 ///
@@ -87,6 +90,7 @@ impl InlineDispatch {
 /// Inline-level tokenizer.
 pub struct InlineParser {
     ruler: Ruler<RuleMark, RuleFns>,
+    document_rules: HashMap<RuleMark, DocumentRuleFn>,
     text_charmap: HashMap<char, Vec<RuleMark>>,
     text_impl: OnceLock<TextScannerImpl>,
     dispatch: OnceLock<InlineDispatch>,
@@ -97,8 +101,18 @@ impl InlineParser {
         Self::default()
     }
 
-    pub(crate) fn supports_direct_text_fallback(&self) -> bool {
-        self.ruler.len() == 1 && self.ruler.contains(RuleMark::of::<TextScanner>())
+    pub(crate) fn document_rules(&self) -> Option<Vec<DocumentRuleFn>> {
+        if self.document_rules.len() != self.ruler.len() {
+            return None;
+        }
+        self.ruler
+            .iter_with_marks()
+            .map(|(mark, _)| self.document_rules.get(mark).copied())
+            .collect()
+    }
+
+    pub(crate) fn is_document_marker(&self, marker: char) -> bool {
+        self.text_charmap.contains_key(&marker)
     }
 
     #[inline]
@@ -237,6 +251,12 @@ impl InlineParser {
         RuleBuilder::new(item)
     }
 
+    pub(crate) fn add_document_rule<T: DocumentInlineRule>(&mut self) -> bool {
+        self.document_rules
+            .insert(RuleMark::of::<T>(), T::run)
+            .is_some()
+    }
+
     pub fn has_rule<T: InlineRule>(&self) -> bool {
         self.ruler.contains(RuleMark::of::<T>())
     }
@@ -253,6 +273,7 @@ impl InlineParser {
         }
 
         self.ruler.remove(RuleMark::of::<T>());
+        self.document_rules.remove(&RuleMark::of::<T>());
     }
 }
 

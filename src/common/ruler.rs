@@ -61,10 +61,6 @@ impl<M, T> Ruler<M, T> {
     pub(crate) fn len(&self) -> usize {
         self.deps.len()
     }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.deps.is_empty()
-    }
 }
 
 impl<M: Eq + Hash + Clone + Debug, T: Clone> Ruler<M, T> {

@@ -150,10 +150,9 @@ impl MarkdownIt {
     /// Parse directly into arena storage when every configured parser rule has
     /// a migrated implementation.
     ///
-    /// This transitional entry point currently supports only the text fallback
-    /// configuration produced by [`MarkdownIt::empty`]. It returns an error
-    /// instead of ignoring CommonMark or third-party rules that have not yet
-    /// been migrated.
+    /// This transitional entry point currently supports the text fallback and
+    /// paragraph rules. It returns an error instead of ignoring CommonMark or
+    /// third-party rules that have not yet been migrated.
     #[doc(hidden)]
     pub fn parse_document_direct(&self, src: &str) -> Result<Document, DocumentParseError> {
         let has_builtin_core_rules = self.ruler.len() == 2
@@ -163,15 +162,27 @@ impl MarkdownIt {
             && self
                 .ruler
                 .contains(RuleMark::of::<inline::builtin::InlineParserRule>());
-        if !has_builtin_core_rules
-            || !self.block.supports_direct_text_fallback()
-            || !self.inline.supports_direct_text_fallback()
-            || !self.ext.is_empty()
-        {
+        if !has_builtin_core_rules || !self.ext.is_empty() {
             return Err(DocumentParseError::UnsupportedConfiguration);
         }
+        let block_rules = self
+            .block
+            .document_rules()
+            .ok_or(DocumentParseError::UnsupportedConfiguration)?;
+        let inline_rules = self
+            .inline
+            .document_rules()
+            .ok_or(DocumentParseError::UnsupportedConfiguration)?;
 
-        Ok(DocumentParseContext::new(src, &self.render_options).parse_text_fallback())
+        if block_rules.is_empty() {
+            return Ok(DocumentParseContext::new(src, &self.render_options).parse_text_fallback());
+        }
+
+        Ok(DocumentParseContext::new(src, &self.render_options).parse(
+            self,
+            block_rules,
+            inline_rules,
+        ))
     }
 
     /// Register an arena-backed document transform.
