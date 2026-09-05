@@ -27,6 +27,13 @@ pub(crate) type DocumentRuleFn = fn(
     &mut crate::parser::document_parser::DocumentInlineState<'_>,
 ) -> Option<(Option<crate::NodeDraft>, usize)>;
 
+#[derive(Clone, Copy)]
+#[doc(hidden)]
+pub struct RuleEntry {
+    legacy: RuleFns,
+    document: Option<DocumentRuleFn>,
+}
+
 /// dispatcher
 ///
 /// avoid scan entire plugin list when encountered any chars.
@@ -39,10 +46,11 @@ struct InlineDispatch {
 
 impl InlineDispatch {
     fn compile<'a>(
-        rules: impl Iterator<Item = (char, &'a RuleFns)>,
+        rules: impl Iterator<Item = (char, &'a RuleEntry)>,
         markers: impl Iterator<Item = char>,
     ) -> Self {
-        let ordered: Vec<(char, RuleFns)> = rules.map(|(marker, rule)| (marker, *rule)).collect();
+        let ordered: Vec<(char, RuleFns)> =
+            rules.map(|(marker, rule)| (marker, rule.legacy)).collect();
         let wildcard: Vec<RuleFns> = ordered
             .iter()
             .filter(|(marker, _)| *marker == '\0')
@@ -89,8 +97,7 @@ impl InlineDispatch {
 #[derive(Debug, Default)]
 /// Inline-level tokenizer.
 pub struct InlineParser {
-    ruler: Ruler<RuleMark, RuleFns>,
-    document_rules: HashMap<RuleMark, DocumentRuleFn>,
+    ruler: Ruler<RuleMark, RuleEntry>,
     text_charmap: HashMap<char, Vec<RuleMark>>,
     text_impl: OnceLock<TextScannerImpl>,
     dispatch: OnceLock<InlineDispatch>,
@@ -102,13 +109,7 @@ impl InlineParser {
     }
 
     pub(crate) fn document_rules(&self) -> Option<Vec<DocumentRuleFn>> {
-        if self.document_rules.len() != self.ruler.len() {
-            return None;
-        }
-        self.ruler
-            .iter_with_marks()
-            .map(|(mark, _)| self.document_rules.get(mark).copied())
-            .collect()
+        self.ruler.iter().map(|entry| entry.document).collect()
     }
 
     pub(crate) fn is_document_marker(&self, marker: char) -> bool {
@@ -240,7 +241,10 @@ impl InlineParser {
         state.node
     }
 
-    pub fn add_rule<T: InlineRule>(&mut self) -> RuleBuilder<'_, RuleFns> {
+    fn add_rule_entry<T: InlineRule>(
+        &mut self,
+        document: Option<DocumentRuleFn>,
+    ) -> RuleBuilder<'_, RuleEntry> {
         self.dispatch = OnceLock::new();
         if T::MARKER != '\0' {
             self.text_impl = OnceLock::new();
@@ -248,17 +252,27 @@ impl InlineParser {
             charvec.push(RuleMark::of::<T>());
         }
 
-        let item = self.ruler.add(RuleMark::of::<T>(), (T::check, T::run));
+        let item = self.ruler.add(
+            RuleMark::of::<T>(),
+            RuleEntry {
+                legacy: (T::check, T::run),
+                document,
+            },
+        );
         for name in T::NAMES {
             item.alias(RuleMark::named(*name));
         }
         RuleBuilder::new(item)
     }
 
-    pub(crate) fn add_document_rule<T: DocumentInlineRule>(&mut self) -> bool {
-        self.document_rules
-            .insert(RuleMark::of::<T>(), T::run)
-            .is_some()
+    pub fn add_rule<T: InlineRule>(&mut self) -> RuleBuilder<'_, RuleEntry> {
+        self.add_rule_entry::<T>(None)
+    }
+
+    pub(crate) fn add_rule_with_document<T: InlineRule + DocumentInlineRule>(
+        &mut self,
+    ) -> RuleBuilder<'_, RuleEntry> {
+        self.add_rule_entry::<T>(Some(<T as DocumentInlineRule>::run))
     }
 
     pub fn has_rule<T: InlineRule>(&self) -> bool {
@@ -277,7 +291,6 @@ impl InlineParser {
         }
 
         self.ruler.remove(RuleMark::of::<T>());
-        self.document_rules.remove(&RuleMark::of::<T>());
     }
 }
 
@@ -289,6 +302,8 @@ mod tests {
     struct HashRule;
     struct SnowRule;
     struct WildcardRule;
+    struct DirectAtRule;
+    struct DirectHashRule;
 
     macro_rules! empty_rule {
         ($rule:ty, $marker:expr) => {
@@ -306,6 +321,24 @@ mod tests {
     empty_rule!(HashRule, '#');
     empty_rule!(SnowRule, '雪');
     empty_rule!(WildcardRule, '\0');
+    empty_rule!(DirectAtRule, '@');
+    empty_rule!(DirectHashRule, '#');
+
+    impl DocumentInlineRule for DirectAtRule {
+        fn run(
+            _: &mut crate::parser::document_parser::DocumentInlineState<'_>,
+        ) -> Option<(Option<crate::NodeDraft>, usize)> {
+            None
+        }
+    }
+
+    impl DocumentInlineRule for DirectHashRule {
+        fn run(
+            _: &mut crate::parser::document_parser::DocumentInlineState<'_>,
+        ) -> Option<(Option<crate::NodeDraft>, usize)> {
+            None
+        }
+    }
 
     fn check_id<T: InlineRule>() -> usize {
         T::check as fn(&mut InlineState) -> Option<usize> as usize
@@ -313,6 +346,10 @@ mod tests {
 
     fn check_ids(rules: &[RuleFns]) -> Vec<usize> {
         rules.iter().map(|rule| rule.0 as usize).collect()
+    }
+
+    fn document_id<T: DocumentInlineRule>() -> usize {
+        <T as DocumentInlineRule>::run as DocumentRuleFn as usize
     }
 
     #[test]
@@ -359,5 +396,28 @@ mod tests {
             check_ids(parser.rules_for('@')),
             vec![check_id::<WildcardRule>()]
         );
+    }
+
+    #[test]
+    fn document_callbacks_share_rule_order_and_lifecycle() {
+        let mut parser = InlineParser::new();
+        parser.add_rule_with_document::<DirectAtRule>();
+        parser
+            .add_rule_with_document::<DirectHashRule>()
+            .before::<DirectAtRule>();
+
+        let rules = parser.document_rules().unwrap();
+        assert_eq!(
+            rules.iter().map(|rule| *rule as usize).collect::<Vec<_>>(),
+            vec![
+                document_id::<DirectHashRule>(),
+                document_id::<DirectAtRule>()
+            ]
+        );
+
+        parser.add_rule::<SnowRule>();
+        assert!(parser.document_rules().is_none());
+        parser.remove_rule::<SnowRule>();
+        assert_eq!(parser.document_rules().unwrap().len(), 2);
     }
 }

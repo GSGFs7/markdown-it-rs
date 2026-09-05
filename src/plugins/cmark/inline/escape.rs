@@ -12,8 +12,7 @@ use crate::parser::node::Node;
 use crate::plugins::cmark::inline::newline::Hardbreak;
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_rule::<EscapeScanner>();
-    md.inline.add_document_rule::<EscapeScanner>();
+    md.inline.add_rule_with_document::<EscapeScanner>();
 }
 
 #[doc(hidden)]

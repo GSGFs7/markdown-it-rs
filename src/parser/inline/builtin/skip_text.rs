@@ -49,8 +49,9 @@ impl NodeValue for TextSpecial {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_rule::<TextScanner>().before_all();
-    md.inline.add_document_rule::<TextScanner>();
+    md.inline
+        .add_rule_with_document::<TextScanner>()
+        .before_all();
 }
 
 impl DocumentInlineRule for TextScanner {

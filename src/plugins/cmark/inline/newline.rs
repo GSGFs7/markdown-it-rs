@@ -70,8 +70,7 @@ impl NodeValue for Softbreak {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_rule::<NewlineScanner>();
-    md.inline.add_document_rule::<NewlineScanner>();
+    md.inline.add_rule_with_document::<NewlineScanner>();
     md.add_document_renderer::<Hardbreak, _>("html", HardbreakDocumentRenderer);
     md.add_document_renderer::<Softbreak, _>("html", SoftbreakDocumentRenderer);
     md.add_document_renderer::<Hardbreak, _>("text", PlainTextBreakDocumentRenderer);

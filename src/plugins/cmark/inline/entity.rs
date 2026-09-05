@@ -14,8 +14,7 @@ use crate::parser::inline::{DocumentInlineRule, InlineRule, InlineState, TextSpe
 use crate::{MarkdownIt, Node};
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_rule::<EntityScanner>();
-    md.inline.add_document_rule::<EntityScanner>();
+    md.inline.add_rule_with_document::<EntityScanner>();
 }
 
 static DIGITAL_RE: LazyLock<Regex> =
