@@ -2,6 +2,9 @@ use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::node::Node;
 
+pub(crate) type DocumentFinalizeFn =
+    for<'a> fn(&mut crate::parser::document_parser::DocumentInlineState<'a>);
+
 /// An arena-backed inline parser rule.
 pub trait InlineRule: 'static {
     /// First character that can activate this rule.
@@ -19,6 +22,8 @@ pub trait InlineRule: 'static {
     /// updates parser state.
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)>;
 }
+
+pub(crate) type LegacyInlineFinalizeFn = for<'a, 'b> fn(&mut super::InlineState<'a, 'b>);
 
 pub(crate) trait LegacyInlineRule: 'static {
     const MARKER: char;

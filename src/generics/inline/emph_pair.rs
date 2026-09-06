@@ -49,8 +49,6 @@
 use std::cmp::min;
 
 use crate::common::sourcemap::SourcePos;
-use crate::parser::core::CoreRule;
-use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::inline::{InlineState, LegacyInlineRule, Text};
 use crate::{MarkdownIt, Node, NodeValue};
 
@@ -94,18 +92,14 @@ pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool
         pair_config.inserted = true;
         let builder = md
             .inline
-            .add_legacy_rule::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>();
+            .add_legacy_rule_with_finalize::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>(
+                finalize_emphasis,
+            );
         if MARKER == '*' || MARKER == '_' {
             builder.alias_named("emphasis");
         } else if MARKER == '~' {
             builder.alias_named("strikethrough");
         }
-    }
-
-    if !md.has_rule::<FragmentsJoin>() {
-        md.add_rule::<FragmentsJoin>()
-            .before_all()
-            .after::<InlineParserRule>();
     }
 }
 
@@ -294,16 +288,6 @@ fn is_odd_match(opener: &EmphMarker, closer: &EmphMarker) -> bool {
     false
 }
 
-#[doc(hidden)]
-pub struct FragmentsJoin;
-impl CoreRule for FragmentsJoin {
-    const NAMES: &'static [&'static str] = &["fragments_join"];
-
-    fn run(node: &mut Node, _: &MarkdownIt) {
-        node.walk_mut(|node, _| fragments_join(node));
-    }
-}
-
 /// Clean up tokens after emphasis and strikethrough postprocessing:
 /// merge adjacent text nodes into one and re-calculate all token levels
 ///
@@ -360,4 +344,37 @@ fn fragments_join(node: &mut Node) {
             true
         }
     });
+}
+
+fn finalize_emphasis(state: &mut InlineState<'_, '_>) {
+    state.node.walk_mut(|node, _| fragments_join(node));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Preset;
+
+    fn run(input: &str, output: &str) {
+        let md = &mut MarkdownIt::with_preset(Preset::CommonMark);
+        let node = md.parse(input);
+
+        node.walk(|node, _| assert!(node.srcmap.is_some()));
+        assert_eq!(node.render(), output);
+    }
+
+    #[test]
+    fn intraword_underscores_inside_emph() {
+        run("_foo_bar_baz_", "<p><em>foo_bar_baz</em></p>\n");
+    }
+
+    #[test]
+    fn lone_underscore_inside_emph() {
+        run("foo *_*", "<p>foo <em>_</em></p>\n");
+    }
+
+    #[test]
+    fn crossed_delimiters_leave_marker_inside_emph() {
+        run("*foo _bar* baz_", "<p><em>foo _bar</em> baz_</p>\n");
+    }
 }

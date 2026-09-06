@@ -31,7 +31,14 @@ pub(crate) type DocumentRuleFn = fn(
 #[doc(hidden)]
 pub struct RuleEntry {
     legacy: Option<RuleFns>,
+    legacy_finalize: Option<LegacyInlineFinalizeFn>,
     document: Option<DocumentRuleFn>,
+    document_finalize: Option<DocumentFinalizeFn>,
+}
+
+pub(crate) struct DocumentRuleSet {
+    pub(crate) runs: Vec<DocumentRuleFn>,
+    pub(crate) finalizers: Vec<DocumentFinalizeFn>,
 }
 
 /// dispatcher
@@ -102,6 +109,7 @@ pub struct InlineParser {
     text_charmap: HashMap<char, Vec<RuleMark>>,
     text_impl: OnceLock<TextScannerImpl>,
     dispatch: OnceLock<InlineDispatch>,
+    legacy_finalizers: OnceLock<Vec<LegacyInlineFinalizeFn>>,
 }
 
 impl InlineParser {
@@ -109,8 +117,17 @@ impl InlineParser {
         Self::default()
     }
 
-    pub(crate) fn document_rules(&self) -> Option<Vec<DocumentRuleFn>> {
-        self.ruler.iter().map(|entry| entry.document).collect()
+    pub(crate) fn document_rules(&self) -> Option<DocumentRuleSet> {
+        let runs = self
+            .ruler
+            .iter()
+            .map(|entry| entry.document)
+            .collect::<Option<Vec<_>>>()?;
+
+        Some(DocumentRuleSet {
+            runs,
+            finalizers: self.document_finalizers(),
+        })
     }
 
     pub(crate) fn is_document_marker(&self, marker: char) -> bool {
@@ -224,6 +241,10 @@ impl InlineParser {
                 state.pos += len;
             }
         });
+
+        for &finalize in self.legacy_finalizers() {
+            finalize(state);
+        }
     }
 
     /// Process input string and push inline tokens into `out_tokens`
@@ -247,18 +268,27 @@ impl InlineParser {
         marker: char,
         names: &'static [&'static str],
         legacy: Option<RuleFns>,
+        legacy_finalize: Option<LegacyInlineFinalizeFn>,
         document: Option<DocumentRuleFn>,
+        document_finalize: Option<DocumentFinalizeFn>,
     ) -> &mut crate::common::ruler::RuleItem<RuleMark, RuleEntry> {
         self.dispatch = OnceLock::new();
+        self.legacy_finalizers = OnceLock::new();
         if marker != '\0' {
             self.text_impl = OnceLock::new();
             let charvec = self.text_charmap.entry(marker).or_default();
             charvec.push(RuleMark::of::<T>());
         }
 
-        let item = self
-            .ruler
-            .add(RuleMark::of::<T>(), RuleEntry { legacy, document });
+        let item = self.ruler.add(
+            RuleMark::of::<T>(),
+            RuleEntry {
+                legacy,
+                legacy_finalize,
+                document,
+                document_finalize,
+            },
+        );
         for name in names {
             item.alias(RuleMark::named(*name));
         }
@@ -270,15 +300,28 @@ impl InlineParser {
     /// The legacy [`MarkdownIt::parse`] path does not execute rules registered through
     /// this API.
     pub fn add_rule<T: InlineRule>(&mut self) -> RuleBuilder<'_, RuleEntry> {
-        let item =
-            self.add_rule_entry::<T>(T::MARKER, T::NAMES, None, Some(<T as InlineRule>::run));
+        let item = self.add_rule_entry::<T>(
+            T::MARKER,
+            T::NAMES,
+            None,
+            None,
+            Some(<T as InlineRule>::run),
+            None,
+        );
         RuleBuilder::new(item)
     }
 
     pub(crate) fn add_legacy_rule<T: LegacyInlineRule>(
         &mut self,
     ) -> LegacyRuleBuilder<'_, RuleEntry> {
-        let item = self.add_rule_entry::<T>(T::MARKER, T::NAMES, Some((T::check, T::run)), None);
+        let item = self.add_rule_entry::<T>(
+            T::MARKER,
+            T::NAMES,
+            Some((T::check, T::run)),
+            None,
+            None,
+            None,
+        );
         LegacyRuleBuilder::new(item)
     }
 
@@ -291,7 +334,9 @@ impl InlineParser {
             <T as InlineRule>::MARKER,
             <T as InlineRule>::NAMES,
             Some((<T as LegacyInlineRule>::check, <T as LegacyInlineRule>::run)),
+            None,
             Some(<T as InlineRule>::run),
+            None,
         );
         RuleBuilder::new(item)
     }
@@ -313,8 +358,43 @@ impl InlineParser {
         self.remove_rule_entry::<T>(T::MARKER);
     }
 
+    pub(crate) fn add_legacy_rule_with_finalize<T: LegacyInlineRule>(
+        &mut self,
+        finalize: LegacyInlineFinalizeFn,
+    ) -> LegacyRuleBuilder<'_, RuleEntry> {
+        let item = self.add_rule_entry::<T>(
+            T::MARKER,
+            T::NAMES,
+            Some((T::check, T::run)),
+            Some(finalize),
+            None,
+            None,
+        );
+        LegacyRuleBuilder::new(item)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn add_migrated_rule_with_finalize<T: InlineRule + LegacyInlineRule>(
+        &mut self,
+        legacy_finalize: LegacyInlineFinalizeFn,
+        document_finalize: DocumentFinalizeFn,
+    ) -> RuleBuilder<'_, RuleEntry> {
+        let item = self.add_rule_entry::<T>(
+            <T as InlineRule>::MARKER,
+            <T as InlineRule>::NAMES,
+            Some((<T as LegacyInlineRule>::check, <T as LegacyInlineRule>::run)),
+            Some(legacy_finalize),
+            Some(<T as InlineRule>::run),
+            Some(document_finalize),
+        );
+        RuleBuilder::new(item)
+    }
+
     fn remove_rule_entry<T: 'static>(&mut self, marker: char) {
+        // clean cache
         self.dispatch = OnceLock::new();
+        self.legacy_finalizers = OnceLock::new();
+
         if marker != '\0' {
             self.text_impl = OnceLock::new();
             let mut charvec = self.text_charmap.remove(&marker).unwrap_or_default();
@@ -325,6 +405,46 @@ impl InlineParser {
         }
 
         self.ruler.remove(RuleMark::of::<T>());
+    }
+
+    fn document_finalizers(&self) -> Vec<DocumentFinalizeFn> {
+        let mut result = Vec::new();
+        for entry in self.ruler.iter() {
+            let Some(finalize) = entry.document_finalize else {
+                continue;
+            };
+
+            if !result
+                .iter()
+                .any(|existing| *existing as usize == finalize as usize)
+            {
+                result.push(finalize);
+            }
+        }
+
+        result
+    }
+
+    fn legacy_finalizers(&self) -> &[LegacyInlineFinalizeFn] {
+        self.legacy_finalizers
+            .get_or_init(|| {
+                let mut result = Vec::new();
+                for entry in self.ruler.iter() {
+                    let Some(finalize) = entry.legacy_finalize else {
+                        continue;
+                    };
+
+                    if !result
+                        .iter()
+                        .any(|existing| *existing as usize == finalize as usize)
+                    {
+                        result.push(finalize);
+                    }
+                }
+
+                result
+            })
+            .as_slice()
     }
 }
 
@@ -448,7 +568,11 @@ mod tests {
 
         let rules = parser.document_rules().unwrap();
         assert_eq!(
-            rules.iter().map(|rule| *rule as usize).collect::<Vec<_>>(),
+            rules
+                .runs
+                .iter()
+                .map(|rule| *rule as usize)
+                .collect::<Vec<_>>(),
             vec![
                 document_id::<DirectHashRule>(),
                 document_id::<DirectAtRule>()
@@ -458,6 +582,61 @@ mod tests {
         parser.add_legacy_rule::<SnowRule>();
         assert!(parser.document_rules().is_none());
         parser.remove_legacy_rule::<SnowRule>();
-        assert_eq!(parser.document_rules().unwrap().len(), 2);
+        assert_eq!(parser.document_rules().unwrap().runs.len(), 2);
+    }
+
+    fn shared_legacy_finalize(_: &mut InlineState<'_, '_>) {}
+    fn shared_document_finalize(_: &mut crate::parser::document_parser::DocumentInlineState<'_>) {}
+    fn hash_document_finalize(_: &mut crate::parser::document_parser::DocumentInlineState<'_>) {}
+
+    #[test]
+    fn document_finalizers_follow_rule_order_and_dedupe() {
+        let mut parser = InlineParser::new();
+        parser.add_migrated_rule_with_finalize::<DirectAtRule>(
+            shared_legacy_finalize,
+            shared_document_finalize,
+        );
+        parser
+            .add_migrated_rule_with_finalize::<DirectHashRule>(
+                shared_legacy_finalize,
+                hash_document_finalize,
+            )
+            .before::<DirectAtRule>();
+
+        let rules = parser.document_rules().unwrap();
+        assert_eq!(rules.runs.len(), 2);
+
+        assert_eq!(
+            rules
+                .finalizers
+                .iter()
+                .map(|f| *f as usize)
+                .collect::<Vec<_>>(),
+            vec![
+                hash_document_finalize as DocumentFinalizeFn as usize,
+                shared_document_finalize as DocumentFinalizeFn as usize
+            ]
+        );
+        assert_eq!(parser.legacy_finalizers().len(), 1);
+    }
+
+    #[test]
+    fn remove_rule_entry_invalidates_finalizer_cache() {
+        let mut parser = InlineParser::new();
+        parser.add_migrated_rule_with_finalize::<DirectAtRule>(
+            shared_legacy_finalize,
+            shared_document_finalize,
+        );
+        parser.add_migrated_rule::<DirectHashRule>();
+
+        assert_eq!(parser.legacy_finalizers().len(), 1);
+
+        parser.remove_legacy_rule::<DirectAtRule>();
+
+        assert!(parser.legacy_finalizers().is_empty());
+
+        assert!(parser.has_rule::<DirectHashRule>());
+        assert!(parser.is_document_marker('#'));
+        assert!(!parser.is_document_marker('@'));
     }
 }

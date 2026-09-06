@@ -13,7 +13,7 @@ use crate::parser::block::{
 use crate::parser::core::Root;
 use crate::parser::document::{Document, NodeDraft};
 use crate::parser::extset::InlineRootExtSet;
-use crate::parser::inline::{DocumentRuleFn as DocumentInlineRuleFn, Text};
+use crate::parser::inline::{DocumentRuleSet, Text};
 use crate::parser::main::MarkdownIt;
 use crate::parser::render_options::RenderOptions;
 
@@ -53,7 +53,7 @@ impl<'a> DocumentParseContext<'a> {
         mut self,
         md: &MarkdownIt,
         block_rules: Vec<DocumentBlockRuleFns>,
-        inline_rules: Vec<DocumentInlineRuleFn>,
+        inline_rules: DocumentRuleSet,
     ) -> Document {
         let mut state = DocumentBlockState::new(self.source, md, block_rules, &inline_rules);
         state.tokenize();
@@ -88,7 +88,7 @@ pub(crate) struct DocumentBlockState<'a> {
     pub(crate) blk_indent: usize,
     pub(crate) nodes: Vec<NodeDraft>,
     rules: Vec<DocumentBlockRuleFns>,
-    inline_rules: &'a [DocumentInlineRuleFn],
+    inline_ruleset: &'a DocumentRuleSet,
 }
 
 impl<'a> DocumentBlockState<'a> {
@@ -96,7 +96,7 @@ impl<'a> DocumentBlockState<'a> {
         src: &'a str,
         md: &'a MarkdownIt,
         rules: Vec<DocumentBlockRuleFns>,
-        inline_rules: &'a [DocumentInlineRuleFn],
+        inline_ruleset: &'a DocumentRuleSet,
     ) -> Self {
         let line_offsets = build_line_offsets(src);
         let line_max = line_offsets.len();
@@ -109,7 +109,7 @@ impl<'a> DocumentBlockState<'a> {
             blk_indent: 0,
             nodes: Vec::new(),
             rules,
-            inline_rules,
+            inline_ruleset,
         }
     }
 
@@ -145,7 +145,7 @@ impl<'a> DocumentBlockState<'a> {
                     content,
                     mapping,
                     self.md,
-                    self.inline_rules,
+                    self.inline_ruleset,
                 ));
                 self.line += 1;
             }
@@ -226,7 +226,7 @@ impl<'a> DocumentBlockState<'a> {
         source: String,
         mapping: Vec<(usize, usize)>,
     ) -> Vec<NodeDraft> {
-        DocumentInlineState::parse(source, mapping, self.md, self.inline_rules)
+        DocumentInlineState::parse(source, mapping, self.md, self.inline_ruleset)
     }
 
     fn get_map(&self, start_line: usize, end_line: usize) -> Option<SourcePos> {
@@ -245,7 +245,7 @@ pub struct DocumentInlineState<'a> {
     mapping: Vec<(usize, usize)>,
     pub(crate) inline_ext: InlineRootExtSet,
     pub(crate) link_level: i32,
-    rules: &'a [DocumentInlineRuleFn],
+    ruleset: &'a DocumentRuleSet,
     nodes: Vec<NodeDraft>,
     pending_text: Option<(usize, usize)>,
 }
@@ -265,7 +265,7 @@ impl<'a> DocumentInlineState<'a> {
         src: String,
         mapping: Vec<(usize, usize)>,
         md: &'a MarkdownIt,
-        rules: &'a [DocumentInlineRuleFn],
+        ruleset: &'a DocumentRuleSet,
     ) -> Vec<NodeDraft> {
         let mut state = Self {
             pos: 0,
@@ -275,7 +275,7 @@ impl<'a> DocumentInlineState<'a> {
             mapping,
             inline_ext: InlineRootExtSet::new(),
             link_level: 0,
-            rules,
+            ruleset,
             nodes: Vec::new(),
             pending_text: None,
         };
@@ -297,7 +297,7 @@ impl<'a> DocumentInlineState<'a> {
     fn tokenize(&mut self) {
         while self.pos < self.pos_max {
             let mut matched = None;
-            for rule in self.rules {
+            for rule in &self.ruleset.runs {
                 if let Some(result) = rule(self) {
                     matched = Some(result);
                     break;
@@ -376,6 +376,11 @@ impl<'a> DocumentInlineState<'a> {
             }
         } else {
             self.flush_text();
+
+            for index in 0..self.ruleset.finalizers.len() {
+                let finalize = self.ruleset.finalizers[index];
+                finalize(&mut self);
+            }
         }
         self.nodes
     }
