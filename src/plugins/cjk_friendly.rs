@@ -24,7 +24,7 @@
 use unicode_general_category::{GeneralCategory, get_general_category};
 
 use crate::common::utils::is_punct_char;
-use crate::parser::inline::{DelimiterRun, InlineState, set_delimiter_scanner};
+use crate::parser::inline::{DelimiterRun, set_delimiter_scanner};
 use crate::parser::main::MarkdownIt;
 
 /// Enable CJK-friendly emphasis delimiter handling.
@@ -32,13 +32,13 @@ pub fn add(md: &mut MarkdownIt) {
     set_delimiter_scanner(md, scan_delims);
 }
 
-fn scan_delims(state: &InlineState, start: usize, can_split_word: bool) -> DelimiterRun {
-    let (last_pos, last_char) = previous_char(&state.src, start).unwrap_or((0, ' '));
+fn scan_delims(src: &str, start: usize, pos_max: usize, can_split_word: bool) -> DelimiterRun {
+    let (last_pos, last_char) = previous_char(src, start).unwrap_or((0, ' '));
     let mut last_main_char = last_char;
     let mut two_previous_char = None;
 
     if is_non_emoji_general_use_variation_selector(last_char) {
-        if let Some((_, ch)) = previous_char(&state.src, last_pos) {
+        if let Some((_, ch)) = previous_char(src, last_pos) {
             two_previous_char = Some(ch);
             if get_general_category(ch) != GeneralCategory::SpaceSeparator {
                 last_main_char = ch;
@@ -46,7 +46,7 @@ fn scan_delims(state: &InlineState, start: usize, can_split_word: bool) -> Delim
         }
     }
 
-    let mut chars = state.src[start..state.pos_max].chars();
+    let mut chars = src[start..pos_max].chars();
     let marker = chars.next().unwrap();
     let mut count = 1;
     let next_char = loop {

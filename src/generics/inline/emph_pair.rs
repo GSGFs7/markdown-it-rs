@@ -124,6 +124,7 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> LegacyInlineRule
         }
 
         let scanned = state.scan_delims(state.pos, CAN_SPLIT_WORD);
+        let scanned_bytes = scanned.byte_length();
         let mut node = Node::new(EmphMarker {
             marker: MARKER,
             length: scanned.length,
@@ -131,13 +132,15 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> LegacyInlineRule
             open: scanned.can_open,
             close: scanned.can_close,
         });
-        node.srcmap = state.get_map(state.pos, state.pos + scanned.length);
+        node.srcmap = state.get_map(state.pos, state.pos + scanned_bytes);
         node = scan_and_match_delimiters::<MARKER>(state, node);
+
         let map = node.srcmap.unwrap().get_byte_offsets();
         // backtrack to keep correct source maps
-        state.pos += scanned.length;
+        state.pos += scanned_bytes;
         let token_len = map.1 - map.0;
         state.pos -= token_len;
+
         Some((node, token_len))
     }
 }
@@ -199,6 +202,7 @@ fn scan_and_match_delimiters<const MARKER: char>(
                 }
 
                 let (marker_len, marker_fn) = matched_rule.unwrap();
+                let mark_bytes = marker_len * MARKER.len_utf8(); // UTF-8 marker support
 
                 closer.remaining -= marker_len;
                 opener.remaining -= marker_len;
@@ -210,8 +214,8 @@ fn scan_and_match_delimiters<const MARKER: char>(
                 let mut end_map_pos = 0;
                 if let Some(map) = closer_token.srcmap {
                     let (start, end) = map.get_byte_offsets();
-                    closer_token.srcmap = Some(SourcePos::new(start + marker_len, end));
-                    end_map_pos = start + marker_len;
+                    closer_token.srcmap = Some(SourcePos::new(start + mark_bytes, end));
+                    end_map_pos = start + mark_bytes;
                 }
 
                 // cut marker_len chars from end, i.e. "12345" -> "123"
@@ -219,11 +223,11 @@ fn scan_and_match_delimiters<const MARKER: char>(
                 let opener_token = state.node.children.last_mut().unwrap();
                 if let Some(map) = opener_token.srcmap {
                     let (start, end) = map.get_byte_offsets();
-                    opener_token.srcmap = Some(SourcePos::new(start, end - marker_len));
-                    start_map_pos = end - marker_len;
+                    opener_token.srcmap = Some(SourcePos::new(start, end - mark_bytes));
+                    start_map_pos = end - mark_bytes;
                 }
 
-                new_token.srcmap = state.get_map(start_map_pos, end_map_pos);
+                new_token.srcmap = Some(SourcePos::new(start_map_pos, end_map_pos));
 
                 // remove empty node as a small optimization so we can do less work later
                 if opener.remaining == 0 {
@@ -353,7 +357,7 @@ fn finalize_emphasis(state: &mut InlineState<'_, '_>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Preset;
+    use crate::{Preset, Renderer};
 
     fn run(input: &str, output: &str) {
         let md = &mut MarkdownIt::with_preset(Preset::CommonMark);
@@ -376,5 +380,49 @@ mod tests {
     #[test]
     fn crossed_delimiters_leave_marker_inside_emph() {
         run("*foo _bar* baz_", "<p><em>foo _bar</em> baz_</p>\n");
+    }
+
+    #[derive(Debug)]
+    struct CustomEmphasis;
+
+    impl NodeValue for CustomEmphasis {
+        fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
+            fmt.open("x", &node.attrs);
+            fmt.contents(&node.children);
+            fmt.close("x");
+        }
+    }
+
+    #[test]
+    fn unicode_marker_uses_byte_offsets_for_source_maps() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::block::paragraph::add(&mut md);
+
+        add_with::<'🦀', 1, true>(&mut md, || Node::new(CustomEmphasis));
+
+        let root = md.parse("a 🦀雪🦀 b");
+
+        assert_eq!(root.render(), "<p>a <x>雪</x> b</p>\n",);
+
+        let wrapper = &root.children[0].children[1];
+        assert_eq!(wrapper.srcmap.unwrap().get_byte_offsets(), (2, 13),);
+    }
+
+    #[test]
+    fn repeated_unicode_marker_counts_chars_and_consumes_bytes() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::block::paragraph::add(&mut md);
+
+        add_with::<'🦀', 2, true>(&mut md, || Node::new(CustomEmphasis));
+
+        let root = md.parse("🦀🦀雪🦀🦀");
+
+        assert_eq!(root.render(), "<p><x>雪</x></p>\n",);
+
+        let wrapper = &root.children[0].children[0];
+        assert_eq!(wrapper.srcmap.unwrap().get_byte_offsets(), (0, 19),);
+
+        let text = &wrapper.children[0];
+        assert_eq!(text.srcmap.unwrap().get_byte_offsets(), (8, 11),);
     }
 }
