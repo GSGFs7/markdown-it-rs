@@ -91,11 +91,27 @@ fn direct_parser_rejects_unmigrated_syntax_rules() {
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
-    markdown_it::plugins::cmark::inline::emphasis::add(&mut partial_inline);
+    markdown_it::plugins::cmark::inline::link::add(&mut partial_inline);
     assert!(matches!(
-        partial_inline.parse_document_direct("soft\nbreak"),
+        partial_inline.parse_document_direct("[link](/url)"),
         Err(DocumentParseError::UnsupportedConfiguration)
     ));
+}
+
+#[test]
+fn direct_parser_accepts_migrated_emphasis_rules() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
+
+    let direct = md
+        .parse_document_direct("*em* and **strong**")
+        .expect("emphasis rules have direct implementations");
+
+    assert_eq!(
+        md.render_document(&direct).unwrap(),
+        "<p><em>em</em> and <strong>strong</strong></p>\n",
+    );
 }
 
 #[test]
@@ -318,4 +334,61 @@ fn direct_html_inline_caches_unclosed_comments() {
 
     let source = format!("{} tail", "<!--".repeat(8192));
     assert_direct_matches_bridge(&md, &source);
+}
+
+#[test]
+fn direct_emphasis_uses_cjk_delimiter_override() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
+    markdown_it::plugins::cjk_friendly::add(&mut md);
+
+    assert_direct_matches_bridge(&md, "**这是重要内容。**后面继续写");
+}
+
+#[test]
+fn direct_nested_emphasis_preserves_source_maps() {
+    use markdown_it::parser::inline::Text;
+    use markdown_it::plugins::cmark::inline::emphasis::{Em, Strong};
+
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
+
+    let document = md.parse_document_direct("***foo***").unwrap();
+
+    let spans: Vec<_> = document
+        .events(document.root())
+        .unwrap()
+        .filter(|event| !matches!(event, StructuralEvent::Exit(_)))
+        .filter_map(|event| {
+            let node = event.node();
+
+            if node.is::<Em>() {
+                Some(("em", node.srcmap()?.get_byte_offsets()))
+            } else if node.is::<Strong>() {
+                Some(("strong", node.srcmap()?.get_byte_offsets()))
+            } else if node.is::<Text>() {
+                Some(("text", node.srcmap()?.get_byte_offsets()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    assert_eq!(
+        spans,
+        vec![("em", (0, 9)), ("strong", (1, 8)), ("text", (3, 6)),],
+    );
+}
+
+#[test]
+fn direct_emphasis_handles_many_unmatched_delimiters() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
+
+    for source in ["a_ ".repeat(8_192), "_a ".repeat(8_192)] {
+        assert_direct_matches_bridge(&md, &source);
+    }
 }

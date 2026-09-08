@@ -11,7 +11,12 @@ use std::sync::OnceLock;
 pub use self::builtin::inline_parser::InlineRoot;
 pub use self::builtin::skip_text::{Text, TextSpecial};
 pub use self::rule::*;
-pub(crate) use self::state::{DelimiterRun, InlineState, set_delimiter_scanner};
+pub(crate) use self::state::{
+    DelimiterRun,
+    InlineState,
+    scan_delimiter_run,
+    set_delimiter_scanner,
+};
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::parser::extset::{InlineRootExtSet, RootExtSet};
@@ -358,22 +363,6 @@ impl InlineParser {
         self.remove_rule_entry::<T>(T::MARKER);
     }
 
-    pub(crate) fn add_legacy_rule_with_finalize<T: LegacyInlineRule>(
-        &mut self,
-        finalize: LegacyInlineFinalizeFn,
-    ) -> LegacyRuleBuilder<'_, RuleEntry> {
-        let item = self.add_rule_entry::<T>(
-            T::MARKER,
-            T::NAMES,
-            Some((T::check, T::run)),
-            Some(finalize),
-            None,
-            None,
-        );
-        LegacyRuleBuilder::new(item)
-    }
-
-    #[cfg(test)]
     pub(crate) fn add_migrated_rule_with_finalize<T: InlineRule + LegacyInlineRule>(
         &mut self,
         legacy_finalize: LegacyInlineFinalizeFn,

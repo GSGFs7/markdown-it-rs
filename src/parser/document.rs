@@ -167,6 +167,11 @@ impl NodeDraft {
             node_value,
         })
     }
+
+    pub(crate) fn replace<T: NodeValue>(&mut self, value: T) {
+        self.node_type = TypeKey::of::<T>();
+        self.node_value = Box::new(value);
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -3,6 +3,7 @@
 //! looks like `*this*` or `__that__`
 //!
 //! <https://spec.commonmark.org/0.30/#emphasis-and-strong-emphasis>
+use crate::NodeDraft;
 use crate::generics::inline::emph_pair;
 use crate::parser::document::NodeRef;
 use crate::parser::document_renderer::{
@@ -83,10 +84,10 @@ impl NodeValue for Strong {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    emph_pair::add_with::<'*', 1, true>(md, || Node::new(Em { marker: '*' }));
-    emph_pair::add_with::<'_', 1, false>(md, || Node::new(Em { marker: '_' }));
-    emph_pair::add_with::<'*', 2, true>(md, || Node::new(Strong { marker: '*' }));
-    emph_pair::add_with::<'_', 2, false>(md, || Node::new(Strong { marker: '_' }));
+    emph_pair::add_with::<'*', 1, true>(md, || NodeDraft::new(Em { marker: '*' }));
+    emph_pair::add_with::<'_', 1, false>(md, || NodeDraft::new(Em { marker: '_' }));
+    emph_pair::add_with::<'*', 2, true>(md, || NodeDraft::new(Strong { marker: '*' }));
+    emph_pair::add_with::<'_', 2, false>(md, || NodeDraft::new(Strong { marker: '_' }));
     md.add_document_renderer::<Em, _>("html", EmDocumentRenderer);
     md.add_document_renderer::<Strong, _>("html", StrongDocumentRenderer);
     md.add_document_renderer::<Em, _>("text", TransparentDocumentRenderer);

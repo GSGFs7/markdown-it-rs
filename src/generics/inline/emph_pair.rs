@@ -18,13 +18,13 @@
 //!    (for example, note the difference between `foo*bar*baz` and `foo_bar_baz`
 //!    in CommonMark - first one is an emphasis, second one isn't)
 //!  - `md` - parser instance
-//!  - `f` - function that should return your custom [Node]
+//!  - `f` - function that should return your custom [NodeDraft]
 //!
 //! Here is an example of implementing superscript in your custom code:
 //!
 //! ```rust
 //! use markdown_it::generics::inline::emph_pair;
-//! use markdown_it::{MarkdownIt, Node, NodeValue, Renderer};
+//! use markdown_it::{MarkdownIt, Node, NodeDraft, NodeValue, Renderer};
 //!
 //! #[derive(Debug)]
 //! struct Superscript;
@@ -37,7 +37,7 @@
 //! }
 //!
 //! let md = &mut MarkdownIt::empty();
-//! emph_pair::add_with::<'^', 1, true>(md, || Node::new(Superscript));
+//! emph_pair::add_with::<'^', 1, true>(md, || NodeDraft::new(Superscript));
 //!
 //! let html = md.parse("e^iπ^+1=0").render();
 //! assert_eq!(html.trim(), "e<sup>iπ</sup>+1=0");
@@ -49,14 +49,15 @@
 use std::cmp::min;
 
 use crate::common::sourcemap::SourcePos;
-use crate::parser::inline::{InlineState, LegacyInlineRule, Text};
-use crate::{MarkdownIt, Node, NodeValue};
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, Text};
+use crate::{DocumentInlineState, MarkdownIt, Node, NodeDraft, NodeValue};
 
 #[derive(Debug, Default)]
 struct PairConfig<const MARKER: char> {
     inserted: bool,
-    fns: [Option<fn() -> Node>; 3],
+    fns: [Option<fn() -> NodeDraft>; 3],
 }
+
 #[derive(Debug, Default)]
 struct OpenersBottom<const MARKER: char>([usize; 6]);
 
@@ -83,7 +84,7 @@ impl NodeValue for EmphMarker {}
 
 pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool>(
     md: &mut MarkdownIt,
-    f: fn() -> Node,
+    f: fn() -> NodeDraft,
 ) {
     let pair_config = md.ext.get_or_insert_default::<PairConfig<MARKER>>();
     pair_config.fns[LENGTH as usize - 1] = Some(f);
@@ -92,8 +93,9 @@ pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool
         pair_config.inserted = true;
         let builder = md
             .inline
-            .add_legacy_rule_with_finalize::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>(
+            .add_migrated_rule_with_finalize::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>(
                 finalize_emphasis,
+                finalize_emphasis_document,
             );
         if MARKER == '*' || MARKER == '_' {
             builder.alias_named("emphasis");
@@ -142,6 +144,42 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> LegacyInlineRule
         state.pos -= token_len;
 
         Some((node, token_len))
+    }
+}
+
+impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
+    for EmphPairScanner<MARKER, CAN_SPLIT_WORD>
+{
+    const MARKER: char = MARKER;
+    const NAMES: &'static [&'static str] = &["emph_pair"];
+
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        if state.remaining().chars().next()? != MARKER {
+            return None;
+        }
+
+        let scanned = state.scan_delims(state.pos, CAN_SPLIT_WORD);
+        let scanned_bytes = scanned.byte_length();
+
+        state.flush_text();
+
+        let mut closer = NodeDraft::new(EmphMarker {
+            marker: MARKER,
+            length: scanned.length,
+            remaining: scanned.length,
+            open: scanned.can_open,
+            close: scanned.can_close,
+        });
+        closer.set_srcmap(state.get_map(state.pos, state.pos + scanned_bytes));
+
+        closer = scan_and_match_document::<MARKER>(state, closer);
+
+        let map = closer.srcmap().unwrap().get_byte_offsets();
+        state.pos += scanned_bytes;
+        let token_len = map.1 - map.0;
+        state.pos -= token_len;
+
+        Some((Some(closer), token_len))
     }
 }
 
@@ -207,7 +245,7 @@ fn scan_and_match_delimiters<const MARKER: char>(
                 closer.remaining -= marker_len;
                 opener.remaining -= marker_len;
 
-                let mut new_token = marker_fn();
+                let mut new_token = marker_fn().into_legacy();
                 new_token.children = state.node.children.split_off(idx + 1);
 
                 // cut marker_len chars from start, i.e. "12345" -> "345"
@@ -269,6 +307,117 @@ fn scan_and_match_delimiters<const MARKER: char>(
         closer_token
     } else {
         state.node.children.pop().unwrap()
+    }
+}
+
+fn scan_and_match_document<const MARKER: char>(
+    state: &mut DocumentInlineState,
+    mut closer_token: NodeDraft,
+) -> NodeDraft {
+    if state.nodes().is_empty() {
+        return closer_token;
+    }
+
+    let mut closer = closer_token.cast_mut::<EmphMarker>().unwrap().clone();
+    if !closer.close {
+        return closer_token;
+    }
+
+    let openers_parameter = (closer.open as usize) * 3 + closer.length % 3;
+    let min_opener_idx = state
+        .inline_ext
+        .get_or_insert_default::<OpenersBottom<MARKER>>()
+        .0[openers_parameter];
+
+    let mut idx = state.nodes().len() - 1;
+    let mut new_min_opener_idx = idx;
+    while idx > min_opener_idx {
+        idx -= 1;
+
+        let Some(opener) = state.nodes()[idx].cast::<EmphMarker>() else {
+            continue;
+        };
+
+        let mut opener = opener.clone();
+        if opener.open && opener.marker == closer.marker && !is_odd_match(&opener, &closer) {
+            while closer.remaining > 0 && opener.remaining > 0 {
+                let max_marker_len = min(3, min(opener.remaining, closer.remaining));
+                let mut matched_rule = None;
+                // PairConfig lives on the parser (not in the per-root ext set):
+                // `inline_ext` only holds state scoped to this inline run.
+                let fns = state
+                    .markdown_it()
+                    .ext
+                    .get::<PairConfig<MARKER>>()
+                    .unwrap()
+                    .fns;
+                for marker_len in (1..=max_marker_len).rev() {
+                    if let Some(f) = fns[marker_len - 1] {
+                        matched_rule = Some((marker_len, f));
+                        break;
+                    }
+                }
+
+                if matched_rule.is_none() {
+                    break;
+                }
+
+                let (marker_len, marker_fn) = matched_rule.unwrap();
+                let mark_bytes = marker_len * MARKER.len_utf8();
+
+                closer.remaining -= marker_len;
+                opener.remaining -= marker_len;
+
+                let mut new_token = marker_fn();
+                *new_token.children_mut() = state.nodes_mut().split_off(idx + 1);
+
+                let mut end_map_pos = 0;
+                if let Some(map) = closer_token.srcmap() {
+                    let (start, end) = map.get_byte_offsets();
+                    closer_token.set_srcmap(Some(SourcePos::new(start + mark_bytes, end)));
+                    end_map_pos = start + mark_bytes;
+                }
+
+                let mut start_map_pos = 0;
+                let opener_token = state.nodes_mut().last_mut().unwrap();
+                if let Some(map) = opener_token.srcmap() {
+                    let (start, end) = map.get_byte_offsets();
+                    opener_token.set_srcmap(Some(SourcePos::new(start, end - mark_bytes)));
+                    start_map_pos = end - mark_bytes;
+                }
+
+                new_token.set_srcmap(Some(SourcePos::new(start_map_pos, end_map_pos)));
+
+                if opener.remaining == 0 {
+                    state.nodes_mut().pop();
+                }
+
+                new_min_opener_idx = 0;
+                state.nodes_mut().push(new_token);
+            }
+        }
+
+        if opener.remaining > 0 {
+            state.nodes_mut()[idx].replace(opener);
+        }
+
+        if closer.remaining == 0 {
+            break;
+        }
+    }
+
+    if new_min_opener_idx != 0 {
+        let openers_for_marker = state
+            .inline_ext
+            .get_or_insert_default::<OpenersBottom<MARKER>>();
+        openers_for_marker.0[openers_parameter] = new_min_opener_idx;
+    }
+
+    if closer.remaining > 0 {
+        closer_token.replace(closer);
+        closer_token
+    } else {
+        state.nodes_mut().pop().unwrap()
     }
 }
 
@@ -354,6 +503,66 @@ fn finalize_emphasis(state: &mut InlineState<'_, '_>) {
     state.node.walk_mut(|node, _| fragments_join(node));
 }
 
+fn fragments_join_draft_children(nodes: &mut Vec<NodeDraft>) {
+    // replace all unmatched emph markers with text tokens
+    for token in nodes.iter_mut() {
+        if let Some(data) = token.cast::<EmphMarker>() {
+            let content = data.marker.to_string().repeat(data.remaining);
+            token.replace(Text { content });
+        }
+    }
+
+    for idx in 1..nodes.len() {
+        let (tokens1, tokens2) = nodes.split_at_mut(idx);
+
+        let token1 = tokens1.last_mut().unwrap();
+        let Some(t1_data) = token1.cast_mut::<Text>() else {
+            continue;
+        };
+
+        let token2 = tokens2.first_mut().unwrap();
+        let Some(t2_data) = token2.cast_mut::<Text>() else {
+            continue;
+        };
+
+        let t2_content = std::mem::take(&mut t2_data.content);
+        t1_data.content += &t2_content;
+
+        if let Some(map1) = token1.srcmap() {
+            if let Some(map2) = token2.srcmap() {
+                token1.set_srcmap(Some(SourcePos::new(
+                    map1.get_byte_offsets().0,
+                    map2.get_byte_offsets().1,
+                )));
+            }
+        }
+
+        nodes.swap(idx - 1, idx);
+    }
+
+    nodes.retain(|token| {
+        if let Some(data) = token.cast::<Text>() {
+            !data.content.is_empty()
+        } else {
+            true
+        }
+    });
+}
+
+fn fragments_join_drafts(nodes: &mut Vec<NodeDraft>) {
+    fragments_join_draft_children(nodes);
+
+    for node in nodes {
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+            fragments_join_drafts(node.children_mut());
+        });
+    }
+}
+
+fn finalize_emphasis_document(state: &mut DocumentInlineState<'_>) {
+    fragments_join_drafts(state.nodes_mut());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,6 +574,52 @@ mod tests {
 
         node.walk(|node, _| assert!(node.srcmap.is_some()));
         assert_eq!(node.render(), output);
+    }
+
+    /// Parse with only the CommonMark paragraph + emphasis rules registered
+    /// (nothing else), and compare the legacy bridge against the direct parser.
+    fn run_minimal(input: &str, output: &str) {
+        let md = &mut MarkdownIt::empty();
+        crate::plugins::cmark::block::paragraph::add(md);
+        crate::plugins::cmark::inline::emphasis::add(md);
+
+        let node = md.parse(input);
+        node.walk(|node, _| assert!(node.srcmap.is_some(), "{input:?}: {node:?}"));
+        assert_eq!(node.render(), output, "legacy parser for {input:?}");
+
+        let direct = md.parse_document_direct(input).expect("direct parser");
+        assert_eq!(
+            md.render_document(&direct).unwrap(),
+            output,
+            "direct parser for {input:?}"
+        );
+    }
+
+    #[test]
+    fn cmark_delimiter_cases_with_minimal_registration() {
+        let cases: [(&str, &str); 11] = [
+            ("*foo*", "<p><em>foo</em></p>\n"),
+            ("**foo**", "<p><strong>foo</strong></p>\n"),
+            ("***foo***", "<p><em><strong>foo</strong></em></p>\n"),
+            ("_foo_bar_baz_", "<p><em>foo_bar_baz</em></p>\n"),
+            ("foo *_*", "<p>foo <em>_</em></p>\n"),
+            ("*foo**bar*", "<p><em>foo**bar</em></p>\n"),
+            ("*foo _bar* baz_", "<p><em>foo _bar</em> baz_</p>\n"),
+            (
+                "***foo** bar*",
+                "<p><em><strong>foo</strong> bar</em></p>\n",
+            ),
+            (
+                "****foo****",
+                "<p><strong><strong>foo</strong></strong></p>\n",
+            ),
+            ("unmatched * marker", "<p>unmatched * marker</p>\n"),
+            ("雪 **强调** 雨", "<p>雪 <strong>强调</strong> 雨</p>\n"),
+        ];
+
+        for (input, expected) in cases {
+            run_minimal(input, expected);
+        }
     }
 
     #[test]
@@ -398,7 +653,7 @@ mod tests {
         let mut md = MarkdownIt::empty();
         crate::plugins::cmark::block::paragraph::add(&mut md);
 
-        add_with::<'🦀', 1, true>(&mut md, || Node::new(CustomEmphasis));
+        add_with::<'🦀', 1, true>(&mut md, || NodeDraft::new(CustomEmphasis));
 
         let root = md.parse("a 🦀雪🦀 b");
 
@@ -413,7 +668,7 @@ mod tests {
         let mut md = MarkdownIt::empty();
         crate::plugins::cmark::block::paragraph::add(&mut md);
 
-        add_with::<'🦀', 2, true>(&mut md, || Node::new(CustomEmphasis));
+        add_with::<'🦀', 2, true>(&mut md, || NodeDraft::new(CustomEmphasis));
 
         let root = md.parse("🦀🦀雪🦀🦀");
 
@@ -424,5 +679,22 @@ mod tests {
 
         let text = &wrapper.children[0];
         assert_eq!(text.srcmap.unwrap().get_byte_offsets(), (8, 11),);
+
+        let direct = md
+            .parse_document_direct("🦀🦀雪🦀🦀")
+            .expect("custom delimiter has a direct implementation");
+
+        let wrapper = direct
+            .events(direct.root())
+            .unwrap()
+            .find_map(|event| {
+                let node = event.node();
+                node.is::<CustomEmphasis>().then_some(node)
+            })
+            .unwrap();
+
+        assert_eq!(wrapper.srcmap().unwrap().get_byte_offsets(), (0, 19),);
+
+        assert_eq!(direct.into_legacy().render(), "<p><x>雪</x></p>\n",);
     }
 }

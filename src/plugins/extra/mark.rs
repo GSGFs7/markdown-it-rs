@@ -1,7 +1,7 @@
 //! Highlight syntax (like `==this==`)
 
 use crate::generics::inline::emph_pair;
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::{MarkdownIt, Node, NodeDraft, NodeValue, Renderer};
 
 #[derive(Debug)]
 pub struct Mark;
@@ -15,7 +15,7 @@ impl NodeValue for Mark {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    emph_pair::add_with::<'=', 2, true>(md, || Node::new(Mark));
+    emph_pair::add_with::<'=', 2, true>(md, || NodeDraft::new(Mark));
 }
 
 #[cfg(test)]

@@ -13,7 +13,7 @@ use crate::parser::block::{
 use crate::parser::core::Root;
 use crate::parser::document::{Document, NodeDraft};
 use crate::parser::extset::InlineRootExtSet;
-use crate::parser::inline::{DocumentRuleSet, Text};
+use crate::parser::inline::{DelimiterRun, DocumentRuleSet, Text, scan_delimiter_run};
 use crate::parser::main::MarkdownIt;
 use crate::parser::render_options::RenderOptions;
 
@@ -261,6 +261,14 @@ impl<'a> DocumentInlineState<'a> {
         self.md
     }
 
+    pub(crate) fn nodes(&self) -> &[NodeDraft] {
+        &self.nodes
+    }
+
+    pub(crate) fn nodes_mut(&mut self) -> &mut Vec<NodeDraft> {
+        &mut self.nodes
+    }
+
     fn parse(
         src: String,
         mapping: Vec<(usize, usize)>,
@@ -351,7 +359,7 @@ impl<'a> DocumentInlineState<'a> {
         }
     }
 
-    fn flush_text(&mut self) {
+    pub(crate) fn flush_text(&mut self) {
         let Some((start, end)) = self.pending_text.take() else {
             return;
         };
@@ -395,5 +403,9 @@ impl<'a> DocumentInlineState<'a> {
 
     pub(crate) fn get_map(&self, start: usize, end: usize) -> Option<SourcePos> {
         Some(SourcePos::new(self.source_pos(start), self.source_pos(end)))
+    }
+
+    pub(crate) fn scan_delims(&self, start: usize, can_split_word: bool) -> DelimiterRun {
+        scan_delimiter_run(self.md, &self.src, start, self.pos_max, can_split_word)
     }
 }
