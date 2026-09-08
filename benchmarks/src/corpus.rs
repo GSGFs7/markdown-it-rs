@@ -5,6 +5,8 @@ pub const PATHOLOGICAL_SMOKE_BYTES: usize = 32 * 1024;
 
 const SMALL_REAL_WORLD: &str = include_str!("../corpus/small-real-world.md");
 const COMMONMARK_SPEC: &str = include_str!("../../tests/fixtures/commonmark/spec.txt");
+const COMMONMARK_EMPHASIS_HEADING: &str = "## Emphasis and strong emphasis";
+const COMMONMARK_LINKS_HEADING: &str = "\n## Links\n";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CorpusKind {
@@ -103,6 +105,41 @@ pub fn standard() -> Vec<Corpus> {
     ]
 }
 
+/// Return the focused corpus set used by the direct emphasis parser checkpoint.
+///
+/// The CommonMark input is a borrowed slice of the checked-in specification;
+/// no generated copy of the specification is stored in the benchmark tree.
+pub fn parser_emphasis_checkpoint() -> Vec<Corpus> {
+    vec![
+        Corpus::borrowed("small-real-world", CorpusKind::RealWorld, SMALL_REAL_WORLD),
+        Corpus::borrowed(
+            "commonmark-emphasis",
+            CorpusKind::RealWorld,
+            commonmark_emphasis(),
+        ),
+        Corpus::generated(
+            "marker-heavy",
+            CorpusKind::Synthetic,
+            repeat_to_size(
+                "Text with *emphasis*, **strong**, ***nested emphasis***, _underscore_, \
+                 unmatched * markers and `code`.\n\n",
+                LARGE_CORPUS_BYTES,
+            ),
+        ),
+    ]
+}
+
+fn commonmark_emphasis() -> &'static str {
+    let start = COMMONMARK_SPEC
+        .find(COMMONMARK_EMPHASIS_HEADING)
+        .expect("CommonMark emphasis heading");
+    let section = &COMMONMARK_SPEC[start..];
+    let end = section
+        .find(COMMONMARK_LINKS_HEADING)
+        .expect("CommonMark links heading after emphasis");
+    &section[..end]
+}
+
 /// Build one input for a scaling benchmark without introducing randomness.
 pub fn pathological_scaling(fragment: &str, target_bytes: usize) -> String {
     repeated_fragment_to_size(fragment, target_bytes)
@@ -194,5 +231,19 @@ mod tests {
 
         assert_eq!(first, second);
         assert_eq!(first.len(), 70 * 1024);
+    }
+
+    #[test]
+    fn emphasis_checkpoint_uses_only_the_requested_spec_section() {
+        let section = commonmark_emphasis();
+        assert!(section.starts_with(COMMONMARK_EMPHASIS_HEADING));
+        assert!(section.contains("***strong emph***"));
+        assert!(!section.contains(COMMONMARK_LINKS_HEADING));
+
+        let corpora = parser_emphasis_checkpoint();
+        assert_eq!(
+            corpora.iter().map(|corpus| corpus.name).collect::<Vec<_>>(),
+            vec!["small-real-world", "commonmark-emphasis", "marker-heavy"],
+        );
     }
 }

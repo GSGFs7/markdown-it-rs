@@ -2,8 +2,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::hint::black_box;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use markdown_it::MarkdownIt;
-use markdown_it_benchmarks::corpus;
+use markdown_it_benchmarks::{corpus, parser};
 
 struct CountingAllocator;
 
@@ -74,14 +73,13 @@ fn print_row(configuration: &str, corpus: &str, path: &str, stats: AllocationSta
 }
 
 fn main() {
-    let empty = MarkdownIt::empty();
-    let mut paragraph = MarkdownIt::empty();
-    markdown_it::plugins::cmark::block::paragraph::add(&mut paragraph);
     println!("| Configuration | Corpus | Path | Allocations | Requested bytes |");
     println!("| --- | --- | --- | ---: | ---: |");
 
-    for (configuration, md) in [("text-fallback", empty), ("paragraph-text", paragraph)] {
-        for corpus in corpus::standard() {
+    for configuration in parser::document_parse_configurations() {
+        let configuration_name = configuration.name;
+        let md = configuration.parser;
+        for corpus in corpus::parser_emphasis_checkpoint() {
             let source = corpus.source();
 
             // Warm lazy parser state before enabling the counter.
@@ -93,13 +91,13 @@ fn main() {
             );
 
             let (legacy, legacy_stats) = measure(|| md.parse(black_box(source)));
-            print_row(configuration, corpus.name, "legacy-tree", legacy_stats);
+            print_row(configuration_name, corpus.name, "legacy-tree", legacy_stats);
 
             let (bridged, bridge_stats) = measure(|| md.parse_document(black_box(source)));
             let bridge_nodes = bridged.len();
             assert_eq!(md.render_document(&bridged).unwrap(), expected);
             print_row(
-                configuration,
+                configuration_name,
                 corpus.name,
                 "legacy-arena-bridge",
                 bridge_stats,
@@ -110,7 +108,12 @@ fn main() {
             let direct_nodes = direct.len();
             assert_eq!(md.render_document(&direct).unwrap(), expected);
             assert_eq!(direct_nodes, bridge_nodes);
-            print_row(configuration, corpus.name, "arena-direct", direct_stats);
+            print_row(
+                configuration_name,
+                corpus.name,
+                "arena-direct",
+                direct_stats,
+            );
 
             black_box(legacy);
         }

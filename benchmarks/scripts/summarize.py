@@ -16,15 +16,17 @@ PHASE_ORDER = {
     "parse": 0,
     "render": 1,
     "parse-render": 2,
-    "document-render": 3,
-    "document-end-to-end": 4,
+    "document-parse": 3,
+    "document-render": 4,
+    "document-end-to-end": 5,
 }
 CORPUS_ORDER = {
     "small-real-world": 0,
-    "commonmark-spec": 1,
-    "plain-text": 2,
-    "marker-heavy": 3,
-    "unicode-heavy": 4,
+    "commonmark-emphasis": 1,
+    "commonmark-spec": 2,
+    "plain-text": 3,
+    "marker-heavy": 4,
+    "unicode-heavy": 5,
 }
 ENGINE_ORDER = {
     "markdown-it-rs": 0,
@@ -33,15 +35,17 @@ ENGINE_ORDER = {
     "comrak-0.52": 3,
     "pulldown-cmark-0.13": 4,
     "markdown-rs-1.0": 5,
-    "arena-direct": 6,
-    "arena-bridge": 7,
-    "legacy-tree": 8,
+    "legacy-tree": 6,
+    "legacy-arena-bridge": 7,
+    "arena-direct": 8,
+    "arena-bridge": 9,
 }
 
 
 @dataclass(frozen=True)
 class Result:
     phase: str
+    configuration: str | None
     corpus: str
     engine: str
     time_ns: float
@@ -76,6 +80,10 @@ def parse_args() -> argparse.Namespace:
         "--baseline-engine",
         default=DEFAULT_BASELINE,
         help=f"engine used for relative speed (default: {DEFAULT_BASELINE})",
+    )
+    parser.add_argument(
+        "--configuration",
+        help="only include one document-parse configuration",
     )
     parser.add_argument(
         "--format",
@@ -116,7 +124,12 @@ def load_results(root: Path, dataset: str) -> list[Result]:
 
         benchmark = read_json(benchmark_path)
         parts = benchmark.get("full_id", "").split("/")
-        if len(parts) != 3 or parts[0] not in PHASE_ORDER:
+        if len(parts) == 3 and parts[0] in PHASE_ORDER:
+            phase, corpus, engine = parts
+            configuration = None
+        elif len(parts) == 4 and parts[0] == "document-parse":
+            phase, configuration, corpus, engine = parts
+        else:
             # Ignore old flat benchmark IDs and unrelated Criterion data.
             continue
 
@@ -130,9 +143,10 @@ def load_results(root: Path, dataset: str) -> list[Result]:
         input_bytes = throughput.get("Bytes") if isinstance(throughput, dict) else None
         results.append(
             Result(
-                phase=parts[0],
-                corpus=parts[1],
-                engine=parts[2],
+                phase=phase,
+                configuration=configuration,
+                corpus=corpus,
+                engine=engine,
                 time_ns=float(typical["point_estimate"]),
                 lower_ns=float(confidence["lower_bound"]),
                 upper_ns=float(confidence["upper_bound"]),
@@ -154,6 +168,7 @@ def result_sort_key(result: Result) -> tuple:
         corpus_key,
         result.corpus,
         PHASE_ORDER[result.phase],
+        result.configuration or "",
         engine_key,
         result.engine,
     )
@@ -171,7 +186,7 @@ def format_duration(nanoseconds: float) -> str:
 
 def markdown_report(results: list[Result], baseline_engine: str, dataset: str) -> str:
     baselines = {
-        (result.corpus, result.phase): result.time_ns
+        (result.configuration, result.corpus, result.phase): result.time_ns
         for result in results
         if result.engine == baseline_engine
     }
@@ -191,8 +206,8 @@ def markdown_report(results: list[Result], baseline_engine: str, dataset: str) -
             [
                 f"## {corpus}",
                 "",
-                f"| Phase | Engine | Time | 95% CI | Throughput | vs `{baseline_engine}` |",
-                "| --- | --- | ---: | ---: | ---: | ---: |",
+                f"| Phase | Configuration | Engine | Time | 95% CI | Throughput | vs `{baseline_engine}` |",
+                "| --- | --- | --- | ---: | ---: | ---: | ---: |",
             ]
         )
         for result in results:
@@ -200,13 +215,16 @@ def markdown_report(results: list[Result], baseline_engine: str, dataset: str) -
                 continue
             throughput = result.throughput_mib_s
             throughput_text = "—" if throughput is None else f"{throughput:.2f} MiB/s"
-            baseline = baselines.get((result.corpus, result.phase))
+            baseline = baselines.get(
+                (result.configuration, result.corpus, result.phase)
+            )
             relative = "—" if baseline is None else f"{baseline / result.time_ns:.2f}×"
+            configuration = result.configuration or "—"
             confidence = (
                 f"{format_duration(result.lower_ns)}–{format_duration(result.upper_ns)}"
             )
             lines.append(
-                f"| {result.phase} | {result.engine} | "
+                f"| {result.phase} | {configuration} | {result.engine} | "
                 f"{format_duration(result.time_ns)} | {confidence} | "
                 f"{throughput_text} | {relative} |"
             )
@@ -217,7 +235,7 @@ def markdown_report(results: list[Result], baseline_engine: str, dataset: str) -
 
 def csv_report(results: list[Result], baseline_engine: str) -> str:
     baselines = {
-        (result.corpus, result.phase): result.time_ns
+        (result.configuration, result.corpus, result.phase): result.time_ns
         for result in results
         if result.engine == baseline_engine
     }
@@ -227,6 +245,7 @@ def csv_report(results: list[Result], baseline_engine: str) -> str:
         (
             "corpus",
             "phase",
+            "configuration",
             "engine",
             "time_ns",
             "lower_ns",
@@ -237,11 +256,14 @@ def csv_report(results: list[Result], baseline_engine: str) -> str:
         )
     )
     for result in results:
-        baseline = baselines.get((result.corpus, result.phase))
+        baseline = baselines.get(
+            (result.configuration, result.corpus, result.phase)
+        )
         writer.writerow(
             (
                 result.corpus,
                 result.phase,
+                "" if result.configuration is None else result.configuration,
                 result.engine,
                 f"{result.time_ns:.6f}",
                 f"{result.lower_ns:.6f}",
@@ -260,6 +282,16 @@ def main() -> int:
     args = parse_args()
     try:
         results = load_results(args.criterion_dir, args.dataset)
+        if args.configuration:
+            results = [
+                result
+                for result in results
+                if result.configuration == args.configuration
+            ]
+            if not results:
+                raise RuntimeError(
+                    f"no results for configuration: {args.configuration!r}"
+                )
         report = (
             markdown_report(results, args.baseline_engine, args.dataset)
             if args.format == "markdown"
