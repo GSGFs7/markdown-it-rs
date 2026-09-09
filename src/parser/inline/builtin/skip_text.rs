@@ -52,27 +52,42 @@ pub fn add(md: &mut MarkdownIt) {
     md.inline.add_migrated_rule::<TextScanner>().before_all();
 }
 
-impl InlineRule for TextScanner {
-    const MARKER: char = '\0';
-    const NAMES: &'static [&'static str] = &["text"];
-
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
-        let len = state.src[state.pos..state.pos_max]
-            .char_indices()
-            .find_map(|(offset, marker)| state.is_rule_marker(marker).then_some(offset))
-            .unwrap_or(state.pos_max - state.pos);
-        if len == 0 {
-            return None;
-        }
-        state.push_text(state.pos, state.pos + len);
-        Some((None, len))
-    }
-}
-
 #[derive(Debug)]
 pub(crate) enum TextScannerImpl {
-    SkipPunct,
+    SkipAscii(AsciiMarkSet),
     SkipRegex(Regex),
+}
+
+impl TextScannerImpl {
+    pub(in crate::parser::inline) fn compile(mut markers: Vec<char>) -> Self {
+        markers.sort_unstable();
+
+        if markers.iter().all(|marker| marker.is_ascii()) {
+            let mut set = AsciiMarkSet::default();
+            for marker in markers {
+                set.insert(marker);
+            }
+            return Self::SkipAscii(set);
+        }
+
+        let escaped = markers
+            .into_iter()
+            .map(|marker| regex::escape(&marker.to_string()))
+            .collect::<String>();
+        Self::SkipRegex(Regex::new(&format!("^[^{escaped}]+")).unwrap())
+    }
+
+    #[inline]
+    pub(in crate::parser::inline) fn find(&self, source: &str) -> usize {
+        match self {
+            Self::SkipAscii(markers) => source
+                .as_bytes()
+                .iter()
+                .position(|byte| markers.contains(*byte))
+                .unwrap_or(source.len()),
+            Self::SkipRegex(regex) => regex.find(source).map_or(0, |capture| capture.end()),
+        }
+    }
 }
 
 /// Rule to skip pure text
@@ -86,75 +101,29 @@ pub(crate) enum TextScannerImpl {
 pub struct TextScanner;
 
 impl TextScanner {
-    fn choose_text_impl(charmap: Vec<char>) -> TextScannerImpl {
-        let mut can_use_punct = true;
-        for ch in charmap.iter() {
-            match ch {
-                '\n' | '!' | '#' | '$' | '%' | '&' | '*' | '+' | '-' | ':' | '<' | '=' | '>'
-                | '@' | '[' | '\\' | ']' | '^' | '_' | '`' | '{' | '}' | '~' => {}
-                _ => {
-                    can_use_punct = false;
-                    break;
-                }
-            }
-        }
-
-        if can_use_punct {
-            TextScannerImpl::SkipPunct
-        } else {
-            TextScannerImpl::SkipRegex(
-                Regex::new(
-                    // [] panics on "unclosed character class", but it cannot happen here
-                    // (we'd use punct rule instead)
-                    &format!(
-                        "^[^{}]+",
-                        charmap
-                            .into_iter()
-                            .map(|c| regex::escape(&c.to_string()))
-                            .collect::<String>()
-                    ),
-                )
-                .unwrap(),
-            )
-        }
-    }
-
     fn find_text_length(state: &mut InlineState) -> usize {
-        let text_impl = state.md.inline.text_impl.get_or_init(|| {
-            Self::choose_text_impl(state.md.inline.text_charmap.keys().copied().collect())
-        });
+        state
+            .md
+            .inline
+            .text_length(&state.src, state.pos, state.pos_max)
+    }
+}
 
-        let mut len = 0;
+impl InlineRule for TextScanner {
+    const MARKER: char = '\0';
+    const NAMES: &'static [&'static str] = &["text"];
 
-        match text_impl {
-            TextScannerImpl::SkipPunct => {
-                let mut chars = state.src[state.pos..state.pos_max].chars();
-
-                loop {
-                    match chars.next() {
-                        Some(
-                            '\n' | '!' | '#' | '$' | '%' | '&' | '*' | '+' | '-' | ':' | '<' | '='
-                            | '>' | '@' | '[' | '\\' | ']' | '^' | '_' | '`' | '{' | '}' | '~',
-                        ) => {
-                            break;
-                        }
-                        Some(chr) => {
-                            len += chr.len_utf8();
-                        }
-                        None => {
-                            break;
-                        }
-                    }
-                }
-            }
-            TextScannerImpl::SkipRegex(re) => {
-                if let Some(capture) = re.find(&state.src[state.pos..state.pos_max]) {
-                    len = capture.end();
-                }
-            }
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        let len = state
+            .markdown_it()
+            .inline
+            .text_length(&state.src, state.pos, state.pos_max);
+        if len == 0 {
+            return None;
         }
 
-        len
+        state.push_text(state.pos, state.pos + len);
+        Some((None, len))
     }
 }
 
@@ -178,5 +147,21 @@ impl LegacyInlineRule for TextScanner {
         state.trailing_text_push(state.pos, state.pos + len);
         state.pos += len;
         Some((Node::default(), 0))
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(in crate::parser::inline) struct AsciiMarkSet([u64; 2]);
+
+impl AsciiMarkSet {
+    fn insert(&mut self, marker: char) {
+        debug_assert!(marker.is_ascii());
+        let byte = marker as u8;
+        self.0[(byte / 64) as usize] |= 1_u64 << (byte % 64);
+    }
+
+    #[inline]
+    fn contains(self, byte: u8) -> bool {
+        byte.is_ascii() && self.0[(byte / 64) as usize] & (1_u64 << (byte % 64)) != 0
     }
 }

@@ -135,10 +135,6 @@ impl InlineParser {
         })
     }
 
-    pub(crate) fn is_document_marker(&self, marker: char) -> bool {
-        self.text_charmap.contains_key(&marker)
-    }
-
     pub(crate) fn has_only_text_rule(&self) -> bool {
         self.ruler.len() == 1 && self.has_rule::<builtin::TextScanner>()
     }
@@ -435,6 +431,14 @@ impl InlineParser {
             })
             .as_slice()
     }
+
+    pub(crate) fn text_length(&self, source: &str, pos: usize, pos_max: usize) -> usize {
+        let scanner = self
+            .text_impl
+            .get_or_init(|| TextScannerImpl::compile(self.text_charmap.keys().copied().collect()));
+
+        scanner.find(&source[pos..pos_max])
+    }
 }
 
 #[cfg(test)]
@@ -545,6 +549,8 @@ mod tests {
             check_ids(parser.rules_for('@')),
             vec![check_id::<WildcardRule>()]
         );
+
+        assert_eq!(parser.text_length("a雪b", 0, "a雪b".len()), 1,);
     }
 
     #[test]
@@ -625,7 +631,53 @@ mod tests {
         assert!(parser.legacy_finalizers().is_empty());
 
         assert!(parser.has_rule::<DirectHashRule>());
-        assert!(parser.is_document_marker('#'));
-        assert!(!parser.is_document_marker('@'));
+    }
+
+    #[test]
+    fn text_classifier_uses_only_registered_ascii_markers() {
+        let mut parser = InlineParser::new();
+        parser.add_migrated_rule::<DirectAtRule>();
+
+        assert_eq!(parser.text_length("a[b@c", 0, 5), 3);
+    }
+
+    #[test]
+    fn text_classifier_cache_tracks_rule_lifecycle() {
+        let mut parser = InlineParser::new();
+        parser.add_migrated_rule::<DirectAtRule>();
+
+        // Compile cache before mutation.
+        assert_eq!(parser.text_length("a#b", 0, 3), 3);
+
+        parser.add_migrated_rule::<DirectHashRule>();
+        assert_eq!(parser.text_length("a#b", 0, 3), 1);
+
+        parser.remove_rule::<DirectHashRule>();
+        assert_eq!(parser.text_length("a#b", 0, 3), 3);
+    }
+
+    #[test]
+    fn text_classifier_handles_empty_marker_set() {
+        let parser = InlineParser::new();
+        let source = "a[*]雪";
+        assert_eq!(parser.text_length(source, 0, source.len()), source.len());
+        assert_eq!(parser.text_length("", 0, 0), 0);
+    }
+
+    #[test]
+    fn text_classifier_switches_between_ascii_and_unicode() {
+        let mut parser = InlineParser::new();
+        parser.add_legacy_rule::<AtRule>();
+        let source = "é雪@z";
+        assert_eq!(parser.text_length(source, 0, source.len()), 5);
+
+        parser.add_legacy_rule::<SnowRule>();
+        assert_eq!(parser.text_length(source, 0, source.len()), 2);
+        assert_eq!(parser.text_length(source, 2, source.len()), 0);
+        assert_eq!(parser.text_length("é@雪", 0, "é@雪".len()), 2);
+
+        parser.remove_legacy_rule::<SnowRule>();
+        assert_eq!(parser.text_length(source, 0, source.len()), 5);
+        assert_eq!(parser.text_length(source, 2, 5), 3);
     }
 }

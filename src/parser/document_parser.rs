@@ -328,10 +328,6 @@ impl<'a> DocumentInlineState<'a> {
         }
     }
 
-    pub(crate) fn is_rule_marker(&self, marker: char) -> bool {
-        self.md.inline.is_document_marker(marker)
-    }
-
     pub(crate) fn trailing_text(&self) -> &str {
         self.pending_text
             .map_or("", |(start, end)| &self.src[start..end])
