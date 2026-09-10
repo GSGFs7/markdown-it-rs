@@ -379,14 +379,21 @@ impl<'a> DocumentInlineState<'a> {
                 self.nodes.push(text);
             }
         } else {
-            self.flush_text();
-
-            for index in 0..self.ruleset.finalizers.len() {
-                let finalize = self.ruleset.finalizers[index];
-                finalize(&mut self);
-            }
+            self.finish_nodes();
         }
         self.nodes
+    }
+
+    fn finish_nodes(&mut self) {
+        let needs_finalization = !self.nodes().is_empty();
+        self.flush_text();
+
+        if needs_finalization {
+            for index in 0..self.ruleset.finalizers.len() {
+                let finalize = self.ruleset.finalizers[index];
+                finalize(self);
+            }
+        }
     }
 
     fn source_pos(&self, pos: usize) -> usize {
@@ -403,5 +410,64 @@ impl<'a> DocumentInlineState<'a> {
 
     pub(crate) fn scan_delims(&self, start: usize, can_split_word: bool) -> DelimiterRun {
         scan_delimiter_run(self.md, &self.src, start, self.pos_max, can_split_word)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Default)]
+    struct FinalizerCalls(usize);
+
+    fn count_finalizer(state: &mut DocumentInlineState<'_>) {
+        assert!(state.pending_text.is_none());
+        state.inline_ext.get_or_insert_default::<FinalizerCalls>().0 += 1;
+    }
+
+    #[test]
+    fn finishing_nodes_preserves_source_and_byte_mapping() {
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            finalizers: vec![count_finalizer],
+        };
+        let mut state = DocumentInlineState {
+            src: "前x雪尾".to_owned(),
+            pos: 7,
+            pos_max: 7,
+            md: &md,
+            mapping: vec![(0, 10)],
+            inline_ext: InlineRootExtSet::new(),
+            link_level: 1,
+            ruleset: &ruleset,
+            nodes: vec![NodeDraft::new(Text {
+                content: "x".to_owned(),
+            })],
+            pending_text: Some((4, 7)),
+        };
+
+        state.finish_nodes();
+
+        assert_eq!(state.src, "前x雪尾");
+        assert_eq!(state.mapping, vec![(0, 10)]);
+        assert_eq!((state.pos, state.pos_max, state.link_level), (7, 7, 1));
+        assert_eq!(state.nodes.len(), 2);
+        assert_eq!(state.nodes[1].cast::<Text>().unwrap().content, "雪");
+        assert_eq!(state.nodes[1].srcmap(), Some(SourcePos::new(14, 17)));
+        assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 1);
+    }
+
+    #[test]
+    fn top_level_plain_text_still_skips_finalizers() {
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            finalizers: vec![|_| panic!("plain pending text must skip finalizers")],
+        };
+        let nodes = DocumentInlineState::parse(" plain ".to_owned(), vec![(0, 0)], &md, &ruleset);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].cast::<Text>().unwrap().content, "plain");
+        assert_eq!(nodes[0].srcmap(), Some(SourcePos::new(1, 6)));
     }
 }

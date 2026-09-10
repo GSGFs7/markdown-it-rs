@@ -84,7 +84,7 @@ struct CharMappingMark {
     column: u32,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
 /// Positions of the start and the end of an AST node.
 pub struct SourcePos {
     byte_offset: (usize, usize),
