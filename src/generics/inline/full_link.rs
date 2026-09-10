@@ -17,8 +17,16 @@ use std::collections::HashMap;
 
 use crate::common::utils::unescape_all;
 use crate::parser::inline::{InlineState, LegacyInlineRule};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::Node;
 use crate::plugins::cmark::block::reference::ReferenceMap;
-use crate::{MarkdownIt, Node};
+
+#[derive(Debug)]
+struct InlineLinkTarget {
+    href: Option<String>,
+    title: Option<String>,
+    end: usize,
+}
 
 #[derive(Debug)]
 struct LinkCfg<const PREFIX: char>(fn(Option<String>, Option<String>) -> Node);
@@ -388,73 +396,24 @@ struct ParseLinkResult {
 fn parse_link(state: &mut InlineState, pos: usize, enable_nested: bool) -> Option<ParseLinkResult> {
     let label_end = parse_link_label(state, pos, enable_nested)?;
     let label_start = pos + 1;
-    let mut pos = label_end + 1;
-    let mut chars = state.src[pos..state.pos_max].chars();
-    let mut href = None;
-    let mut title = None;
 
-    if let Some('(') = chars.next() {
-        //
-        // Inline link
-        //
-
-        // [link](  <href>  "title"  )
-        //        ^^ skipping these spaces
-        pos += 1;
-        while let Some(' ' | '\t' | '\n') = chars.next() {
-            pos += 1;
-        }
-
-        // [link](  <href>  "title"  )
-        //          ^^^^^^ parsing link destination
-        if let Some(res) = parse_link_destination(&state.src, pos, state.pos_max) {
-            let href_candidate = state.md.link_formatter.normalize_link(&res.str);
-            if state
-                .md
-                .link_formatter
-                .validate_link(&href_candidate)
-                .is_some()
-            {
-                pos = res.pos;
-                href = Some(href_candidate);
-            }
-
-            // [link](  <href>  "title"  )
-            //                ^^ skipping these spaces
-            let mut chars = state.src[pos..state.pos_max].chars();
-            while let Some(' ' | '\t' | '\n') = chars.next() {
-                pos += 1;
-            }
-
-            if let Some(res) = parse_link_title(&state.src, pos, state.pos_max) {
-                title = Some(res.str);
-                pos = res.pos;
-
-                // [link](  <href>  "title"  )
-                //                         ^^ skipping these spaces
-                let mut chars = state.src[pos..state.pos_max].chars();
-                while let Some(' ' | '\t' | '\n') = chars.next() {
-                    pos += 1;
-                }
-            }
-        }
-
-        if let Some(')') = state.src[pos..state.pos_max].chars().next() {
-            return Some(ParseLinkResult {
-                label_start,
-                label_end,
-                href,
-                title,
-                end: pos + 1,
-            });
-        }
+    if let Some(target) =
+        parse_inline_link_target(state.md, &state.src, label_end + 1, state.pos_max)
+    {
+        return Some(ParseLinkResult {
+            label_start,
+            label_end,
+            href: target.href,
+            title: target.title,
+            end: target.end,
+        });
     }
 
     //
     // Link reference
     //
     // TODO: check if I have any references?
-    pos = label_end + 1;
+    let mut pos = label_end + 1;
     let mut maybe_label = None;
 
     match state.src[pos..state.pos_max].chars().next() {
@@ -488,4 +447,130 @@ fn parse_link(state: &mut InlineState, pos: usize, enable_nested: bool) -> Optio
         title: title.map(|s| s.to_owned()),
         end: pos,
     })
+}
+
+// [link](  <href>  "title"  )
+//        ^^ skipping these spaces
+fn skip_link_spaces(source: &str, mut pos: usize, max: usize) -> usize {
+    while pos < max && matches!(source.as_bytes()[pos], b' ' | b'\t' | b'\n') {
+        pos += 1;
+    }
+    pos
+}
+
+fn parse_inline_link_target(
+    md: &MarkdownIt,
+    source: &str,
+    start: usize,
+    max: usize,
+) -> Option<InlineLinkTarget> {
+    if !source[start..max].starts_with('(') {
+        return None;
+    }
+
+    let mut pos = skip_link_spaces(source, start + 1, max);
+    let mut href = None;
+    let mut title = None;
+
+    // [link](  <href>  "title"  )
+    //          ^^^^^^ parsing link destination
+    if let Some(result) = parse_link_destination(source, pos, max) {
+        let candidate = md.link_formatter.normalize_link(&result.str);
+        if md.link_formatter.validate_link(&candidate).is_some() {
+            pos = result.pos;
+            href = Some(candidate);
+        }
+
+        // [link](  <href>  "title"  )
+        //                ^^ skipping these spaces
+        pos = skip_link_spaces(source, pos, max);
+        if let Some(result) = parse_link_title(source, pos, max) {
+            title = Some(result.str);
+            // [link](  <href>  "title"  )
+            //                         ^^ skipping these spaces
+            pos = skip_link_spaces(source, result.pos, max);
+        }
+    }
+
+    if source[pos..max].starts_with(')') {
+        Some(InlineLinkTarget {
+            href,
+            title,
+            end: pos + 1,
+        })
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_target(source: &str) -> Option<InlineLinkTarget> {
+        let md = MarkdownIt::empty();
+        parse_inline_link_target(&md, source, 0, source.len())
+    }
+
+    #[test]
+    fn parses_empty_destination() {
+        let source = "()";
+        let target = parse_target(source).unwrap();
+        assert_eq!(target.href.as_deref(), Some(""));
+        assert_eq!(target.title, None);
+        assert_eq!(target.end, source.len());
+    }
+
+    #[test]
+    fn parses_angle_destination_and_single_quoted_title() {
+        let source = "(<a> 't')";
+        let target = parse_target(source).unwrap();
+        assert_eq!(target.href.as_deref(), Some("a"));
+        assert_eq!(target.title.as_deref(), Some("t"));
+        assert_eq!(target.end, source.len());
+    }
+
+    #[test]
+    fn parses_escaped_parentheses_in_destination() {
+        let source = r"(foo\)bar)";
+        let target = parse_target(source).unwrap();
+        assert_eq!(target.href.as_deref(), Some("foo)bar"));
+        assert_eq!(target.end, source.len());
+
+        let source = r"(foo\(bar)";
+        let target = parse_target(source).unwrap();
+        assert_eq!(target.href.as_deref(), Some("foo(bar"));
+        assert_eq!(target.end, source.len());
+    }
+
+    #[test]
+    fn rejects_unclosed_destination() {
+        assert!(parse_target("(/url").is_none());
+        assert!(parse_target("(<a").is_none());
+    }
+
+    #[test]
+    fn rejects_unclosed_title() {
+        assert!(parse_target(r#"(/url "title)"#).is_none());
+        assert!(parse_target("(/url 'title)").is_none());
+    }
+
+    #[test]
+    fn rejects_javascript_protocol() {
+        assert!(parse_target("(javascript:alert(1))").is_none());
+        assert!(parse_target("(JAVASCRIPT:alert(1))").is_none());
+    }
+
+    #[test]
+    fn inline_target_respects_byte_range() {
+        let md = MarkdownIt::empty();
+        let source = "雪(/url \"title\")雨";
+        let start = "雪".len();
+        let max = source.len() - "雨".len();
+        let target = parse_inline_link_target(&md, source, start, max).unwrap();
+        assert_eq!(target.href.as_deref(), Some("/url"));
+        assert_eq!(target.title.as_deref(), Some("title"));
+        assert_eq!(target.end, max);
+        assert!(parse_inline_link_target(&md, source, start, max - 1).is_none());
+    }
 }
