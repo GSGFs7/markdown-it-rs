@@ -1,6 +1,8 @@
 //! Transitional direct-to-arena parser support.
 
+use std::borrow::Cow;
 use std::fmt;
+use std::ops::Range;
 use std::sync::Arc;
 
 use crate::common::sourcemap::SourcePos;
@@ -238,11 +240,12 @@ impl<'a> DocumentBlockState<'a> {
 }
 
 pub struct DocumentInlineState<'a> {
-    pub(crate) src: String,
+    pub(crate) src: Cow<'a, str>,
     pub(crate) pos: usize,
     pub(crate) pos_max: usize,
     md: &'a MarkdownIt,
-    mapping: Vec<(usize, usize)>,
+    mapping: Cow<'a, [(usize, usize)]>,
+    depth: u32,
     pub(crate) inline_ext: InlineRootExtSet,
     pub(crate) link_level: i32,
     ruleset: &'a DocumentRuleSet,
@@ -278,9 +281,10 @@ impl<'a> DocumentInlineState<'a> {
         let mut state = Self {
             pos: 0,
             pos_max: src.len(),
-            src,
+            src: Cow::Owned(src),
             md,
-            mapping,
+            mapping: Cow::Owned(mapping),
+            depth: 0,
             inline_ext: InlineRootExtSet::new(),
             link_level: 0,
             ruleset,
@@ -290,6 +294,36 @@ impl<'a> DocumentInlineState<'a> {
         state.trim();
         state.tokenize();
         state.finish()
+    }
+
+    /// Parse a byte range relative to `remaining()` as independent children.
+    ///
+    /// Preserves whitespace and original source coordinates. Returns `None` for
+    /// reversed, out-of-bounds, or non-UTF-8-boundary ranges. An empty valid range
+    /// returns an empty vector. Parent state is unchanged. At the nesting limit,
+    /// the child range is emitted as literal text without running rules.
+    pub fn parse_subrange(&self, range: Range<usize>) -> Option<Vec<NodeDraft>> {
+        self.remaining().get(range.clone())?;
+        let start = self.pos + range.start;
+        let end = self.pos + range.end;
+        let mut child = DocumentInlineState {
+            src: Cow::Borrowed(self.src.as_ref()),
+            pos: start,
+            pos_max: end,
+            md: self.md,
+            mapping: Cow::Borrowed(self.mapping.as_ref()),
+            depth: self.depth.saturating_add(1),
+            inline_ext: InlineRootExtSet::new(),
+            link_level: self.link_level,
+            ruleset: self.ruleset,
+            nodes: Vec::new(),
+            pending_text: None,
+        };
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+            child.tokenize();
+            child.finish_nodes();
+        });
+        Some(child.nodes)
     }
 
     fn trim(&mut self) {
@@ -303,6 +337,14 @@ impl<'a> DocumentInlineState<'a> {
     }
 
     fn tokenize(&mut self) {
+        if self.depth >= self.md.max_nesting {
+            if self.pos < self.pos_max {
+                self.push_text(self.pos, self.pos_max);
+                self.pos = self.pos_max;
+            }
+            return;
+        }
+
         while self.pos < self.pos_max {
             let mut matched = None;
             for rule in &self.ruleset.runs {
@@ -370,11 +412,14 @@ impl<'a> DocumentInlineState<'a> {
         if self.nodes.is_empty() {
             if let Some((start, end)) = self.pending_text.take() {
                 let srcmap = self.get_map(start, end);
-                self.src.truncate(end);
+                let mut content = self.src.into_owned();
+                content.truncate(end);
+
                 if start != 0 {
-                    self.src.drain(..start);
+                    content.drain(..start);
                 }
-                let mut text = NodeDraft::new(Text { content: self.src });
+
+                let mut text = NodeDraft::new(Text { content });
                 text.set_srcmap(srcmap);
                 self.nodes.push(text);
             }
@@ -425,6 +470,29 @@ mod tests {
         state.inline_ext.get_or_insert_default::<FinalizerCalls>().0 += 1;
     }
 
+    fn parent_state<'a>(
+        md: &'a MarkdownIt,
+        ruleset: &'a DocumentRuleSet,
+    ) -> DocumentInlineState<'a> {
+        let mut inline_ext = InlineRootExtSet::new();
+        inline_ext.insert(FinalizerCalls(41));
+        DocumentInlineState {
+            src: Cow::Owned("前{ 雪\n次 }尾".to_owned()),
+            pos: 3,
+            pos_max: 14,
+            md,
+            mapping: Cow::Owned(vec![(0, 10), (9, 30)]),
+            depth: 0,
+            inline_ext,
+            link_level: 2,
+            ruleset,
+            nodes: vec![NodeDraft::new(Text {
+                content: "sentinel".into(),
+            })],
+            pending_text: Some((0, 3)),
+        }
+    }
+
     #[test]
     fn finishing_nodes_preserves_source_and_byte_mapping() {
         let md = MarkdownIt::empty();
@@ -433,11 +501,12 @@ mod tests {
             finalizers: vec![count_finalizer],
         };
         let mut state = DocumentInlineState {
-            src: "前x雪尾".to_owned(),
+            src: Cow::Owned("前x雪尾".to_owned()),
             pos: 7,
             pos_max: 7,
             md: &md,
-            mapping: vec![(0, 10)],
+            mapping: Cow::Owned(vec![(0, 10)]),
+            depth: 0,
             inline_ext: InlineRootExtSet::new(),
             link_level: 1,
             ruleset: &ruleset,
@@ -450,7 +519,7 @@ mod tests {
         state.finish_nodes();
 
         assert_eq!(state.src, "前x雪尾");
-        assert_eq!(state.mapping, vec![(0, 10)]);
+        assert_eq!(state.mapping.as_ref(), &[(0, 10)]);
         assert_eq!((state.pos, state.pos_max, state.link_level), (7, 7, 1));
         assert_eq!(state.nodes.len(), 2);
         assert_eq!(state.nodes[1].cast::<Text>().unwrap().content, "雪");
@@ -469,5 +538,96 @@ mod tests {
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].cast::<Text>().unwrap().content, "plain");
         assert_eq!(nodes[0].srcmap(), Some(SourcePos::new(1, 6)));
+    }
+
+    #[test]
+    fn subrange_preserves_parent_whitespace_and_multiline_mapping() {
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            finalizers: vec![count_finalizer],
+        };
+        let state = parent_state(&md, &ruleset);
+        let nodes = state.parse_subrange(1..10).unwrap();
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].cast::<Text>().unwrap().content, " 雪\n次 ");
+        assert_eq!(nodes[0].srcmap(), Some(SourcePos::new(14, 34)));
+        assert_eq!(state.src, "前{ 雪\n次 }尾");
+        assert_eq!(state.mapping.as_ref(), &[(0, 10), (9, 30)]);
+        assert_eq!(
+            (state.pos, state.pos_max, state.depth, state.link_level),
+            (3, 14, 0, 2)
+        );
+        assert_eq!(state.pending_text, Some((0, 3)));
+        assert_eq!(state.nodes.len(), 1);
+        assert_eq!(state.nodes[0].cast::<Text>().unwrap().content, "sentinel");
+        assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 41);
+    }
+
+    #[test]
+    fn subrange_validates_ranges_and_empty_output() {
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            finalizers: vec![|_| panic!("empty/plain range")],
+        };
+        let state = parent_state(&md, &ruleset);
+        for range in [0..0, 11..11] {
+            assert!(state.parse_subrange(range).unwrap().is_empty());
+        }
+        let reversed = Range { start: 2, end: 1 };
+        for range in [reversed, 0..12, 0..usize::MAX, 3..4, 3..3] {
+            assert!(state.parse_subrange(range).is_none());
+        }
+        assert_eq!(state.pending_text, Some((0, 3)));
+        assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 41);
+    }
+
+    #[test]
+    fn child_finalizer_sees_only_child_nodes_and_scratch() {
+        fn emit(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            assert_eq!(state.depth, 1);
+            assert_eq!(state.link_level, 2);
+            assert!(state.inline_ext.get::<FinalizerCalls>().is_none());
+            state.inline_ext.insert(FinalizerCalls(0));
+            let content = state.remaining().to_owned();
+            Some((
+                Some(NodeDraft::new(Text { content })),
+                state.remaining().len(),
+            ))
+        }
+        fn finalize(state: &mut DocumentInlineState<'_>) {
+            assert!(state.pending_text.is_none());
+            assert_eq!(state.nodes.len(), 1);
+            assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 0);
+            state.inline_ext.get_mut::<FinalizerCalls>().unwrap().0 += 1;
+            state.nodes[0].cast_mut::<Text>().unwrap().content.push('!');
+            state.link_level = 99;
+        }
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![emit],
+            finalizers: vec![finalize],
+        };
+        let state = parent_state(&md, &ruleset);
+        for _ in 0..2 {
+            let nodes = state.parse_subrange(1..10).unwrap();
+            assert_eq!(nodes[0].cast::<Text>().unwrap().content, " 雪\n次 !");
+        }
+        assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 41);
+        assert_eq!(state.link_level, 2);
+    }
+
+    #[test]
+    fn subrange_at_nesting_limit_emits_literal_text() {
+        let mut md = MarkdownIt::empty();
+        md.max_nesting = 1;
+        let ruleset = DocumentRuleSet {
+            runs: vec![|_| panic!("nesting limit must skip rules")],
+            finalizers: vec![|_| panic!("literal text must skip finalizers")],
+        };
+        let state = parent_state(&md, &ruleset);
+        let nodes = state.parse_subrange(0..11).unwrap();
+        assert_eq!(nodes[0].cast::<Text>().unwrap().content, "{ 雪\n次 }");
     }
 }
