@@ -44,7 +44,15 @@
 //!
 use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, Text};
+use crate::parser::inline::{
+    InlineProbeContext,
+    InlineProbeKind,
+    InlineProbeResult,
+    InlineRule,
+    InlineState,
+    LegacyInlineRule,
+    Text,
+};
 use crate::{MarkdownIt, Node};
 
 #[derive(Debug, Default, Clone)]
@@ -69,6 +77,20 @@ pub struct CodePairScanner<const MARKER: char>;
 impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
     const MARKER: char = MARKER;
     const NAMES: &'static [&'static str] = &["code_pair"];
+
+    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        let follows_marker = context.trailing_text().ends_with(MARKER);
+        let matched = context.with_scratch(|src, start, end, scratch| {
+            scan_code_pair_bounds::<MARKER>(src, start, end, follows_marker, scratch)
+        });
+        match matched {
+            Some(matched) => InlineProbeResult::Match {
+                len: matched.consumed,
+                kind: InlineProbeKind::Token,
+            },
+            None => InlineProbeResult::NoMatch,
+        }
+    }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         let matched = scan_code_pair::<MARKER>(
@@ -128,6 +150,13 @@ impl<const MARKER: char> LegacyInlineRule for CodePairScanner<MARKER> {
     }
 }
 
+struct CodePairBounds {
+    marker_len: usize,
+    consumed: usize,
+    content_start: usize,
+    content_end: usize,
+}
+
 struct CodePairMatch {
     marker_len: usize,
     consumed: usize,
@@ -143,6 +172,33 @@ fn scan_code_pair<const MARKER: char>(
     follows_marker: bool,
     inline_ext: &mut crate::parser::extset::InlineRootExtSet,
 ) -> Option<CodePairMatch> {
+    let bounds = scan_code_pair_bounds::<MARKER>(src, start, end, follows_marker, inline_ext)?;
+
+    let mut mapped_start = bounds.content_start;
+    let mut mapped_end = bounds.content_end;
+    let mut content = src[bounds.content_start..bounds.content_end].replace('\n', " ");
+    if content.starts_with(' ') && content.ends_with(' ') && content.chars().any(|ch| ch != ' ') {
+        content = content[1..content.len() - 1].to_owned();
+        mapped_start += 1;
+        mapped_end -= 1;
+    }
+
+    Some(CodePairMatch {
+        marker_len: bounds.marker_len,
+        consumed: bounds.consumed,
+        content_start: mapped_start,
+        content_end: mapped_end,
+        content,
+    })
+}
+
+fn scan_code_pair_bounds<const MARKER: char>(
+    src: &str,
+    start: usize,
+    end: usize,
+    follows_marker: bool,
+    inline_ext: &mut crate::parser::extset::InlineRootExtSet,
+) -> Option<CodePairBounds> {
     let marker_width = MARKER.len_utf8();
     if !src[start..end].starts_with(MARKER) || follows_marker {
         return None;
@@ -171,23 +227,11 @@ fn scan_code_pair<const MARKER: char>(
         }
 
         if closer_len == marker_len {
-            let mut mapped_start = content_start;
-            let mut mapped_end = closer_start;
-            let mut content = src[content_start..closer_start].replace('\n', " ");
-            if content.starts_with(' ')
-                && content.ends_with(' ')
-                && content.chars().any(|ch| ch != ' ')
-            {
-                content = content[1..content.len() - 1].to_owned();
-                mapped_start += 1;
-                mapped_end -= 1;
-            }
-            return Some(CodePairMatch {
+            return Some(CodePairBounds {
                 marker_len,
                 consumed: closer_end - start,
-                content_start: mapped_start,
-                content_end: mapped_end,
-                content,
+                content_start,
+                content_end: closer_start,
             });
         }
 
@@ -204,4 +248,75 @@ fn scan_code_pair<const MARKER: char>(
         .unwrap()
         .scanned = true;
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::extset::InlineRootExtSet;
+
+    #[test]
+    fn bounds_scan_unicode_markers_without_building_content() {
+        let source = "雪 content 雪";
+        let mut scratch = InlineRootExtSet::new();
+        let matched =
+            scan_code_pair_bounds::<'雪'>(source, 0, source.len(), false, &mut scratch).unwrap();
+
+        assert_eq!(matched.marker_len, 1);
+        assert_eq!(matched.consumed, source.len());
+        assert_eq!(matched.content_start, '雪'.len_utf8());
+        assert_eq!(matched.content_end, source.len() - '雪'.len_utf8());
+    }
+
+    #[test]
+    fn bounds_reject_continuation_and_unclosed_runs() {
+        let mut scratch = InlineRootExtSet::new();
+        assert!(
+            scan_code_pair_bounds::<'雪'>("x雪", 0, "x雪".len(), false, &mut scratch).is_none()
+        );
+
+        let source = "`x``";
+        let mut scratch = InlineRootExtSet::new();
+        assert!(
+            scan_code_pair_bounds::<'`'>(source, 0, source.len(), false, &mut scratch).is_none()
+        );
+        // The unclosed two-marker closer was cached; the marker run at its
+        // start must not be reused as a shorter opener.
+        assert!(
+            scan_code_pair_bounds::<'`'>(source, 2, source.len(), false, &mut scratch).is_none()
+        );
+        // A following marker run is rejected outright.
+        assert!(
+            scan_code_pair_bounds::<'`'>(source, 3, source.len(), true, &mut scratch).is_none()
+        );
+    }
+}
+
+#[cfg(test)]
+mod adapter_tests {
+    use super::*;
+    use crate::parser::extset::InlineRootExtSet;
+
+    #[test]
+    fn adapter_keeps_trimmed_source_map_boundaries() {
+        let source = "` hi `";
+        let mut scratch = InlineRootExtSet::new();
+        let matched = scan_code_pair::<'`'>(source, 0, source.len(), false, &mut scratch).unwrap();
+
+        assert_eq!(matched.content, "hi");
+        assert_eq!(matched.content_start, 2);
+        assert_eq!(matched.content_end, 4);
+        assert_eq!(matched.consumed, source.len());
+    }
+
+    #[test]
+    fn adapter_replaces_newlines_in_content() {
+        let source = "`a\nb`";
+        let mut scratch = InlineRootExtSet::new();
+        let matched = scan_code_pair::<'`'>(source, 0, source.len(), false, &mut scratch).unwrap();
+
+        assert_eq!(matched.content, "a b");
+        assert_eq!(matched.content_start, 1);
+        assert_eq!(matched.content_end, 4);
+    }
 }

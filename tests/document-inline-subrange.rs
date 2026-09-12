@@ -1,4 +1,10 @@
-use markdown_it::parser::inline::InlineRule;
+use markdown_it::parser::inline::{
+    InlineProbeContext,
+    InlineProbeKind,
+    InlineProbeResult,
+    InlineRule,
+    Text,
+};
 use markdown_it::{DocumentInlineState, MarkdownIt, NodeDraft, NodeValue};
 
 #[derive(Debug)]
@@ -91,4 +97,168 @@ fn nesting_limit_stops_recursive_container_rules() {
         document.into_legacy().render(),
         "<p>{ {*x*} <em>y</em> }</p>\n"
     );
+}
+
+struct ProbeSummaryRule;
+impl InlineRule for ProbeSummaryRule {
+    const MARKER: char = '{';
+
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        let source = state.remaining();
+        if !source.starts_with('{') {
+            return None;
+        }
+        let close = source.find('}')?;
+        let mut context = state.probe_subrange(1..close)?;
+        let mut summary = String::new();
+        loop {
+            match context.next_token() {
+                Ok(Some(token)) => {
+                    let kind = match token.kind {
+                        InlineProbeKind::Text => "text",
+                        InlineProbeKind::Token => "token",
+                    };
+                    summary.push_str(&format!(
+                        "{}..{}={kind};",
+                        token.range.start, token.range.end
+                    ));
+                }
+                Ok(None) => break,
+                Err(error) => {
+                    summary.push_str(&format!("error({error});"));
+                    break;
+                }
+            }
+        }
+        Some((Some(NodeDraft::new(Text { content: summary })), close + 1))
+    }
+}
+
+struct PanicProbeRule;
+impl InlineRule for PanicProbeRule {
+    const MARKER: char = 'x';
+
+    fn probe(_: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        panic!("normal direct parsing must not call probe")
+    }
+
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        if !state.remaining().starts_with('x') {
+            return None;
+        }
+        Some((
+            Some(NodeDraft::new(Text {
+                content: "X".to_owned(),
+            })),
+            1,
+        ))
+    }
+}
+
+struct NoProbeRule;
+impl InlineRule for NoProbeRule {
+    const MARKER: char = 'y';
+
+    fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        None
+    }
+}
+
+fn probe_parser() -> MarkdownIt {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::inline::escape::add(&mut md);
+    markdown_it::plugins::cmark::inline::backticks::add(&mut md);
+    md.inline.add_rule::<ProbeSummaryRule>();
+    md
+}
+
+#[test]
+fn custom_rule_can_probe_ranges_through_public_interface() {
+    let md = probe_parser();
+    for (source, expected) in [
+        ("{ab}", "<p>0..2=text;</p>\n"),
+        ("{\\]x}", "<p>0..2=token;2..3=text;</p>\n"),
+        ("{a\\]b}", "<p>0..1=text;1..3=token;3..4=text;</p>\n"),
+        ("{a\\\nb}", "<p>0..1=text;1..3=token;3..4=text;</p>\n"),
+        ("{\\雪}", "<p>0..4=token;</p>\n"),
+        ("{\\ x}", "<p>0..1=text;1..3=text;</p>\n"),
+        ("{a\\}", "<p>0..1=text;1..2=text;</p>\n"),
+        ("{`x`}", "<p>0..3=token;</p>\n"),
+        (
+            "{```x``}",
+            "<p>0..1=text;1..2=text;2..3=text;3..4=text;4..5=text;5..6=text;</p>\n",
+        ),
+    ] {
+        let document = md.parse_document_direct(source).unwrap();
+        assert_eq!(document.into_legacy().render(), expected, "{source}");
+    }
+}
+
+#[test]
+fn normal_direct_parsing_never_calls_probe() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    md.inline.add_rule::<PanicProbeRule>();
+
+    let document = md.parse_document_direct("x").unwrap();
+    assert_eq!(document.into_legacy().render(), "<p>X</p>\n");
+}
+
+#[test]
+fn probing_reports_unsupported_rules_only_for_matching_markers() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    md.inline.add_rule::<ProbeSummaryRule>();
+    md.inline.add_rule::<NoProbeRule>();
+
+    let html = md
+        .parse_document_direct("{y}")
+        .unwrap()
+        .into_legacy()
+        .render();
+    assert!(
+        html.contains("does not support probing marker 'y'"),
+        "{html}"
+    );
+
+    let html = md
+        .parse_document_direct("{x}")
+        .unwrap()
+        .into_legacy()
+        .render();
+    assert_eq!(html, "<p>0..1=text;</p>\n");
+}
+
+#[test]
+fn probe_does_not_call_code_pair_factory() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use markdown_it::generics::inline::code_pair;
+
+    static CALLS: AtomicUsize = AtomicUsize::new(0);
+
+    fn factory(_: usize) -> NodeDraft {
+        CALLS.fetch_add(1, Ordering::SeqCst);
+        NodeDraft::new(Text {
+            content: "pair".to_owned(),
+        })
+    }
+
+    CALLS.store(0, Ordering::SeqCst);
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    code_pair::add_with::<'$'>(&mut md, factory);
+    md.inline.add_rule::<ProbeSummaryRule>();
+
+    let html = md
+        .parse_document_direct("{$x$}")
+        .unwrap()
+        .into_legacy()
+        .render();
+    assert_eq!(html, "<p>0..3=token;</p>\n");
+    assert_eq!(CALLS.load(Ordering::SeqCst), 0);
+
+    md.parse_document_direct("$x$").unwrap();
+    assert_eq!(CALLS.load(Ordering::SeqCst), 1);
 }

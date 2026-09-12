@@ -1,5 +1,6 @@
 use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
+use crate::parser::inline::probe::{InlineProbeContext, InlineProbeResult};
 use crate::parser::node::Node;
 
 pub(crate) type DocumentFinalizeFn =
@@ -14,6 +15,20 @@ pub trait InlineRule: 'static {
     /// matches this marker.
     const MARKER: char;
     const NAMES: &'static [&'static str] = &[];
+
+    /// Classify the current position during an independent probe.
+    ///
+    /// The default returns [`InlineProbeResult::Unsupported`], which makes the
+    /// probe session fail when this rule is the first candidate for the current
+    /// position. `NoMatch` lets probing continue with lower-priority rules.
+    ///
+    /// Callbacks only inspect the current position and must not advance the
+    /// cursor; the probe engine consumes the reported length after
+    /// [`InlineProbeResult::Match`]. Rule-private caches can be kept in
+    /// [`InlineProbeContext::scratch_mut`].
+    fn probe(_context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        InlineProbeResult::Unsupported
+    }
 
     /// Inspect the current position and return a draft plus consumed byte length.
     ///

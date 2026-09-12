@@ -49,6 +49,13 @@ pub use parser::document_transform::{
     DocumentTransformRegistry,
     TransformRuleBuilder,
 };
+pub use parser::inline::{
+    InlineProbeContext,
+    InlineProbeError,
+    InlineProbeKind,
+    InlineProbeResult,
+    InlineProbeToken,
+};
 pub use parser::main::MarkdownIt;
 pub use parser::node::{HtmlAttribute, HtmlAttributes, Node, NodeValue};
 pub use parser::render_options::RenderOptions;

@@ -2,6 +2,7 @@
 
 #[doc(hidden)]
 pub mod builtin;
+mod probe;
 mod rule;
 mod state;
 
@@ -21,6 +22,13 @@ use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::parser::extset::{InlineRootExtSet, RootExtSet};
 use crate::parser::inline::builtin::skip_text::TextScannerImpl;
+pub use crate::parser::inline::probe::{
+    InlineProbeContext,
+    InlineProbeError,
+    InlineProbeKind,
+    InlineProbeResult,
+    InlineProbeToken,
+};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeEmpty};
 
@@ -28,21 +36,48 @@ type RuleFns = (
     fn(&mut InlineState) -> Option<usize>,
     fn(&mut InlineState) -> Option<(Node, usize)>,
 );
+
+pub(crate) type DocumentProbeFn = fn(&mut InlineProbeContext<'_>) -> InlineProbeResult;
+
 pub(crate) type DocumentRuleFn = fn(
     &mut crate::parser::document_parser::DocumentInlineState<'_>,
 ) -> Option<(Option<crate::NodeDraft>, usize)>;
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct DocumentRuleFns {
+    pub(crate) run: DocumentRuleFn,
+    pub(crate) probe: DocumentProbeFn,
+    pub(crate) marker: char,
+}
+
+impl DocumentRuleFns {
+    /// Whether this rule can be considered for the given current character.
+    #[inline]
+    pub(crate) fn matches_marker(self, ch: char) -> bool {
+        self.marker == '\0' || self.marker == ch
+    }
+}
+
+fn document_rule_fns<T: InlineRule>() -> DocumentRuleFns {
+    DocumentRuleFns {
+        run: T::run,
+        probe: T::probe,
+        marker: T::MARKER,
+    }
+}
 
 #[derive(Clone, Copy)]
 #[doc(hidden)]
 pub struct RuleEntry {
     legacy: Option<RuleFns>,
     legacy_finalize: Option<LegacyInlineFinalizeFn>,
-    document: Option<DocumentRuleFn>,
+    document: Option<DocumentRuleFns>,
     document_finalize: Option<DocumentFinalizeFn>,
 }
 
 pub(crate) struct DocumentRuleSet {
     pub(crate) runs: Vec<DocumentRuleFn>,
+    pub(crate) probes: Vec<DocumentRuleFns>,
     pub(crate) finalizers: Vec<DocumentFinalizeFn>,
 }
 
@@ -123,14 +158,15 @@ impl InlineParser {
     }
 
     pub(crate) fn document_rules(&self) -> Option<DocumentRuleSet> {
-        let runs = self
+        let entries = self
             .ruler
             .iter()
             .map(|entry| entry.document)
             .collect::<Option<Vec<_>>>()?;
 
         Some(DocumentRuleSet {
-            runs,
+            runs: entries.iter().map(|entry| entry.run).collect(),
+            probes: entries,
             finalizers: self.document_finalizers(),
         })
     }
@@ -270,7 +306,7 @@ impl InlineParser {
         names: &'static [&'static str],
         legacy: Option<RuleFns>,
         legacy_finalize: Option<LegacyInlineFinalizeFn>,
-        document: Option<DocumentRuleFn>,
+        document: Option<DocumentRuleFns>,
         document_finalize: Option<DocumentFinalizeFn>,
     ) -> &mut crate::common::ruler::RuleItem<RuleMark, RuleEntry> {
         self.dispatch = OnceLock::new();
@@ -306,7 +342,7 @@ impl InlineParser {
             T::NAMES,
             None,
             None,
-            Some(<T as InlineRule>::run),
+            Some(document_rule_fns::<T>()),
             None,
         );
         RuleBuilder::new(item)
@@ -336,7 +372,7 @@ impl InlineParser {
             <T as InlineRule>::NAMES,
             Some((<T as LegacyInlineRule>::check, <T as LegacyInlineRule>::run)),
             None,
-            Some(<T as InlineRule>::run),
+            Some(document_rule_fns::<T>()),
             None,
         );
         RuleBuilder::new(item)
@@ -369,7 +405,7 @@ impl InlineParser {
             <T as InlineRule>::NAMES,
             Some((<T as LegacyInlineRule>::check, <T as LegacyInlineRule>::run)),
             Some(legacy_finalize),
-            Some(<T as InlineRule>::run),
+            Some(document_rule_fns::<T>()),
             Some(document_finalize),
         );
         RuleBuilder::new(item)
@@ -451,6 +487,7 @@ mod tests {
     struct WildcardRule;
     struct DirectAtRule;
     struct DirectHashRule;
+    struct DirectWildcardRule;
 
     macro_rules! empty_rule {
         ($rule:ty, $marker:expr) => {
@@ -470,6 +507,7 @@ mod tests {
     empty_rule!(WildcardRule, '\0');
     empty_rule!(DirectAtRule, '@');
     empty_rule!(DirectHashRule, '#');
+    empty_rule!(DirectWildcardRule, '\0');
 
     impl InlineRule for DirectAtRule {
         const MARKER: char = '@';
@@ -483,6 +521,16 @@ mod tests {
 
     impl InlineRule for DirectHashRule {
         const MARKER: char = '#';
+
+        fn run(
+            _: &mut crate::parser::document_parser::DocumentInlineState<'_>,
+        ) -> Option<(Option<crate::NodeDraft>, usize)> {
+            None
+        }
+    }
+
+    impl InlineRule for DirectWildcardRule {
+        const MARKER: char = '\0';
 
         fn run(
             _: &mut crate::parser::document_parser::DocumentInlineState<'_>,
@@ -560,6 +608,7 @@ mod tests {
         parser
             .add_migrated_rule::<DirectHashRule>()
             .before::<DirectAtRule>();
+        parser.add_migrated_rule::<DirectWildcardRule>();
 
         let rules = parser.document_rules().unwrap();
         assert_eq!(
@@ -570,14 +619,27 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 document_id::<DirectHashRule>(),
-                document_id::<DirectAtRule>()
+                document_id::<DirectAtRule>(),
+                document_id::<DirectWildcardRule>()
+            ]
+        );
+        assert_eq!(
+            rules
+                .probes
+                .iter()
+                .map(|rule| rule.run as usize)
+                .collect::<Vec<_>>(),
+            vec![
+                document_id::<DirectHashRule>(),
+                document_id::<DirectAtRule>(),
+                document_id::<DirectWildcardRule>()
             ]
         );
 
         parser.add_legacy_rule::<SnowRule>();
         assert!(parser.document_rules().is_none());
         parser.remove_legacy_rule::<SnowRule>();
-        assert_eq!(parser.document_rules().unwrap().runs.len(), 2);
+        assert_eq!(parser.document_rules().unwrap().runs.len(), 3);
     }
 
     fn shared_legacy_finalize(_: &mut InlineState<'_, '_>) {}
@@ -600,6 +662,7 @@ mod tests {
 
         let rules = parser.document_rules().unwrap();
         assert_eq!(rules.runs.len(), 2);
+        assert_eq!(rules.probes.len(), 2);
 
         assert_eq!(
             rules

@@ -5,7 +5,14 @@ use regex::{self, Regex};
 
 use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
+use crate::parser::inline::{
+    InlineProbeContext,
+    InlineProbeKind,
+    InlineProbeResult,
+    InlineRule,
+    InlineState,
+    LegacyInlineRule,
+};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
@@ -112,6 +119,20 @@ impl TextScanner {
 impl InlineRule for TextScanner {
     const MARKER: char = '\0';
     const NAMES: &'static [&'static str] = &["text"];
+
+    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        let md = context.markdown_it();
+        let source = context.remaining();
+        let len = md.inline.text_length(source, 0, source.len());
+        if len == 0 {
+            InlineProbeResult::NoMatch
+        } else {
+            InlineProbeResult::Match {
+                len,
+                kind: InlineProbeKind::Text,
+            }
+        }
+    }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         let len = state
