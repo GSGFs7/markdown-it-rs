@@ -13,6 +13,13 @@ pub enum InlineProbeKind {
     Token,
 }
 
+/// Semantic changes applied only after a probe match is validated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InlineProbeEffects {
+    /// Signed change to this session's link nesting level.
+    pub link_level_delta: i32,
+}
+
 /// Result reported by one inline rule for the current probe position.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InlineProbeResult {
@@ -22,6 +29,12 @@ pub enum InlineProbeResult {
     NoMatch,
     /// The rule claims the span starting at this position.
     Match { len: usize, kind: InlineProbeKind },
+    /// The rule claims the span and reports semantic effects.
+    MatchWithEffects {
+        len: usize,
+        kind: InlineProbeKind,
+        effects: InlineProbeEffects,
+    },
 }
 
 /// One classified span relative to the start of a probe session.
@@ -50,6 +63,15 @@ pub enum InlineProbeError {
         /// Length reported by the rule.
         len: usize,
     },
+    /// Applying a match's effects to the session link level overflowed.
+    InvalidEffects {
+        /// Index in the sorted ruleset; only meaningful for locating the rule.
+        rule_index: usize,
+        /// Link level before the effect was applied.
+        link_level: i32,
+        /// Signed delta reported by the rule.
+        link_level_delta: i32,
+    },
 }
 
 impl Display for InlineProbeError {
@@ -62,6 +84,14 @@ impl Display for InlineProbeError {
             Self::InvalidLength { rule_index, len } => write!(
                 f,
                 "inline rule {rule_index} reported invalid probe length {len}"
+            ),
+            Self::InvalidEffects {
+                rule_index,
+                link_level,
+                link_level_delta,
+            } => write!(
+                f,
+                "inline rule {rule_index} overflowed probe link level: {link_level} + {link_level_delta}"
             ),
         }
     }
@@ -138,7 +168,7 @@ impl<'a> InlineProbeContext<'a> {
         self.md
     }
 
-    /// Link nesting level inherited from the parent inline state.
+    /// Current link nesting level of this session.
     #[must_use]
     pub fn link_level(&self) -> i32 {
         self.link_level
@@ -184,12 +214,8 @@ impl<'a> InlineProbeContext<'a> {
 
     /// Classify the next span, or return `None` at the end of the session.
     ///
-    /// Rules are tried in the order they were registered. `NoMatch` moves on
-    /// to the next candidate; `Unsupported` stops the session with
-    /// [`InlineProbeError::UnsupportedRule`]. Errors are sticky: every later
-    /// call returns the same error. At the nesting limit the whole remaining
-    /// range is reported as one [`InlineProbeKind::Text`] span without calling
-    /// any rule.
+    /// Rules run in registration order; errors are sticky. At the nesting limit
+    /// the remaining range is reported as one [`InlineProbeKind::Text`] span.
     pub fn next_token(&mut self) -> Result<Option<InlineProbeToken>, InlineProbeError> {
         if let Some(error) = self.error {
             return Err(error);
@@ -209,8 +235,9 @@ impl<'a> InlineProbeContext<'a> {
             if !entry.matches_marker(marker) {
                 continue;
             }
-            match (entry.probe)(self) {
-                InlineProbeResult::NoMatch => {}
+
+            let (len, kind, effects) = match (entry.probe)(self) {
+                InlineProbeResult::NoMatch => continue,
                 InlineProbeResult::Unsupported => {
                     let error = InlineProbeError::UnsupportedRule {
                         rule_index,
@@ -220,14 +247,30 @@ impl<'a> InlineProbeContext<'a> {
                     return Err(error);
                 }
                 InlineProbeResult::Match { len, kind } => {
-                    if len == 0 || self.remaining().get(..len).is_none() {
-                        let error = InlineProbeError::InvalidLength { rule_index, len };
-                        self.error = Some(error);
-                        return Err(error);
-                    }
-                    return Ok(Some(self.accept(len, kind)));
+                    (len, kind, InlineProbeEffects::default())
                 }
+                InlineProbeResult::MatchWithEffects { len, kind, effects } => (len, kind, effects),
+            };
+
+            if len == 0 || self.remaining().get(..len).is_none() {
+                let error = InlineProbeError::InvalidLength { rule_index, len };
+                self.error = Some(error);
+                return Err(error);
             }
+
+            let Some(next_link_level) = self.link_level.checked_add(effects.link_level_delta)
+            else {
+                let error = InlineProbeError::InvalidEffects {
+                    rule_index,
+                    link_level: self.link_level,
+                    link_level_delta: effects.link_level_delta,
+                };
+                self.error = Some(error);
+                return Err(error);
+            };
+
+            self.link_level = next_link_level;
+            return Ok(Some(self.accept(len, kind)));
         }
 
         Ok(Some(self.accept(marker.len_utf8(), InlineProbeKind::Text)))

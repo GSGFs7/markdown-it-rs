@@ -49,8 +49,12 @@
 use std::cmp::min;
 
 use crate::common::sourcemap::SourcePos;
+use crate::parser::document::NodeDraft;
+use crate::parser::document_parser::DocumentInlineState;
+use crate::parser::inline::probe::{InlineProbeContext, InlineProbeResult};
 use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, Text};
-use crate::{DocumentInlineState, MarkdownIt, Node, NodeDraft, NodeValue};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
 
 #[derive(Debug, Default)]
 struct PairConfig<const MARKER: char> {
@@ -152,6 +156,10 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
 {
     const MARKER: char = MARKER;
     const NAMES: &'static [&'static str] = &["emph_pair"];
+
+    fn probe(_context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        InlineProbeResult::NoMatch
+    }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         if state.remaining().chars().next()? != MARKER {

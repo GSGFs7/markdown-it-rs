@@ -44,16 +44,10 @@
 //!
 use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::inline::{
-    InlineProbeContext,
-    InlineProbeKind,
-    InlineProbeResult,
-    InlineRule,
-    InlineState,
-    LegacyInlineRule,
-    Text,
-};
-use crate::{MarkdownIt, Node};
+use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, Text};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::Node;
 
 #[derive(Debug, Default, Clone)]
 struct CodePairCache<const MARKER: char> {

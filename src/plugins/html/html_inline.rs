@@ -4,14 +4,19 @@
 use std::fmt::Write;
 
 use super::utils::regexps::*;
-use crate::NodeDraft;
-use crate::parser::document::NodeRef;
+use crate::parser::document::{NodeDraft, NodeRef};
 use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
 };
 use crate::parser::extset::InlineRootExtSet;
+use crate::parser::inline::probe::{
+    InlineProbeContext,
+    InlineProbeEffects,
+    InlineProbeKind,
+    InlineProbeResult,
+};
 use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
@@ -75,6 +80,20 @@ pub struct HtmlInlineScanner;
 impl InlineRule for HtmlInlineScanner {
     const MARKER: char = '<';
     const NAMES: &'static [&'static str] = &["html_inline"];
+
+    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        let matched = context.with_scratch(scan_html_inline);
+        match matched {
+            Some(matched) => InlineProbeResult::MatchWithEffects {
+                len: matched.consumed,
+                kind: InlineProbeKind::Token,
+                effects: InlineProbeEffects {
+                    link_level_delta: matched.link_level_delta,
+                },
+            },
+            None => InlineProbeResult::NoMatch,
+        }
+    }
 
     fn run(
         state: &mut crate::DocumentInlineState<'_>,

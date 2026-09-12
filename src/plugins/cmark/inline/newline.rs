@@ -13,6 +13,7 @@ use crate::parser::document_renderer::{
     PlainTextBreakDocumentRenderer,
     write_html_self_close,
 };
+use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
 use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
@@ -83,6 +84,17 @@ pub struct NewlineScanner;
 impl InlineRule for NewlineScanner {
     const MARKER: char = '\n';
     const NAMES: &'static [&'static str] = &["newline"];
+
+    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        if context.remaining().starts_with('\n') {
+            InlineProbeResult::Match {
+                len: 1,
+                kind: InlineProbeKind::Token,
+            }
+        } else {
+            InlineProbeResult::NoMatch
+        }
+    }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();
@@ -188,5 +200,23 @@ mod test {
             }),
             "<p>hello<br />\nworld</p>\n"
         );
+    }
+
+    #[test]
+    fn direct_parse_matches_legacy_for_breaks() {
+        let mut md = MarkdownIt::empty();
+        plugins::cmark::block::paragraph::add(&mut md);
+        plugins::cmark::inline::newline::add(&mut md);
+
+        for source in ["a  \n \tb", "a\nb", "a  \nb"] {
+            let legacy = md.render(source);
+            assert_eq!(
+                legacy,
+                md.render_document(&md.parse_document(source)).unwrap(),
+                "{source}"
+            );
+            let direct = md.parse_document_direct(source).unwrap();
+            assert_eq!(legacy, md.render_document(&direct).unwrap(), "{source}");
+        }
     }
 }

@@ -6,15 +6,8 @@
 //! <https://spec.commonmark.org/0.30/#backslash-escapes>
 use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::inline::{
-    InlineProbeContext,
-    InlineProbeKind,
-    InlineProbeResult,
-    InlineRule,
-    InlineState,
-    LegacyInlineRule,
-    TextSpecial,
-};
+use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, TextSpecial};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::Node;
 use crate::plugins::cmark::inline::newline::Hardbreak;

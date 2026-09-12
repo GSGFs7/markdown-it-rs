@@ -15,13 +15,8 @@ use crate::parser::block::{
 use crate::parser::core::Root;
 use crate::parser::document::{Document, NodeDraft};
 use crate::parser::extset::InlineRootExtSet;
-use crate::parser::inline::{
-    DelimiterRun,
-    DocumentRuleSet,
-    InlineProbeContext,
-    Text,
-    scan_delimiter_run,
-};
+use crate::parser::inline::probe::InlineProbeContext;
+use crate::parser::inline::{DelimiterRun, DocumentRuleSet, Text, scan_delimiter_run};
 use crate::parser::main::MarkdownIt;
 use crate::parser::render_options::RenderOptions;
 
@@ -487,15 +482,17 @@ impl<'a> DocumentInlineState<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use super::*;
-    use crate::parser::inline::{
-        DocumentProbeFn,
-        DocumentRuleFns,
+    use crate::parser::inline::probe::{
         InlineProbeError,
         InlineProbeKind,
         InlineProbeResult,
         InlineProbeToken,
     };
+    use crate::parser::inline::{DocumentProbeFn, DocumentRuleFns, InlineRule};
+    use crate::parser::linkfmt::LinkFormatter;
 
     fn probe_rule(probe: DocumentProbeFn) -> DocumentRuleFns {
         DocumentRuleFns {
@@ -1043,5 +1040,641 @@ mod tests {
                 kind: InlineProbeKind::Token,
             })
         );
+    }
+
+    #[test]
+    fn probe_html_effects_stay_in_the_session() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::block::paragraph::add(&mut md);
+        crate::plugins::html::html_inline::add(&mut md);
+        let ruleset = md.inline.document_rules().unwrap();
+        let source = "<a title=']'>x</a>";
+        let state = probe_state(&md, &ruleset, source);
+        let mut context = state.probe_subrange(0..source.len()).unwrap();
+
+        let token = context.next_token().unwrap().unwrap();
+        assert_eq!(token.range, 0..13);
+        assert_eq!(token.kind, InlineProbeKind::Token);
+        assert_eq!(context.link_level(), 1);
+        assert_eq!(
+            context.next_token().unwrap().unwrap().kind,
+            InlineProbeKind::Text
+        );
+        assert_eq!(
+            context.next_token().unwrap().unwrap().kind,
+            InlineProbeKind::Token
+        );
+        assert_eq!(context.link_level(), 0);
+        assert!(context.next_token().unwrap().is_none());
+        assert_eq!(state.link_level, 0);
+        assert_eq!(state.pos, 0);
+        assert_eq!(
+            state.probe_subrange(0..source.len()).unwrap().link_level(),
+            0
+        );
+    }
+
+    #[test]
+    fn invalid_probe_effect_preserves_context_and_is_sticky() {
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![probe_rule(|_| InlineProbeResult::MatchWithEffects {
+                len: 1,
+                kind: InlineProbeKind::Token,
+                effects: crate::InlineProbeEffects {
+                    link_level_delta: 1,
+                },
+            })],
+            finalizers: vec![],
+        };
+        let mut state = probe_state(&md, &ruleset, "x");
+        state.link_level = i32::MAX;
+        let mut context = state.probe_subrange(0..1).unwrap();
+        let error = context.next_token().unwrap_err();
+        assert!(matches!(
+            error,
+            crate::InlineProbeError::InvalidEffects { .. }
+        ));
+        assert_eq!(context.remaining(), "x");
+        assert_eq!(context.link_level(), i32::MAX);
+        assert_eq!(context.next_token(), Err(error));
+    }
+
+    struct LaterMarkerProbe;
+
+    impl InlineRule for LaterMarkerProbe {
+        const MARKER: char = '*';
+
+        fn probe(_: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+            InlineProbeResult::Match {
+                len: 1,
+                kind: InlineProbeKind::Token,
+            }
+        }
+
+        fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            panic_run(state)
+        }
+    }
+
+    struct LaterUnderscoreProbe;
+
+    impl InlineRule for LaterUnderscoreProbe {
+        const MARKER: char = '_';
+
+        fn probe(_: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+            InlineProbeResult::Match {
+                len: 1,
+                kind: InlineProbeKind::Token,
+            }
+        }
+
+        fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            panic_run(state)
+        }
+    }
+
+    struct LaterUnicodeMarkerProbe;
+
+    impl InlineRule for LaterUnicodeMarkerProbe {
+        const MARKER: char = '雪';
+
+        fn probe(_: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+            InlineProbeResult::Match {
+                len: '雪'.len_utf8(),
+                kind: InlineProbeKind::Token,
+            }
+        }
+
+        fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            panic_run(state)
+        }
+    }
+
+    struct ExpectLinkLevelOne;
+
+    impl InlineRule for ExpectLinkLevelOne {
+        const MARKER: char = '[';
+
+        fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+            assert_eq!(context.link_level(), 1);
+            InlineProbeResult::Match {
+                len: 1,
+                kind: InlineProbeKind::Text,
+            }
+        }
+
+        fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            panic_run(state)
+        }
+    }
+
+    #[derive(Debug)]
+    struct RecordingFormatter {
+        calls: Arc<Mutex<Vec<String>>>,
+        reject: bool,
+    }
+
+    impl LinkFormatter for RecordingFormatter {
+        fn validate_link(&self, url: &str) -> Option<()> {
+            self.calls.lock().unwrap().push(format!("validate:{url}"));
+            if self.reject { None } else { Some(()) }
+        }
+
+        fn normalize_link(&self, url: &str) -> String {
+            self.calls.lock().unwrap().push(format!("normalize:{url}"));
+            url.to_owned()
+        }
+
+        fn normalize_link_text(&self, url: &str) -> String {
+            self.calls.lock().unwrap().push(format!("text:{url}"));
+            url.to_owned()
+        }
+    }
+
+    #[test]
+    fn probe_newline_consumes_one_byte_and_resets_pending() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::inline::newline::add(&mut md);
+        let ruleset = md.inline.document_rules().unwrap();
+        let state = probe_state(&md, &ruleset, "a  \n \tb");
+        let mut context = state.probe_subrange(0..state.pos_max).unwrap();
+
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..3,
+                kind: InlineProbeKind::Text,
+            })
+        );
+        assert_eq!(context.trailing_text(), "a  ");
+
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 3..4,
+                kind: InlineProbeKind::Token,
+            })
+        );
+        assert_eq!(context.trailing_text(), "");
+
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 4..7,
+                kind: InlineProbeKind::Text,
+            })
+        );
+        assert_eq!(context.trailing_text(), " \tb");
+        assert!(context.next_token().unwrap().is_none());
+        assert_eq!(state.pending_text, None);
+    }
+
+    #[test]
+    fn probe_entity_uses_raw_byte_length() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::inline::entity::add(&mut md);
+        let ruleset = md.inline.document_rules().unwrap();
+
+        for (source, len) in [
+            ("&#91;", 5),
+            ("&#x5D;", 6),
+            ("&amp;", 5),
+            ("&#0;", 4),
+            ("&#x110000;", 10),
+        ] {
+            let state = probe_state(&md, &ruleset, source);
+            let mut context = state.probe_subrange(0..source.len()).unwrap();
+            assert_eq!(
+                context.next_token().unwrap(),
+                Some(InlineProbeToken {
+                    range: 0..len,
+                    kind: InlineProbeKind::Token,
+                }),
+                "{source}"
+            );
+            assert!(context.next_token().unwrap().is_none(), "{source}");
+        }
+    }
+
+    #[test]
+    fn probe_unknown_and_truncated_entities_fall_back_to_text() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::inline::entity::add(&mut md);
+        let ruleset = md.inline.document_rules().unwrap();
+
+        for source in ["&notanentity;", "&#x;", "&amp"] {
+            let state = probe_state(&md, &ruleset, source);
+            let mut context = state.probe_subrange(0..source.len()).unwrap();
+            assert_eq!(
+                context.next_token().unwrap(),
+                Some(InlineProbeToken {
+                    range: 0..1,
+                    kind: InlineProbeKind::Text,
+                }),
+                "{source}"
+            );
+            assert_eq!(
+                context.next_token().unwrap(),
+                Some(InlineProbeToken {
+                    range: 1..source.len(),
+                    kind: InlineProbeKind::Text,
+                }),
+                "{source}"
+            );
+            assert!(context.next_token().unwrap().is_none(), "{source}");
+        }
+
+        let state = probe_state(&md, &ruleset, "&amp;");
+        let mut short = state.probe_subrange(0..4).unwrap();
+        assert_eq!(
+            short.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..1,
+                kind: InlineProbeKind::Text,
+            })
+        );
+        let mut long = state.probe_subrange(0..5).unwrap();
+        assert_eq!(
+            long.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..5,
+                kind: InlineProbeKind::Token,
+            })
+        );
+    }
+
+    #[test]
+    fn probe_emphasis_defers_to_later_same_marker_rule() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::inline::emphasis::add(&mut md);
+        md.inline.add_rule::<LaterMarkerProbe>();
+        let ruleset = md.inline.document_rules().unwrap();
+
+        let state = probe_state(&md, &ruleset, "*");
+        let mut context = state.probe_subrange(0..1).unwrap();
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..1,
+                kind: InlineProbeKind::Token,
+            })
+        );
+
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::inline::emphasis::add(&mut md);
+        md.inline.add_rule::<LaterUnderscoreProbe>();
+        let ruleset = md.inline.document_rules().unwrap();
+
+        let state = probe_state(&md, &ruleset, "_");
+        let mut context = state.probe_subrange(0..1).unwrap();
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..1,
+                kind: InlineProbeKind::Token,
+            })
+        );
+    }
+
+    #[test]
+    fn probe_emphasis_defers_for_unicode_marker() {
+        fn node() -> NodeDraft {
+            NodeDraft::new(Text {
+                content: String::new(),
+            })
+        }
+
+        let mut md = MarkdownIt::empty();
+        crate::generics::inline::emph_pair::add_with::<'雪', 1, true>(&mut md, node);
+        md.inline.add_rule::<LaterUnicodeMarkerProbe>();
+        let ruleset = md.inline.document_rules().unwrap();
+
+        let state = probe_state(&md, &ruleset, "雪");
+        let mut context = state.probe_subrange(0..3).unwrap();
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..3,
+                kind: InlineProbeKind::Token,
+            })
+        );
+    }
+
+    #[test]
+    fn probe_html_comment_cache_is_private_to_each_session() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::html::html_inline::add(&mut md);
+        let ruleset = md.inline.document_rules().unwrap();
+        let state = probe_state(&md, &ruleset, "<!-- [ -->");
+
+        let mut short = state.probe_subrange(0..5).unwrap();
+        while let Some(token) = short.next_token().unwrap() {
+            assert_eq!(token.kind, InlineProbeKind::Text);
+        }
+
+        let mut long = state.probe_subrange(0..state.pos_max).unwrap();
+        assert_eq!(
+            long.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..10,
+                kind: InlineProbeKind::Token,
+            })
+        );
+        assert!(long.next_token().unwrap().is_none());
+
+        let mut long_first = state.probe_subrange(0..state.pos_max).unwrap();
+        assert_eq!(
+            long_first.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..10,
+                kind: InlineProbeKind::Token,
+            })
+        );
+        let mut short_after = state.probe_subrange(0..5).unwrap();
+        while let Some(token) = short_after.next_token().unwrap() {
+            assert_eq!(token.kind, InlineProbeKind::Text);
+        }
+    }
+
+    #[test]
+    fn invalid_probe_length_with_effects_preserves_pending_and_is_sticky() {
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![
+                DocumentRuleFns {
+                    run: panic_run,
+                    probe: |context| {
+                        if context.remaining() == "aa" {
+                            InlineProbeResult::Match {
+                                len: 1,
+                                kind: InlineProbeKind::Text,
+                            }
+                        } else {
+                            InlineProbeResult::NoMatch
+                        }
+                    },
+                    marker: 'a',
+                },
+                DocumentRuleFns {
+                    run: panic_run,
+                    probe: |_| InlineProbeResult::MatchWithEffects {
+                        len: 0,
+                        kind: InlineProbeKind::Token,
+                        effects: crate::InlineProbeEffects {
+                            link_level_delta: 1,
+                        },
+                    },
+                    marker: 'a',
+                },
+            ],
+            finalizers: vec![],
+        };
+        let mut state = probe_state(&md, &ruleset, "aa");
+        state.link_level = 2;
+        let mut context = state.probe_subrange(0..2).unwrap();
+
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..1,
+                kind: InlineProbeKind::Text,
+            })
+        );
+        assert_eq!(context.trailing_text(), "a");
+        assert_eq!(context.link_level(), 2);
+
+        let error = context.next_token().unwrap_err();
+        assert!(matches!(
+            error,
+            InlineProbeError::InvalidLength {
+                rule_index: 1,
+                len: 0
+            }
+        ));
+        assert_eq!(context.remaining(), "a");
+        assert_eq!(context.trailing_text(), "a");
+        assert_eq!(context.link_level(), 2);
+        assert_eq!(context.next_token(), Err(error));
+        assert_eq!(state.link_level, 2);
+    }
+
+    #[test]
+    fn invalid_probe_effect_underflow_preserves_context() {
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![probe_rule(|_| InlineProbeResult::MatchWithEffects {
+                len: 1,
+                kind: InlineProbeKind::Token,
+                effects: crate::InlineProbeEffects {
+                    link_level_delta: -1,
+                },
+            })],
+            finalizers: vec![],
+        };
+        let mut state = probe_state(&md, &ruleset, "x");
+        state.link_level = i32::MIN;
+        let mut context = state.probe_subrange(0..1).unwrap();
+        let error = context.next_token().unwrap_err();
+        assert!(matches!(
+            error,
+            InlineProbeError::InvalidEffects {
+                link_level: i32::MIN,
+                link_level_delta: -1,
+                ..
+            }
+        ));
+        assert_eq!(context.remaining(), "x");
+        assert_eq!(context.link_level(), i32::MIN);
+    }
+
+    #[test]
+    fn probe_html_level_is_read_by_later_rules_and_inherited_from_parent() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::html::html_inline::add(&mut md);
+        md.inline.add_rule::<ExpectLinkLevelOne>();
+        let ruleset = md.inline.document_rules().unwrap();
+        let source = "<a>[";
+        let state = probe_state(&md, &ruleset, source);
+        let mut context = state.probe_subrange(0..source.len()).unwrap();
+
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..3,
+                kind: InlineProbeKind::Token,
+            })
+        );
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 3..4,
+                kind: InlineProbeKind::Text,
+            })
+        );
+        assert_eq!(context.link_level(), 1);
+        assert_eq!(state.link_level, 0);
+
+        let inherited = probe_state_with_level(&md, &ruleset, source, 5);
+        let context = inherited.probe_subrange(0..source.len()).unwrap();
+        assert_eq!(context.link_level(), 5);
+        assert_eq!(inherited.link_level, 5);
+    }
+
+    #[test]
+    fn probe_html_lone_closing_tag_keeps_negative_level() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::html::html_inline::add(&mut md);
+        let ruleset = md.inline.document_rules().unwrap();
+        let source = "</a></A>";
+        let state = probe_state(&md, &ruleset, source);
+        let mut context = state.probe_subrange(0..source.len()).unwrap();
+
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..4,
+                kind: InlineProbeKind::Token,
+            })
+        );
+        assert_eq!(context.link_level(), -1);
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 4..8,
+                kind: InlineProbeKind::Token,
+            })
+        );
+        assert_eq!(context.link_level(), -1);
+        assert!(context.next_token().unwrap().is_none());
+        assert_eq!(state.link_level, 0);
+    }
+
+    #[test]
+    fn probe_autolink_calls_formatter_in_helper_order() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::inline::autolink::add(&mut md);
+        md.link_formatter = Box::new(RecordingFormatter {
+            calls: calls.clone(),
+            reject: false,
+        });
+        let ruleset = md.inline.document_rules().unwrap();
+        let source = "<https://example.com>";
+        let state = probe_state(&md, &ruleset, source);
+        let mut context = state.probe_subrange(0..source.len()).unwrap();
+
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..source.len(),
+                kind: InlineProbeKind::Token,
+            })
+        );
+        drop(context);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec![
+                "normalize:https://example.com".to_owned(),
+                "validate:https://example.com".to_owned(),
+                "text:https://example.com".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn probe_autolink_email_normalizes_mailto_before_validate() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::inline::autolink::add(&mut md);
+        md.link_formatter = Box::new(RecordingFormatter {
+            calls: calls.clone(),
+            reject: false,
+        });
+        let ruleset = md.inline.document_rules().unwrap();
+        let source = "<foo@example.com>";
+        let state = probe_state(&md, &ruleset, source);
+        let mut context = state.probe_subrange(0..source.len()).unwrap();
+
+        assert_eq!(
+            context.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..source.len(),
+                kind: InlineProbeKind::Token,
+            })
+        );
+        drop(context);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec![
+                "normalize:mailto:foo@example.com".to_owned(),
+                "validate:mailto:foo@example.com".to_owned(),
+                "text:foo@example.com".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn probe_autolink_rejection_skips_label_normalization() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::inline::autolink::add(&mut md);
+        md.link_formatter = Box::new(RecordingFormatter {
+            calls: calls.clone(),
+            reject: true,
+        });
+        let ruleset = md.inline.document_rules().unwrap();
+        let source = "<https://example.com>";
+        let state = probe_state(&md, &ruleset, source);
+        let mut context = state.probe_subrange(0..source.len()).unwrap();
+
+        assert_eq!(
+            context.next_token().unwrap().unwrap().kind,
+            InlineProbeKind::Text
+        );
+        drop(context);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec![
+                "normalize:https://example.com".to_owned(),
+                "validate:https://example.com".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn probe_autolink_invalid_syntax_skips_formatter() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::inline::autolink::add(&mut md);
+        md.link_formatter = Box::new(RecordingFormatter {
+            calls: calls.clone(),
+            reject: false,
+        });
+        let ruleset = md.inline.document_rules().unwrap();
+        let source = "<https://foo bar>";
+        let state = probe_state(&md, &ruleset, source);
+        let mut context = state.probe_subrange(0..source.len()).unwrap();
+
+        assert_eq!(
+            context.next_token().unwrap().unwrap().kind,
+            InlineProbeKind::Text
+        );
+        drop(context);
+        assert!(calls.lock().unwrap().is_empty());
+    }
+
+    fn probe_state_with_level<'a>(
+        md: &'a MarkdownIt,
+        ruleset: &'a DocumentRuleSet,
+        source: &str,
+        link_level: i32,
+    ) -> DocumentInlineState<'a> {
+        let mut state = probe_state(md, ruleset, source);
+        state.link_level = link_level;
+        state
     }
 }

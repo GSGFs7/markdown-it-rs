@@ -1,10 +1,8 @@
-use markdown_it::parser::inline::{
-    InlineProbeContext,
-    InlineProbeKind,
-    InlineProbeResult,
-    InlineRule,
-    Text,
-};
+use std::sync::{Arc, Mutex};
+
+use markdown_it::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
+use markdown_it::parser::inline::{InlineRule, Text};
+use markdown_it::parser::linkfmt::LinkFormatter;
 use markdown_it::{DocumentInlineState, MarkdownIt, NodeDraft, NodeValue};
 
 #[derive(Debug)]
@@ -173,6 +171,52 @@ fn probe_parser() -> MarkdownIt {
     md
 }
 
+fn mixed_probe_parser() -> MarkdownIt {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::inline::newline::add(&mut md);
+    markdown_it::plugins::cmark::inline::escape::add(&mut md);
+    markdown_it::plugins::cmark::inline::backticks::add(&mut md);
+    markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
+    markdown_it::plugins::cmark::inline::entity::add(&mut md);
+    markdown_it::plugins::cmark::inline::autolink::add(&mut md);
+    markdown_it::plugins::html::html_inline::add(&mut md);
+    md.inline.add_rule::<ProbeSummaryRule>();
+    md
+}
+
+fn autolink_probe_parser(formatter: Box<dyn LinkFormatter>) -> MarkdownIt {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::inline::autolink::add(&mut md);
+    md.inline.add_rule::<ProbeSummaryRule>();
+    md.link_formatter = formatter;
+    md
+}
+
+#[derive(Debug)]
+struct RecordingFormatter {
+    calls: Arc<Mutex<Vec<String>>>,
+    reject: bool,
+}
+
+impl LinkFormatter for RecordingFormatter {
+    fn validate_link(&self, url: &str) -> Option<()> {
+        self.calls.lock().unwrap().push(format!("validate:{url}"));
+        if self.reject { None } else { Some(()) }
+    }
+
+    fn normalize_link(&self, url: &str) -> String {
+        self.calls.lock().unwrap().push(format!("normalize:{url}"));
+        url.to_owned()
+    }
+
+    fn normalize_link_text(&self, url: &str) -> String {
+        self.calls.lock().unwrap().push(format!("text:{url}"));
+        url.to_owned()
+    }
+}
+
 #[test]
 fn custom_rule_can_probe_ranges_through_public_interface() {
     let md = probe_parser();
@@ -261,4 +305,99 @@ fn probe_does_not_call_code_pair_factory() {
 
     md.parse_document_direct("$x$").unwrap();
     assert_eq!(CALLS.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn autolink_and_html_dispatch_by_registration_order() {
+    let md = mixed_probe_parser();
+    for (source, expected) in [
+        ("{<https://example.com>}", "<p>0..21=token;</p>\n"),
+        ("{<a>}", "<p>0..3=token;</p>\n"),
+        ("{<foo@example.com>}", "<p>0..17=token;</p>\n"),
+        ("{<javascript:alert(1)>}", "<p>0..1=text;1..21=text;</p>\n"),
+    ] {
+        let html = md
+            .parse_document_direct(source)
+            .unwrap()
+            .into_legacy()
+            .render();
+        assert_eq!(html, expected, "{source}");
+    }
+}
+
+#[test]
+fn mixed_rules_probe_through_public_consumer() {
+    let md = mixed_probe_parser();
+    for (source, expected) in [
+        (
+            "{a &amp; &#91;\n<b>}",
+            "<p>0..2=text;2..7=token;7..8=text;8..13=token;13..14=token;14..17=token;</p>\n",
+        ),
+        (
+            "{*x* `y` \\*}",
+            "<p>0..1=text;1..2=text;2..3=text;3..4=text;4..7=token;7..8=text;8..10=token;</p>\n",
+        ),
+    ] {
+        let html = md
+            .parse_document_direct(source)
+            .unwrap()
+            .into_legacy()
+            .render();
+        assert_eq!(html, expected, "{source}");
+    }
+}
+
+#[test]
+fn autolink_probe_uses_formatter_and_rejection_falls_back() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let md = autolink_probe_parser(Box::new(RecordingFormatter {
+        calls: calls.clone(),
+        reject: false,
+    }));
+    let html = md
+        .parse_document_direct("{<https://example.com>}")
+        .unwrap()
+        .into_legacy()
+        .render();
+    assert_eq!(html, "<p>0..21=token;</p>\n");
+    assert_eq!(
+        *calls.lock().unwrap(),
+        vec![
+            "normalize:https://example.com".to_owned(),
+            "validate:https://example.com".to_owned(),
+            "text:https://example.com".to_owned(),
+        ]
+    );
+
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let md = autolink_probe_parser(Box::new(RecordingFormatter {
+        calls: calls.clone(),
+        reject: true,
+    }));
+    let html = md
+        .parse_document_direct("{<https://example.com>}")
+        .unwrap()
+        .into_legacy()
+        .render();
+    assert_eq!(html, "<p>0..1=text;1..21=text;</p>\n");
+    assert_eq!(
+        *calls.lock().unwrap(),
+        vec![
+            "normalize:https://example.com".to_owned(),
+            "validate:https://example.com".to_owned(),
+        ]
+    );
+
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let md = autolink_probe_parser(Box::new(RecordingFormatter {
+        calls: calls.clone(),
+        reject: false,
+    }));
+    let html = md
+        .parse_document_direct("{<https://foo bar>}")
+        .unwrap()
+        .into_legacy()
+        .render();
+    assert_eq!(html, "<p>0..1=text;1..17=text;</p>\n");
+    assert!(calls.lock().unwrap().is_empty());
 }

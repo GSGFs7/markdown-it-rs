@@ -2,7 +2,7 @@
 
 #[doc(hidden)]
 pub mod builtin;
-mod probe;
+pub mod probe;
 mod rule;
 mod state;
 
@@ -10,7 +10,9 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 pub use self::builtin::inline_parser::InlineRoot;
+use self::builtin::skip_text::TextScannerImpl;
 pub use self::builtin::skip_text::{Text, TextSpecial};
+pub use self::probe::*;
 pub use self::rule::*;
 pub(crate) use self::state::{
     DelimiterRun,
@@ -21,14 +23,6 @@ pub(crate) use self::state::{
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::parser::extset::{InlineRootExtSet, RootExtSet};
-use crate::parser::inline::builtin::skip_text::TextScannerImpl;
-pub use crate::parser::inline::probe::{
-    InlineProbeContext,
-    InlineProbeError,
-    InlineProbeKind,
-    InlineProbeResult,
-    InlineProbeToken,
-};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeEmpty};
 

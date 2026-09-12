@@ -5,14 +5,8 @@ use regex::{self, Regex};
 
 use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::inline::{
-    InlineProbeContext,
-    InlineProbeKind,
-    InlineProbeResult,
-    InlineRule,
-    InlineState,
-    LegacyInlineRule,
-};
+use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;

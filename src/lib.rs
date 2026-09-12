@@ -49,8 +49,9 @@ pub use parser::document_transform::{
     DocumentTransformRegistry,
     TransformRuleBuilder,
 };
-pub use parser::inline::{
+pub use parser::inline::probe::{
     InlineProbeContext,
+    InlineProbeEffects,
     InlineProbeError,
     InlineProbeKind,
     InlineProbeResult,

@@ -7,8 +7,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::NodeDraft;
-use crate::parser::document::NodeRef;
+use crate::parser::document::{NodeDraft, NodeRef};
 use crate::parser::document_renderer::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -17,6 +16,7 @@ use crate::parser::document_renderer::{
     write_html_close,
     write_html_open,
 };
+use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
 use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, TextSpecial};
 use crate::parser::linkfmt::LinkFormatter;
 use crate::parser::main::MarkdownIt;
@@ -111,6 +111,19 @@ struct AutolinkMatch {
 impl InlineRule for AutolinkScanner {
     const MARKER: char = '<';
     const NAMES: &'static [&'static str] = &["autolink"];
+
+    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        match scan_autolink(
+            context.remaining(),
+            context.markdown_it().link_formatter.as_ref(),
+        ) {
+            Some(matched) => InlineProbeResult::Match {
+                len: matched.consumed,
+                kind: InlineProbeKind::Token,
+            },
+            None => InlineProbeResult::NoMatch,
+        }
+    }
 
     fn run(
         state: &mut crate::DocumentInlineState<'_>,
