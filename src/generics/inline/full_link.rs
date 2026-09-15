@@ -99,7 +99,7 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> LegacyInlineRule
         if chars.next() != Some('[') {
             return None;
         }
-        rule_check(state, ENABLE_NESTED, 1)
+        rule_check(state, ENABLE_NESTED, PREFIX.len_utf8())
     }
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
@@ -111,7 +111,7 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> LegacyInlineRule
             return None;
         }
         let f = state.md.ext.get::<LinkCfg<PREFIX>>().unwrap().0;
-        rule_run(state, ENABLE_NESTED, 1, f)
+        rule_run(state, ENABLE_NESTED, PREFIX.len_utf8(), f)
     }
 }
 
@@ -621,7 +621,8 @@ mod probe_label_tests {
         InlineRule,
         Text,
     };
-    use crate::{DocumentInlineState, MarkdownIt, NodeDraft};
+    use crate::plugins::cmark::inline::link::Link;
+    use crate::{DocumentInlineState, MarkdownIt, Node, NodeDraft};
 
     // Register both brackets so the built-in text classifier stops at them.
     struct Bracket<const C: char>;
@@ -800,5 +801,56 @@ mod probe_label_tests {
             };
             assert_eq!(render(&md, source), expected, "{source}");
         }
+    }
+
+    fn utf8_parser<const PREFIX: char>() -> MarkdownIt {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::add(&mut md);
+        super::add_prefix::<PREFIX, true>(&mut md, |href, title| {
+            Node::new(Link {
+                url: href.unwrap_or_default(),
+                title,
+            })
+        });
+        md
+    }
+
+    #[test]
+    fn custom_prefix_uses_utf8_byte_length() {
+        for (source, html) in [
+            ("雪[文字](/url)", "<p><a href=\"/url\">文字</a></p>\n"),
+            (
+                "雪[文字][ref]\n\n[ref]: /url",
+                "<p><a href=\"/url\">文字</a></p>\n",
+            ),
+            ("雪[文字]", "<p>雪[文字]</p>\n"),
+        ] {
+            assert_eq!(
+                utf8_parser::<'雪'>().parse(source).render(),
+                html,
+                "{source}"
+            );
+        }
+
+        assert_eq!(
+            utf8_parser::<'😀'>().parse("😀[x](/url)").render(),
+            "<p><a href=\"/url\">x</a></p>\n",
+        );
+        assert_eq!(
+            utf8_parser::<'~'>().parse("~[x](/url)").render(),
+            "<p><a href=\"/url\">x</a></p>\n",
+        );
+    }
+
+    #[test]
+    fn label_scan_checks_unicode_prefixed_rule() {
+        // Image label scanning calls the custom rule's check before its run.
+        // The nested custom link contributes its text to the image alt value.
+        assert_eq!(
+            utf8_parser::<'雪'>()
+                .parse("![雪[x](/inner)](/image)")
+                .render(),
+            "<p><img src=\"/image\" alt=\"x\"></p>\n",
+        );
     }
 }
