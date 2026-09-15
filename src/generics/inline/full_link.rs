@@ -237,6 +237,48 @@ fn parse_link_label(state: &mut InlineState, start: usize, enable_nested: bool) 
     label_end
 }
 
+// private migration helper
+#[allow(dead_code)]
+fn probe_link_label(
+    mut context: crate::parser::inline::InlineProbeContext<'_>,
+    enable_nested: bool,
+) -> Result<Option<usize>, crate::parser::inline::InlineProbeError> {
+    use crate::parser::inline::InlineProbeError;
+
+    if context.depth() >= context.markdown_it().max_nesting {
+        return Err(InlineProbeError::NestingLimit {
+            max_nesting: context.markdown_it().max_nesting,
+        });
+    }
+
+    let initial_len = context.remaining().len();
+    let mut level = 1usize;
+    while let Some(ch) = context.remaining().chars().next() {
+        let before = context.remaining().len();
+        if ch == ']' {
+            level -= 1;
+            if level == 0 {
+                return Ok(Some(initial_len - before));
+            }
+        }
+
+        if context.next_token()?.is_none() {
+            return Ok(None);
+        };
+
+        let consumed = before - context.remaining().len();
+        if ch == '[' {
+            if consumed == 1 {
+                level += 1;
+            } else if !enable_nested {
+                return Ok(None);
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 pub struct ParseLinkFragmentResult {
     /// end position
     pub pos: usize,
@@ -572,5 +614,200 @@ mod tests {
         assert_eq!(target.title.as_deref(), Some("title"));
         assert_eq!(target.end, max);
         assert!(parse_inline_link_target(&md, source, start, max - 1).is_none());
+    }
+}
+
+#[cfg(test)]
+mod probe_label_tests {
+    use super::probe_link_label;
+    use crate::parser::inline::{
+        InlineProbeContext,
+        InlineProbeKind,
+        InlineProbeResult,
+        InlineRule,
+        Text,
+    };
+    use crate::{DocumentInlineState, MarkdownIt, NodeDraft};
+
+    // Register both brackets so the built-in text classifier stops at them.
+    struct Bracket<const C: char>;
+    impl<const C: char> InlineRule for Bracket<C> {
+        const MARKER: char = C;
+        fn probe(_: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+            InlineProbeResult::NoMatch
+        }
+        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            panic!("the consumer must consume the complete test input")
+        }
+    }
+
+    struct Consumer<const NESTED: bool>;
+    impl<const NESTED: bool> InlineRule for Consumer<NESTED> {
+        const MARKER: char = '@';
+        fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            if !state.remaining().starts_with("@[") {
+                return None;
+            }
+            let len = state.remaining().len();
+            let parent = state.probe_subrange(1..len).unwrap();
+            let result = match parent.probe_subrange(1..parent.remaining().len()) {
+                Ok(Some(child)) => probe_link_label(child, NESTED),
+                Ok(None) => unreachable!("valid suffix"),
+                Err(error) => Err(error),
+            };
+            assert_eq!(parent.remaining(), &state.remaining()[1..]);
+            assert_eq!(parent.trailing_text(), "");
+            assert_eq!(parent.link_level(), 0);
+            let content = match result {
+                Ok(Some(end)) => format!("end={end}"),
+                Ok(None) => "none".to_owned(),
+                Err(error) => format!("{error:?}"),
+            };
+            Some((Some(NodeDraft::new(Text { content })), len))
+        }
+    }
+
+    fn parser<const NESTED: bool>() -> MarkdownIt {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::block::paragraph::add(&mut md);
+        md.inline
+            .add_migrated_rule::<crate::parser::inline::builtin::TextScanner>()
+            .before_all();
+        md.inline.add_rule::<Bracket<'['>>();
+        md.inline.add_rule::<Bracket<']'>>();
+        md.inline.add_rule::<Consumer<NESTED>>();
+        crate::plugins::cmark::inline::escape::add(&mut md);
+        crate::plugins::cmark::inline::backticks::add(&mut md);
+        crate::plugins::cmark::inline::entity::add(&mut md);
+        crate::plugins::html::html_inline::add(&mut md);
+        md
+    }
+
+    fn render(md: &MarkdownIt, source: &str) -> String {
+        md.parse_document_direct(source)
+            .unwrap()
+            .into_legacy()
+            .render()
+    }
+
+    #[test]
+    fn labels_respect_raw_brackets_and_opaque_spans() {
+        let md = parser::<false>();
+        for source in [
+            "@[]",
+            "@[abc]",
+            "@[雪[a]雨]",
+            "@[`]`]",
+            r"@[\]]",
+            "@[&#93;]",
+            "@[<i x=']'>]",
+            "@[<a>x]",
+        ] {
+            let end = source.rfind(']').unwrap() - 2;
+            assert_eq!(
+                render(&md, source),
+                format!("<p>end={end}</p>\n"),
+                "{source}"
+            );
+        }
+        assert_eq!(render(&md, "@[a[b]"), "<p>none</p>\n");
+        assert_eq!(render(&md, "@[abc"), "<p>none</p>\n");
+    }
+
+    struct Unsupported;
+    impl InlineRule for Unsupported {
+        const MARKER: char = '?';
+        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            panic!("probe must not call run")
+        }
+    }
+
+    struct Closing;
+    impl InlineRule for Closing {
+        const MARKER: char = ']';
+        fn probe(_: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+            panic!("terminal bracket must be checked before dispatch")
+        }
+        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            panic!("consumer owns input")
+        }
+    }
+
+    #[test]
+    fn terminal_close_precedes_dispatch_and_does_not_scan_suffix() {
+        let mut md = parser::<false>();
+        md.inline.add_rule::<Closing>();
+        md.inline.add_rule::<Unsupported>();
+        assert_eq!(render(&md, "@[x]?"), "<p>end=1</p>\n");
+        assert!(render(&md, "@[?]").contains("UnsupportedRule"));
+    }
+
+    struct BracketToken;
+    impl InlineRule for BracketToken {
+        const MARKER: char = '[';
+        fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+            if context.remaining().starts_with("[x]") {
+                // Legacy uses consumed length, even if a custom rule calls it Text.
+                InlineProbeResult::Match {
+                    len: 3,
+                    kind: InlineProbeKind::Text,
+                }
+            } else {
+                InlineProbeResult::NoMatch
+            }
+        }
+        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            panic!("consumer owns input")
+        }
+    }
+
+    #[test]
+    fn nested_flag_preserves_legacy_consumption_rule() {
+        let mut no = parser::<false>();
+        no.inline.add_rule::<BracketToken>();
+        assert_eq!(render(&no, "@[[x]]"), "<p>none</p>\n");
+        let mut yes = parser::<true>();
+        yes.inline.add_rule::<BracketToken>();
+        assert_eq!(render(&yes, "@[[x]]"), "<p>end=3</p>\n");
+    }
+
+    #[test]
+    fn recursive_entry_refuses_depth_fallback() {
+        let mut md = parser::<false>();
+        md.max_nesting = 2;
+        assert!(render(&md, "@[]").contains("NestingLimit"));
+    }
+    #[test]
+    fn supported_boundaries_match_legacy_helper() {
+        use crate::parser::extset::{InlineRootExtSet, RootExtSet};
+        use crate::parser::inline::InlineState;
+        for source in [
+            "@[]",
+            "@[abc]",
+            "@[雪[a]雨]",
+            "@[`]`]",
+            r"@[\]]",
+            "@[&#93;]",
+            "@[<i x=']'>]",
+            "@[a[b]",
+            "@[abc",
+        ] {
+            let md = parser::<false>();
+            let mut root_ext = RootExtSet::new();
+            let mut inline_ext = InlineRootExtSet::new();
+            let mut state = InlineState::new(
+                source.to_owned(),
+                vec![(0, 0)],
+                &md,
+                &mut root_ext,
+                &mut inline_ext,
+                crate::Node::default(),
+            );
+            let expected = match super::parse_link_label(&mut state, 1, false) {
+                Some(end) => format!("<p>end={}</p>\n", end - 2),
+                None => "<p>none</p>\n".to_owned(),
+            };
+            assert_eq!(render(&md, source), expected, "{source}");
+        }
     }
 }
