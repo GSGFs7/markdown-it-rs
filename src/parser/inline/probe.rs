@@ -1,4 +1,3 @@
-use std::fmt::Display;
 use std::ops::Range;
 
 use crate::parser::extset::InlineRootExtSet;
@@ -23,9 +22,8 @@ pub struct InlineProbeEffects {
 /// Result reported by one inline rule for the current probe position.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InlineProbeResult {
-    /// The rule cannot decide without running; probing stops with an error.
-    Unsupported,
-    /// The rule has determined that it cannot match at this position.
+    /// The rule does not claim the current position in probe mode; normal
+    /// `run` may still match it.
     NoMatch,
     /// The rule claims the span starting at this position.
     Match { len: usize, kind: InlineProbeKind },
@@ -35,8 +33,6 @@ pub enum InlineProbeResult {
         kind: InlineProbeKind,
         effects: InlineProbeEffects,
     },
-    /// Stop this session with an error reported by a nested probe.
-    Error(InlineProbeError),
 }
 
 /// One classified span relative to the start of a probe session.
@@ -47,70 +43,6 @@ pub struct InlineProbeToken {
     /// Classification of the span.
     pub kind: InlineProbeKind,
 }
-
-/// Error reported while probing an inline range.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InlineProbeError {
-    /// A rule reached a position it cannot classify without running.
-    UnsupportedRule {
-        /// Index in the sorted ruleset; only meaningful for locating the rule.
-        rule_index: usize,
-        /// Marker declared by the rule.
-        marker: char,
-    },
-    /// A rule returned a zero, out-of-bounds, or non-UTF-8-boundary length.
-    InvalidLength {
-        /// Index in the sorted ruleset; only meaningful for locating the rule.
-        rule_index: usize,
-        /// Length reported by the rule.
-        len: usize,
-    },
-    /// Applying a match's effects to the session link level overflowed.
-    InvalidEffects {
-        /// Index in the sorted ruleset; only meaningful for locating the rule.
-        rule_index: usize,
-        /// Link level before the effect was applied.
-        link_level: i32,
-        /// Signed delta reported by the rule.
-        link_level_delta: i32,
-    },
-    /// A recursive child session would reach or exceed the nesting limit.
-    NestingLimit {
-        /// Parser nesting limit used for this probe.
-        max_nesting: u32,
-    },
-}
-
-impl Display for InlineProbeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::UnsupportedRule { rule_index, marker } => write!(
-                f,
-                "inline rule {rule_index} does not support probing marker {marker:?}"
-            ),
-            Self::InvalidLength { rule_index, len } => write!(
-                f,
-                "inline rule {rule_index} reported invalid probe length {len}"
-            ),
-            Self::InvalidEffects {
-                rule_index,
-                link_level,
-                link_level_delta,
-            } => write!(
-                f,
-                "inline rule {rule_index} overflowed probe link level: {link_level} + {link_level_delta}"
-            ),
-            Self::NestingLimit { max_nesting } => {
-                write!(
-                    f,
-                    "recursive inline probe reached nesting limit {max_nesting}"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for InlineProbeError {}
 
 /// Independent token-probing session over a fixed source range.
 ///
@@ -130,7 +62,6 @@ pub struct InlineProbeContext<'a> {
     link_level: i32,
     pending_text: Option<(usize, usize)>,
     scratch: InlineRootExtSet,
-    error: Option<InlineProbeError>,
 }
 
 impl<'a> InlineProbeContext<'a> {
@@ -158,7 +89,6 @@ impl<'a> InlineProbeContext<'a> {
             link_level,
             pending_text: None,
             scratch: InlineRootExtSet::new(),
-            error: None,
         }
     }
 
@@ -225,17 +155,12 @@ impl<'a> InlineProbeContext<'a> {
         }
     }
 
-    fn next_token_inner(&mut self) -> Result<Option<InlineProbeToken>, InlineProbeError> {
-        if let Some(error) = self.error {
-            return Err(error);
-        }
+    fn next_token_inner(&mut self) -> Option<InlineProbeToken> {
         if self.pos == self.end {
-            return Ok(None);
+            return None;
         }
         if self.depth >= self.md.max_nesting {
-            return Ok(Some(
-                self.accept(self.end - self.pos, InlineProbeKind::Text),
-            ));
+            return Some(self.accept(self.end - self.pos, InlineProbeKind::Text));
         }
 
         let marker = self.remaining().chars().next().unwrap();
@@ -247,85 +172,58 @@ impl<'a> InlineProbeContext<'a> {
 
             let (len, kind, effects) = match (entry.probe)(self) {
                 InlineProbeResult::NoMatch => continue,
-                InlineProbeResult::Unsupported => {
-                    let error = InlineProbeError::UnsupportedRule {
-                        rule_index,
-                        marker: entry.marker,
-                    };
-                    self.error = Some(error);
-                    return Err(error);
-                }
                 InlineProbeResult::Match { len, kind } => {
                     (len, kind, InlineProbeEffects::default())
                 }
                 InlineProbeResult::MatchWithEffects { len, kind, effects } => (len, kind, effects),
-                InlineProbeResult::Error(error) => {
-                    self.error = Some(error);
-                    return Err(error);
-                }
             };
 
-            if len == 0 || self.remaining().get(..len).is_none() {
-                let error = InlineProbeError::InvalidLength { rule_index, len };
-                self.error = Some(error);
-                return Err(error);
-            }
+            assert!(
+                len > 0 && self.remaining().get(..len).is_some(),
+                "inline rule {rule_index} reported invalid probe length {len}"
+            );
 
-            let Some(next_link_level) = self.link_level.checked_add(effects.link_level_delta)
-            else {
-                let error = InlineProbeError::InvalidEffects {
-                    rule_index,
-                    link_level: self.link_level,
-                    link_level_delta: effects.link_level_delta,
-                };
-                self.error = Some(error);
-                return Err(error);
-            };
+            let next_link_level = self
+                .link_level
+                .checked_add(effects.link_level_delta)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "inline rule {rule_index} overflowed probe link level: {} + {}",
+                        self.link_level, effects.link_level_delta
+                    )
+                });
 
             self.link_level = next_link_level;
-            return Ok(Some(self.accept(len, kind)));
+            return Some(self.accept(len, kind));
         }
 
-        Ok(Some(self.accept(marker.len_utf8(), InlineProbeKind::Text)))
+        Some(self.accept(marker.len_utf8(), InlineProbeKind::Text))
     }
 
     /// Classify the next span, or return `None` at the end of the session.
     ///
-    /// Rules run in registration order; errors are sticky. At the nesting limit
-    /// the remaining range is reported as one [`InlineProbeKind::Text`] span.
-    pub fn next_token(&mut self) -> Result<Option<InlineProbeToken>, InlineProbeError> {
+    /// At the nesting limit the remaining range becomes one
+    /// [`InlineProbeKind::Text`] span. Invalid lengths or overflowing effects
+    /// panic before the cursor or effects are applied; scratch may already be
+    /// mutated.
+    pub fn next_token(&mut self) -> Option<InlineProbeToken> {
         stacker::maybe_grow(64 * 1024, 1024 * 1024, || self.next_token_inner())
     }
 
-    /// Create an isolated recursive probe over a range of `remaining()`.
+    /// Create an isolated child probe over a range of `remaining()`.
     ///
-    /// Invalid UTF-8 ranges return `Ok(None)`. A sticky parent error or a
-    /// recursive nesting limit is returned as `Err`. The child inherits the
-    /// current link level and starts with empty pending text and private scratch.
-    pub fn probe_subrange(
-        &self,
-        range: Range<usize>,
-    ) -> Result<Option<InlineProbeContext<'_>>, InlineProbeError> {
-        if let Some(error) = self.error {
-            return Err(error);
-        }
-        if self.remaining().get(range.clone()).is_none() {
-            return Ok(None);
-        }
+    /// Invalid UTF-8 ranges or an exhausted nesting budget return `None`.
+    /// The parent remains unchanged. The child inherits the current link
+    /// level and starts with empty pending text and private scratch storage.
+    pub fn probe_subrange(&self, range: Range<usize>) -> Option<InlineProbeContext<'_>> {
+        self.remaining().get(range.clone())?;
 
-        let child_depth = self
-            .depth
-            .checked_add(1)
-            .ok_or(InlineProbeError::NestingLimit {
-                max_nesting: self.md.max_nesting,
-            })?;
+        let child_depth = self.depth.checked_add(1)?;
         if child_depth >= self.md.max_nesting {
-            return Err(InlineProbeError::NestingLimit {
-                max_nesting: self.md.max_nesting,
-            });
+            return None;
         }
 
-        Ok(Some(InlineProbeContext::new(
+        Some(InlineProbeContext::new(
             self.source,
             self.pos + range.start,
             self.pos + range.end,
@@ -333,6 +231,6 @@ impl<'a> InlineProbeContext<'a> {
             self.ruleset,
             child_depth,
             self.link_level(),
-        )))
+        ))
     }
 }

@@ -242,13 +242,9 @@ fn parse_link_label(state: &mut InlineState, start: usize, enable_nested: bool) 
 fn probe_link_label(
     mut context: crate::parser::inline::InlineProbeContext<'_>,
     enable_nested: bool,
-) -> Result<Option<usize>, crate::parser::inline::InlineProbeError> {
-    use crate::parser::inline::InlineProbeError;
-
+) -> Option<usize> {
     if context.depth() >= context.markdown_it().max_nesting {
-        return Err(InlineProbeError::NestingLimit {
-            max_nesting: context.markdown_it().max_nesting,
-        });
+        return None;
     }
 
     let initial_len = context.remaining().len();
@@ -258,25 +254,23 @@ fn probe_link_label(
         if ch == ']' {
             level -= 1;
             if level == 0 {
-                return Ok(Some(initial_len - before));
+                return Some(initial_len - before);
             }
         }
 
-        if context.next_token()?.is_none() {
-            return Ok(None);
-        };
+        context.next_token()?;
 
         let consumed = before - context.remaining().len();
         if ch == '[' {
             if consumed == 1 {
                 level += 1;
             } else if !enable_nested {
-                return Ok(None);
+                return None;
             }
         }
     }
 
-    Ok(None)
+    None
 }
 
 pub struct ParseLinkFragmentResult {
@@ -650,18 +644,15 @@ mod probe_label_tests {
             }
             let len = state.remaining().len();
             let parent = state.probe_subrange(1..len).unwrap();
-            let result = match parent.probe_subrange(1..parent.remaining().len()) {
-                Ok(Some(child)) => probe_link_label(child, NESTED),
-                Ok(None) => unreachable!("valid suffix"),
-                Err(error) => Err(error),
-            };
+            let result = parent
+                .probe_subrange(1..parent.remaining().len())
+                .and_then(|child| probe_link_label(child, NESTED));
             assert_eq!(parent.remaining(), &state.remaining()[1..]);
             assert_eq!(parent.trailing_text(), "");
             assert_eq!(parent.link_level(), 0);
             let content = match result {
-                Ok(Some(end)) => format!("end={end}"),
-                Ok(None) => "none".to_owned(),
-                Err(error) => format!("{error:?}"),
+                Some(end) => format!("end={end}"),
+                None => "none".to_owned(),
             };
             Some((Some(NodeDraft::new(Text { content })), len))
         }
@@ -714,8 +705,8 @@ mod probe_label_tests {
         assert_eq!(render(&md, "@[abc"), "<p>none</p>\n");
     }
 
-    struct Unsupported;
-    impl InlineRule for Unsupported {
+    struct DefaultProbe;
+    impl InlineRule for DefaultProbe {
         const MARKER: char = '?';
         fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
             panic!("probe must not call run")
@@ -737,9 +728,9 @@ mod probe_label_tests {
     fn terminal_close_precedes_dispatch_and_does_not_scan_suffix() {
         let mut md = parser::<false>();
         md.inline.add_rule::<Closing>();
-        md.inline.add_rule::<Unsupported>();
+        md.inline.add_rule::<DefaultProbe>();
         assert_eq!(render(&md, "@[x]?"), "<p>end=1</p>\n");
-        assert!(render(&md, "@[?]").contains("UnsupportedRule"));
+        assert_eq!(render(&md, "@[?]"), "<p>end=1</p>\n");
     }
 
     struct BracketToken;
@@ -772,10 +763,10 @@ mod probe_label_tests {
     }
 
     #[test]
-    fn recursive_entry_refuses_depth_fallback() {
+    fn recursive_entry_at_depth_limit_yields_no_label() {
         let mut md = parser::<false>();
         md.max_nesting = 2;
-        assert!(render(&md, "@[]").contains("NestingLimit"));
+        assert_eq!(render(&md, "@[]"), "<p>none</p>\n");
     }
     #[test]
     fn supported_boundaries_match_legacy_helper() {

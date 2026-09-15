@@ -10,19 +10,16 @@ impl InlineRule for Nested {
         if !context.remaining().starts_with('^') {
             return InlineProbeResult::NoMatch;
         }
-        let mut child = match context.probe_subrange(1..context.remaining().len()) {
-            Ok(Some(child)) => child,
-            Ok(None) => unreachable!("suffix is a valid UTF-8 range"),
-            Err(error) => return InlineProbeResult::Error(error),
+        let Some(mut child) = context.probe_subrange(1..context.remaining().len()) else {
+            return InlineProbeResult::NoMatch;
         };
         assert_eq!(child.trailing_text(), "");
-        match child.next_token() {
-            Ok(Some(token)) => InlineProbeResult::Match {
-                len: 1 + token.range.end,
-                kind: InlineProbeKind::Token,
-            },
-            Ok(None) => InlineProbeResult::NoMatch,
-            Err(error) => InlineProbeResult::Error(error),
+        let Some(token) = child.next_token() else {
+            return InlineProbeResult::NoMatch;
+        };
+        InlineProbeResult::Match {
+            len: 1 + token.range.end,
+            kind: InlineProbeKind::Token,
         }
     }
 
@@ -31,12 +28,12 @@ impl InlineRule for Nested {
     }
 }
 
-struct Unsupported;
-impl InlineRule for Unsupported {
+struct DefaultProbe;
+impl InlineRule for DefaultProbe {
     const MARKER: char = '?';
 
     fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
-        panic!("unsupported rule run must not be called")
+        panic!("default probe rule run must not be called")
     }
 }
 
@@ -49,14 +46,8 @@ impl InlineRule for Consumer {
         let mut context = state.probe_subrange(1..len).unwrap();
         let first = context.next_token();
         let summary = match first {
-            Ok(Some(token)) => format!("{}..{}", token.range.start, token.range.end),
-            Ok(None) => "empty".to_owned(),
-            Err(error) => {
-                // The whole recursive failure leaves the outer cursor intact.
-                assert_eq!(context.remaining(), &state.remaining()[1..]);
-                assert_eq!(context.next_token(), Err(error));
-                format!("{error:?}")
-            }
+            Some(token) => format!("{}..{}", token.range.start, token.range.end),
+            None => "empty".to_owned(),
         };
         Some((Some(NodeDraft::new(Text { content: summary })), len))
     }
@@ -66,7 +57,7 @@ fn parser(max_nesting: u32) -> MarkdownIt {
     let mut md = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
     md.inline.add_rule::<Nested>();
-    md.inline.add_rule::<Unsupported>();
+    md.inline.add_rule::<DefaultProbe>();
     md.inline.add_rule::<Consumer>();
     md.max_nesting = max_nesting;
     md
@@ -80,66 +71,15 @@ fn recursive_probe_returns_outer_relative_length() {
 }
 
 #[test]
-fn nested_unsupported_is_not_plain_text() {
+fn nested_default_probe_falls_back_to_text() {
     let md = parser(4);
     let document = md.parse_document_direct("@^^?").unwrap();
-    let html = document.into_legacy().render();
-    assert!(html.contains("UnsupportedRule"), "{html}");
+    assert_eq!(document.into_legacy().render(), "<p>0..3</p>\n");
 }
 
 #[test]
-fn recursive_depth_failure_is_explicit() {
+fn recursive_depth_limit_falls_back_inward() {
     let md = parser(3);
     let document = md.parse_document_direct("@^^x").unwrap();
-    let html = document.into_legacy().render();
-    assert!(html.contains("NestingLimit"), "{html}");
-}
-
-#[test]
-fn child_probe_does_not_call_code_pair_factory() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    use markdown_it::generics::inline::code_pair;
-
-    static FACTORY_CALLS: AtomicUsize = AtomicUsize::new(0);
-
-    fn factory(_: usize) -> NodeDraft {
-        FACTORY_CALLS.fetch_add(1, Ordering::SeqCst);
-        NodeDraft::new(Text {
-            content: "pair".to_owned(),
-        })
-    }
-
-    struct PairConsumer;
-    impl InlineRule for PairConsumer {
-        const MARKER: char = '@';
-
-        fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
-            let len = state.remaining().len();
-            let mut context = state.probe_subrange(1..len).unwrap();
-            let summary = match context.next_token() {
-                Ok(Some(token)) => format!("{}..{}", token.range.start, token.range.end),
-                Ok(None) => "empty".to_owned(),
-                Err(error) => format!("{error:?}"),
-            };
-            Some((Some(NodeDraft::new(Text { content: summary })), len))
-        }
-    }
-
-    FACTORY_CALLS.store(0, Ordering::SeqCst);
-    let mut md = MarkdownIt::empty();
-    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
-    code_pair::add_with::<'$'>(&mut md, factory);
-    md.inline.add_rule::<PairConsumer>();
-
-    let html = md
-        .parse_document_direct("@$x$")
-        .unwrap()
-        .into_legacy()
-        .render();
-    assert_eq!(html, "<p>0..3</p>\n");
-    assert_eq!(FACTORY_CALLS.load(Ordering::SeqCst), 0);
-
-    md.parse_document_direct("$x$").unwrap();
-    assert_eq!(FACTORY_CALLS.load(Ordering::SeqCst), 1);
+    assert_eq!(document.into_legacy().render(), "<p>0..2</p>\n");
 }

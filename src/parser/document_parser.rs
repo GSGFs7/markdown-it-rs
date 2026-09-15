@@ -381,8 +381,9 @@ impl<'a> DocumentInlineState<'a> {
     /// The returned context owns its cursor and scratch storage; the parent
     /// state is left untouched, including pending text and inline extensions.
     /// Ranges that are reversed, out of bounds, or not on UTF-8 boundaries
-    /// return `None`. Unsupported syntax is reported later by
-    /// [`InlineProbeContext::next_token`].
+    /// return `None`. Classification happens through
+    /// [`InlineProbeContext::next_token`]; rules without a probe are skipped
+    /// and unclaimed characters become text.
     pub fn probe_subrange(&self, range: Range<usize>) -> Option<InlineProbeContext<'_>> {
         self.remaining().get(range.clone())?;
         Some(InlineProbeContext::new(
@@ -489,12 +490,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::*;
-    use crate::parser::inline::probe::{
-        InlineProbeError,
-        InlineProbeKind,
-        InlineProbeResult,
-        InlineProbeToken,
-    };
+    use crate::parser::inline::probe::{InlineProbeKind, InlineProbeResult, InlineProbeToken};
     use crate::parser::inline::{DocumentProbeFn, DocumentRuleFn, DocumentRuleFns, InlineRule};
     use crate::parser::linkfmt::LinkFormatter;
 
@@ -895,26 +891,26 @@ mod tests {
 
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            InlineProbeToken {
                 range: 0..1,
                 kind: InlineProbeKind::Text,
-            })
+            }
         );
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            InlineProbeToken {
                 range: 1..2,
                 kind: InlineProbeKind::Token,
-            })
+            }
         );
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            InlineProbeToken {
                 range: 2..3,
                 kind: InlineProbeKind::Text,
-            })
+            }
         );
-        assert_eq!(context.next_token().unwrap(), None);
+        assert_eq!(context.next_token(), None);
         assert_eq!(context.trailing_text(), "c");
 
         assert_eq!(state.pending_text, None);
@@ -935,28 +931,31 @@ mod tests {
 
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            InlineProbeToken {
                 range: 0..3,
                 kind: InlineProbeKind::Text,
-            })
+            }
         );
-        assert_eq!(context.next_token().unwrap(), None);
+        assert_eq!(context.next_token(), None);
     }
 
     #[test]
-    fn probe_unsupported_rule_stops_dispatch_with_sticky_error() {
+    fn probe_no_match_falls_through_to_lower_priority_rules() {
         let md = MarkdownIt::empty();
         let ruleset = DocumentRuleSet {
             runs: vec![],
             probes: vec![
                 DocumentRuleFns {
                     run: panic_run,
-                    probe: |_| InlineProbeResult::Unsupported,
+                    probe: |_| InlineProbeResult::NoMatch,
                     marker: 'x',
                 },
                 DocumentRuleFns {
                     run: panic_run,
-                    probe: |_| panic!("lower-priority probe must not run"),
+                    probe: |_| InlineProbeResult::Match {
+                        len: 1,
+                        kind: InlineProbeKind::Token,
+                    },
                     marker: 'x',
                 },
             ],
@@ -964,18 +963,20 @@ mod tests {
         };
         let state = probe_state(&md, &ruleset, "x");
         let mut context = state.probe_subrange(0..1).unwrap();
-        let error = InlineProbeError::UnsupportedRule {
-            rule_index: 0,
-            marker: 'x',
-        };
 
-        assert_eq!(context.next_token(), Err(error));
-        assert_eq!(context.next_token(), Err(error));
-        assert_eq!(context.remaining(), "x");
+        assert_eq!(
+            context.next_token().unwrap(),
+            InlineProbeToken {
+                range: 0..1,
+                kind: InlineProbeKind::Token,
+            }
+        );
+        assert_eq!(context.next_token(), None);
+        assert_eq!(context.remaining(), "");
     }
 
     #[test]
-    fn probe_skips_unsupported_rules_with_other_markers() {
+    fn probe_dispatch_skips_non_matching_markers() {
         let md = MarkdownIt::empty();
         let ruleset = DocumentRuleSet {
             runs: vec![],
@@ -991,48 +992,63 @@ mod tests {
 
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            InlineProbeToken {
                 range: 0..1,
                 kind: InlineProbeKind::Text,
-            })
+            }
         );
-        assert_eq!(context.next_token().unwrap(), None);
+        assert_eq!(context.next_token(), None);
     }
 
     #[test]
-    fn probe_rejects_invalid_lengths() {
-        fn assert_invalid(source: &str, len: usize, probe: DocumentProbeFn) {
-            let md = MarkdownIt::empty();
-            let ruleset = DocumentRuleSet {
-                runs: vec![],
-                probes: vec![DocumentRuleFns {
-                    run: panic_run,
-                    probe,
-                    marker: '\0',
-                }],
-                finalizers: vec![],
-            };
-            let state = probe_state(&md, &ruleset, source);
-            let mut context = state.probe_subrange(0..source.len()).unwrap();
-            let error = InlineProbeError::InvalidLength { rule_index: 0, len };
+    #[should_panic(expected = "inline rule 0 reported invalid probe length 0")]
+    fn probe_rejects_zero_length() {
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![probe_rule(|_| InlineProbeResult::Match {
+                len: 0,
+                kind: InlineProbeKind::Text,
+            })],
+            finalizers: vec![],
+        };
+        let state = probe_state(&md, &ruleset, "x");
+        let mut context = state.probe_subrange(0..1).unwrap();
+        let _ = context.next_token();
+    }
 
-            assert_eq!(context.next_token(), Err(error));
-            assert_eq!(context.next_token(), Err(error));
-            assert_eq!(context.remaining(), source);
-        }
+    #[test]
+    #[should_panic(expected = "inline rule 0 reported invalid probe length 2")]
+    fn probe_rejects_out_of_bounds_length() {
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![probe_rule(|_| InlineProbeResult::Match {
+                len: 2,
+                kind: InlineProbeKind::Text,
+            })],
+            finalizers: vec![],
+        };
+        let state = probe_state(&md, &ruleset, "x");
+        let mut context = state.probe_subrange(0..1).unwrap();
+        let _ = context.next_token();
+    }
 
-        assert_invalid("x", 0, |_| InlineProbeResult::Match {
-            len: 0,
-            kind: InlineProbeKind::Text,
-        });
-        assert_invalid("x", 2, |_| InlineProbeResult::Match {
-            len: 2,
-            kind: InlineProbeKind::Text,
-        });
-        assert_invalid("éx", 1, |_| InlineProbeResult::Match {
-            len: 1,
-            kind: InlineProbeKind::Text,
-        });
+    #[test]
+    #[should_panic(expected = "inline rule 0 reported invalid probe length 1")]
+    fn probe_rejects_non_utf8_length() {
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![probe_rule(|_| InlineProbeResult::Match {
+                len: 1,
+                kind: InlineProbeKind::Text,
+            })],
+            finalizers: vec![],
+        };
+        let state = probe_state(&md, &ruleset, "éx");
+        let mut context = state.probe_subrange(0..3).unwrap();
+        let _ = context.next_token();
     }
 
     #[test]
@@ -1053,24 +1069,24 @@ mod tests {
         }
 
         let mut empty = state.probe_subrange(0..0).unwrap();
-        assert_eq!(empty.next_token().unwrap(), None);
+        assert_eq!(empty.next_token(), None);
 
         let mut full = state.probe_subrange(0..3).unwrap();
         assert_eq!(
             full.next_token().unwrap(),
-            Some(InlineProbeToken {
+            InlineProbeToken {
                 range: 0..2,
                 kind: InlineProbeKind::Text,
-            })
+            }
         );
         assert_eq!(
             full.next_token().unwrap(),
-            Some(InlineProbeToken {
+            InlineProbeToken {
                 range: 2..3,
                 kind: InlineProbeKind::Text,
-            })
+            }
         );
-        assert_eq!(full.next_token().unwrap(), None);
+        assert_eq!(full.next_token(), None);
     }
 
     #[test]
@@ -1090,17 +1106,17 @@ mod tests {
         assert_eq!(context.markdown_it().max_nesting, md.max_nesting);
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            InlineProbeToken {
                 range: 0..1,
                 kind: InlineProbeKind::Text,
-            })
+            }
         );
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            InlineProbeToken {
                 range: 1..2,
                 kind: InlineProbeKind::Text,
-            })
+            }
         );
 
         assert_eq!(state.pending_text, Some((0, 3)));
@@ -1123,55 +1139,51 @@ mod tests {
         let state = probe_state(&md, &ruleset, "éx");
         let context = state.probe_subrange(0..3).unwrap();
 
-        assert!(
-            context
-                .probe_subrange(Range { start: 2, end: 1 })
-                .unwrap()
-                .is_none()
-        );
-        assert!(context.probe_subrange(0..4).unwrap().is_none());
-        assert!(context.probe_subrange(1..2).unwrap().is_none());
+        assert!(context.probe_subrange(Range { start: 2, end: 1 }).is_none());
+        assert!(context.probe_subrange(0..4).is_none());
+        assert!(context.probe_subrange(1..2).is_none());
 
-        let mut empty = context.probe_subrange(0..0).unwrap().unwrap();
+        let mut empty = context.probe_subrange(0..0).unwrap();
         assert_eq!(empty.depth(), context.depth() + 1);
         assert_eq!(empty.remaining(), "");
         assert_eq!(empty.trailing_text(), "");
-        assert_eq!(empty.next_token().unwrap(), None);
+        assert_eq!(empty.next_token(), None);
 
-        let mut full = context.probe_subrange(0..3).unwrap().unwrap();
+        let mut full = context.probe_subrange(0..3).unwrap();
         assert_eq!(full.remaining(), "éx");
         assert_eq!(full.link_level(), context.link_level());
         assert_eq!(
             full.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..2,
                 kind: InlineProbeKind::Text,
             })
         );
         assert_eq!(
             full.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 2..3,
                 kind: InlineProbeKind::Text,
             })
         );
-        assert_eq!(full.next_token().unwrap(), None);
+        assert_eq!(full.next_token(), None);
 
-        // A sticky error takes priority over range validity and depth.
-        let unsupported = DocumentRuleSet {
+        // A rule reporting no match does not poison later child sessions.
+        let no_match = DocumentRuleSet {
             runs: vec![],
             probes: vec![DocumentRuleFns {
                 run: panic_run,
-                probe: |_| InlineProbeResult::Unsupported,
+                probe: |_| InlineProbeResult::NoMatch,
                 marker: 'x',
             }],
             finalizers: vec![],
         };
-        let state = probe_state(&md, &unsupported, "x");
+        let state = probe_state(&md, &no_match, "x");
         let mut context = state.probe_subrange(0..1).unwrap();
-        let error = context.next_token().unwrap_err();
-        assert!(matches!(context.probe_subrange(0..1), Err(e) if e == error));
-        assert!(matches!(context.probe_subrange(1..2), Err(e) if e == error));
+        assert_eq!(context.next_token().unwrap().kind, InlineProbeKind::Text);
+        assert_eq!(context.next_token(), None);
+        assert!(context.probe_subrange(0..0).is_some());
+        assert!(context.probe_subrange(0..1).is_none());
     }
 
     #[test]
@@ -1188,13 +1200,12 @@ mod tests {
         let first = state.probe_subrange(0..2).unwrap();
         assert_eq!(first.depth(), 1);
 
-        let second = first.probe_subrange(0..2).unwrap().unwrap();
+        let second = first.probe_subrange(0..2).unwrap();
         assert_eq!(second.depth(), 2);
         assert_eq!(second.remaining(), "xy");
 
-        let error = InlineProbeError::NestingLimit { max_nesting: 3 };
-        assert!(matches!(second.probe_subrange(0..0), Err(e) if e == error));
-        assert!(matches!(second.probe_subrange(0..2), Err(e) if e == error));
+        assert!(second.probe_subrange(0..0).is_none());
+        assert!(second.probe_subrange(0..2).is_none());
     }
 
     #[test]
@@ -1210,26 +1221,26 @@ mod tests {
 
         assert_eq!(
             parent.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..1,
                 kind: InlineProbeKind::Text,
             })
         );
         assert_eq!(parent.trailing_text(), "a");
 
-        let mut child = parent.probe_subrange(1..3).unwrap().unwrap();
+        let mut child = parent.probe_subrange(1..3).unwrap();
         assert_eq!(child.remaining(), "cd");
         assert_eq!(child.trailing_text(), "");
         assert_eq!(
             child.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..1,
                 kind: InlineProbeKind::Text,
             })
         );
         assert_eq!(
             child.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 1..2,
                 kind: InlineProbeKind::Text,
             })
@@ -1252,12 +1263,12 @@ mod tests {
         let state = probe_state(&md, &ruleset, source);
         let mut parent = state.probe_subrange(0..source.len()).unwrap();
 
-        assert_eq!(parent.next_token().unwrap().unwrap().range, 0..3);
+        assert_eq!(parent.next_token().unwrap().range, 0..3);
         assert_eq!(parent.link_level(), 1);
 
-        let mut child = parent.probe_subrange(0..3).unwrap().unwrap();
+        let mut child = parent.probe_subrange(0..3).unwrap();
         assert_eq!(child.link_level(), 1);
-        assert_eq!(child.next_token().unwrap().unwrap().range, 0..3);
+        assert_eq!(child.next_token().unwrap().range, 0..3);
         assert_eq!(child.link_level(), 2);
 
         assert_eq!(parent.remaining(), "<a>");
@@ -1276,144 +1287,18 @@ mod tests {
         let parent = state.probe_subrange(0..3).unwrap();
 
         // An unclosed child scan must not poison its siblings.
-        let mut short = parent.probe_subrange(0..2).unwrap().unwrap();
-        assert_eq!(
-            short.next_token().unwrap().unwrap().kind,
-            InlineProbeKind::Text
-        );
-        assert_eq!(
-            short.next_token().unwrap().unwrap().kind,
-            InlineProbeKind::Text
-        );
-        assert_eq!(short.next_token().unwrap(), None);
+        let mut short = parent.probe_subrange(0..2).unwrap();
+        assert_eq!(short.next_token().unwrap().kind, InlineProbeKind::Text);
+        assert_eq!(short.next_token().unwrap().kind, InlineProbeKind::Text);
+        assert_eq!(short.next_token(), None);
 
-        let mut long = parent.probe_subrange(0..3).unwrap().unwrap();
-        assert_eq!(
-            long.next_token().unwrap().unwrap().kind,
-            InlineProbeKind::Token
-        );
-        assert_eq!(long.next_token().unwrap(), None);
+        let mut long = parent.probe_subrange(0..3).unwrap();
+        assert_eq!(long.next_token().unwrap().kind, InlineProbeKind::Token);
+        assert_eq!(long.next_token(), None);
 
-        let mut again = parent.probe_subrange(0..3).unwrap().unwrap();
-        assert_eq!(
-            again.next_token().unwrap().unwrap().kind,
-            InlineProbeKind::Token
-        );
-        assert_eq!(again.next_token().unwrap(), None);
-    }
-
-    #[test]
-    fn recursive_probe_propagates_child_errors_and_keeps_parent_state() {
-        fn forward(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
-            if !context.remaining().starts_with('a') {
-                return InlineProbeResult::NoMatch;
-            }
-            let len = context.remaining().len();
-            match context.probe_subrange(1..len) {
-                Ok(Some(mut child)) => match child.next_token() {
-                    Ok(Some(token)) => InlineProbeResult::Match {
-                        len: 1 + token.range.end,
-                        kind: InlineProbeKind::Token,
-                    },
-                    Ok(None) => unreachable!("child range is non-empty"),
-                    Err(error) => InlineProbeResult::Error(error),
-                },
-                Ok(None) => unreachable!("child range is valid"),
-                Err(error) => InlineProbeResult::Error(error),
-            }
-        }
-
-        let md = MarkdownIt::empty();
-        let ruleset = DocumentRuleSet {
-            runs: vec![],
-            probes: vec![
-                DocumentRuleFns {
-                    run: panic_run,
-                    probe: forward,
-                    marker: 'a',
-                },
-                DocumentRuleFns {
-                    run: panic_run,
-                    probe: |_| InlineProbeResult::Unsupported,
-                    marker: 'x',
-                },
-                DocumentRuleFns {
-                    run: panic_run,
-                    probe: |_| panic!("later same-marker rule must not run"),
-                    marker: 'x',
-                },
-                DocumentRuleFns {
-                    run: panic_run,
-                    probe: |_| InlineProbeResult::Match {
-                        len: 99,
-                        kind: InlineProbeKind::Token,
-                    },
-                    marker: 'y',
-                },
-                DocumentRuleFns {
-                    run: panic_run,
-                    probe: |_| InlineProbeResult::MatchWithEffects {
-                        len: 1,
-                        kind: InlineProbeKind::Token,
-                        effects: crate::InlineProbeEffects {
-                            link_level_delta: i32::MAX,
-                        },
-                    },
-                    marker: 'z',
-                },
-                DocumentRuleFns {
-                    run: panic_run,
-                    probe: |_| panic!("later parent rule must not run after a child error"),
-                    marker: 'a',
-                },
-            ],
-            finalizers: vec![],
-        };
-
-        for (source, expected) in [
-            (
-                "qax",
-                InlineProbeError::UnsupportedRule {
-                    rule_index: 1,
-                    marker: 'x',
-                },
-            ),
-            (
-                "qay",
-                InlineProbeError::InvalidLength {
-                    rule_index: 3,
-                    len: 99,
-                },
-            ),
-            (
-                "qaz",
-                InlineProbeError::InvalidEffects {
-                    rule_index: 4,
-                    link_level: 5,
-                    link_level_delta: i32::MAX,
-                },
-            ),
-        ] {
-            let mut state = probe_state(&md, &ruleset, source);
-            state.link_level = 5;
-            let mut context = state.probe_subrange(0..source.len()).unwrap();
-
-            assert_eq!(
-                context.next_token().unwrap(),
-                Some(InlineProbeToken {
-                    range: 0..1,
-                    kind: InlineProbeKind::Text,
-                })
-            );
-            assert_eq!(context.trailing_text(), "q");
-
-            let error = context.next_token().unwrap_err();
-            assert_eq!(error, expected, "{source}");
-            assert_eq!(context.remaining(), &source[1..]);
-            assert_eq!(context.trailing_text(), "q");
-            assert_eq!(context.link_level(), 5);
-            assert_eq!(context.next_token(), Err(error));
-        }
+        let mut again = parent.probe_subrange(0..3).unwrap();
+        assert_eq!(again.next_token().unwrap().kind, InlineProbeKind::Token);
+        assert_eq!(again.next_token(), None);
     }
 
     #[test]
@@ -1428,16 +1313,14 @@ mod tests {
             CALLS.with(|calls| calls.set(calls.get() + 1));
             let len = context.remaining().len();
             match context.probe_subrange(0..len) {
-                Ok(Some(mut child)) => match child.next_token() {
-                    Ok(Some(token)) => InlineProbeResult::Match {
+                Some(mut child) => match child.next_token() {
+                    Some(token) => InlineProbeResult::Match {
                         len: token.range.end,
                         kind: InlineProbeKind::Token,
                     },
-                    Ok(None) => InlineProbeResult::NoMatch,
-                    Err(error) => InlineProbeResult::Error(error),
+                    None => InlineProbeResult::NoMatch,
                 },
-                Ok(None) => InlineProbeResult::NoMatch,
-                Err(error) => InlineProbeResult::Error(error),
+                None => InlineProbeResult::NoMatch,
             }
         }
 
@@ -1456,11 +1339,16 @@ mod tests {
         let mut context = state.probe_subrange(0..1).unwrap();
         CALLS.with(|calls| calls.set(0));
 
-        let error = context.next_token().unwrap_err();
-        assert_eq!(error, InlineProbeError::NestingLimit { max_nesting: 5 });
+        assert_eq!(
+            context.next_token().unwrap(),
+            InlineProbeToken {
+                range: 0..1,
+                kind: InlineProbeKind::Token,
+            }
+        );
         assert_eq!(CALLS.with(Cell::get), 4);
-        assert_eq!(context.remaining(), "#");
-        assert_eq!(context.next_token(), Err(error));
+        assert_eq!(context.remaining(), "");
+        assert_eq!(context.next_token(), None);
     }
 
     #[test]
@@ -1476,16 +1364,14 @@ mod tests {
                 return InlineProbeResult::NoMatch;
             }
             match context.probe_subrange(1..context.remaining().len()) {
-                Ok(Some(mut child)) => match child.next_token() {
-                    Ok(Some(token)) => InlineProbeResult::Match {
+                Some(mut child) => match child.next_token() {
+                    Some(token) => InlineProbeResult::Match {
                         len: 1 + token.range.end,
                         kind: InlineProbeKind::Token,
                     },
-                    Ok(None) => InlineProbeResult::NoMatch,
-                    Err(error) => InlineProbeResult::Error(error),
+                    None => InlineProbeResult::NoMatch,
                 },
-                Ok(None) => InlineProbeResult::NoMatch,
-                Err(error) => InlineProbeResult::Error(error),
+                None => InlineProbeResult::NoMatch,
             }
         }
 
@@ -1507,52 +1393,12 @@ mod tests {
 
         CALLS.store(0, Ordering::SeqCst);
         let start = Instant::now();
-        let token = context.next_token().unwrap().unwrap();
+        let token = context.next_token().unwrap();
         assert!(start.elapsed() < Duration::from_secs(10));
         assert_eq!(token.range, 0..source.len());
         assert_eq!(token.kind, InlineProbeKind::Token);
         assert_eq!(CALLS.load(Ordering::SeqCst), CHAIN);
-        assert_eq!(context.next_token().unwrap(), None);
-    }
-
-    #[test]
-    fn probe_code_pair_cache_is_private_to_each_session() {
-        use crate::generics::inline::code_pair::CodePairScanner;
-
-        let mut md = MarkdownIt::empty();
-        md.inline.add_migrated_rule::<CodePairScanner<'`'>>();
-        let ruleset = md.inline.document_rules().unwrap();
-        let state = probe_state(&md, &ruleset, "`x`");
-
-        let mut short = state.probe_subrange(0..2).unwrap();
-        assert_eq!(
-            short.next_token().unwrap(),
-            Some(InlineProbeToken {
-                range: 0..1,
-                kind: InlineProbeKind::Text,
-            })
-        );
-        assert_eq!(
-            short.next_token().unwrap(),
-            Some(InlineProbeToken {
-                range: 1..2,
-                kind: InlineProbeKind::Text,
-            })
-        );
-        assert_eq!(short.next_token().unwrap(), None);
-
-        let mut long = state.probe_subrange(0..3).unwrap();
-        assert_eq!(
-            long.next_token().unwrap(),
-            Some(InlineProbeToken {
-                range: 0..3,
-                kind: InlineProbeKind::Token,
-            })
-        );
-        assert_eq!(long.next_token().unwrap(), None);
-
-        assert_eq!(state.pending_text, None);
-        assert_eq!((state.pos, state.pos_max, state.link_level), (0, 3, 0));
+        assert_eq!(context.next_token(), None);
     }
 
     #[test]
@@ -1578,7 +1424,7 @@ mod tests {
 
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..1,
                 kind: InlineProbeKind::Token,
             })
@@ -1595,20 +1441,14 @@ mod tests {
         let state = probe_state(&md, &ruleset, source);
         let mut context = state.probe_subrange(0..source.len()).unwrap();
 
-        let token = context.next_token().unwrap().unwrap();
+        let token = context.next_token().unwrap();
         assert_eq!(token.range, 0..13);
         assert_eq!(token.kind, InlineProbeKind::Token);
         assert_eq!(context.link_level(), 1);
-        assert_eq!(
-            context.next_token().unwrap().unwrap().kind,
-            InlineProbeKind::Text
-        );
-        assert_eq!(
-            context.next_token().unwrap().unwrap().kind,
-            InlineProbeKind::Token
-        );
+        assert_eq!(context.next_token().unwrap().kind, InlineProbeKind::Text);
+        assert_eq!(context.next_token().unwrap().kind, InlineProbeKind::Token);
         assert_eq!(context.link_level(), 0);
-        assert!(context.next_token().unwrap().is_none());
+        assert!(context.next_token().is_none());
         assert_eq!(state.link_level, 0);
         assert_eq!(state.pos, 0);
         assert_eq!(
@@ -1618,7 +1458,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_probe_effect_preserves_context_and_is_sticky() {
+    fn invalid_probe_effect_panics_and_preserves_context() {
         let md = MarkdownIt::empty();
         let ruleset = DocumentRuleSet {
             runs: vec![],
@@ -1634,14 +1474,15 @@ mod tests {
         let mut state = probe_state(&md, &ruleset, "x");
         state.link_level = i32::MAX;
         let mut context = state.probe_subrange(0..1).unwrap();
-        let error = context.next_token().unwrap_err();
-        assert!(matches!(
-            error,
-            crate::InlineProbeError::InvalidEffects { .. }
-        ));
         assert_eq!(context.remaining(), "x");
         assert_eq!(context.link_level(), i32::MAX);
-        assert_eq!(context.next_token(), Err(error));
+
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| context.next_token()));
+        assert!(result.is_err());
+        assert_eq!(context.remaining(), "x");
+        assert_eq!(context.link_level(), i32::MAX);
+        assert_eq!(state.link_level, i32::MAX);
     }
 
     struct LaterMarkerProbe;
@@ -1746,7 +1587,7 @@ mod tests {
 
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..3,
                 kind: InlineProbeKind::Text,
             })
@@ -1755,7 +1596,7 @@ mod tests {
 
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 3..4,
                 kind: InlineProbeKind::Token,
             })
@@ -1764,13 +1605,13 @@ mod tests {
 
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 4..7,
                 kind: InlineProbeKind::Text,
             })
         );
         assert_eq!(context.trailing_text(), " \tb");
-        assert!(context.next_token().unwrap().is_none());
+        assert!(context.next_token().is_none());
         assert_eq!(state.pending_text, None);
     }
 
@@ -1791,13 +1632,13 @@ mod tests {
             let mut context = state.probe_subrange(0..source.len()).unwrap();
             assert_eq!(
                 context.next_token().unwrap(),
-                Some(InlineProbeToken {
+                (InlineProbeToken {
                     range: 0..len,
                     kind: InlineProbeKind::Token,
                 }),
                 "{source}"
             );
-            assert!(context.next_token().unwrap().is_none(), "{source}");
+            assert!(context.next_token().is_none(), "{source}");
         }
     }
 
@@ -1812,7 +1653,7 @@ mod tests {
             let mut context = state.probe_subrange(0..source.len()).unwrap();
             assert_eq!(
                 context.next_token().unwrap(),
-                Some(InlineProbeToken {
+                (InlineProbeToken {
                     range: 0..1,
                     kind: InlineProbeKind::Text,
                 }),
@@ -1820,20 +1661,20 @@ mod tests {
             );
             assert_eq!(
                 context.next_token().unwrap(),
-                Some(InlineProbeToken {
+                (InlineProbeToken {
                     range: 1..source.len(),
                     kind: InlineProbeKind::Text,
                 }),
                 "{source}"
             );
-            assert!(context.next_token().unwrap().is_none(), "{source}");
+            assert!(context.next_token().is_none(), "{source}");
         }
 
         let state = probe_state(&md, &ruleset, "&amp;");
         let mut short = state.probe_subrange(0..4).unwrap();
         assert_eq!(
             short.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..1,
                 kind: InlineProbeKind::Text,
             })
@@ -1841,7 +1682,7 @@ mod tests {
         let mut long = state.probe_subrange(0..5).unwrap();
         assert_eq!(
             long.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..5,
                 kind: InlineProbeKind::Token,
             })
@@ -1859,7 +1700,7 @@ mod tests {
         let mut context = state.probe_subrange(0..1).unwrap();
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..1,
                 kind: InlineProbeKind::Token,
             })
@@ -1874,7 +1715,7 @@ mod tests {
         let mut context = state.probe_subrange(0..1).unwrap();
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..1,
                 kind: InlineProbeKind::Token,
             })
@@ -1898,7 +1739,7 @@ mod tests {
         let mut context = state.probe_subrange(0..3).unwrap();
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..3,
                 kind: InlineProbeKind::Token,
             })
@@ -1913,36 +1754,36 @@ mod tests {
         let state = probe_state(&md, &ruleset, "<!-- [ -->");
 
         let mut short = state.probe_subrange(0..5).unwrap();
-        while let Some(token) = short.next_token().unwrap() {
+        while let Some(token) = short.next_token() {
             assert_eq!(token.kind, InlineProbeKind::Text);
         }
 
         let mut long = state.probe_subrange(0..state.pos_max).unwrap();
         assert_eq!(
             long.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..10,
                 kind: InlineProbeKind::Token,
             })
         );
-        assert!(long.next_token().unwrap().is_none());
+        assert!(long.next_token().is_none());
 
         let mut long_first = state.probe_subrange(0..state.pos_max).unwrap();
         assert_eq!(
             long_first.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..10,
                 kind: InlineProbeKind::Token,
             })
         );
         let mut short_after = state.probe_subrange(0..5).unwrap();
-        while let Some(token) = short_after.next_token().unwrap() {
+        while let Some(token) = short_after.next_token() {
             assert_eq!(token.kind, InlineProbeKind::Text);
         }
     }
 
     #[test]
-    fn invalid_probe_length_with_effects_preserves_pending_and_is_sticky() {
+    fn invalid_probe_length_with_effects_panics_and_preserves_pending() {
         let md = MarkdownIt::empty();
         let ruleset = DocumentRuleSet {
             runs: vec![],
@@ -1981,31 +1822,26 @@ mod tests {
 
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            InlineProbeToken {
                 range: 0..1,
                 kind: InlineProbeKind::Text,
-            })
+            }
         );
         assert_eq!(context.trailing_text(), "a");
         assert_eq!(context.link_level(), 2);
+        assert_eq!(context.remaining(), "a");
 
-        let error = context.next_token().unwrap_err();
-        assert!(matches!(
-            error,
-            InlineProbeError::InvalidLength {
-                rule_index: 1,
-                len: 0
-            }
-        ));
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| context.next_token()));
+        assert!(result.is_err());
         assert_eq!(context.remaining(), "a");
         assert_eq!(context.trailing_text(), "a");
         assert_eq!(context.link_level(), 2);
-        assert_eq!(context.next_token(), Err(error));
         assert_eq!(state.link_level, 2);
     }
 
     #[test]
-    fn invalid_probe_effect_underflow_preserves_context() {
+    fn invalid_probe_effect_underflow_panics_and_preserves_context() {
         let md = MarkdownIt::empty();
         let ruleset = DocumentRuleSet {
             runs: vec![],
@@ -2021,17 +1857,15 @@ mod tests {
         let mut state = probe_state(&md, &ruleset, "x");
         state.link_level = i32::MIN;
         let mut context = state.probe_subrange(0..1).unwrap();
-        let error = context.next_token().unwrap_err();
-        assert!(matches!(
-            error,
-            InlineProbeError::InvalidEffects {
-                link_level: i32::MIN,
-                link_level_delta: -1,
-                ..
-            }
-        ));
         assert_eq!(context.remaining(), "x");
         assert_eq!(context.link_level(), i32::MIN);
+
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| context.next_token()));
+        assert!(result.is_err());
+        assert_eq!(context.remaining(), "x");
+        assert_eq!(context.link_level(), i32::MIN);
+        assert_eq!(state.link_level, i32::MIN);
     }
 
     #[test]
@@ -2046,14 +1880,14 @@ mod tests {
 
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..3,
                 kind: InlineProbeKind::Token,
             })
         );
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 3..4,
                 kind: InlineProbeKind::Text,
             })
@@ -2078,7 +1912,7 @@ mod tests {
 
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..4,
                 kind: InlineProbeKind::Token,
             })
@@ -2086,46 +1920,14 @@ mod tests {
         assert_eq!(context.link_level(), -1);
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 4..8,
                 kind: InlineProbeKind::Token,
             })
         );
         assert_eq!(context.link_level(), -1);
-        assert!(context.next_token().unwrap().is_none());
+        assert!(context.next_token().is_none());
         assert_eq!(state.link_level, 0);
-    }
-
-    #[test]
-    fn probe_autolink_calls_formatter_in_helper_order() {
-        let calls = Arc::new(Mutex::new(Vec::new()));
-        let mut md = MarkdownIt::empty();
-        crate::plugins::cmark::inline::autolink::add(&mut md);
-        md.link_formatter = Box::new(RecordingFormatter {
-            calls: calls.clone(),
-            reject: false,
-        });
-        let ruleset = md.inline.document_rules().unwrap();
-        let source = "<https://example.com>";
-        let state = probe_state(&md, &ruleset, source);
-        let mut context = state.probe_subrange(0..source.len()).unwrap();
-
-        assert_eq!(
-            context.next_token().unwrap(),
-            Some(InlineProbeToken {
-                range: 0..source.len(),
-                kind: InlineProbeKind::Token,
-            })
-        );
-        drop(context);
-        assert_eq!(
-            *calls.lock().unwrap(),
-            vec![
-                "normalize:https://example.com".to_owned(),
-                "validate:https://example.com".to_owned(),
-                "text:https://example.com".to_owned(),
-            ]
-        );
     }
 
     #[test]
@@ -2144,7 +1946,7 @@ mod tests {
 
         assert_eq!(
             context.next_token().unwrap(),
-            Some(InlineProbeToken {
+            (InlineProbeToken {
                 range: 0..source.len(),
                 kind: InlineProbeKind::Token,
             })
@@ -2158,56 +1960,6 @@ mod tests {
                 "text:foo@example.com".to_owned(),
             ]
         );
-    }
-
-    #[test]
-    fn probe_autolink_rejection_skips_label_normalization() {
-        let calls = Arc::new(Mutex::new(Vec::new()));
-        let mut md = MarkdownIt::empty();
-        crate::plugins::cmark::inline::autolink::add(&mut md);
-        md.link_formatter = Box::new(RecordingFormatter {
-            calls: calls.clone(),
-            reject: true,
-        });
-        let ruleset = md.inline.document_rules().unwrap();
-        let source = "<https://example.com>";
-        let state = probe_state(&md, &ruleset, source);
-        let mut context = state.probe_subrange(0..source.len()).unwrap();
-
-        assert_eq!(
-            context.next_token().unwrap().unwrap().kind,
-            InlineProbeKind::Text
-        );
-        drop(context);
-        assert_eq!(
-            *calls.lock().unwrap(),
-            vec![
-                "normalize:https://example.com".to_owned(),
-                "validate:https://example.com".to_owned(),
-            ]
-        );
-    }
-
-    #[test]
-    fn probe_autolink_invalid_syntax_skips_formatter() {
-        let calls = Arc::new(Mutex::new(Vec::new()));
-        let mut md = MarkdownIt::empty();
-        crate::plugins::cmark::inline::autolink::add(&mut md);
-        md.link_formatter = Box::new(RecordingFormatter {
-            calls: calls.clone(),
-            reject: false,
-        });
-        let ruleset = md.inline.document_rules().unwrap();
-        let source = "<https://foo bar>";
-        let state = probe_state(&md, &ruleset, source);
-        let mut context = state.probe_subrange(0..source.len()).unwrap();
-
-        assert_eq!(
-            context.next_token().unwrap().unwrap().kind,
-            InlineProbeKind::Text
-        );
-        drop(context);
-        assert!(calls.lock().unwrap().is_empty());
     }
 
     fn probe_state_with_level<'a>(

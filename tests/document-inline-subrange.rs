@@ -109,24 +109,15 @@ impl InlineRule for ProbeSummaryRule {
         let close = source.find('}')?;
         let mut context = state.probe_subrange(1..close)?;
         let mut summary = String::new();
-        loop {
-            match context.next_token() {
-                Ok(Some(token)) => {
-                    let kind = match token.kind {
-                        InlineProbeKind::Text => "text",
-                        InlineProbeKind::Token => "token",
-                    };
-                    summary.push_str(&format!(
-                        "{}..{}={kind};",
-                        token.range.start, token.range.end
-                    ));
-                }
-                Ok(None) => break,
-                Err(error) => {
-                    summary.push_str(&format!("error({error});"));
-                    break;
-                }
-            }
+        while let Some(token) = context.next_token() {
+            let kind = match token.kind {
+                InlineProbeKind::Text => "text",
+                InlineProbeKind::Token => "token",
+            };
+            summary.push_str(&format!(
+                "{}..{}={kind};",
+                token.range.start, token.range.end
+            ));
         }
         Some((Some(NodeDraft::new(Text { content: summary })), close + 1))
     }
@@ -250,7 +241,7 @@ fn normal_direct_parsing_never_calls_probe() {
 }
 
 #[test]
-fn probing_reports_unsupported_rules_only_for_matching_markers() {
+fn default_probe_for_matching_marker_falls_back_to_text() {
     let mut md = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
     md.inline.add_rule::<ProbeSummaryRule>();
@@ -261,10 +252,7 @@ fn probing_reports_unsupported_rules_only_for_matching_markers() {
         .unwrap()
         .into_legacy()
         .render();
-    assert!(
-        html.contains("does not support probing marker 'y'"),
-        "{html}"
-    );
+    assert_eq!(html, "<p>0..1=text;</p>\n");
 
     let html = md
         .parse_document_direct("{x}")

@@ -52,7 +52,6 @@ pub use parser::document_transform::{
 pub use parser::inline::probe::{
     InlineProbeContext,
     InlineProbeEffects,
-    InlineProbeError,
     InlineProbeKind,
     InlineProbeResult,
     InlineProbeToken,

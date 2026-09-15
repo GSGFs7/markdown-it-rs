@@ -18,12 +18,12 @@ pub trait InlineRule: 'static {
 
     /// Classify the current position during an independent probe.
     ///
-    /// `NoMatch` continues with lower-priority rules; `Unsupported` (the
-    /// default) fails the session. Report nested failures as
-    /// [`InlineProbeResult::Error`] rather than `NoMatch`. Do not advance the
-    /// cursor or mutate shared state.
+    /// `NoMatch` tries lower-priority rules, then character fallback. It does
+    /// not imply that `run` would reject this position. Rules whose spans must
+    /// remain opaque during boundary scanning should implement this method.
+    /// Do not advance the cursor or mutate shared state.
     fn probe(_context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
-        InlineProbeResult::Unsupported
+        InlineProbeResult::NoMatch
     }
 
     /// Inspect the current position and return a draft plus consumed byte length.
