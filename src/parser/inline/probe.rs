@@ -35,6 +35,8 @@ pub enum InlineProbeResult {
         kind: InlineProbeKind,
         effects: InlineProbeEffects,
     },
+    /// Stop this session with an error reported by a nested probe.
+    Error(InlineProbeError),
 }
 
 /// One classified span relative to the start of a probe session.
@@ -72,6 +74,11 @@ pub enum InlineProbeError {
         /// Signed delta reported by the rule.
         link_level_delta: i32,
     },
+    /// A recursive child session would reach or exceed the nesting limit.
+    NestingLimit {
+        /// Parser nesting limit used for this probe.
+        max_nesting: u32,
+    },
 }
 
 impl Display for InlineProbeError {
@@ -93,6 +100,12 @@ impl Display for InlineProbeError {
                 f,
                 "inline rule {rule_index} overflowed probe link level: {link_level} + {link_level_delta}"
             ),
+            Self::NestingLimit { max_nesting } => {
+                write!(
+                    f,
+                    "recursive inline probe reached nesting limit {max_nesting}"
+                )
+            }
         }
     }
 }
@@ -212,11 +225,7 @@ impl<'a> InlineProbeContext<'a> {
         }
     }
 
-    /// Classify the next span, or return `None` at the end of the session.
-    ///
-    /// Rules run in registration order; errors are sticky. At the nesting limit
-    /// the remaining range is reported as one [`InlineProbeKind::Text`] span.
-    pub fn next_token(&mut self) -> Result<Option<InlineProbeToken>, InlineProbeError> {
+    fn next_token_inner(&mut self) -> Result<Option<InlineProbeToken>, InlineProbeError> {
         if let Some(error) = self.error {
             return Err(error);
         }
@@ -250,6 +259,10 @@ impl<'a> InlineProbeContext<'a> {
                     (len, kind, InlineProbeEffects::default())
                 }
                 InlineProbeResult::MatchWithEffects { len, kind, effects } => (len, kind, effects),
+                InlineProbeResult::Error(error) => {
+                    self.error = Some(error);
+                    return Err(error);
+                }
             };
 
             if len == 0 || self.remaining().get(..len).is_none() {
@@ -274,5 +287,52 @@ impl<'a> InlineProbeContext<'a> {
         }
 
         Ok(Some(self.accept(marker.len_utf8(), InlineProbeKind::Text)))
+    }
+
+    /// Classify the next span, or return `None` at the end of the session.
+    ///
+    /// Rules run in registration order; errors are sticky. At the nesting limit
+    /// the remaining range is reported as one [`InlineProbeKind::Text`] span.
+    pub fn next_token(&mut self) -> Result<Option<InlineProbeToken>, InlineProbeError> {
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || self.next_token_inner())
+    }
+
+    /// Create an isolated recursive probe over a range of `remaining()`.
+    ///
+    /// Invalid UTF-8 ranges return `Ok(None)`. A sticky parent error or a
+    /// recursive nesting limit is returned as `Err`. The child inherits the
+    /// current link level and starts with empty pending text and private scratch.
+    pub fn probe_subrange(
+        &self,
+        range: Range<usize>,
+    ) -> Result<Option<InlineProbeContext<'_>>, InlineProbeError> {
+        if let Some(error) = self.error {
+            return Err(error);
+        }
+        if self.remaining().get(range.clone()).is_none() {
+            return Ok(None);
+        }
+
+        let child_depth = self
+            .depth
+            .checked_add(1)
+            .ok_or(InlineProbeError::NestingLimit {
+                max_nesting: self.md.max_nesting,
+            })?;
+        if child_depth >= self.md.max_nesting {
+            return Err(InlineProbeError::NestingLimit {
+                max_nesting: self.md.max_nesting,
+            });
+        }
+
+        Ok(Some(InlineProbeContext::new(
+            self.source,
+            self.pos + range.start,
+            self.pos + range.end,
+            self.md,
+            self.ruleset,
+            child_depth,
+            self.link_level(),
+        )))
     }
 }

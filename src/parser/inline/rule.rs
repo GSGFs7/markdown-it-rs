@@ -18,10 +18,10 @@ pub trait InlineRule: 'static {
 
     /// Classify the current position during an independent probe.
     ///
-    /// The default returns [`InlineProbeResult::Unsupported`], which fails the
-    /// session. `NoMatch` continues with lower-priority rules. Callbacks must
-    /// not advance the cursor or mutate shared state; the engine consumes the
-    /// match and applies any effects.
+    /// `NoMatch` continues with lower-priority rules; `Unsupported` (the
+    /// default) fails the session. Report nested failures as
+    /// [`InlineProbeResult::Error`] rather than `NoMatch`. Do not advance the
+    /// cursor or mutate shared state.
     fn probe(_context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
         InlineProbeResult::Unsupported
     }

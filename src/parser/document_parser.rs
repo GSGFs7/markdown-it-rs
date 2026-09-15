@@ -347,9 +347,13 @@ impl<'a> DocumentInlineState<'a> {
         }
 
         while self.pos < self.pos_max {
+            let marker = self.src[self.pos..self.pos_max].chars().next().unwrap();
             let mut matched = None;
             for rule in &self.ruleset.runs {
-                if let Some(result) = rule(self) {
+                if !rule.matches_marker(marker) {
+                    continue;
+                }
+                if let Some(result) = (rule.run)(self) {
                     matched = Some(result);
                     break;
                 }
@@ -491,7 +495,7 @@ mod tests {
         InlineProbeResult,
         InlineProbeToken,
     };
-    use crate::parser::inline::{DocumentProbeFn, DocumentRuleFns, InlineRule};
+    use crate::parser::inline::{DocumentProbeFn, DocumentRuleFn, DocumentRuleFns, InlineRule};
     use crate::parser::linkfmt::LinkFormatter;
 
     fn probe_rule(probe: DocumentProbeFn) -> DocumentRuleFns {
@@ -500,6 +504,22 @@ mod tests {
             probe,
             marker: '\0',
         }
+    }
+
+    fn run_rule_with_marker(run: DocumentRuleFn, marker: char) -> DocumentRuleFns {
+        DocumentRuleFns {
+            run,
+            probe: panic_probe,
+            marker,
+        }
+    }
+
+    fn run_rule(run: DocumentRuleFn) -> DocumentRuleFns {
+        run_rule_with_marker(run, '\0')
+    }
+
+    fn panic_probe(_: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        unreachable!("rule probe must not be called")
     }
 
     fn panic_run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
@@ -675,7 +695,7 @@ mod tests {
         }
         let md = MarkdownIt::empty();
         let ruleset = DocumentRuleSet {
-            runs: vec![emit],
+            runs: vec![run_rule(emit)],
             probes: vec![],
             finalizers: vec![finalize],
         };
@@ -693,7 +713,7 @@ mod tests {
         let mut md = MarkdownIt::empty();
         md.max_nesting = 1;
         let ruleset = DocumentRuleSet {
-            runs: vec![|_| panic!("nesting limit must skip rules")],
+            runs: vec![run_rule(|_| panic!("nesting limit must skip rules"))],
             probes: vec![],
             finalizers: vec![|_| panic!("literal text must skip finalizers")],
         };
@@ -713,13 +733,133 @@ mod tests {
         }
         let md = MarkdownIt::empty();
         let ruleset = DocumentRuleSet {
-            runs: vec![emit],
+            runs: vec![run_rule(emit)],
             probes: vec![probe_rule(|_| panic!("normal parsing must not call probe"))],
             finalizers: vec![],
         };
         let nodes = DocumentInlineState::parse("x".to_owned(), vec![(0, 0)], &md, &ruleset);
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].cast::<Text>().unwrap().content, "x");
+    }
+
+    #[test]
+    fn run_dispatch_skips_non_matching_markers() {
+        fn panic_run_with(
+            state: &mut DocumentInlineState<'_>,
+        ) -> Option<(Option<NodeDraft>, usize)> {
+            panic!(
+                "rule for another marker must not run on {:?}",
+                state.remaining()
+            )
+        }
+        fn consume_all(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            let content = state.remaining().to_owned();
+            Some((
+                Some(NodeDraft::new(Text { content })),
+                state.remaining().len(),
+            ))
+        }
+
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![
+                run_rule_with_marker(panic_run_with, '!'),
+                run_rule(consume_all),
+            ],
+            probes: vec![],
+            finalizers: vec![],
+        };
+
+        for source in ["abc", "雪x"] {
+            let nodes = DocumentInlineState::parse(source.to_owned(), vec![(0, 0)], &md, &ruleset);
+            assert_eq!(nodes.len(), 1);
+            assert_eq!(nodes[0].cast::<Text>().unwrap().content, source);
+        }
+    }
+
+    #[test]
+    fn run_dispatch_matches_unicode_marker() {
+        fn consume_snow(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            assert!(state.remaining().starts_with('雪'));
+            Some((
+                Some(NodeDraft::new(Text {
+                    content: "雪".to_owned(),
+                })),
+                '雪'.len_utf8(),
+            ))
+        }
+        fn consume_all(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            let content = state.remaining().to_owned();
+            Some((
+                Some(NodeDraft::new(Text { content })),
+                state.remaining().len(),
+            ))
+        }
+
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![
+                run_rule_with_marker(consume_snow, '雪'),
+                run_rule(consume_all),
+            ],
+            probes: vec![],
+            finalizers: vec![],
+        };
+        let nodes = DocumentInlineState::parse("雪x".to_owned(), vec![(0, 0)], &md, &ruleset);
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0].cast::<Text>().unwrap().content, "雪");
+        assert_eq!(nodes[1].cast::<Text>().unwrap().content, "x");
+
+        let nodes = DocumentInlineState::parse("xx".to_owned(), vec![(0, 0)], &md, &ruleset);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].cast::<Text>().unwrap().content, "xx");
+    }
+
+    #[test]
+    fn run_dispatch_preserves_wildcard_order() {
+        fn consume_x(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            if !state.remaining().starts_with('x') {
+                return None;
+            }
+            Some((
+                Some(NodeDraft::new(Text {
+                    content: "X".to_owned(),
+                })),
+                1,
+            ))
+        }
+        fn consume_all(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            let content = state.remaining().to_owned();
+            Some((
+                Some(NodeDraft::new(Text { content })),
+                state.remaining().len(),
+            ))
+        }
+        fn panic_run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            panic!("later rule must not run after an earlier wildcard match")
+        }
+
+        let md = MarkdownIt::empty();
+        // The marker rule is registered first and must win over the wildcard.
+        let marker_first = DocumentRuleSet {
+            runs: vec![run_rule_with_marker(consume_x, 'x'), run_rule(consume_all)],
+            probes: vec![],
+            finalizers: vec![],
+        };
+        let nodes = DocumentInlineState::parse("xy".to_owned(), vec![(0, 0)], &md, &marker_first);
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0].cast::<Text>().unwrap().content, "X");
+        assert_eq!(nodes[1].cast::<Text>().unwrap().content, "y");
+
+        // A wildcard registered first must keep its position and win.
+        let wildcard_first = DocumentRuleSet {
+            runs: vec![run_rule(consume_all), run_rule_with_marker(panic_run, 'x')],
+            probes: vec![],
+            finalizers: vec![],
+        };
+        let nodes = DocumentInlineState::parse("xy".to_owned(), vec![(0, 0)], &md, &wildcard_first);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].cast::<Text>().unwrap().content, "xy");
     }
 
     #[test]
@@ -970,6 +1110,409 @@ mod tests {
         );
         assert_eq!(state.nodes.len(), 1);
         assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 41);
+    }
+
+    #[test]
+    fn recursive_probe_validates_ranges_and_empty_suffixes() {
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![],
+            finalizers: vec![],
+        };
+        let state = probe_state(&md, &ruleset, "éx");
+        let context = state.probe_subrange(0..3).unwrap();
+
+        assert!(
+            context
+                .probe_subrange(Range { start: 2, end: 1 })
+                .unwrap()
+                .is_none()
+        );
+        assert!(context.probe_subrange(0..4).unwrap().is_none());
+        assert!(context.probe_subrange(1..2).unwrap().is_none());
+
+        let mut empty = context.probe_subrange(0..0).unwrap().unwrap();
+        assert_eq!(empty.depth(), context.depth() + 1);
+        assert_eq!(empty.remaining(), "");
+        assert_eq!(empty.trailing_text(), "");
+        assert_eq!(empty.next_token().unwrap(), None);
+
+        let mut full = context.probe_subrange(0..3).unwrap().unwrap();
+        assert_eq!(full.remaining(), "éx");
+        assert_eq!(full.link_level(), context.link_level());
+        assert_eq!(
+            full.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..2,
+                kind: InlineProbeKind::Text,
+            })
+        );
+        assert_eq!(
+            full.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 2..3,
+                kind: InlineProbeKind::Text,
+            })
+        );
+        assert_eq!(full.next_token().unwrap(), None);
+
+        // A sticky error takes priority over range validity and depth.
+        let unsupported = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![DocumentRuleFns {
+                run: panic_run,
+                probe: |_| InlineProbeResult::Unsupported,
+                marker: 'x',
+            }],
+            finalizers: vec![],
+        };
+        let state = probe_state(&md, &unsupported, "x");
+        let mut context = state.probe_subrange(0..1).unwrap();
+        let error = context.next_token().unwrap_err();
+        assert!(matches!(context.probe_subrange(0..1), Err(e) if e == error));
+        assert!(matches!(context.probe_subrange(1..2), Err(e) if e == error));
+    }
+
+    #[test]
+    fn recursive_probe_depth_limit_is_exact() {
+        let mut md = MarkdownIt::empty();
+        md.max_nesting = 3;
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![],
+            finalizers: vec![],
+        };
+        let state = probe_state(&md, &ruleset, "xy");
+
+        let first = state.probe_subrange(0..2).unwrap();
+        assert_eq!(first.depth(), 1);
+
+        let second = first.probe_subrange(0..2).unwrap().unwrap();
+        assert_eq!(second.depth(), 2);
+        assert_eq!(second.remaining(), "xy");
+
+        let error = InlineProbeError::NestingLimit { max_nesting: 3 };
+        assert!(matches!(second.probe_subrange(0..0), Err(e) if e == error));
+        assert!(matches!(second.probe_subrange(0..2), Err(e) if e == error));
+    }
+
+    #[test]
+    fn recursive_probe_relative_ranges_keep_child_state_isolated() {
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![],
+            finalizers: vec![],
+        };
+        let state = probe_state(&md, &ruleset, "abcdef");
+        let mut parent = state.probe_subrange(0..6).unwrap();
+
+        assert_eq!(
+            parent.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..1,
+                kind: InlineProbeKind::Text,
+            })
+        );
+        assert_eq!(parent.trailing_text(), "a");
+
+        let mut child = parent.probe_subrange(1..3).unwrap().unwrap();
+        assert_eq!(child.remaining(), "cd");
+        assert_eq!(child.trailing_text(), "");
+        assert_eq!(
+            child.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 0..1,
+                kind: InlineProbeKind::Text,
+            })
+        );
+        assert_eq!(
+            child.next_token().unwrap(),
+            Some(InlineProbeToken {
+                range: 1..2,
+                kind: InlineProbeKind::Text,
+            })
+        );
+        assert_eq!(child.trailing_text(), "cd");
+
+        assert_eq!(parent.remaining(), "bcdef");
+        assert_eq!(parent.trailing_text(), "a");
+        assert_eq!(parent.link_level(), 0);
+        assert_eq!(state.pending_text, None);
+        assert_eq!((state.pos, state.pos_max), (0, 6));
+    }
+
+    #[test]
+    fn recursive_probe_inherits_current_link_level_and_isolates_effects() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::html::html_inline::add(&mut md);
+        let ruleset = md.inline.document_rules().unwrap();
+        let source = "<a><a>";
+        let state = probe_state(&md, &ruleset, source);
+        let mut parent = state.probe_subrange(0..source.len()).unwrap();
+
+        assert_eq!(parent.next_token().unwrap().unwrap().range, 0..3);
+        assert_eq!(parent.link_level(), 1);
+
+        let mut child = parent.probe_subrange(0..3).unwrap().unwrap();
+        assert_eq!(child.link_level(), 1);
+        assert_eq!(child.next_token().unwrap().unwrap().range, 0..3);
+        assert_eq!(child.link_level(), 2);
+
+        assert_eq!(parent.remaining(), "<a>");
+        assert_eq!(parent.link_level(), 1);
+        assert_eq!(state.link_level, 0);
+    }
+
+    #[test]
+    fn recursive_probe_child_scratch_is_private() {
+        use crate::generics::inline::code_pair::CodePairScanner;
+
+        let mut md = MarkdownIt::empty();
+        md.inline.add_migrated_rule::<CodePairScanner<'`'>>();
+        let ruleset = md.inline.document_rules().unwrap();
+        let state = probe_state(&md, &ruleset, "`x`");
+        let parent = state.probe_subrange(0..3).unwrap();
+
+        // An unclosed child scan must not poison its siblings.
+        let mut short = parent.probe_subrange(0..2).unwrap().unwrap();
+        assert_eq!(
+            short.next_token().unwrap().unwrap().kind,
+            InlineProbeKind::Text
+        );
+        assert_eq!(
+            short.next_token().unwrap().unwrap().kind,
+            InlineProbeKind::Text
+        );
+        assert_eq!(short.next_token().unwrap(), None);
+
+        let mut long = parent.probe_subrange(0..3).unwrap().unwrap();
+        assert_eq!(
+            long.next_token().unwrap().unwrap().kind,
+            InlineProbeKind::Token
+        );
+        assert_eq!(long.next_token().unwrap(), None);
+
+        let mut again = parent.probe_subrange(0..3).unwrap().unwrap();
+        assert_eq!(
+            again.next_token().unwrap().unwrap().kind,
+            InlineProbeKind::Token
+        );
+        assert_eq!(again.next_token().unwrap(), None);
+    }
+
+    #[test]
+    fn recursive_probe_propagates_child_errors_and_keeps_parent_state() {
+        fn forward(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+            if !context.remaining().starts_with('a') {
+                return InlineProbeResult::NoMatch;
+            }
+            let len = context.remaining().len();
+            match context.probe_subrange(1..len) {
+                Ok(Some(mut child)) => match child.next_token() {
+                    Ok(Some(token)) => InlineProbeResult::Match {
+                        len: 1 + token.range.end,
+                        kind: InlineProbeKind::Token,
+                    },
+                    Ok(None) => unreachable!("child range is non-empty"),
+                    Err(error) => InlineProbeResult::Error(error),
+                },
+                Ok(None) => unreachable!("child range is valid"),
+                Err(error) => InlineProbeResult::Error(error),
+            }
+        }
+
+        let md = MarkdownIt::empty();
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![
+                DocumentRuleFns {
+                    run: panic_run,
+                    probe: forward,
+                    marker: 'a',
+                },
+                DocumentRuleFns {
+                    run: panic_run,
+                    probe: |_| InlineProbeResult::Unsupported,
+                    marker: 'x',
+                },
+                DocumentRuleFns {
+                    run: panic_run,
+                    probe: |_| panic!("later same-marker rule must not run"),
+                    marker: 'x',
+                },
+                DocumentRuleFns {
+                    run: panic_run,
+                    probe: |_| InlineProbeResult::Match {
+                        len: 99,
+                        kind: InlineProbeKind::Token,
+                    },
+                    marker: 'y',
+                },
+                DocumentRuleFns {
+                    run: panic_run,
+                    probe: |_| InlineProbeResult::MatchWithEffects {
+                        len: 1,
+                        kind: InlineProbeKind::Token,
+                        effects: crate::InlineProbeEffects {
+                            link_level_delta: i32::MAX,
+                        },
+                    },
+                    marker: 'z',
+                },
+                DocumentRuleFns {
+                    run: panic_run,
+                    probe: |_| panic!("later parent rule must not run after a child error"),
+                    marker: 'a',
+                },
+            ],
+            finalizers: vec![],
+        };
+
+        for (source, expected) in [
+            (
+                "qax",
+                InlineProbeError::UnsupportedRule {
+                    rule_index: 1,
+                    marker: 'x',
+                },
+            ),
+            (
+                "qay",
+                InlineProbeError::InvalidLength {
+                    rule_index: 3,
+                    len: 99,
+                },
+            ),
+            (
+                "qaz",
+                InlineProbeError::InvalidEffects {
+                    rule_index: 4,
+                    link_level: 5,
+                    link_level_delta: i32::MAX,
+                },
+            ),
+        ] {
+            let mut state = probe_state(&md, &ruleset, source);
+            state.link_level = 5;
+            let mut context = state.probe_subrange(0..source.len()).unwrap();
+
+            assert_eq!(
+                context.next_token().unwrap(),
+                Some(InlineProbeToken {
+                    range: 0..1,
+                    kind: InlineProbeKind::Text,
+                })
+            );
+            assert_eq!(context.trailing_text(), "q");
+
+            let error = context.next_token().unwrap_err();
+            assert_eq!(error, expected, "{source}");
+            assert_eq!(context.remaining(), &source[1..]);
+            assert_eq!(context.trailing_text(), "q");
+            assert_eq!(context.link_level(), 5);
+            assert_eq!(context.next_token(), Err(error));
+        }
+    }
+
+    #[test]
+    fn recursive_probe_same_range_terminates_at_depth_limit() {
+        use std::cell::Cell;
+
+        thread_local! {
+            static CALLS: Cell<usize> = const { Cell::new(0) };
+        }
+
+        fn same_range(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+            CALLS.with(|calls| calls.set(calls.get() + 1));
+            let len = context.remaining().len();
+            match context.probe_subrange(0..len) {
+                Ok(Some(mut child)) => match child.next_token() {
+                    Ok(Some(token)) => InlineProbeResult::Match {
+                        len: token.range.end,
+                        kind: InlineProbeKind::Token,
+                    },
+                    Ok(None) => InlineProbeResult::NoMatch,
+                    Err(error) => InlineProbeResult::Error(error),
+                },
+                Ok(None) => InlineProbeResult::NoMatch,
+                Err(error) => InlineProbeResult::Error(error),
+            }
+        }
+
+        let mut md = MarkdownIt::empty();
+        md.max_nesting = 5;
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![DocumentRuleFns {
+                run: panic_run,
+                probe: same_range,
+                marker: '#',
+            }],
+            finalizers: vec![],
+        };
+        let state = probe_state(&md, &ruleset, "#");
+        let mut context = state.probe_subrange(0..1).unwrap();
+        CALLS.with(|calls| calls.set(0));
+
+        let error = context.next_token().unwrap_err();
+        assert_eq!(error, InlineProbeError::NestingLimit { max_nesting: 5 });
+        assert_eq!(CALLS.with(Cell::get), 4);
+        assert_eq!(context.remaining(), "#");
+        assert_eq!(context.next_token(), Err(error));
+    }
+
+    #[test]
+    fn recursive_probe_long_chain_is_linear_and_stack_safe() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::{Duration, Instant};
+
+        static CALLS: AtomicUsize = AtomicUsize::new(0);
+
+        fn nested(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+            CALLS.fetch_add(1, Ordering::SeqCst);
+            if !context.remaining().starts_with('^') {
+                return InlineProbeResult::NoMatch;
+            }
+            match context.probe_subrange(1..context.remaining().len()) {
+                Ok(Some(mut child)) => match child.next_token() {
+                    Ok(Some(token)) => InlineProbeResult::Match {
+                        len: 1 + token.range.end,
+                        kind: InlineProbeKind::Token,
+                    },
+                    Ok(None) => InlineProbeResult::NoMatch,
+                    Err(error) => InlineProbeResult::Error(error),
+                },
+                Ok(None) => InlineProbeResult::NoMatch,
+                Err(error) => InlineProbeResult::Error(error),
+            }
+        }
+
+        const CHAIN: usize = 10_000;
+        let mut md = MarkdownIt::empty();
+        md.max_nesting = 65_536;
+        let ruleset = DocumentRuleSet {
+            runs: vec![],
+            probes: vec![DocumentRuleFns {
+                run: panic_run,
+                probe: nested,
+                marker: '^',
+            }],
+            finalizers: vec![],
+        };
+        let source = "^".repeat(CHAIN) + "x";
+        let state = probe_state(&md, &ruleset, &source);
+        let mut context = state.probe_subrange(0..source.len()).unwrap();
+
+        CALLS.store(0, Ordering::SeqCst);
+        let start = Instant::now();
+        let token = context.next_token().unwrap().unwrap();
+        assert!(start.elapsed() < Duration::from_secs(10));
+        assert_eq!(token.range, 0..source.len());
+        assert_eq!(token.kind, InlineProbeKind::Token);
+        assert_eq!(CALLS.load(Ordering::SeqCst), CHAIN);
+        assert_eq!(context.next_token().unwrap(), None);
     }
 
     #[test]

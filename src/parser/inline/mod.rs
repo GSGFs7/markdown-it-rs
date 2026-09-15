@@ -70,7 +70,7 @@ pub struct RuleEntry {
 }
 
 pub(crate) struct DocumentRuleSet {
-    pub(crate) runs: Vec<DocumentRuleFn>,
+    pub(crate) runs: Vec<DocumentRuleFns>,
     pub(crate) probes: Vec<DocumentRuleFns>,
     pub(crate) finalizers: Vec<DocumentFinalizeFn>,
 }
@@ -159,7 +159,7 @@ impl InlineParser {
             .collect::<Option<Vec<_>>>()?;
 
         Some(DocumentRuleSet {
-            runs: entries.iter().map(|entry| entry.run).collect(),
+            runs: entries.clone(),
             probes: entries,
             finalizers: self.document_finalizers(),
         })
@@ -609,7 +609,7 @@ mod tests {
             rules
                 .runs
                 .iter()
-                .map(|rule| *rule as usize)
+                .map(|rule| rule.run as usize)
                 .collect::<Vec<_>>(),
             vec![
                 document_id::<DirectHashRule>(),
