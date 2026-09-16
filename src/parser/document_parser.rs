@@ -389,6 +389,19 @@ impl<'a> DocumentInlineState<'a> {
         }
     }
 
+    /// Inspect the current position without entering a child parse level.
+    pub(crate) fn probe_current(&self) -> InlineProbeContext<'_> {
+        InlineProbeContext::new(
+            self.src.as_ref(),
+            self.pos,
+            self.pos_max,
+            self.md,
+            self.ruleset,
+            self.depth,
+            self.link_level,
+        )
+    }
+
     /// Start an independent probe session for `range` relative to
     /// [`Self::remaining`].
     ///

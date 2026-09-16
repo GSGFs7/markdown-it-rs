@@ -16,7 +16,10 @@
 use std::collections::HashMap;
 
 use crate::common::utils::unescape_all;
-use crate::parser::inline::{InlineState, LegacyInlineRule};
+use crate::parser::document::NodeDraft;
+use crate::parser::document_parser::DocumentInlineState;
+use crate::parser::inline::probe::{InlineProbeKind, InlineProbeResult};
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::Node;
 use crate::plugins::cmark::block::reference::ReferenceMap;
@@ -30,6 +33,10 @@ struct InlineLinkTarget {
 
 #[derive(Debug)]
 struct LinkCfg<const PREFIX: char>(fn(Option<String>, Option<String>) -> Node);
+
+#[derive(Debug)]
+struct DocumentLinkCfg<const PREFIX: char>(fn(Option<String>, Option<String>) -> NodeDraft);
+
 /// adds custom rule with no prefix
 pub fn add<const ENABLE_NESTED: bool>(
     md: &mut MarkdownIt,
@@ -38,7 +45,7 @@ pub fn add<const ENABLE_NESTED: bool>(
     md.ext.insert(LinkCfg::<'\0'>(f));
     md.inline.add_legacy_rule::<LinkScanner<ENABLE_NESTED>>();
     if !md.inline.has_legacy_rule::<LinkScannerEnd>() {
-        md.inline.add_legacy_rule::<LinkScannerEnd>();
+        md.inline.add_migrated_rule::<LinkScannerEnd>();
     }
 }
 
@@ -55,12 +62,26 @@ pub fn add_prefix<const PREFIX: char, const ENABLE_NESTED: bool>(
         builder.alias_named("image");
     }
     if !md.inline.has_legacy_rule::<LinkScannerEnd>() {
-        md.inline.add_legacy_rule::<LinkScannerEnd>();
+        md.inline.add_migrated_rule::<LinkScannerEnd>();
+    }
+}
+
+pub(crate) fn add_migrated<const ENABLE_NESTED: bool>(
+    md: &mut MarkdownIt,
+    legacy_factory: fn(Option<String>, Option<String>) -> Node,
+    document_factory: fn(Option<String>, Option<String>) -> NodeDraft,
+) {
+    md.ext.insert(LinkCfg::<'\0'>(legacy_factory));
+    md.ext.insert(DocumentLinkCfg::<'\0'>(document_factory));
+    md.inline.add_migrated_rule::<LinkScanner<ENABLE_NESTED>>();
+    if !md.inline.has_legacy_rule::<LinkScannerEnd>() {
+        md.inline.add_migrated_rule::<LinkScannerEnd>();
     }
 }
 
 #[doc(hidden)]
 pub struct LinkScanner<const ENABLE_NESTED: bool>;
+
 impl<const ENABLE_NESTED: bool> LegacyInlineRule for LinkScanner<ENABLE_NESTED> {
     const MARKER: char = '[';
     const NAMES: &'static [&'static str] = &["link"];
@@ -83,8 +104,28 @@ impl<const ENABLE_NESTED: bool> LegacyInlineRule for LinkScanner<ENABLE_NESTED> 
     }
 }
 
+impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
+    const MARKER: char = '[';
+    const NAMES: &'static [&'static str] = &["link"];
+
+    fn probe(context: &mut crate::InlineProbeContext<'_>) -> InlineProbeResult {
+        document_link_probe(context, ENABLE_NESTED, 0)
+    }
+
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        let factory = state
+            .markdown_it()
+            .ext
+            .get::<DocumentLinkCfg<'\0'>>()
+            .expect("direct link rule requires a draft factory")
+            .0;
+        document_link_run(state, ENABLE_NESTED, 0, factory)
+    }
+}
+
 #[doc(hidden)]
 pub struct LinkPrefixScanner<const PREFIX: char, const ENABLE_NESTED: bool>;
+
 impl<const PREFIX: char, const ENABLE_NESTED: bool> LegacyInlineRule
     for LinkPrefixScanner<PREFIX, ENABLE_NESTED>
 {
@@ -112,6 +153,15 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> LegacyInlineRule
         }
         let f = state.md.ext.get::<LinkCfg<PREFIX>>().unwrap().0;
         rule_run(state, ENABLE_NESTED, PREFIX.len_utf8(), f)
+    }
+}
+
+impl InlineRule for LinkScannerEnd {
+    const MARKER: char = ']';
+    const NAMES: &'static [&'static str] = &["link_end"];
+
+    fn run(_state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        None
     }
 }
 
@@ -238,7 +288,6 @@ fn parse_link_label(state: &mut InlineState, start: usize, enable_nested: bool) 
 }
 
 // private migration helper
-#[allow(dead_code)]
 fn probe_link_label(
     mut context: crate::parser::inline::InlineProbeContext<'_>,
     enable_nested: bool,
@@ -548,7 +597,6 @@ fn resolve_reference_link(
     })
 }
 
-#[allow(dead_code)]
 fn probe_link_candidate(
     context: &crate::parser::inline::InlineProbeContext<'_>,
     pos: usize,
@@ -591,6 +639,43 @@ fn probe_link_candidate(
     };
 
     resolve_reference_link(source, label_start, label_end, reference_end, references?)
+}
+
+fn document_link_probe(
+    context: &crate::parser::inline::InlineProbeContext<'_>,
+    enable_nested: bool,
+    offset: usize,
+) -> InlineProbeResult {
+    match probe_link_candidate(context, offset, enable_nested, None) {
+        Some(candidate) => InlineProbeResult::Match {
+            len: candidate.end,
+            kind: InlineProbeKind::Token,
+        },
+        None => InlineProbeResult::NoMatch,
+    }
+}
+
+fn document_link_run(
+    state: &mut DocumentInlineState<'_>,
+    enable_nested: bool,
+    offset: usize,
+    factory: fn(Option<String>, Option<String>) -> NodeDraft,
+) -> Option<(Option<NodeDraft>, usize)> {
+    let candidate = {
+        let context = state.probe_current();
+        probe_link_candidate(&context, offset, enable_nested, None)?
+    };
+    let mut node = factory(candidate.href, candidate.title);
+    let child_link_level = state
+        .link_level
+        .checked_add(1)
+        .expect("inline link nesting level overflow");
+    let children = state.parse_subrange_with_link_level(
+        candidate.label_start..candidate.label_end,
+        child_link_level,
+    )?;
+    node.children_mut().extend(children);
+    Some((Some(node), candidate.end))
 }
 
 #[cfg(test)]
@@ -1077,5 +1162,34 @@ mod probe_label_tests {
         );
         assert_eq!(result.href.as_deref(), Some("/url"));
         assert_eq!(context.remaining(), "[x](/url)");
+    }
+
+    #[test]
+    fn legacy_only_link_factory_remains_unsupported_by_direct() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::block::paragraph::add(&mut md);
+        add::<false>(&mut md, |_, _| Node::new(crate::parser::node::NodeEmpty));
+        assert!(matches!(
+            md.parse_document_direct("[x](/url)"),
+            Err(crate::DocumentParseError::UnsupportedConfiguration)
+        ));
+    }
+
+    #[test]
+    fn registered_link_probe_does_not_require_running_the_factory() {
+        let mut md = MarkdownIt::empty();
+        add_migrated::<false>(
+            &mut md,
+            |_, _| panic!("probe must not call legacy factory"),
+            |_, _| panic!("probe must not call draft factory"),
+        );
+        let ruleset = md.inline.document_rules().unwrap();
+        let source = "[x](/url)";
+        let mut context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+        let token = context.next_token().unwrap();
+        assert_eq!(token.range, 0..source.len());
+        assert_eq!(token.kind, InlineProbeKind::Token);
+        assert_eq!(context.link_level(), 0);
+        assert!(context.next_token().is_none());
     }
 }

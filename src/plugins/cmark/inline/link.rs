@@ -3,6 +3,7 @@
 //! `![link](<to> "stuff")`
 //!
 //! <https://spec.commonmark.org/0.30/#links>
+use crate::NodeDraft;
 use crate::generics::inline::full_link;
 use crate::parser::document::NodeRef;
 use crate::parser::document_renderer::{
@@ -61,12 +62,21 @@ impl NodeValue for Link {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    full_link::add::<false>(md, |href, title| {
-        Node::new(Link {
-            url: href.unwrap_or_default(),
-            title,
-        })
-    });
+    full_link::add_migrated::<false>(
+        md,
+        |href, title| {
+            Node::new(Link {
+                url: href.unwrap_or_default(),
+                title,
+            })
+        },
+        |href, title| {
+            NodeDraft::new(Link {
+                url: href.unwrap_or_default(),
+                title,
+            })
+        },
+    );
     md.add_document_renderer::<Link, _>("html", LinkDocumentRenderer);
     md.add_document_renderer::<Link, _>("text", TransparentDocumentRenderer);
 }

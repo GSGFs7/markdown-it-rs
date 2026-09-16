@@ -91,9 +91,9 @@ fn direct_parser_rejects_unmigrated_syntax_rules() {
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
-    markdown_it::plugins::cmark::inline::link::add(&mut partial_inline);
+    markdown_it::plugins::cmark::inline::image::add(&mut partial_inline);
     assert!(matches!(
-        partial_inline.parse_document_direct("[link](/url)"),
+        partial_inline.parse_document_direct("![image](/url)"),
         Err(DocumentParseError::UnsupportedConfiguration)
     ));
 }
@@ -391,4 +391,51 @@ fn direct_emphasis_handles_many_unmatched_delimiters() {
     for source in ["a_ ".repeat(8_192), "_a ".repeat(8_192)] {
         assert_direct_matches_bridge(&md, &source);
     }
+}
+
+#[test]
+fn direct_links_use_real_registration() {
+    use markdown_it::plugins::cmark::{block, inline};
+
+    let mut md = MarkdownIt::empty();
+    block::paragraph::add(&mut md);
+    inline::newline::add(&mut md);
+    inline::escape::add(&mut md);
+    inline::backticks::add(&mut md);
+    inline::emphasis::add(&mut md);
+    inline::entity::add(&mut md);
+    inline::autolink::add(&mut md);
+    inline::link::add(&mut md);
+
+    for source in [
+        "[x](/url)",
+        "[雪](</url> \"title\")",
+        "[x]()",
+        "[ *x* ](/url)",
+        "[`]`](/url)",
+        r"[\]](/url)",
+        "[&#93;](/url)",
+        "[outer [inner](/in)](/out)",
+        "[<https://example.com>](/out)",
+        "[x](javascript:alert(1))",
+        "[x](/unclosed",
+        "[x][id] [x][] [x]",
+    ] {
+        assert_direct_matches_bridge(&md, source);
+    }
+    let document = md.parse_document_direct("[x](/url)").unwrap();
+    assert_eq!(
+        md.render_document(&document).unwrap(),
+        "<p><a href=\"/url\">x</a></p>\n",
+    );
+
+    // A current-position probe must not spend an extra child depth.
+    md.max_nesting = 2;
+    assert_direct_matches_bridge(&md, "[x](/url)");
+
+    block::reference::add(&mut md);
+    assert!(matches!(
+        md.parse_document_direct("[x](/url)"),
+        Err(DocumentParseError::UnsupportedConfiguration)
+    ));
 }
