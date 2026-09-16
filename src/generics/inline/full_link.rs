@@ -445,44 +445,22 @@ fn parse_link(state: &mut InlineState, pos: usize, enable_nested: bool) -> Optio
         });
     }
 
-    //
     // Link reference
-    //
-    // TODO: check if I have any references?
-    let mut pos = label_end + 1;
-    let mut maybe_label = None;
-
-    match state.src[pos..state.pos_max].chars().next() {
-        Some('[') => {
-            if let Some(x) = parse_link_label(state, pos, false) {
-                maybe_label = Some(&state.src[pos + 1..x]);
-                pos = x + 1;
-            } else {
-                pos = label_end + 1;
-            }
-        }
-        _ => pos = label_end + 1,
-    }
-
-    let references = state.root_ext.get::<ReferenceMap>()?;
-
-    // covers label === '' and label === undefined
-    // (collapsed reference link and shortcut reference link respectively)
-    let label = if matches!(maybe_label, None | Some("")) {
-        &state.src[label_start..label_end]
+    let suffix_start = label_end + 1;
+    let reference_end = if state.src[suffix_start..state.pos_max].starts_with('[') {
+        parse_link_label(state, suffix_start, false)
     } else {
-        maybe_label.unwrap()
+        None
     };
 
-    let (destination, title) = references.get(label)?;
-
-    Some(ParseLinkResult {
+    let references = state.root_ext.get::<ReferenceMap>()?;
+    resolve_reference_link(
+        &state.src,
         label_start,
         label_end,
-        href: Some(destination.to_owned()),
-        title: title.map(|s| s.to_owned()),
-        end: pos,
-    })
+        reference_end,
+        references,
+    )
 }
 
 // [link](  <href>  "title"  )
@@ -537,6 +515,37 @@ fn parse_inline_link_target(
     } else {
         None
     }
+}
+
+fn resolve_reference_link(
+    source: &str,
+    label_start: usize,
+    label_end: usize,
+    reference_end: Option<usize>,
+    references: &ReferenceMap,
+) -> Option<ParseLinkResult> {
+    let (label, end) = match reference_end {
+        Some(close) => {
+            // the second '[' immediately follows the first ']'.
+            let explicit_label = &source[label_end + 2..close];
+            let label = if explicit_label.is_empty() {
+                &source[label_start..label_end]
+            } else {
+                explicit_label
+            };
+            (label, close + 1)
+        }
+        None => (&source[label_start..label_end], label_end + 1),
+    };
+
+    let (destination, title) = references.get(label)?;
+    Some(ParseLinkResult {
+        label_start,
+        label_end,
+        href: Some(destination.to_owned()),
+        title: title.map(str::to_owned),
+        end,
+    })
 }
 
 #[cfg(test)]
@@ -608,6 +617,31 @@ mod tests {
         assert_eq!(target.title.as_deref(), Some("title"));
         assert_eq!(target.end, max);
         assert!(parse_inline_link_target(&md, source, start, max - 1).is_none());
+    }
+
+    #[test]
+    fn reference_candidate_selects_label_and_consumed_end() {
+        let mut references = ReferenceMap::default();
+        references.insert("a".into(), "/shortcut".into(), None);
+        references.insert("b".into(), "/full".into(), Some("title".into()));
+
+        for (source, reference_end, href, title, end) in [
+            ("[a]", None, "/shortcut", None, 3),
+            ("[a][]", Some(4), "/shortcut", None, 5),
+            ("[a][b]", Some(5), "/full", Some("title"), 6),
+            ("[a][", None, "/shortcut", None, 3),
+            ("[a](/unfinished", None, "/shortcut", None, 3),
+        ] {
+            let result =
+                resolve_reference_link(source, 1, 2, reference_end, &references).expect(source);
+            assert_eq!((result.label_start, result.label_end), (1, 2));
+            assert_eq!(result.href.as_deref(), Some(href), "{source}");
+            assert_eq!(result.title.as_deref(), title, "{source}");
+            assert_eq!(result.end, end, "{source}");
+        }
+
+        // A missing explicit reference must not fall back to the first label.
+        assert!(resolve_reference_link("[a][missing]", 1, 2, Some(11), &references).is_none());
     }
 }
 
