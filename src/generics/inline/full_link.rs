@@ -79,6 +79,24 @@ pub(crate) fn add_migrated<const ENABLE_NESTED: bool>(
     }
 }
 
+pub(crate) fn add_prefix_migrated<const PREFIX: char, const ENABLE_NESTED: bool>(
+    md: &mut MarkdownIt,
+    legacy_factory: fn(Option<String>, Option<String>) -> Node,
+    document_factory: fn(Option<String>, Option<String>) -> NodeDraft,
+) {
+    md.ext.insert(LinkCfg::<PREFIX>(legacy_factory));
+    md.ext.insert(DocumentLinkCfg::<PREFIX>(document_factory));
+    let builder = md
+        .inline
+        .add_migrated_rule::<LinkPrefixScanner<PREFIX, ENABLE_NESTED>>();
+    if PREFIX == '!' {
+        builder.alias_named("image");
+    }
+    if !md.inline.has_legacy_rule::<LinkScannerEnd>() {
+        md.inline.add_migrated_rule::<LinkScannerEnd>();
+    }
+}
+
 #[doc(hidden)]
 pub struct LinkScanner<const ENABLE_NESTED: bool>;
 
@@ -140,6 +158,7 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> LegacyInlineRule
         if chars.next() != Some('[') {
             return None;
         }
+
         rule_check(state, ENABLE_NESTED, PREFIX.len_utf8())
     }
 
@@ -151,17 +170,38 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> LegacyInlineRule
         if chars.next() != Some('[') {
             return None;
         }
+
         let f = state.md.ext.get::<LinkCfg<PREFIX>>().unwrap().0;
         rule_run(state, ENABLE_NESTED, PREFIX.len_utf8(), f)
     }
 }
 
-impl InlineRule for LinkScannerEnd {
-    const MARKER: char = ']';
-    const NAMES: &'static [&'static str] = &["link_end"];
+impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
+    for LinkPrefixScanner<PREFIX, ENABLE_NESTED>
+{
+    const MARKER: char = PREFIX;
+    const NAMES: &'static [&'static str] = &["link_prefix"];
 
-    fn run(_state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
-        None
+    fn probe(context: &mut crate::InlineProbeContext<'_>) -> InlineProbeResult {
+        if !context.remaining().starts_with(PREFIX) {
+            return InlineProbeResult::NoMatch;
+        }
+
+        document_link_probe(context, ENABLE_NESTED, PREFIX.len_utf8())
+    }
+
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        if !state.remaining().starts_with(PREFIX) {
+            return None;
+        }
+
+        let factory = state
+            .markdown_it()
+            .ext
+            .get::<DocumentLinkCfg<PREFIX>>()
+            .expect("direct prefix rule requires a draft factory")
+            .0;
+        document_link_run(state, ENABLE_NESTED, PREFIX.len_utf8(), factory)
     }
 }
 
@@ -169,6 +209,7 @@ impl InlineRule for LinkScannerEnd {
 /// this rule makes sure that parser is stopped on "]" character,
 /// but it actually doesn't do anything
 pub struct LinkScannerEnd;
+
 impl LegacyInlineRule for LinkScannerEnd {
     const MARKER: char = ']';
     const NAMES: &'static [&'static str] = &["link_end"];
@@ -177,6 +218,15 @@ impl LegacyInlineRule for LinkScannerEnd {
         None
     }
     fn run(_: &mut InlineState) -> Option<(Node, usize)> {
+        None
+    }
+}
+
+impl InlineRule for LinkScannerEnd {
+    const MARKER: char = ']';
+    const NAMES: &'static [&'static str] = &["link_end"];
+
+    fn run(_state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         None
     }
 }
@@ -1191,5 +1241,68 @@ mod probe_label_tests {
         assert_eq!(token.kind, InlineProbeKind::Token);
         assert_eq!(context.link_level(), 0);
         assert!(context.next_token().is_none());
+    }
+
+    #[test]
+    fn registered_prefix_probe_does_not_require_running_the_factory() {
+        let mut md = MarkdownIt::empty();
+        add_prefix_migrated::<'雪', true>(
+            &mut md,
+            |_, _| panic!("probe must not call legacy factory"),
+            |_, _| panic!("probe must not call draft factory"),
+        );
+        let ruleset = md.inline.document_rules().unwrap();
+        let source = "雪[x](/url)";
+        let mut context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+        let token = context.next_token().unwrap();
+        assert_eq!(token.range, 0..source.len());
+        assert_eq!(token.kind, InlineProbeKind::Token);
+        assert_eq!(context.link_level(), 0);
+        assert!(context.next_token().is_none());
+    }
+
+    #[test]
+    fn direct_prefix_uses_utf8_byte_offsets() {
+        fn check<const PREFIX: char>() {
+            let mut md = MarkdownIt::empty();
+            crate::plugins::cmark::block::paragraph::add(&mut md);
+            crate::plugins::cmark::inline::link::add(&mut md);
+            add_prefix_migrated::<PREFIX, true>(
+                &mut md,
+                |href, title| {
+                    Node::new(Link {
+                        url: href.unwrap_or_default(),
+                        title,
+                    })
+                },
+                |href, title| {
+                    NodeDraft::new(Link {
+                        url: href.unwrap_or_default(),
+                        title,
+                    })
+                },
+            );
+            for source in [
+                format!("{PREFIX}[雪](/url)"),
+                format!("[a {PREFIX}[雪](/in)](/out)"),
+                format!("{PREFIX}[雪](/unfinished"),
+            ] {
+                let direct = md.parse_document_direct(&source).unwrap();
+                let legacy = md.parse_document(&source);
+                assert_eq!(
+                    md.render_document(&direct).unwrap(),
+                    md.render_document(&legacy).unwrap(),
+                    "{source}"
+                );
+                assert_eq!(
+                    md.render_document_as(&direct, "debug").unwrap(),
+                    md.render_document_as(&legacy, "debug").unwrap(),
+                    "{source}"
+                );
+            }
+        }
+        check::<'~'>();
+        check::<'雪'>();
+        check::<'🦀'>();
     }
 }

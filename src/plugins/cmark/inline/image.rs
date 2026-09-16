@@ -3,6 +3,7 @@
 //! `![image](<src> "title")`
 //!
 //! <https://spec.commonmark.org/0.30/#images>
+use crate::NodeDraft;
 use crate::generics::inline::full_link;
 use crate::parser::document::NodeRef;
 use crate::parser::document_renderer::{
@@ -118,12 +119,21 @@ fn append_document_alt_node(result: &mut String, node: NodeRef<'_>) {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    full_link::add_prefix::<'!', true>(md, |href, title| {
-        Node::new(Image {
-            url: href.unwrap_or_default(),
-            title,
-        })
-    });
+    full_link::add_prefix_migrated::<'!', true>(
+        md,
+        |href, title| {
+            Node::new(Image {
+                url: href.unwrap_or_default(),
+                title,
+            })
+        },
+        |href, title| {
+            NodeDraft::new(Image {
+                url: href.unwrap_or_default(),
+                title,
+            })
+        },
+    );
     md.add_document_renderer::<Image, _>("html", ImageDocumentRenderer);
     md.add_document_renderer::<Image, _>("text", TransparentDocumentRenderer);
 }

@@ -91,9 +91,16 @@ fn direct_parser_rejects_unmigrated_syntax_rules() {
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
-    markdown_it::plugins::cmark::inline::image::add(&mut partial_inline);
+    markdown_it::generics::inline::full_link::add_prefix::<'~', true>(
+        &mut partial_inline,
+        |_, _| {
+            markdown_it::Node::new(markdown_it::parser::inline::Text {
+                content: "custom".into(),
+            })
+        },
+    );
     assert!(matches!(
-        partial_inline.parse_document_direct("![image](/url)"),
+        partial_inline.parse_document_direct("~[x](/url)"),
         Err(DocumentParseError::UnsupportedConfiguration)
     ));
 }
@@ -438,4 +445,63 @@ fn direct_links_use_real_registration() {
         md.parse_document_direct("[x](/url)"),
         Err(DocumentParseError::UnsupportedConfiguration)
     ));
+}
+
+#[test]
+fn direct_images_and_links_match_legacy_in_both_registration_orders() {
+    use markdown_it::plugins::cmark::{block, inline};
+
+    for image_first in [false, true] {
+        let mut md = MarkdownIt::empty();
+        block::paragraph::add(&mut md);
+        inline::newline::add(&mut md);
+        inline::escape::add(&mut md);
+        inline::backticks::add(&mut md);
+        inline::emphasis::add(&mut md);
+        inline::entity::add(&mut md);
+        inline::autolink::add(&mut md);
+        markdown_it::plugins::html::html_inline::add(&mut md);
+        if image_first {
+            inline::image::add(&mut md);
+            inline::link::add(&mut md);
+        } else {
+            inline::link::add(&mut md);
+            inline::image::add(&mut md);
+        }
+        for source in [
+            "![雪](/img \"title\")",
+            "![]()",
+            "![ *x* &amp; `y` ](/img)",
+            "![a\nb](/img)",
+            "![a  \nb](/img)",
+            r"![\]](/img)",
+            "![`]`](/img)",
+            "![x [inner](/in)](/img)",
+            "[![alt](/img)](/out)",
+            "![![alt](/inner)](/outer)",
+            "[outer ![x [inner](/in)](/img)](/out)",
+            "![<i>x</i>](/img)",
+            "<a href='/a'>[x](/b) ![y](/img)</a>",
+            "![x](javascript:alert(1))",
+            "![x](/unclosed",
+            "![x][id] ![x][] ![x]",
+        ] {
+            assert_direct_matches_bridge(&md, source);
+        }
+        let document = md.parse_document_direct("![x](/img)").unwrap();
+        assert_eq!(
+            md.render_document(&document).unwrap(),
+            "<p><img src=\"/img\" alt=\"x\"></p>\n"
+        );
+        md.max_nesting = 2;
+        assert_direct_matches_bridge(&md, "![x](/img)");
+    }
+}
+
+#[test]
+fn direct_image_only_registration_matches_legacy() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::inline::image::add(&mut md);
+    assert_direct_matches_bridge(&md, "![x](/img)");
 }
