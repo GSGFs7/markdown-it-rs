@@ -304,7 +304,20 @@ impl<'a> DocumentInlineState<'a> {
     /// returns an empty vector. Parent state is unchanged. At the nesting limit,
     /// the child range is emitted as literal text without running rules.
     pub fn parse_subrange(&self, range: Range<usize>) -> Option<Vec<NodeDraft>> {
+        self.parse_subrange_with_link_level(range, self.link_level)
+    }
+
+    /// Parse an isolated child range with an explicit initial link level.
+    ///
+    /// This overrides only the child's link level. Source mapping, nesting
+    /// limits, whitespace preservation and scratch isolation are unchanged.
+    pub(crate) fn parse_subrange_with_link_level(
+        &self,
+        range: Range<usize>,
+        link_level: i32,
+    ) -> Option<Vec<NodeDraft>> {
         self.remaining().get(range.clone())?;
+
         let start = self.pos + range.start;
         let end = self.pos + range.end;
         let mut child = DocumentInlineState {
@@ -315,11 +328,12 @@ impl<'a> DocumentInlineState<'a> {
             mapping: Cow::Borrowed(self.mapping.as_ref()),
             depth: self.depth.saturating_add(1),
             inline_ext: InlineRootExtSet::new(),
-            link_level: self.link_level,
+            link_level,
             ruleset: self.ruleset,
             nodes: Vec::new(),
             pending_text: None,
         };
+
         stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
             child.tokenize();
             child.finish_nodes();

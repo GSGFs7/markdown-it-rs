@@ -1475,3 +1475,73 @@ fn probe_state_with_level<'a>(
     state.link_level = link_level;
     state
 }
+
+#[test]
+fn child_link_level_override_is_isolated() {
+    fn emit(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        let initial = state.link_level;
+        let len = state.remaining().len();
+        let probe = state.probe_subrange(0..len).unwrap();
+        assert_eq!(probe.link_level(), initial);
+        assert_eq!(state.depth, 1);
+        assert!(state.inline_ext.get::<FinalizerCalls>().is_none());
+        state.inline_ext.insert(FinalizerCalls(0));
+        state.link_level = 99;
+        Some((
+            Some(NodeDraft::new(Text {
+                content: initial.to_string(),
+            })),
+            len,
+        ))
+    }
+
+    let md = MarkdownIt::empty();
+    let ruleset = DocumentRuleSet {
+        runs: vec![run_rule(emit)],
+        probes: vec![],
+        finalizers: vec![count_finalizer],
+    };
+    let state = parent_state(&md, &ruleset);
+    // This fixture's parent link level is 2; range 1..10 excludes braces.
+    let inherited = state.parse_subrange(1..10).unwrap();
+    assert_eq!(inherited[0].cast::<Text>().unwrap().content, "2");
+
+    for level in [3, -1] {
+        let children = state.parse_subrange_with_link_level(1..10, level).unwrap();
+        assert_eq!(children.len(), 1);
+        assert_eq!(
+            children[0].cast::<Text>().unwrap().content,
+            level.to_string()
+        );
+        assert_eq!(children[0].srcmap(), inherited[0].srcmap());
+    }
+
+    assert_eq!((state.pos, state.pos_max, state.link_level), (3, 14, 2));
+    assert_eq!(state.pending_text, Some((0, 3)));
+    assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 41);
+    assert_eq!(state.nodes.len(), 1);
+    assert_eq!(state.nodes[0].cast::<Text>().unwrap().content, "sentinel");
+}
+
+#[test]
+fn child_link_level_override_keeps_range_and_depth_rules() {
+    let mut md = MarkdownIt::empty();
+    md.max_nesting = 1;
+    let ruleset = DocumentRuleSet {
+        runs: vec![run_rule(|_| panic!("depth limit must skip rules"))],
+        probes: vec![],
+        finalizers: vec![|_| panic!("literal children must skip finalizers")],
+    };
+    let state = parent_state(&md, &ruleset);
+    assert!(state.parse_subrange_with_link_level(0..12, 3).is_none());
+    assert!(state.parse_subrange_with_link_level(3..4, 3).is_none());
+    assert!(
+        state
+            .parse_subrange_with_link_level(0..0, 3)
+            .unwrap()
+            .is_empty()
+    );
+    let children = state.parse_subrange_with_link_level(0..11, 3).unwrap();
+    assert_eq!(children[0].cast::<Text>().unwrap().content, "{ 雪\n次 }");
+    assert_eq!(state.link_level, 2);
+}
