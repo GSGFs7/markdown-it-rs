@@ -548,6 +548,51 @@ fn resolve_reference_link(
     })
 }
 
+#[allow(dead_code)]
+fn probe_link_candidate(
+    context: &crate::parser::inline::InlineProbeContext<'_>,
+    pos: usize,
+    enable_nested: bool,
+    references: Option<&ReferenceMap>,
+) -> Option<ParseLinkResult> {
+    let source = context.remaining();
+    if !source.get(pos..)?.starts_with('[') {
+        return None;
+    }
+
+    let label_start = pos + 1;
+    let label_end = label_start
+        + probe_link_label(
+            context.probe_subrange(label_start..source.len())?,
+            enable_nested,
+        )?;
+
+    if let Some(target) =
+        parse_inline_link_target(context.markdown_it(), source, label_end + 1, source.len())
+    {
+        return Some(ParseLinkResult {
+            label_start,
+            label_end,
+            href: target.href,
+            title: target.title,
+            end: target.end,
+        });
+    }
+
+    let suffix_start = label_end + 1;
+    let reference_end = if source[suffix_start..].starts_with('[') {
+        let reference_start = suffix_start + 1;
+        context
+            .probe_subrange(reference_start..source.len())
+            .and_then(|child| probe_link_label(child, false))
+            .map(|close| reference_start + close)
+    } else {
+        None
+    };
+
+    resolve_reference_link(source, label_start, label_end, reference_end, references?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -647,7 +692,7 @@ mod tests {
 
 #[cfg(test)]
 mod probe_label_tests {
-    use super::probe_link_label;
+    use super::*;
     use crate::parser::inline::{
         InlineProbeContext,
         InlineProbeKind,
@@ -716,23 +761,29 @@ mod probe_label_tests {
             .render()
     }
 
+    /// Label bodies shared by the raw-label and combined-candidate tests.
+    ///
+    /// A `]` inside a code span, escape, entity, or raw HTML must not close
+    /// the label; raw nested `[` bytes still increase the bracket level.
+    const LABELS: &[&str] = &[
+        "",
+        "abc",
+        "雪[a]雨",
+        "`]`",
+        r"\]",
+        "&#93;",
+        "<i x=']'>",
+        "<a>x",
+    ];
+
     #[test]
     fn labels_respect_raw_brackets_and_opaque_spans() {
         let md = parser::<false>();
-        for source in [
-            "@[]",
-            "@[abc]",
-            "@[雪[a]雨]",
-            "@[`]`]",
-            r"@[\]]",
-            "@[&#93;]",
-            "@[<i x=']'>]",
-            "@[<a>x]",
-        ] {
-            let end = source.rfind(']').unwrap() - 2;
+        for label in LABELS {
+            let source = format!("@[{label}]");
             assert_eq!(
-                render(&md, source),
-                format!("<p>end={end}</p>\n"),
+                render(&md, &source),
+                format!("<p>end={}</p>\n", label.len()),
                 "{source}"
             );
         }
@@ -886,5 +937,145 @@ mod probe_label_tests {
                 .render(),
             "<p><img src=\"/image\" alt=\"x\"></p>\n",
         );
+    }
+
+    #[test]
+    fn candidate_combines_label_target_and_reference() {
+        let md = parser::<false>();
+        let ruleset = md.inline.document_rules().unwrap();
+        let mut references = ReferenceMap::default();
+        references.insert("x".into(), "/shortcut".into(), None);
+        references.insert("ref".into(), "/ref".into(), Some("t".into()));
+
+        for (source, href, title, end) in [
+            ("[x](/inline)", "/inline", None, 12),
+            ("[x][ref]", "/ref", Some("t"), 8),
+            ("[x][]", "/shortcut", None, 5),
+            ("[x]", "/shortcut", None, 3),
+            ("[x][", "/shortcut", None, 3),
+            ("[x](/unfinished", "/shortcut", None, 3),
+        ] {
+            let context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+            let result = probe_link_candidate(&context, 0, false, Some(&references)).expect(source);
+            assert_eq!((result.label_start, result.label_end), (1, 2));
+            assert_eq!(result.href.as_deref(), Some(href), "{source}");
+            assert_eq!(result.title.as_deref(), title, "{source}");
+            assert_eq!(result.end, end, "{source}");
+            assert_eq!(context.remaining(), source);
+            assert_eq!(context.trailing_text(), "");
+            assert_eq!(context.link_level(), 0);
+        }
+
+        for source in ["[x][missing]", "[missing]", "[unclosed"] {
+            let context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+            assert!(probe_link_candidate(&context, 0, false, Some(&references)).is_none());
+        }
+    }
+
+    #[test]
+    fn candidate_offsets_are_relative_to_current_window() {
+        let md = parser::<false>();
+        let ruleset = md.inline.document_rules().unwrap();
+        let source = "前雪[x](/url)";
+        let context =
+            InlineProbeContext::new(source, "前".len(), source.len(), &md, &ruleset, 0, 0);
+        let result = probe_link_candidate(&context, "雪".len(), false, None).unwrap();
+        assert_eq!(
+            (result.label_start, result.label_end, result.end),
+            (4, 5, 12)
+        );
+        assert_eq!(result.href.as_deref(), Some("/url"));
+        assert_eq!(context.remaining(), "雪[x](/url)");
+        assert!(probe_link_candidate(&context, 1, false, None).is_none());
+    }
+
+    #[test]
+    fn candidate_combines_opaque_labels_with_target() {
+        let md = parser::<false>();
+        let ruleset = md.inline.document_rules().unwrap();
+        for label in LABELS {
+            let source = format!("[{label}](/url)");
+            let context = InlineProbeContext::new(&source, 0, source.len(), &md, &ruleset, 0, 0);
+            let result = probe_link_candidate(&context, 0, false, None)
+                .unwrap_or_else(|| panic!("{source}"));
+            // `]` bytes inside opaque spans must not shorten the label.
+            assert_eq!(
+                (result.label_start, result.label_end),
+                (1, label.len() + 1),
+                "{source}"
+            );
+            assert_eq!(result.href.as_deref(), Some("/url"), "{source}");
+            assert_eq!(result.title, None, "{source}");
+            assert_eq!(result.end, source.len(), "{source}");
+        }
+    }
+
+    #[test]
+    fn candidate_requires_reference_map_and_label_window() {
+        let md = parser::<false>();
+        let ruleset = md.inline.document_rules().unwrap();
+
+        // Inline targets parse without references, shortcut references do not.
+        let source = "[x](/url)";
+        let context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+        let result = probe_link_candidate(&context, 0, false, None).expect(source);
+        assert_eq!(result.href.as_deref(), Some("/url"));
+        assert_eq!(result.end, source.len());
+
+        for source in ["[x]", "[x][ref]"] {
+            let context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+            assert!(
+                probe_link_candidate(&context, 0, false, None).is_none(),
+                "{source}"
+            );
+        }
+
+        // Label scanning consumes one nesting level; when the budget is spent
+        // the whole candidate is rejected even though the syntax is valid.
+        let mut md = parser::<false>();
+        md.max_nesting = 2;
+        let ruleset = md.inline.document_rules().unwrap();
+        let source = "[x](/url)";
+        let root = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+        assert!(probe_link_candidate(&root, 0, false, None).is_some());
+
+        let nested = root.probe_subrange(0..source.len()).unwrap();
+        assert_eq!(nested.depth(), 1);
+        assert!(nested.probe_subrange(1..source.len()).is_none());
+        assert!(probe_link_candidate(&nested, 0, false, None).is_none());
+    }
+
+    #[test]
+    fn candidate_respects_window_edges_and_parent_cursor() {
+        let md = parser::<false>();
+        let ruleset = md.inline.document_rules().unwrap();
+
+        // The full source parses, but the window ends before the closing
+        // parenthesis; bytes after `remaining()` must stay invisible.
+        let source = "[x](/url)tail";
+        let close = source.find(')').unwrap();
+        let truncated = InlineProbeContext::new(source, 0, close, &md, &ruleset, 0, 0);
+        assert_eq!(truncated.remaining(), "[x](/url");
+        assert!(probe_link_candidate(&truncated, 0, false, None).is_none());
+
+        // Including the closing parenthesis makes the same window parse.
+        let complete = InlineProbeContext::new(source, 0, close + 1, &md, &ruleset, 0, 0);
+        let result = probe_link_candidate(&complete, 0, false, None).unwrap();
+        assert_eq!(result.end, close + 1);
+
+        // After the parent cursor advances, results stay relative to
+        // `remaining()`, not to the start of the session.
+        let source = "前雪[x](/url)";
+        let mut context =
+            InlineProbeContext::new(source, "前".len(), source.len(), &md, &ruleset, 0, 0);
+        context.next_token().unwrap();
+        assert_eq!(context.remaining(), "[x](/url)");
+        let result = probe_link_candidate(&context, 0, false, None).unwrap();
+        assert_eq!(
+            (result.label_start, result.label_end, result.end),
+            (1, 2, 9)
+        );
+        assert_eq!(result.href.as_deref(), Some("/url"));
+        assert_eq!(context.remaining(), "[x](/url)");
     }
 }
