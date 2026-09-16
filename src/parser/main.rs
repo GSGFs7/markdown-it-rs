@@ -150,10 +150,17 @@ impl MarkdownIt {
     /// Parse directly into arena storage when every configured parser rule has
     /// a migrated implementation.
     ///
-    /// This transitional entry point currently supports text, paragraphs,
-    /// newlines, backslash escapes, entities, code spans, and arena-backed third-party inline
-    /// rules. It returns an error instead of ignoring syntax rules that have not yet been
-    /// migrated.
+    /// This experimental entry point supports text, paragraphs, newlines,
+    /// escapes, entities, code spans, emphasis, autolinks, inline HTML, and
+    /// ordinary inline links and images through their migrated registrations.
+    /// Third-party rules must also provide direct implementations.
+    /// Reference definitions and the full `cmark::add` configuration are not
+    /// supported yet. Legacy-only factories and unsupported block or core
+    /// rules cause `UnsupportedConfiguration`, regardless of the input.
+    ///
+    /// Direct child parsing and label probing consume nesting budget. At low
+    /// `max_nesting` values, links and images may remain literal even where
+    /// the legacy parser recognizes them. A zero limit stops block parsing.
     #[doc(hidden)]
     pub fn parse_document_direct(&self, src: &str) -> Result<Document, DocumentParseError> {
         let has_builtin_core_rules = self.ruler.len() == 2

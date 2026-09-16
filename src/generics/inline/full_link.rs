@@ -989,6 +989,40 @@ mod probe_label_tests {
         md.max_nesting = 2;
         assert_eq!(render(&md, "@[]"), "<p>none</p>\n");
     }
+
+    #[test]
+    fn registered_link_and_image_probe_respect_remaining_depth() {
+        let mut md = MarkdownIt::empty();
+        crate::plugins::cmark::inline::link::add(&mut md);
+        crate::plugins::cmark::inline::image::add(&mut md);
+        md.max_nesting = 3;
+        let rules = md.inline.document_rules().unwrap();
+
+        for source in ["[雪](/url)", "[](/url)", "![雪](/img)", "![](/img)"] {
+            for depth in [1, 2] {
+                let mut context =
+                    InlineProbeContext::new(source, 0, source.len(), &md, &rules, depth, 0);
+                let result = if source.starts_with('!') {
+                    <LinkPrefixScanner<'!', true> as InlineRule>::probe(&mut context)
+                } else {
+                    <LinkScanner<false> as InlineRule>::probe(&mut context)
+                };
+                let expected = if depth == 1 {
+                    InlineProbeResult::Match {
+                        len: source.len(),
+                        kind: InlineProbeKind::Token,
+                    }
+                } else {
+                    InlineProbeResult::NoMatch
+                };
+                assert_eq!(result, expected, "depth={depth}, source={source:?}");
+                assert_eq!(context.remaining(), source);
+                assert_eq!(context.depth(), depth);
+                assert_eq!(context.link_level(), 0);
+            }
+        }
+    }
+
     #[test]
     fn supported_boundaries_match_legacy_helper() {
         use crate::parser::extset::{InlineRootExtSet, RootExtSet};

@@ -505,3 +505,52 @@ fn direct_image_only_registration_matches_legacy() {
     markdown_it::plugins::cmark::inline::image::add(&mut md);
     assert_direct_matches_bridge(&md, "![x](/img)");
 }
+
+#[test]
+fn direct_link_and_image_nesting_thresholds_are_explicit() {
+    use markdown_it::plugins::cmark::{block, inline};
+
+    let mut md = MarkdownIt::empty();
+    block::paragraph::add(&mut md);
+    inline::link::add(&mut md);
+    inline::image::add(&mut md);
+
+    let cases = [
+        (
+            "[x](/url)",
+            "<p>[x](/url)</p>\n",
+            "<p><a href=\"/url\">x</a></p>\n",
+        ),
+        (
+            "[](/url)",
+            "<p>[](/url)</p>\n",
+            "<p><a href=\"/url\"></a></p>\n",
+        ),
+        (
+            "![雪](/img)",
+            "<p>![雪](/img)</p>\n",
+            "<p><img src=\"/img\" alt=\"雪\"></p>\n",
+        ),
+        (
+            "![](/img)",
+            "<p>![](/img)</p>\n",
+            "<p><img src=\"/img\" alt=\"\"></p>\n",
+        ),
+    ];
+    for limit in [0, 1, 2, 32] {
+        md.max_nesting = limit;
+        for (source, literal, parsed) in cases {
+            let document = md.parse_document_direct(source).unwrap();
+            let expected = match limit {
+                0 => "",
+                1 => literal,
+                _ => parsed,
+            };
+            assert_eq!(
+                md.render_document(&document).unwrap(),
+                expected,
+                "limit={limit}, source={source:?}",
+            );
+        }
+    }
+}
