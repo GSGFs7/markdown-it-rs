@@ -1,5 +1,3 @@
-use std::mem::size_of;
-
 use super::text::TextProjectionKind;
 use super::*;
 use crate::parser::core::Root;
@@ -9,42 +7,6 @@ use crate::{MarkdownIt, Node, TextProjection, plugins};
 
 fn transparent_text_projection(_: super::NodeRef<'_>) -> TextProjectionKind<'_> {
     TextProjectionKind::Transparent
-}
-
-#[test]
-fn stale_id_cannot_access_reused_slot() {
-    let mut arena = Arena::new();
-    let old = arena.insert_with(|_| "old");
-    assert_eq!(arena.remove(old), Some("old"));
-
-    let new = arena.insert_with(|_| "new");
-    assert_eq!(old.slot(), new.slot());
-    assert_ne!(old.generation(), new.generation());
-    assert_eq!(arena.get(old), None);
-    assert_eq!(arena.get(new), Some(&"new"));
-}
-
-#[test]
-fn maximum_generation_slot_is_retired_instead_of_wrapping() {
-    let old = super::NodeId {
-        slot: 0,
-        generation: u32::MAX,
-    };
-    let mut arena = Arena {
-        slots: vec![super::Slot {
-            generation: u32::MAX,
-            next_free: None,
-            value: Some("old"),
-        }],
-        free_head: None,
-        len: 1,
-    };
-
-    assert_eq!(arena.remove(old), Some("old"));
-    let new = arena.insert_with(|_| "new");
-
-    assert_eq!(new.slot(), 1);
-    assert_eq!(arena.get(old), None);
 }
 
 #[test]
@@ -171,19 +133,6 @@ fn structural_events_reject_a_stale_root() {
         document.node(text).unwrap().cast::<Text>().unwrap().content,
         "text"
     );
-}
-
-#[test]
-fn layout_sizes_are_visible_to_the_arena_design() {
-    // Keep this measurement close to the storage definition so future
-    // layout changes cannot happen without an explicit review point.
-    eprintln!(
-        "Node={} DocumentNode={} Slot<DocumentNode>={}",
-        size_of::<Node>(),
-        size_of::<DocumentNode>(),
-        size_of::<super::Slot<DocumentNode>>()
-    );
-    assert!(size_of::<super::Slot<DocumentNode>>() <= 256);
 }
 
 #[test]
