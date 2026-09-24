@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::common::utils::{get_entity_from_str, is_valid_entity_code};
-use crate::parser::document::NodeDraft;
+use crate::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
 use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, TextSpecial};

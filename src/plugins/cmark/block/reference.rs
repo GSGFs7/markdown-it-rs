@@ -16,9 +16,9 @@ use downcast_rs::{Downcast, impl_downcast};
 use crate::common::utils::{normalize_reference, unescape_all};
 use crate::generics::inline::full_link;
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::document_renderer::EmptyDocumentRenderer;
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
+use crate::render::EmptyDocumentRenderer;
 
 /// Storage for parsed references
 ///

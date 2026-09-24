@@ -12,10 +12,10 @@
 //! ```
 use std::collections::{HashMap, HashSet};
 
+use crate::document::edit::EditBatch;
+use crate::document::transform::DocumentTransform;
+use crate::document::{Document, NodeRef};
 use crate::parser::core::CoreRule;
-use crate::parser::document::{Document, NodeRef};
-use crate::parser::document_edit::EditBatch;
-use crate::parser::document_transform::DocumentTransform;
 use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::inline::{Text, TextSpecial};
 use crate::plugins::cmark::block::heading::ATXHeading;

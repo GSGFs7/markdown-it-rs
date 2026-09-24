@@ -1,6 +1,6 @@
 use crate::Node;
+use crate::document::NodeDraft;
 use crate::parser::core::rule_builder;
-use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentBlockState;
 
 /// Each member of block rule chain must implement this trait

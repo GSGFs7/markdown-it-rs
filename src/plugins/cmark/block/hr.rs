@@ -3,18 +3,18 @@
 //! `***`, `---`, `___`
 //!
 //! <https://spec.commonmark.org/0.30/#thematic-breaks>
+use crate::document::NodeRef;
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::document::NodeRef;
-use crate::parser::document_renderer::{
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
+use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
     PlainTextBreakDocumentRenderer,
     write_html_self_close,
 };
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
 
 #[derive(Debug)]
 pub struct ThematicBreak {

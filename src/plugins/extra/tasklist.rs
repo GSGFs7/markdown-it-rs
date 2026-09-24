@@ -1,10 +1,10 @@
 //! Task list syntax, like `- [ ] todo` and `- [x] done`.
 
 use crate::common::sourcemap::SourcePos;
+use crate::document::edit::EditBatch;
+use crate::document::transform::DocumentTransform;
+use crate::document::{Document, NodeDraft, NodeId, StructuralEvent};
 use crate::parser::core::CoreRule;
-use crate::parser::document::{Document, NodeDraft, NodeId, StructuralEvent};
-use crate::parser::document_edit::EditBatch;
-use crate::parser::document_transform::DocumentTransform;
 use crate::parser::inline::Text;
 use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::main::MarkdownIt;

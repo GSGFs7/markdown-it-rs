@@ -4,12 +4,7 @@
 use std::fmt::Write;
 
 use super::utils::regexps::*;
-use crate::parser::document::{NodeDraft, NodeRef};
-use crate::parser::document_renderer::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    DocumentRenderError,
-};
+use crate::document::{NodeDraft, NodeRef};
 use crate::parser::extset::InlineRootExtSet;
 use crate::parser::inline::probe::{
     InlineProbeContext,
@@ -21,6 +16,7 @@ use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
+use crate::render::{DocumentNodeRenderer, DocumentRenderContext, DocumentRenderError};
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_migrated_rule::<HtmlInlineScanner>();

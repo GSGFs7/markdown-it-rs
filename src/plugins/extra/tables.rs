@@ -4,9 +4,15 @@
 use std::fmt::Write;
 
 use crate::common::sourcemap::SourcePos;
+use crate::document::NodeRef;
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::document::NodeRef;
-use crate::parser::document_renderer::{
+use crate::parser::inline::InlineRoot;
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
+use crate::plugins::cmark::block::heading::HeadingScanner;
+use crate::plugins::cmark::block::list::ListScanner;
+use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
@@ -15,12 +21,6 @@ use crate::parser::document_renderer::{
     write_html_close,
     write_html_open,
 };
-use crate::parser::inline::InlineRoot;
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
-use crate::plugins::cmark::block::heading::HeadingScanner;
-use crate::plugins::cmark::block::list::ListScanner;
 
 // Limit the number of empty cells synthesized for short table rows. Without
 // this cap, a table with N header columns and N one-cell body rows produces

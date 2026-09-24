@@ -1,4 +1,4 @@
-use crate::parser::document::NodeDraft;
+use crate::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeResult};
 use crate::parser::node::Node;

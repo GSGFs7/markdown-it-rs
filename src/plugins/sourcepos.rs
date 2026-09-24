@@ -8,11 +8,11 @@
 //! assert_eq!(html.trim(), r#"<h1 data-sourcepos="1:1-1:7">hello</h1>"#);
 //! ```
 use crate::common::sourcemap::{SourcePos, SourceWithLineStarts};
+use crate::document::edit::EditBatch;
+use crate::document::transform::DocumentTransform;
+use crate::document::{Document, StructuralEvent};
 use crate::parser::block::builtin::BlockParserRule;
 use crate::parser::core::{CoreRule, Root};
-use crate::parser::document::{Document, StructuralEvent};
-use crate::parser::document_edit::EditBatch;
-use crate::parser::document_transform::DocumentTransform;
 use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{HtmlAttributes, Node};

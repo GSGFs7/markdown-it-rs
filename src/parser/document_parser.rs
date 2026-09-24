@@ -7,13 +7,13 @@ use std::sync::Arc;
 
 use crate::common::sourcemap::SourcePos;
 use crate::common::utils::calc_right_whitespace_with_tabstops;
+use crate::document::{Document, NodeDraft};
 use crate::parser::block::{
     DocumentRuleFns as DocumentBlockRuleFns,
     LineOffset,
     build_line_offsets,
 };
 use crate::parser::core::Root;
-use crate::parser::document::{Document, NodeDraft};
 use crate::parser::extset::InlineRootExtSet;
 use crate::parser::inline::probe::InlineProbeContext;
 use crate::parser::inline::{DelimiterRun, DocumentRuleSet, Text, scan_delimiter_run};

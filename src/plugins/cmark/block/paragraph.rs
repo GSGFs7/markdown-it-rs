@@ -3,17 +3,14 @@
 //! This is the default rule if nothing else matches.
 //!
 //! <https://spec.commonmark.org/0.30/#paragraph>
+use crate::document::NodeDraft;
 use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
-use crate::parser::document::NodeDraft;
 use crate::parser::document_parser::DocumentBlockState;
-use crate::parser::document_renderer::{
-    HtmlBlockElementDocumentRenderer,
-    PlainTextBlockDocumentRenderer,
-};
 use crate::parser::inline::InlineRoot;
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
+use crate::render::{HtmlBlockElementDocumentRenderer, PlainTextBlockDocumentRenderer};
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<ParagraphScanner>().after_all();

@@ -4,21 +4,21 @@
 //!
 //! <https://spec.commonmark.org/0.30/#images>
 use crate::NodeDraft;
+use crate::document::NodeRef;
 use crate::generics::inline::full_link;
-use crate::parser::document::NodeRef;
-use crate::parser::document_renderer::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    DocumentRenderError,
-    TransparentDocumentRenderer,
-    write_html_self_close,
-};
 use crate::parser::inline::{Text, TextSpecial};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
+use crate::render::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    TransparentDocumentRenderer,
+    write_html_self_close,
+};
 
 #[derive(Debug)]
 pub struct Image {

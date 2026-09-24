@@ -42,7 +42,7 @@
 //!
 //! If you define two structures with the same marker, only the first one will work.
 //!
-use crate::parser::document::NodeDraft;
+use crate::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
 use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, Text};

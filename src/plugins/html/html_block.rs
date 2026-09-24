@@ -8,16 +8,12 @@ use regex::Regex;
 
 use super::utils::blocks::*;
 use super::utils::regexps::*;
+use crate::document::NodeRef;
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::document::NodeRef;
-use crate::parser::document_renderer::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    DocumentRenderError,
-};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
+use crate::render::{DocumentNodeRenderer, DocumentRenderContext, DocumentRenderError};
 
 #[derive(Debug)]
 pub struct HtmlBlock {

@@ -11,12 +11,29 @@
 #![allow(clippy::collapsible_match)]
 
 pub mod common;
+pub mod document;
 pub mod examples;
 pub mod generics;
 pub mod parser;
 pub mod plugins;
+pub mod render;
 
-pub use parser::document::{
+pub use document::edit::{EditBatch, EditError};
+pub use document::text::{
+    TextBoundary,
+    TextClassifier,
+    TextEvent,
+    TextEvents,
+    TextProjection,
+    TextProjectionKind,
+};
+pub use document::transform::{
+    DocumentTransform,
+    DocumentTransformError,
+    DocumentTransformRegistry,
+    TransformRuleBuilder,
+};
+pub use document::{
     Document,
     DocumentNode,
     InvalidNodeId,
@@ -26,29 +43,7 @@ pub use parser::document::{
     StructuralEvent,
     StructuralEvents,
 };
-pub use parser::document_edit::{EditBatch, EditError};
 pub use parser::document_parser::{DocumentInlineState, DocumentParseError};
-pub use parser::document_renderer::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    DocumentRenderError,
-    DocumentRendererRegistry,
-    DocumentWriter,
-};
-pub use parser::document_text::{
-    TextBoundary,
-    TextClassifier,
-    TextEvent,
-    TextEvents,
-    TextProjection,
-    TextProjectionKind,
-};
-pub use parser::document_transform::{
-    DocumentTransform,
-    DocumentTransformError,
-    DocumentTransformRegistry,
-    TransformRuleBuilder,
-};
 pub use parser::inline::probe::{
     InlineProbeContext,
     InlineProbeEffects,
@@ -61,3 +56,10 @@ pub use parser::node::{HtmlAttribute, HtmlAttributes, Node, NodeValue};
 pub use parser::render_options::RenderOptions;
 pub use parser::renderer::Renderer;
 pub use plugins::presets::{Preset, PresetConfig};
+pub use render::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    DocumentRenderError,
+    DocumentRendererRegistry,
+    DocumentWriter,
+};

@@ -4,20 +4,20 @@
 //!
 //!  - <https://spec.commonmark.org/0.30/#hard-line-breaks>
 //!  - <https://spec.commonmark.org/0.30/#soft-line-breaks>
-use crate::parser::document::{NodeDraft, NodeRef};
+use crate::document::{NodeDraft, NodeRef};
 use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::document_renderer::{
+use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
+use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
     PlainTextBreakDocumentRenderer,
     write_html_self_close,
 };
-use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
 
 #[derive(Debug)]
 pub struct Hardbreak;

@@ -3,11 +3,23 @@ use std::sync::Arc;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::common::sourcemap::SourcePos;
+use crate::document::Document;
+use crate::document::transform::{
+    DocumentTransform,
+    DocumentTransformError,
+    DocumentTransformRegistry,
+    TransformRuleBuilder,
+};
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::{Root, *};
-use crate::parser::document::Document;
 use crate::parser::document_parser::{DocumentParseContext, DocumentParseError};
-use crate::parser::document_renderer::{
+use crate::parser::extset::MarkdownItExtSet;
+use crate::parser::inline::{self, InlineParser, Text, TextSpecial};
+use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::render_options::RenderOptions;
+use crate::plugins::presets::{Preset, PresetConfig};
+use crate::render::{
     DebugTreeDocumentRenderer,
     DocumentNodeRenderer,
     DocumentRenderError,
@@ -16,18 +28,6 @@ use crate::parser::document_renderer::{
     PlainTextDocumentRenderer,
     TransparentDocumentRenderer,
 };
-use crate::parser::document_transform::{
-    DocumentTransform,
-    DocumentTransformError,
-    DocumentTransformRegistry,
-    TransformRuleBuilder,
-};
-use crate::parser::extset::MarkdownItExtSet;
-use crate::parser::inline::{self, InlineParser, Text, TextSpecial};
-use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::render_options::RenderOptions;
-use crate::plugins::presets::{Preset, PresetConfig};
 
 type RuleFn = fn(&mut Node, &MarkdownIt);
 

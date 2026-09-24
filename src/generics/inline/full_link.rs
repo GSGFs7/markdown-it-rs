@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 
 use crate::common::utils::unescape_all;
-use crate::parser::document::NodeDraft;
+use crate::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::inline::probe::{InlineProbeKind, InlineProbeResult};
 use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};

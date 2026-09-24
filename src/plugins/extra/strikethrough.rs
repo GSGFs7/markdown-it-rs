@@ -1,8 +1,11 @@
 //! Strikethrough syntax (like `~~this~~`)
 use crate::NodeDraft;
+use crate::document::NodeRef;
 use crate::generics::inline::emph_pair;
-use crate::parser::document::NodeRef;
-use crate::parser::document_renderer::{
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
+use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
@@ -10,9 +13,6 @@ use crate::parser::document_renderer::{
     write_html_close,
     write_html_open,
 };
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
 
 #[derive(Debug)]
 pub struct Strikethrough {

@@ -33,10 +33,10 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use crate::document::edit::EditBatch;
+use crate::document::transform::DocumentTransform;
+use crate::document::{Document, StructuralEvent};
 use crate::parser::core::CoreRule;
-use crate::parser::document::{Document, StructuralEvent};
-use crate::parser::document_edit::EditBatch;
-use crate::parser::document_transform::DocumentTransform;
 use crate::parser::inline::Text;
 use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::main::MarkdownIt;

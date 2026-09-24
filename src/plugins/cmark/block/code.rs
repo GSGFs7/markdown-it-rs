@@ -5,9 +5,12 @@
 //! <https://spec.commonmark.org/0.30/#indented-code-block>
 use std::fmt::Write;
 
+use crate::document::NodeRef;
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::document::NodeRef;
-use crate::parser::document_renderer::{
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::{Node, NodeValue};
+use crate::parser::renderer::Renderer;
+use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRenderError,
@@ -15,9 +18,6 @@ use crate::parser::document_renderer::{
     write_html_open,
     write_html_text,
 };
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
 
 const CODE_INDENT: i32 = 4;
 
