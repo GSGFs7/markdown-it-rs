@@ -1,5 +1,6 @@
 //! Experimental arena-backed document storage.
 
+mod data;
 pub mod edit;
 pub mod text;
 pub mod transform;
@@ -10,10 +11,10 @@ use std::fmt::{self, Debug};
 use std::iter::FusedIterator;
 use std::sync::Arc;
 
-use crate::common::TypeKey;
+use self::data::NodeData;
 use crate::common::sourcemap::SourcePos;
 use crate::parser::extset::NodeExtSet;
-use crate::parser::node::{HtmlAttributes, Node, NodeParts, NodeValue};
+use crate::parser::node::{HtmlAttributes, Node, NodeValue};
 
 /// Stable handle to a node stored in a [`Document`].
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -57,11 +58,7 @@ pub struct DocumentNode {
     id: NodeId,
     parent: Option<NodeId>,
     children: Vec<NodeId>,
-    srcmap: Option<SourcePos>,
-    ext: NodeExtSet,
-    attrs: HtmlAttributes,
-    node_type: TypeKey,
-    node_value: Box<dyn NodeValue>,
+    data: NodeData,
 }
 
 /// Owned node data waiting to be inserted into a [`Document`].
@@ -72,11 +69,7 @@ pub struct DocumentNode {
 #[derive(Debug)]
 pub struct NodeDraft {
     children: Vec<NodeDraft>,
-    srcmap: Option<SourcePos>,
-    ext: NodeExtSet,
-    attrs: HtmlAttributes,
-    node_type: TypeKey,
-    node_value: Box<dyn NodeValue>,
+    data: NodeData,
 }
 
 impl NodeDraft {
@@ -85,11 +78,7 @@ impl NodeDraft {
     pub fn new<T: NodeValue>(value: T) -> Self {
         Self {
             children: Vec::new(),
-            srcmap: None,
-            ext: NodeExtSet::new(),
-            attrs: Vec::new(),
-            node_type: TypeKey::of::<T>(),
-            node_value: Box::new(value),
+            data: NodeData::new(value),
         }
     }
 
@@ -106,75 +95,52 @@ impl NodeDraft {
     }
 
     pub fn srcmap(&self) -> Option<SourcePos> {
-        self.srcmap
+        self.data.srcmap
     }
 
     pub(crate) fn set_srcmap(&mut self, srcmap: Option<SourcePos>) {
-        self.srcmap = srcmap;
+        self.data.srcmap = srcmap;
     }
 
     pub fn ext(&self) -> &NodeExtSet {
-        &self.ext
+        &self.data.ext
     }
 
     pub fn ext_mut(&mut self) -> &mut NodeExtSet {
-        &mut self.ext
+        &mut self.data.ext
     }
 
     pub fn attrs(&self) -> &HtmlAttributes {
-        &self.attrs
+        &self.data.attrs
     }
 
     pub fn attrs_mut(&mut self) -> &mut HtmlAttributes {
-        &mut self.attrs
+        &mut self.data.attrs
     }
 
     pub fn name(&self) -> &'static str {
-        self.node_type.name
+        self.data.name()
     }
 
     pub fn is<T: NodeValue>(&self) -> bool {
-        self.node_type.id == TypeId::of::<T>()
+        self.data.is::<T>()
     }
 
     pub fn cast<T: NodeValue>(&self) -> Option<&T> {
-        if self.is::<T>() {
-            self.node_value.downcast_ref::<T>()
-        } else {
-            None
-        }
+        self.data.cast::<T>()
     }
 
     pub fn cast_mut<T: NodeValue>(&mut self) -> Option<&mut T> {
-        if self.is::<T>() {
-            self.node_value.downcast_mut::<T>()
-        } else {
-            None
-        }
+        self.data.cast_mut::<T>()
     }
 
     pub(crate) fn into_legacy(self) -> Node {
-        let Self {
-            children,
-            srcmap,
-            ext,
-            attrs,
-            node_type,
-            node_value,
-        } = self;
-        Node::from_parts(NodeParts {
-            children: children.into_iter().map(Self::into_legacy).collect(),
-            srcmap,
-            ext,
-            attrs,
-            node_type,
-            node_value,
-        })
+        let Self { children, data } = self;
+        data.into_legacy(children.into_iter().map(Self::into_legacy).collect())
     }
 
     pub(crate) fn replace<T: NodeValue>(&mut self, value: T) {
-        self.node_type = TypeKey::of::<T>();
-        self.node_value = Box::new(value);
+        self.data.replace::<T>(value);
     }
 }
 
@@ -198,51 +164,43 @@ impl DocumentNode {
     }
 
     pub fn srcmap(&self) -> Option<SourcePos> {
-        self.srcmap
+        self.data.srcmap
     }
 
     pub(crate) fn set_srcmap(&mut self, srcmap: Option<SourcePos>) {
-        self.srcmap = srcmap;
+        self.data.srcmap = srcmap;
     }
 
     pub fn ext(&self) -> &NodeExtSet {
-        &self.ext
+        &self.data.ext
     }
 
     pub fn attrs(&self) -> &HtmlAttributes {
-        &self.attrs
+        &self.data.attrs
     }
 
     pub(crate) fn attrs_mut(&mut self) -> &mut HtmlAttributes {
-        &mut self.attrs
+        &mut self.data.attrs
     }
 
     pub fn name(&self) -> &'static str {
-        self.node_type.name
+        self.data.name()
     }
 
     pub(crate) fn type_id(&self) -> TypeId {
-        self.node_type.id
+        self.data.type_id()
     }
 
     pub fn is<T: NodeValue>(&self) -> bool {
-        self.node_type.id == TypeId::of::<T>()
+        self.data.is::<T>()
     }
 
     pub fn cast<T: NodeValue>(&self) -> Option<&T> {
-        if self.is::<T>() {
-            self.node_value.downcast_ref::<T>()
-        } else {
-            None
-        }
+        self.data.cast::<T>()
     }
 
     pub(crate) fn cast_mut<T: NodeValue>(&mut self) -> Option<&mut T> {
-        if self.is::<T>() {
-            self.node_value.downcast_mut::<T>()
-        } else {
-            None
-        }
+        self.data.cast_mut::<T>()
     }
 }
 
@@ -457,25 +415,21 @@ impl Document {
     }
 
     fn insert_legacy(&mut self, parent: Option<NodeId>, mut legacy: Node) -> NodeId {
-        let parts = legacy.take_parts();
-
+        let (data, children) = NodeData::from_legacy_parts(legacy.take_parts());
         let id = self.arena.insert_with(|id| DocumentNode {
             id,
             parent,
-            children: Vec::with_capacity(parts.children.len()),
-            srcmap: parts.srcmap,
-            ext: parts.ext,
-            attrs: parts.attrs,
-            node_type: parts.node_type,
-            node_value: parts.node_value,
+            children: Vec::with_capacity(children.len()),
+            data,
         });
 
-        for child in parts.children {
+        for child in children {
             let child_id = stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
                 self.insert_legacy(Some(id), child)
             });
             self.arena.get_mut(id).unwrap().children.push(child_id);
         }
+
         id
     }
 
@@ -790,23 +744,12 @@ impl Document {
         let mut pending = vec![(root_parent, false, draft)];
         let mut root = None;
         while let Some((parent, link_to_parent, draft)) = pending.pop() {
-            let NodeDraft {
-                children,
-                srcmap,
-                ext,
-                attrs,
-                node_type,
-                node_value,
-            } = draft;
+            let NodeDraft { children, data } = draft;
             let id = self.arena.insert_with(|id| DocumentNode {
                 id,
                 parent,
                 children: Vec::with_capacity(children.len()),
-                srcmap,
-                ext,
-                attrs,
-                node_type,
-                node_value,
+                data,
             });
             if link_to_parent {
                 self.arena
@@ -875,14 +818,7 @@ impl Document {
             }));
         }
 
-        Node::from_parts(NodeParts {
-            children,
-            srcmap: data.srcmap,
-            ext: data.ext,
-            attrs: data.attrs,
-            node_type: data.node_type,
-            node_value: data.node_value,
-        })
+        data.data.into_legacy(children)
     }
 }
 

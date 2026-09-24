@@ -246,3 +246,44 @@ fn parsed_document_events_visit_every_node_once() {
     assert!(stack.is_empty());
     assert_eq!(visited.len(), document.len());
 }
+
+#[test]
+fn node_data_survives_draft_and_legacy_transfers() {
+    #[derive(Debug)]
+    struct Payload(String);
+    impl crate::NodeValue for Payload {}
+
+    #[derive(Debug)]
+    struct Metadata(String);
+
+    fn draft() -> super::NodeDraft {
+        let mut draft = super::NodeDraft::new(Payload("payload".into()));
+        draft.set_srcmap(Some(crate::common::sourcemap::SourcePos::new(0, 3)));
+        draft.attrs_mut().push(("class".into(), "kept".into()));
+        draft.ext_mut().insert(Metadata("metadata".into()));
+        draft.push_child(super::NodeDraft::new(Text {
+            content: "abc".into(),
+        }));
+        draft
+    }
+
+    fn assert_document(document: &Document) {
+        let root = document.node(document.root()).unwrap();
+        assert_eq!(root.cast::<Payload>().unwrap().0, "payload");
+        assert!(root.cast::<Text>().is_none());
+        assert_eq!(root.srcmap().unwrap().get_byte_offsets(), (0, 3));
+        assert_eq!(root.attrs(), &vec![("class".into(), "kept".into())]);
+        assert_eq!(root.ext().get::<Metadata>().unwrap().0, "metadata");
+        assert_eq!(root.children().len(), 1);
+        let child = document.node(root.children()[0]).unwrap();
+        assert_eq!(child.parent(), Some(root.id()));
+        assert_eq!(child.cast::<Text>().unwrap().content, "abc");
+    }
+
+    let document = Document::from_draft("abc", draft());
+    assert_document(&document);
+    let document = Document::from_legacy("abc", document.into_legacy());
+    assert_document(&document);
+    let document = Document::from_legacy("abc", draft().into_legacy());
+    assert_document(&document);
+}
