@@ -658,6 +658,10 @@ fn probe_link_candidate(
         return None;
     }
 
+    if !source[pos + 1..].contains(']') {
+        return None;
+    }
+
     let label_start = pos + 1;
     let label_end = label_start
         + probe_link_label(
@@ -711,6 +715,10 @@ fn document_link_run(
     offset: usize,
     factory: fn(Option<String>, Option<String>) -> NodeDraft,
 ) -> Option<(Option<NodeDraft>, usize)> {
+    if !has_possible_link_label_close(state, offset) {
+        return None;
+    }
+
     let candidate = {
         let context = state.probe_current();
         probe_link_candidate(&context, offset, enable_nested, None)?
@@ -726,6 +734,35 @@ fn document_link_run(
     )?;
     node.children_mut().extend(children);
     Some((Some(node), candidate.end))
+}
+
+#[derive(Debug)]
+struct LastLinkLabelClose {
+    end: usize,
+    last: Option<usize>,
+}
+
+fn has_possible_link_label_close(state: &mut DocumentInlineState<'_>, offset: usize) -> bool {
+    if !state
+        .remaining()
+        .get(offset..)
+        .is_some_and(|tail| tail.starts_with('['))
+    {
+        return false;
+    }
+
+    let source = state.src.as_ref();
+    let end = state.pos_max;
+    let cache = state.inline_ext.get_or_insert_with(|| LastLinkLabelClose {
+        end,
+        last: source[..end].rfind(']'),
+    });
+    if cache.end != end {
+        cache.end = end;
+        cache.last = source[..end].rfind(']');
+    }
+
+    cache.last.is_some_and(|last| last > state.pos + offset)
 }
 
 #[cfg(test)]

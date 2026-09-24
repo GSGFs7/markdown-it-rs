@@ -554,3 +554,37 @@ fn direct_link_and_image_nesting_thresholds_are_explicit() {
         }
     }
 }
+
+#[test]
+fn direct_unclosed_link_labels_remain_literal() {
+    use markdown_it::plugins::cmark::{block, inline};
+
+    let mut md = MarkdownIt::empty();
+    block::paragraph::add(&mut md);
+    inline::link::add(&mut md);
+    inline::image::add(&mut md);
+
+    for size in [64, 1024, 4096] {
+        for part in ["[", "![", "雪["] {
+            let source = part.repeat(size);
+            let document = md.parse_document_direct(&source).unwrap();
+            assert_eq!(
+                md.render_document(&document).unwrap(),
+                format!("<p>{source}</p>\n"),
+                "size={size}, part={part:?}",
+            );
+        }
+    }
+
+    // A closer anywhere in the remaining range must keep normal scanning.
+    for source in [
+        "[[x](/url)",
+        "![[x](/url)",
+        "![雪](/img)",
+        "[](/url)",
+        "[x](/unfinished",
+        "![x](/unfinished",
+    ] {
+        assert_direct_matches_bridge(&md, source);
+    }
+}
