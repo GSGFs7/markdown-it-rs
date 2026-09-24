@@ -47,6 +47,20 @@ impl DocumentTransform for Third {
     }
 }
 
+#[cfg(debug_assertions)]
+#[derive(Default)]
+struct Failing;
+#[cfg(debug_assertions)]
+impl DocumentTransform for Failing {
+    const KEY: &'static str = "failing";
+
+    fn run(&self, document: &Document) -> EditBatch {
+        let mut edits = EditBatch::new();
+        edits.remove_node(document.root());
+        edits
+    }
+}
+
 fn steps(document: &Document) -> Option<&str> {
     document
         .node(document.root())
@@ -65,9 +79,31 @@ fn runs_in_resolved_type_and_named_order() {
     registry.add::<First>().before_all();
 
     let mut document = MarkdownIt::empty().parse_document("");
-    registry.run(&mut document).unwrap();
+    registry.run(&mut document);
 
     assert_eq!(steps(&document), Some("123"));
+}
+
+#[cfg(debug_assertions)]
+#[test]
+fn invalid_transform_panics_during_debug_validation() {
+    let mut registry = DocumentTransformRegistry::new();
+    registry.add::<First>();
+    registry.add::<Failing>();
+    registry.add::<Third>();
+    let mut document = MarkdownIt::empty().parse_document("");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        registry.run(&mut document);
+    }));
+    let panic = result.expect_err("invalid transform must panic in debug builds");
+    let message = panic
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied())
+        .unwrap_or("");
+    assert!(message.contains("invalid edit batch"));
+    assert_eq!(steps(&document), Some("1"));
 }
 
 #[test]
@@ -77,44 +113,10 @@ fn empty_registry_is_a_noop() {
     let root = document.root();
     let len = document.len();
 
-    registry.run(&mut document).unwrap();
+    registry.run(&mut document);
 
     assert_eq!(document.root(), root);
     assert_eq!(document.len(), len);
-}
-
-#[derive(Default)]
-struct Failing;
-impl DocumentTransform for Failing {
-    const KEY: &'static str = "failing";
-
-    fn run(&self, document: &Document) -> EditBatch {
-        let mut edits = EditBatch::new();
-        edits.remove_node(document.root());
-        edits
-    }
-}
-
-#[test]
-fn reports_key_stops_and_keeps_prior_commits() {
-    let mut registry = DocumentTransformRegistry::new();
-    registry.add::<First>();
-    registry.add::<Failing>();
-    registry.add::<Third>();
-    let mut document = MarkdownIt::empty().parse_document("");
-
-    let error = registry.run(&mut document).unwrap_err();
-
-    assert_eq!(error.transform(), "failing");
-    assert_eq!(
-        error.edit_error(),
-        &EditError::CannotRemoveRoot(document.root())
-    );
-    assert_eq!(steps(&document), Some("1"));
-    assert_eq!(
-        std::error::Error::source(&error).unwrap().to_string(),
-        error.edit_error().to_string()
-    );
 }
 
 #[test]
@@ -123,13 +125,13 @@ fn remove_invalidates_resolved_order() {
     registry.add::<First>();
     registry.add::<Second>();
     let mut first_run = MarkdownIt::empty().parse_document("");
-    registry.run(&mut first_run).unwrap();
+    registry.run(&mut first_run);
     assert_eq!(steps(&first_run), Some("12"));
 
     registry.remove::<First>();
     assert!(!registry.contains::<First>());
     let mut second_run = MarkdownIt::empty().parse_document("");
-    registry.run(&mut second_run).unwrap();
+    registry.run(&mut second_run);
     assert_eq!(steps(&second_run), Some("2"));
 }
 
@@ -141,7 +143,7 @@ fn markdown_it_runner_is_explicit() {
     let mut document = md.parse_document("");
     assert_eq!(steps(&document), None);
 
-    md.run_document_transforms(&mut document).unwrap();
+    md.run_document_transforms(&mut document);
     assert_eq!(steps(&document), Some("1"));
 }
 
@@ -170,7 +172,7 @@ fn transform_can_build_edits_from_an_immutable_document() {
     md.add_document_transform::<RewriteText>();
     let mut document = md.parse_document("original");
 
-    md.run_document_transforms(&mut document).unwrap();
+    md.run_document_transforms(&mut document);
 
     assert_eq!(document.into_legacy().render(), "<p>rewritten</p>\n");
 }
@@ -215,7 +217,7 @@ fn markdown_it_registers_an_owned_configured_instance() {
     });
     let mut document = md.parse_document("");
 
-    md.run_document_transforms(&mut document).unwrap();
+    md.run_document_transforms(&mut document);
 
     assert_eq!(
         document.node(document.root()).unwrap().attrs(),
@@ -249,7 +251,7 @@ fn remove_invalidates_the_cache_and_drops_the_instance_once() {
         drops: Arc::clone(&drops),
     });
     let mut document = MarkdownIt::empty().parse_document("");
-    registry.run(&mut document).unwrap();
+    registry.run(&mut document);
 
     registry.remove::<DropProbe>();
 

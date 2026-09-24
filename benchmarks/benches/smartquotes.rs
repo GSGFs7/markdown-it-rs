@@ -1,11 +1,10 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use markdown_it::Document;
 use markdown_it::parser::core::CoreRule;
 use markdown_it::parser::inline::Text;
 use markdown_it::plugins::extra::smartquotes::{self, SmartQuotesRule};
-use markdown_it::{MarkdownIt, Node};
+use markdown_it::{Document, MarkdownIt, Node};
 use markdown_it_benchmarks::corpus;
 
 type ClassicSmartQuotes = SmartQuotesRule<'‘', '’', '“', '”'>;
@@ -34,7 +33,7 @@ fn transform(root: &mut Node, md: &MarkdownIt) {
 }
 
 fn transform_registered(document: &mut Document, md: &MarkdownIt) {
-    md.run_document_transforms(document).unwrap();
+    md.run_document_transforms(document);
 }
 
 fn assert_transformed(mut root: Node, md: &MarkdownIt) {
@@ -133,7 +132,12 @@ fn benchmark(c: &mut Criterion) {
         let legacy_html = legacy.render();
         let mut registered = parser.parse_document(source);
         transform_registered(&mut registered, &registry_md);
-        assert_eq!(legacy_html, registered.into_legacy().render(), "{}", corpus.name);
+        assert_eq!(
+            legacy_html,
+            registered.into_legacy().render(),
+            "{}",
+            corpus.name
+        );
 
         let mut group = c.benchmark_group(format!("smartquotes-transform/corpus/{}", corpus.name));
         group.throughput(Throughput::Bytes(corpus.len() as u64));

@@ -6,7 +6,6 @@ use crate::common::sourcemap::SourcePos;
 use crate::document::Document;
 use crate::document::transform::{
     DocumentTransform,
-    DocumentTransformError,
     DocumentTransformRegistry,
     TransformRuleBuilder,
 };
@@ -209,11 +208,8 @@ impl MarkdownIt {
     }
 
     /// Explicitly run all registered document transforms in resolved order.
-    pub fn run_document_transforms(
-        &self,
-        document: &mut Document,
-    ) -> Result<(), DocumentTransformError> {
-        self.document_transforms.run(document)
+    pub fn run_document_transforms(&self, document: &mut Document) {
+        self.document_transforms.run(document);
     }
 
     /// Register or replace a renderer for one payload type and output format.

@@ -579,7 +579,7 @@ mod tests {
             r#"'hello' "world""#
         );
 
-        md.run_document_transforms(&mut document).unwrap();
+        md.run_document_transforms(&mut document);
         assert_eq!(document.into_legacy().render(), "<p>‹hello› «world»</p>\n");
     }
 
@@ -618,7 +618,7 @@ mod tests {
         super::add_document(md);
         let mut document = md.parse_document(r#""world""#);
 
-        md.run_document_transforms(&mut document).unwrap();
+        md.run_document_transforms(&mut document);
 
         assert!(
             document

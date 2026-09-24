@@ -16,7 +16,7 @@ fn run(input: &str, f: fn(&Node, SourceWithLineStarts)) {
     let mut document = md.parse_document(input);
     let mut transforms = markdown_it::MarkdownIt::empty();
     markdown_it::plugins::sourcepos::add_document(&mut transforms);
-    transforms.run_document_transforms(&mut document).unwrap();
+    transforms.run_document_transforms(&mut document);
     assert_eq!(document.into_legacy().render(), legacy_html);
 }
 

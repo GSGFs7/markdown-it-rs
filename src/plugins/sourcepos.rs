@@ -126,7 +126,7 @@ mod tests {
         let mut transforms = MarkdownIt::empty();
         super::add_document(&mut transforms);
         let mut document = parser.parse_document(source);
-        transforms.run_document_transforms(&mut document).unwrap();
+        transforms.run_document_transforms(&mut document);
 
         (legacy.render(), document.into_legacy().render())
     }
@@ -170,7 +170,7 @@ mod tests {
         let mut document = Document::from_legacy(source, document_root);
         let mut transforms = MarkdownIt::empty();
         super::add_document(&mut transforms);
-        transforms.run_document_transforms(&mut document).unwrap();
+        transforms.run_document_transforms(&mut document);
 
         let legacy_html = legacy.render();
         assert_eq!(document.into_legacy().render(), legacy_html);
@@ -192,7 +192,7 @@ mod tests {
         let mut document = Document::from_legacy(source, document_root);
         let mut transforms = MarkdownIt::empty();
         super::add_document(&mut transforms);
-        transforms.run_document_transforms(&mut document).unwrap();
+        transforms.run_document_transforms(&mut document);
 
         let legacy_html = legacy.render();
         assert_eq!(document.into_legacy().render(), legacy_html);
@@ -209,7 +209,7 @@ mod tests {
         assert_eq!(document.into_legacy().render(), "<h1>hello</h1>\n");
 
         let mut document = parser.parse_document("# hello");
-        transforms.run_document_transforms(&mut document).unwrap();
+        transforms.run_document_transforms(&mut document);
         assert!(
             document
                 .into_legacy()
@@ -228,7 +228,7 @@ mod tests {
         );
         let mut document = md.parse_document("# hello");
 
-        md.run_document_transforms(&mut document).unwrap();
+        md.run_document_transforms(&mut document);
 
         assert_eq!(
             document

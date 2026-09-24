@@ -449,7 +449,7 @@ mod tests {
         let mut transforms = MarkdownIt::empty();
         add_document_with_options(&mut transforms, options);
         let mut document = document_parser.parse_document(input);
-        transforms.run_document_transforms(&mut document).unwrap();
+        transforms.run_document_transforms(&mut document);
         let document_html = document.into_legacy().render();
 
         (legacy_html, document_html)
@@ -684,10 +684,8 @@ mod tests {
                 .all(|event| event.node().attrs().iter().all(|(name, _)| name != "id"))
         );
 
-        first.run_document_transforms(&mut first_document).unwrap();
-        second
-            .run_document_transforms(&mut second_document)
-            .unwrap();
+        first.run_document_transforms(&mut first_document);
+        second.run_document_transforms(&mut second_document);
 
         assert_eq!(
             first_document.into_legacy().render(),

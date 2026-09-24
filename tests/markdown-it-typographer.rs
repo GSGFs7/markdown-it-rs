@@ -23,7 +23,7 @@ fn run_with(input: &str, output: &str, configure: impl Fn(&mut markdown_it::Mark
     configure(document_md);
     markdown_it::plugins::extra::typographer::add_document(document_md);
     let mut document = document_md.parse_document(&(input.to_owned() + "\n"));
-    document_md.run_document_transforms(&mut document).unwrap();
+    document_md.run_document_transforms(&mut document);
     assert_eq!(document.into_legacy().render(), output);
 
     // make sure it doesn't crash without trailing \n

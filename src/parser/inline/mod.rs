@@ -637,8 +637,17 @@ mod tests {
     }
 
     fn shared_legacy_finalize(_: &mut InlineState<'_, '_>) {}
-    fn shared_document_finalize(_: &mut crate::parser::document_parser::DocumentInlineState<'_>) {}
-    fn hash_document_finalize(_: &mut crate::parser::document_parser::DocumentInlineState<'_>) {}
+    // avoid LLVM ICF
+    static SHARED_DOC_FINALIZED: std::sync::atomic::AtomicUsize =
+        std::sync::atomic::AtomicUsize::new(0);
+    static HASH_DOC_FINALIZED: std::sync::atomic::AtomicUsize =
+        std::sync::atomic::AtomicUsize::new(0);
+    fn shared_document_finalize(_: &mut crate::parser::document_parser::DocumentInlineState<'_>) {
+        SHARED_DOC_FINALIZED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    fn hash_document_finalize(_: &mut crate::parser::document_parser::DocumentInlineState<'_>) {
+        HASH_DOC_FINALIZED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 
     #[test]
     fn document_finalizers_follow_rule_order_and_dedupe() {

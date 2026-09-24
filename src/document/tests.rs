@@ -5,7 +5,7 @@ use super::*;
 use crate::parser::core::Root;
 use crate::parser::inline::Text;
 use crate::plugins::cmark::block::paragraph::Paragraph;
-use crate::{EditBatch, EditError, MarkdownIt, Node, TextProjection, plugins};
+use crate::{MarkdownIt, Node, TextProjection, plugins};
 
 fn transparent_text_projection(_: super::NodeRef<'_>) -> TextProjectionKind<'_> {
     TextProjectionKind::Transparent
@@ -167,20 +167,6 @@ fn structural_events_reject_a_stale_root() {
         document.text_events_from(root, TextProjection::new(transparent_text_projection)),
         Err(error) if error == super::InvalidNodeId(root)
     ));
-    let mut batch = EditBatch::new();
-    batch.replace_text(root, 0..0, "stale");
-    assert_eq!(
-        batch.commit(&mut document),
-        Err(EditError::InvalidNode(super::InvalidNodeId(root)))
-    );
-
-    let mut batch = EditBatch::new();
-    batch.replace_text(text, 0..1, "T");
-    batch.set_attribute(root, "class", "stale");
-    assert_eq!(
-        batch.commit(&mut document),
-        Err(EditError::InvalidNode(super::InvalidNodeId(root)))
-    );
     assert_eq!(
         document.node(text).unwrap().cast::<Text>().unwrap().content,
         "text"

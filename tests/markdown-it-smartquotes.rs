@@ -24,9 +24,7 @@ fn run(input: &str, output: &str) {
     markdown_it::plugins::extra::typographer::add(registry_md);
     markdown_it::plugins::extra::smartquotes::add_document(registry_md);
     let mut registry_document = registry_md.parse_document(&source);
-    registry_md
-        .run_document_transforms(&mut registry_document)
-        .unwrap();
+    registry_md.run_document_transforms(&mut registry_document);
     assert_eq!(registry_document.into_legacy().render(), output);
 
     // make sure it doesn't crash without trailing \n

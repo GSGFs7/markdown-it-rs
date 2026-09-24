@@ -11,7 +11,7 @@ fn transform_legacy(root: &mut Node, md: &MarkdownIt) {
 }
 
 fn transform_registered(document: &mut Document, md: &MarkdownIt) {
-    md.run_document_transforms(document).unwrap();
+    md.run_document_transforms(document);
 }
 
 fn parser() -> MarkdownIt {
@@ -33,7 +33,12 @@ fn benchmark(c: &mut Criterion) {
         let legacy_html = legacy.render();
         let mut document = parser.parse_document(source);
         transform_registered(&mut document, &document_transforms);
-        assert_eq!(legacy_html, document.into_legacy().render(), "{}", corpus.name);
+        assert_eq!(
+            legacy_html,
+            document.into_legacy().render(),
+            "{}",
+            corpus.name
+        );
 
         let mut group = c.benchmark_group(format!("typographer-transform/corpus/{}", corpus.name));
         group.throughput(Throughput::Bytes(corpus.len() as u64));
@@ -51,10 +56,7 @@ fn benchmark(c: &mut Criterion) {
             b.iter_batched(
                 || parser.parse_document(source),
                 |mut document| {
-                    transform_registered(
-                        black_box(&mut document),
-                        black_box(&document_transforms),
-                    );
+                    transform_registered(black_box(&mut document), black_box(&document_transforms));
                     black_box(document);
                 },
                 BatchSize::SmallInput,

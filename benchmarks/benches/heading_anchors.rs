@@ -15,7 +15,7 @@ fn transform_legacy(root: &mut Node, md: &MarkdownIt) {
 }
 
 fn transform_registered(document: &mut Document, md: &MarkdownIt) {
-    md.run_document_transforms(document).unwrap();
+    md.run_document_transforms(document);
 }
 
 fn parser() -> MarkdownIt {

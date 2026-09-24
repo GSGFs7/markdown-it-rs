@@ -18,7 +18,7 @@ pub mod parser;
 pub mod plugins;
 pub mod render;
 
-pub use document::edit::{EditBatch, EditError};
+pub use document::edit::EditBatch;
 pub use document::text::{
     TextBoundary,
     TextClassifier,
@@ -27,12 +27,7 @@ pub use document::text::{
     TextProjection,
     TextProjectionKind,
 };
-pub use document::transform::{
-    DocumentTransform,
-    DocumentTransformError,
-    DocumentTransformRegistry,
-    TransformRuleBuilder,
-};
+pub use document::transform::{DocumentTransform, DocumentTransformRegistry, TransformRuleBuilder};
 pub use document::{
     Document,
     DocumentNode,

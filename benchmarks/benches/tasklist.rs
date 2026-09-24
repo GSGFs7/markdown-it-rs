@@ -11,7 +11,7 @@ fn transform_legacy(root: &mut Node, md: &MarkdownIt) {
 }
 
 fn transform_registered(document: &mut Document, md: &MarkdownIt) {
-    md.run_document_transforms(document).unwrap();
+    md.run_document_transforms(document);
 }
 
 fn parser() -> MarkdownIt {
@@ -87,7 +87,7 @@ fn benchmark(c: &mut Criterion) {
                     (document, edits)
                 },
                 |(mut document, edits)| {
-                    edits.commit(black_box(&mut document)).unwrap();
+                    edits.commit(black_box(&mut document));
                     black_box(document);
                 },
                 BatchSize::SmallInput,

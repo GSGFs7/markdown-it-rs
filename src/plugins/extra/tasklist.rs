@@ -361,7 +361,7 @@ mod tests {
         let mut transforms = MarkdownIt::empty();
         crate::plugins::extra::tasklist::add_document(&mut transforms);
         let mut document = parser.parse_document(input);
-        transforms.run_document_transforms(&mut document).unwrap();
+        transforms.run_document_transforms(&mut document);
         let document_html = document.into_legacy().render();
 
         assert_eq!(legacy_html, output);
@@ -478,7 +478,7 @@ mod tests {
         let mut transforms = MarkdownIt::empty();
         crate::plugins::extra::tasklist::add_document(&mut transforms);
         let mut document = parser.parse_document("- [ ] todo");
-        transforms.run_document_transforms(&mut document).unwrap();
+        transforms.run_document_transforms(&mut document);
         let ast = document.into_legacy();
         let text = &ast.children[0].children[0].children[1];
         assert_eq!(
@@ -514,7 +514,7 @@ mod tests {
         let mut document = Document::from_legacy(source, document_root);
         let mut transforms = MarkdownIt::empty();
         super::add_document(&mut transforms);
-        transforms.run_document_transforms(&mut document).unwrap();
+        transforms.run_document_transforms(&mut document);
 
         let legacy_html = legacy.render();
         assert_eq!(document.into_legacy().render(), legacy_html);
@@ -556,7 +556,7 @@ mod tests {
         crate::plugins::sourcepos::add_document(&mut transforms);
         super::add_document(&mut transforms);
         let mut document = parser.parse_document(source);
-        transforms.run_document_transforms(&mut document).unwrap();
+        transforms.run_document_transforms(&mut document);
 
         assert_eq!(document.into_legacy().render(), legacy_html);
     }

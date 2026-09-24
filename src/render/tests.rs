@@ -177,7 +177,7 @@ fn block_renderers_preserve_document_transform_attributes() {
     crate::plugins::cmark::add(&mut direct);
     crate::plugins::sourcepos::add_document(&mut direct);
     let mut document = direct.parse_document(source);
-    direct.run_document_transforms(&mut document).unwrap();
+    direct.run_document_transforms(&mut document);
 
     assert_eq!(direct.render_document(&document).unwrap(), expected);
 }
@@ -228,7 +228,7 @@ fn inline_renderers_preserve_document_transform_attributes() {
     crate::plugins::cmark::add(&mut direct);
     crate::plugins::sourcepos::add_document(&mut direct);
     let mut document = direct.parse_document(source);
-    direct.run_document_transforms(&mut document).unwrap();
+    direct.run_document_transforms(&mut document);
 
     assert_eq!(direct.render_document(&document).unwrap(), expected);
 }

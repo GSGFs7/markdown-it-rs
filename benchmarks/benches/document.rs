@@ -183,19 +183,19 @@ fn benchmark(c: &mut Criterion) {
     five_transforms.add::<EmptyTransform4>();
     five_transforms.add::<EmptyTransform5>();
     let mut empty_document = MarkdownIt::empty().parse_document("");
-    empty_registry.run(&mut empty_document).unwrap();
-    one_transform.run(&mut empty_document).unwrap();
-    five_transforms.run(&mut empty_document).unwrap();
+    empty_registry.run(&mut empty_document);
+    one_transform.run(&mut empty_document);
+    five_transforms.run(&mut empty_document);
 
     let mut group = c.benchmark_group("document-transform-runner/empty-document");
     group.bench_function("zero-transforms", |b| {
-        b.iter(|| empty_registry.run(black_box(&mut empty_document)).unwrap())
+        b.iter(|| empty_registry.run(black_box(&mut empty_document)))
     });
     group.bench_function("one-empty-transform", |b| {
-        b.iter(|| one_transform.run(black_box(&mut empty_document)).unwrap())
+        b.iter(|| one_transform.run(black_box(&mut empty_document)))
     });
     group.bench_function("five-empty-transforms", |b| {
-        b.iter(|| five_transforms.run(black_box(&mut empty_document)).unwrap())
+        b.iter(|| five_transforms.run(black_box(&mut empty_document)))
     });
     group.finish();
 
@@ -265,7 +265,7 @@ fn benchmark(c: &mut Criterion) {
                     (document, batch)
                 },
                 |(mut document, batch)| {
-                    batch.commit(&mut document).unwrap();
+                    batch.commit(&mut document);
                     black_box(document)
                 },
                 BatchSize::SmallInput,
@@ -275,7 +275,7 @@ fn benchmark(c: &mut Criterion) {
 
         let attribute_count = document.len();
         let mut edited = md.parse_document(source);
-        one_attribute_per_node(&edited).commit(&mut edited).unwrap();
+        one_attribute_per_node(&edited).commit(&mut edited);
         for event in edited.events(edited.root()).unwrap() {
             if let StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) = event {
                 assert!(node
@@ -294,7 +294,7 @@ fn benchmark(c: &mut Criterion) {
                     (document, batch)
                 },
                 |(mut document, batch)| {
-                    batch.commit(&mut document).unwrap();
+                    batch.commit(&mut document);
                     black_box(document)
                 },
                 BatchSize::SmallInput,
@@ -304,9 +304,7 @@ fn benchmark(c: &mut Criterion) {
 
         let removed_count = document.len() - 1;
         let mut edited = md.parse_document(source);
-        remove_top_level_subtrees(&edited)
-            .commit(&mut edited)
-            .unwrap();
+        remove_top_level_subtrees(&edited).commit(&mut edited);
         assert_eq!(edited.len(), 1);
         assert!(edited.children(edited.root()).unwrap().is_empty());
         let mut group = c.benchmark_group(format!("document-subtree-remove/{}", corpus.name));
@@ -319,7 +317,7 @@ fn benchmark(c: &mut Criterion) {
                     (document, batch)
                 },
                 |(mut document, batch)| {
-                    batch.commit(&mut document).unwrap();
+                    batch.commit(&mut document);
                     black_box(document)
                 },
                 BatchSize::SmallInput,
@@ -330,9 +328,7 @@ fn benchmark(c: &mut Criterion) {
         let inserted_count = document.children(document.root()).unwrap().len();
         let mut edited = md.parse_document(source);
         let original_children = edited.children(edited.root()).unwrap().to_vec();
-        insert_before_top_level_nodes(&edited)
-            .commit(&mut edited)
-            .unwrap();
+        insert_before_top_level_nodes(&edited).commit(&mut edited);
         let edited_children = edited.children(edited.root()).unwrap();
         assert_eq!(edited_children.len(), original_children.len() * 2);
         let (pairs, remainder) = edited_children.as_chunks::<2>();
@@ -359,7 +355,7 @@ fn benchmark(c: &mut Criterion) {
                     (document, batch)
                 },
                 |(mut document, batch)| {
-                    batch.commit(&mut document).unwrap();
+                    batch.commit(&mut document);
                     black_box(document)
                 },
                 BatchSize::SmallInput,
@@ -370,9 +366,7 @@ fn benchmark(c: &mut Criterion) {
         let replaced_node_count = document.len() - 1;
         let mut edited = md.parse_document(source);
         let old_roots = edited.children(edited.root()).unwrap().to_vec();
-        replace_top_level_subtrees(&edited)
-            .commit(&mut edited)
-            .unwrap();
+        replace_top_level_subtrees(&edited).commit(&mut edited);
         assert_eq!(edited.len(), old_roots.len() + 1);
         assert!(old_roots.iter().all(|&node| edited.node(node).is_err()));
         for &node in edited.children(edited.root()).unwrap() {
@@ -391,7 +385,7 @@ fn benchmark(c: &mut Criterion) {
                     (document, batch)
                 },
                 |(mut document, batch)| {
-                    batch.commit(&mut document).unwrap();
+                    batch.commit(&mut document);
                     black_box(document)
                 },
                 BatchSize::SmallInput,
@@ -402,7 +396,7 @@ fn benchmark(c: &mut Criterion) {
         let wrapped_count = document.children(document.root()).unwrap().len();
         let mut edited = md.parse_document(source);
         let original_children = edited.children(edited.root()).unwrap().to_vec();
-        wrap_top_level_range(&edited).commit(&mut edited).unwrap();
+        wrap_top_level_range(&edited).commit(&mut edited);
         assert_eq!(edited.len(), document.len() + 1);
         let wrapper = edited.children(edited.root()).unwrap()[0];
         assert_eq!(edited.children(wrapper).unwrap(), original_children);
@@ -419,7 +413,7 @@ fn benchmark(c: &mut Criterion) {
                     (document, batch)
                 },
                 |(mut document, batch)| {
-                    batch.commit(&mut document).unwrap();
+                    batch.commit(&mut document);
                     black_box(document)
                 },
                 BatchSize::SmallInput,

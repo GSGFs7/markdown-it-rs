@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::common::RuleMark;
 use crate::common::ruler::{RuleItem, Ruler};
 use crate::document::Document;
-use crate::document::edit::{EditBatch, EditError};
+use crate::document::edit::EditBatch;
 
 trait ErasedDocumentTransform: Send + Sync {
     fn run(&self, document: &Document) -> EditBatch;
@@ -32,10 +32,10 @@ impl fmt::Debug for RegisteredTransform {
     }
 }
 
-/// A read-only analysis that produces one atomic batch of document edits.
+/// A read-only analysis that produces a batch of document edits.
 ///
-/// `KEY` is the stable, user-facing identity used for ordering and error
-/// reporting. It must be non-empty and unique within a registry.
+/// `KEY` is the stable, user-facing identity used for registration and ordering.
+/// It must be non-empty and unique within a registry.
 pub trait DocumentTransform: Send + Sync + 'static {
     const KEY: &'static str;
     const ALIASES: &'static [&'static str] = &[];
@@ -43,48 +43,11 @@ pub trait DocumentTransform: Send + Sync + 'static {
     fn run(&self, document: &Document) -> EditBatch;
 }
 
-/// The failure produced when a registered transform's edit batch is invalid.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DocumentTransformError {
-    transform: &'static str,
-    source: EditError,
-}
-
-impl DocumentTransformError {
-    pub fn transform(&self) -> &'static str {
-        self.transform
-    }
-
-    pub fn edit_error(&self) -> &EditError {
-        &self.source
-    }
-
-    pub fn into_edit_error(self) -> EditError {
-        self.source
-    }
-}
-
-impl fmt::Display for DocumentTransformError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "document transform {:?} failed: {}",
-            self.transform, self.source
-        )
-    }
-}
-
-impl std::error::Error for DocumentTransformError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.source)
-    }
-}
-
 /// An ordered registry of [`DocumentTransform`] implementations.
 ///
-/// Each transform observes the document left by the preceding transform and
-/// commits its own batch atomically. If a transform fails, later transforms
-/// are skipped; batches committed by earlier transforms remain applied.
+/// Each transform observes the document left by the preceding transform.
+/// Plugins must produce valid edit batches. Panics are not caught here;
+/// preceding changes are not rolled back. Invalid batches provide no recovery guarantee.
 #[derive(Debug, Default)]
 pub struct DocumentTransformRegistry {
     ruler: Ruler<RuleMark, RegisteredTransform>,
@@ -142,17 +105,10 @@ impl DocumentTransformRegistry {
     }
 
     /// Run all transforms in resolved order.
-    pub fn run(&self, document: &mut Document) -> Result<(), DocumentTransformError> {
+    pub fn run(&self, document: &mut Document) {
         for transform in self.ruler.iter() {
-            let edits = transform.transform.run(document);
-            edits
-                .commit(document)
-                .map_err(|source| DocumentTransformError {
-                    transform: transform.key,
-                    source,
-                })?;
+            transform.transform.run(document).commit(document);
         }
-        Ok(())
     }
 }
 

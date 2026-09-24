@@ -193,7 +193,7 @@ mod tests {
         let mut document = md.parse_document("雪... (TM)");
 
         assert_eq!(text_contents(&document), "雪... (TM)");
-        md.run_document_transforms(&mut document).unwrap();
+        md.run_document_transforms(&mut document);
         assert_eq!(document.into_legacy().render(), "<p>雪… ™</p>\n");
     }
 
@@ -225,7 +225,7 @@ mod tests {
         add_document(md);
         let mut document = md.parse_document(r#""...""#);
 
-        md.run_document_transforms(&mut document).unwrap();
+        md.run_document_transforms(&mut document);
 
         assert!(
             document
