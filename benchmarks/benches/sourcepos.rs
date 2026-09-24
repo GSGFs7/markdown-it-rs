@@ -114,7 +114,6 @@ fn attribute_commit_input(
     let document = parser.parse_document(source);
     let mut nodes: Vec<_> = document
         .events(document.root())
-        .unwrap()
         .filter_map(|event| match event {
             StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => Some(node.id()),
             StructuralEvent::Exit(_) => None,

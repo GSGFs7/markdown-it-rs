@@ -1,5 +1,5 @@
 use super::*;
-use crate::document::{InvalidNodeId, Node};
+use crate::document::Node;
 use crate::parser::core::Root;
 use crate::plugins::cmark::block::paragraph::Paragraph;
 
@@ -14,7 +14,7 @@ fn document(texts: &[&str]) -> Document {
 }
 
 fn content(document: &Document, node: NodeId) -> &str {
-    &document.node(node).unwrap().cast::<Text>().unwrap().content
+    &document.node(node).cast::<Text>().unwrap().content
 }
 
 fn branched_document() -> Document {
@@ -32,7 +32,7 @@ fn branched_document() -> Document {
 #[test]
 fn applies_multiple_edits_to_each_text_node_once() {
     let mut document = document(&["a雪c", "def"]);
-    let children = document.children(document.root()).unwrap();
+    let children = document.children(document.root());
     let first = children[0];
     let second = children[1];
     let mut batch = EditBatch::new();
@@ -49,7 +49,7 @@ fn applies_multiple_edits_to_each_text_node_once() {
 #[test]
 fn adjacent_ranges_and_same_position_insertions_are_deterministic() {
     let mut document = document(&["abcd"]);
-    let text = document.children(document.root()).unwrap()[0];
+    let text = document.children(document.root())[0];
     let mut batch = EditBatch::new();
     batch.replace_text(text, 0..1, "A");
     batch.replace_text(text, 1..2, "B");
@@ -63,7 +63,7 @@ fn adjacent_ranges_and_same_position_insertions_are_deterministic() {
 #[test]
 fn supports_deletion() {
     let mut document = document(&["abcdef"]);
-    let text = document.children(document.root()).unwrap()[0];
+    let text = document.children(document.root())[0];
     let mut delete = EditBatch::new();
     delete.replace_text(text, 1..3, "");
     delete.commit(&mut document);
@@ -74,7 +74,7 @@ fn supports_deletion() {
 fn empty_batch_is_a_no_op() {
     let mut document = document(&["unchanged"]);
     EditBatch::new().commit(&mut document);
-    let text = document.children(document.root()).unwrap()[0];
+    let text = document.children(document.root())[0];
     assert_eq!(content(&document, text), "unchanged");
 }
 
@@ -92,7 +92,7 @@ fn sets_removes_and_normalizes_attributes() {
     ];
     root.children.push(text);
     let mut document = Document::from_legacy("text", root);
-    let text = document.children(document.root()).unwrap()[0];
+    let text = document.children(document.root())[0];
     let mut batch = EditBatch::new();
     batch.set_attribute(text, "class", "new");
     batch.remove_attribute(text, "id");
@@ -101,7 +101,7 @@ fn sets_removes_and_normalizes_attributes() {
     batch.commit(&mut document);
 
     assert_eq!(
-        document.node(text).unwrap().attrs(),
+        document.node(text).attrs(),
         &[
             ("class".to_owned(), "new".to_owned()),
             ("data-key".to_owned(), "kept".to_owned()),
@@ -113,7 +113,7 @@ fn sets_removes_and_normalizes_attributes() {
 #[test]
 fn text_and_attribute_edits_commit_together() {
     let mut document = document(&["abc"]);
-    let text = document.children(document.root()).unwrap()[0];
+    let text = document.children(document.root())[0];
     let mut batch = EditBatch::new();
     batch.replace_text(text, 0..1, "A");
     batch.set_attribute(text, "data-state", "edited");
@@ -123,7 +123,7 @@ fn text_and_attribute_edits_commit_together() {
 
     assert_eq!(content(&document, text), "Abc");
     assert_eq!(
-        document.node(text).unwrap().attrs(),
+        document.node(text).attrs(),
         &[("data-state".to_owned(), "edited".to_owned())]
     );
 }
@@ -131,7 +131,7 @@ fn text_and_attribute_edits_commit_together() {
 #[test]
 fn text_attribute_and_source_map_edits_commit_together() {
     let mut document = document(&["abc"]);
-    let text = document.children(document.root()).unwrap()[0];
+    let text = document.children(document.root())[0];
     let mut batch = EditBatch::new();
     batch.replace_text(text, 0..1, "A");
     batch.set_attribute(text, "data-state", "edited");
@@ -142,12 +142,7 @@ fn text_attribute_and_source_map_edits_commit_together() {
 
     assert_eq!(content(&document, text), "Abc");
     assert_eq!(
-        document
-            .node(text)
-            .unwrap()
-            .srcmap()
-            .unwrap()
-            .get_byte_offsets(),
+        document.node(text).srcmap().unwrap().get_byte_offsets(),
         (1, 3)
     );
 }
@@ -155,37 +150,34 @@ fn text_attribute_and_source_map_edits_commit_together() {
 #[test]
 fn different_attribute_names_and_case_are_independent() {
     let mut document = document(&["text"]);
-    let text = document.children(document.root()).unwrap()[0];
+    let text = document.children(document.root())[0];
     let mut batch = EditBatch::new();
     batch.set_attribute(text, "class", "lower");
     batch.set_attribute(text, "CLASS", "upper");
 
     batch.commit(&mut document);
 
-    assert_eq!(document.node(text).unwrap().attrs().len(), 2);
+    assert_eq!(document.node(text).attrs().len(), 2);
 }
 
 #[test]
 fn removes_a_complete_subtree_and_invalidates_all_ids() {
     let mut document = branched_document();
     let root = document.root();
-    let branches = document.children(root).unwrap();
+    let branches = document.children(root);
     let removed = branches[0];
     let kept = branches[1];
-    let removed_text = document.children(removed).unwrap()[0];
+    let removed_text = document.children(removed)[0];
     let mut batch = EditBatch::new();
     batch.remove_node(removed);
 
     batch.commit(&mut document);
 
     assert_eq!(document.len(), 3);
-    assert_eq!(document.children(root).unwrap(), &[kept]);
-    assert_eq!(document.parent(kept).unwrap(), Some(root));
-    assert_eq!(document.node(removed).unwrap_err(), InvalidNodeId(removed));
-    assert_eq!(
-        document.node(removed_text).unwrap_err(),
-        InvalidNodeId(removed_text)
-    );
+    assert_eq!(document.children(root), &[kept]);
+    assert_eq!(document.parent(kept), Some(root));
+    assert!(document.get_node(removed).is_none());
+    assert!(document.get_node(removed_text).is_none());
     let legacy = document.into_legacy();
     assert_eq!(legacy.children.len(), 1);
     assert_eq!(
@@ -201,7 +193,7 @@ fn removes_a_complete_subtree_and_invalidates_all_ids() {
 fn multiple_sibling_removals_commit_together() {
     let mut document = branched_document();
     let root = document.root();
-    let branches = document.children(root).unwrap().to_vec();
+    let branches = document.children(root).to_vec();
     let mut batch = EditBatch::new();
     batch.remove_node(branches[1]);
     batch.remove_node(branches[0]);
@@ -210,17 +202,17 @@ fn multiple_sibling_removals_commit_together() {
     batch.commit(&mut document);
 
     assert_eq!(document.len(), 1);
-    assert!(document.children(root).unwrap().is_empty());
+    assert!(document.children(root).is_empty());
 }
 
 #[test]
 fn edits_outside_a_removed_subtree_commit_normally() {
     let mut document = branched_document();
     let root = document.root();
-    let branches = document.children(root).unwrap();
+    let branches = document.children(root);
     let removed = branches[0];
     let kept = branches[1];
-    let kept_text = document.children(kept).unwrap()[0];
+    let kept_text = document.children(kept)[0];
     let mut batch = EditBatch::new();
     batch.remove_node(removed);
     batch.replace_text(kept_text, 0..1, "B");
@@ -229,9 +221,9 @@ fn edits_outside_a_removed_subtree_commit_normally() {
     batch.commit(&mut document);
 
     assert_eq!(content(&document, kept_text), "B");
-    assert_eq!(document.children(root).unwrap(), &[kept]);
+    assert_eq!(document.children(root), &[kept]);
     assert_eq!(
-        document.node(root).unwrap().attrs(),
+        document.node(root).attrs(),
         &[("class".to_owned(), "edited".to_owned())]
     );
 }
@@ -249,14 +241,14 @@ fn deeply_nested_subtrees_are_removed_iteratively() {
     let mut root = Node::new(Root::new("leaf".to_owned()));
     root.children.push(subtree);
     let mut document = Document::from_legacy("leaf", root);
-    let subtree = document.children(document.root()).unwrap()[0];
+    let subtree = document.children(document.root())[0];
     let mut batch = EditBatch::new();
     batch.remove_node(subtree);
 
     batch.commit(&mut document);
 
     assert_eq!(document.len(), 1);
-    assert!(document.children(document.root()).unwrap().is_empty());
+    assert!(document.children(document.root()).is_empty());
 }
 
 fn text_draft(content: &str) -> NodeDraft {
@@ -269,7 +261,7 @@ fn text_draft(content: &str) -> NodeDraft {
 fn inserts_siblings_in_stable_call_order() {
     let mut document = document(&["a", "b"]);
     let root = document.root();
-    let original = document.children(root).unwrap().to_vec();
+    let original = document.children(root).to_vec();
     let target = original[1];
     let mut batch = EditBatch::new();
     batch.insert_before(target, text_draft("before-1"));
@@ -280,7 +272,7 @@ fn inserts_siblings_in_stable_call_order() {
     assert_eq!(batch.len(), 4);
     batch.commit(&mut document);
 
-    let children = document.children(root).unwrap();
+    let children = document.children(root);
     let contents: Vec<_> = children
         .iter()
         .map(|&node| content(&document, node))
@@ -292,8 +284,8 @@ fn inserts_siblings_in_stable_call_order() {
     assert_eq!(children[0], original[0]);
     assert_eq!(children[3], target);
     for &inserted in [&children[1], &children[2], &children[4], &children[5]] {
-        assert_eq!(document.parent(inserted).unwrap(), Some(root));
-        assert!(document.node(inserted).unwrap().srcmap().is_none());
+        assert_eq!(document.parent(inserted), Some(root));
+        assert!(document.node(inserted).srcmap().is_none());
     }
 }
 
@@ -305,7 +297,7 @@ fn inserts_an_owned_subtree_without_cloning_payloads() {
 
     let mut document = document(&["anchor"]);
     let root = document.root();
-    let anchor = document.children(root).unwrap()[0];
+    let anchor = document.children(root)[0];
     let mut draft = NodeDraft::new(NonClonePayload("parent"));
     draft
         .attrs_mut()
@@ -317,8 +309,8 @@ fn inserts_an_owned_subtree_without_cloning_payloads() {
 
     batch.commit(&mut document);
 
-    let inserted = document.children(root).unwrap()[0];
-    let node = document.node(inserted).unwrap();
+    let inserted = document.children(root)[0];
+    let node = document.node(inserted);
     assert_eq!(node.cast::<NonClonePayload>().unwrap().0, "parent");
     assert_eq!(
         node.attrs(),
@@ -330,7 +322,7 @@ fn inserts_an_owned_subtree_without_cloning_payloads() {
     assert!(
         children
             .iter()
-            .all(|&child| document.parent(child).unwrap() == Some(inserted))
+            .all(|&child| document.parent(child) == Some(inserted))
     );
 }
 
@@ -338,14 +330,14 @@ fn inserts_an_owned_subtree_without_cloning_payloads() {
 fn insertion_next_to_a_kept_subtree_can_commit_with_removal() {
     let mut document = branched_document();
     let root = document.root();
-    let branches = document.children(root).unwrap().to_vec();
+    let branches = document.children(root).to_vec();
     let mut batch = EditBatch::new();
     batch.remove_node(branches[0]);
     batch.insert_before(branches[1], text_draft("inserted"));
 
     batch.commit(&mut document);
 
-    let children = document.children(root).unwrap();
+    let children = document.children(root);
     assert_eq!(children.len(), 2);
     assert_eq!(content(&document, children[0]), "inserted");
     assert_eq!(children[1], branches[1]);
@@ -360,23 +352,23 @@ fn deeply_nested_drafts_are_inserted_iteratively() {
         draft = parent;
     }
     let mut document = document(&["anchor"]);
-    let anchor = document.children(document.root()).unwrap()[0];
+    let anchor = document.children(document.root())[0];
     let mut batch = EditBatch::new();
     batch.insert_before(anchor, draft);
 
     batch.commit(&mut document);
 
     assert_eq!(document.len(), 10_003);
-    assert_eq!(document.children(document.root()).unwrap().len(), 2);
+    assert_eq!(document.children(document.root()).len(), 2);
 }
 
 #[test]
 fn replaces_a_complete_subtree_in_place_and_invalidates_old_ids() {
     let mut document = branched_document();
     let root = document.root();
-    let original = document.children(root).unwrap().to_vec();
+    let original = document.children(root).to_vec();
     let replaced = original[0];
-    let replaced_child = document.children(replaced).unwrap()[0];
+    let replaced_child = document.children(replaced)[0];
     let mut draft = NodeDraft::new(Paragraph);
     draft.push_child(text_draft("replacement"));
     let mut batch = EditBatch::new();
@@ -385,27 +377,18 @@ fn replaces_a_complete_subtree_in_place_and_invalidates_old_ids() {
     assert_eq!(batch.len(), 1);
     batch.commit(&mut document);
 
-    let children = document.children(root).unwrap();
+    let children = document.children(root);
     assert_eq!(children.len(), 2);
     assert_eq!(children[1], original[1]);
     let replacement = children[0];
     assert_ne!(replacement, replaced);
-    assert!(document.node(replacement).unwrap().is::<Paragraph>());
-    assert_eq!(document.parent(replacement).unwrap(), Some(root));
-    let replacement_child = document.children(replacement).unwrap()[0];
+    assert!(document.node(replacement).is::<Paragraph>());
+    assert_eq!(document.parent(replacement), Some(root));
+    let replacement_child = document.children(replacement)[0];
     assert_eq!(content(&document, replacement_child), "replacement");
-    assert_eq!(
-        document.parent(replacement_child).unwrap(),
-        Some(replacement)
-    );
-    assert_eq!(
-        document.node(replaced).unwrap_err(),
-        InvalidNodeId(replaced)
-    );
-    assert_eq!(
-        document.node(replaced_child).unwrap_err(),
-        InvalidNodeId(replaced_child)
-    );
+    assert_eq!(document.parent(replacement_child), Some(replacement));
+    assert!(document.get_node(replaced).is_none());
+    assert!(document.get_node(replaced_child).is_none());
 
     let legacy = document.into_legacy();
     assert_eq!(legacy.children.len(), 2);
@@ -422,29 +405,29 @@ fn replaces_a_complete_subtree_in_place_and_invalidates_old_ids() {
 fn multiple_sibling_replacements_preserve_structural_order() {
     let mut document = document(&["a", "b", "c"]);
     let root = document.root();
-    let original = document.children(root).unwrap().to_vec();
+    let original = document.children(root).to_vec();
     let mut batch = EditBatch::new();
     batch.replace_node(original[2], text_draft("C"));
     batch.replace_node(original[0], text_draft("A"));
 
     batch.commit(&mut document);
 
-    let children = document.children(root).unwrap();
+    let children = document.children(root);
     let contents: Vec<_> = children
         .iter()
         .map(|&node| content(&document, node))
         .collect();
     assert_eq!(contents, ["A", "b", "C"]);
     assert_eq!(children[1], original[1]);
-    assert!(document.node(original[0]).is_err());
-    assert!(document.node(original[2]).is_err());
+    assert!(document.get_node(original[0]).is_none());
+    assert!(document.get_node(original[2]).is_none());
 }
 
 #[test]
 fn disjoint_structural_and_value_edits_commit_together() {
     let mut document = document(&["a", "b", "c"]);
     let root = document.root();
-    let original = document.children(root).unwrap().to_vec();
+    let original = document.children(root).to_vec();
     let mut batch = EditBatch::new();
     batch.remove_node(original[0]);
     batch.replace_node(original[1], text_draft("replacement"));
@@ -454,7 +437,7 @@ fn disjoint_structural_and_value_edits_commit_together() {
 
     batch.commit(&mut document);
 
-    let children = document.children(root).unwrap();
+    let children = document.children(root);
     let contents: Vec<_> = children
         .iter()
         .map(|&node| content(&document, node))
@@ -462,7 +445,7 @@ fn disjoint_structural_and_value_edits_commit_together() {
     assert_eq!(contents, ["replacement", "inserted", "C"]);
     assert_eq!(children[2], original[2]);
     assert_eq!(
-        document.node(root).unwrap().attrs(),
+        document.node(root).attrs(),
         &[("class".to_owned(), "edited".to_owned())]
     );
 }
@@ -484,25 +467,22 @@ fn deeply_nested_subtrees_can_be_replaced_iteratively() {
     let mut root = Node::new(Root::new("old".to_owned()));
     root.children.push(old_subtree);
     let mut document = Document::from_legacy("old", root);
-    let replaced = document.children(document.root()).unwrap()[0];
+    let replaced = document.children(document.root())[0];
     let mut batch = EditBatch::new();
     batch.replace_node(replaced, draft);
 
     batch.commit(&mut document);
 
     assert_eq!(document.len(), 10_002);
-    assert_eq!(document.children(document.root()).unwrap().len(), 1);
-    assert_eq!(
-        document.node(replaced).unwrap_err(),
-        InvalidNodeId(replaced)
-    );
+    assert_eq!(document.children(document.root()).len(), 1);
+    assert!(document.get_node(replaced).is_none());
 }
 
 #[test]
 fn wraps_an_inclusive_sibling_range_without_changing_node_ids() {
     let mut document = document(&["a", "b", "c", "d"]);
     let root = document.root();
-    let original = document.children(root).unwrap().to_vec();
+    let original = document.children(root).to_vec();
     let mut wrapper = NodeDraft::new(Paragraph);
     wrapper
         .attrs_mut()
@@ -513,12 +493,12 @@ fn wraps_an_inclusive_sibling_range_without_changing_node_ids() {
     assert_eq!(batch.len(), 1);
     batch.commit(&mut document);
 
-    let children = document.children(root).unwrap();
+    let children = document.children(root);
     assert_eq!(children.len(), 3);
     assert_eq!(children[0], original[0]);
     assert_eq!(children[2], original[3]);
     let wrapper = children[1];
-    let wrapper_node = document.node(wrapper).unwrap();
+    let wrapper_node = document.node(wrapper);
     assert!(wrapper_node.is::<Paragraph>());
     assert!(wrapper_node.srcmap().is_none());
     assert_eq!(
@@ -526,8 +506,8 @@ fn wraps_an_inclusive_sibling_range_without_changing_node_ids() {
         &[("class".to_owned(), "wrapper".to_owned())]
     );
     assert_eq!(wrapper_node.children(), &original[1..=2]);
-    assert_eq!(document.parent(original[1]).unwrap(), Some(wrapper));
-    assert_eq!(document.parent(original[2]).unwrap(), Some(wrapper));
+    assert_eq!(document.parent(original[1]), Some(wrapper));
+    assert_eq!(document.parent(original[2]), Some(wrapper));
     assert_eq!(content(&document, original[1]), "b");
     assert_eq!(content(&document, original[2]), "c");
 
@@ -540,29 +520,29 @@ fn wraps_an_inclusive_sibling_range_without_changing_node_ids() {
 fn wraps_multiple_disjoint_ranges_with_one_parent_rebuild() {
     let mut document = document(&["a", "b", "c", "d", "e"]);
     let root = document.root();
-    let original = document.children(root).unwrap().to_vec();
+    let original = document.children(root).to_vec();
     let mut batch = EditBatch::new();
     batch.wrap_range(original[3], original[4], NodeDraft::new(Paragraph));
     batch.wrap_range(original[0], original[1], NodeDraft::new(Paragraph));
 
     batch.commit(&mut document);
 
-    let children = document.children(root).unwrap();
+    let children = document.children(root);
     assert_eq!(children.len(), 3);
     assert_eq!(children[1], original[2]);
-    assert_eq!(document.children(children[0]).unwrap(), &original[0..=1]);
-    assert_eq!(document.children(children[2]).unwrap(), &original[3..=4]);
+    assert_eq!(document.children(children[0]), &original[0..=1]);
+    assert_eq!(document.children(children[2]), &original[3..=4]);
     for &node in &original {
-        assert!(document.node(node).is_ok());
+        assert!(document.get_node(node).is_some());
     }
 }
 
 #[test]
 fn wraps_ranges_under_different_parents_in_one_batch() {
     let mut document = branched_document();
-    let branches = document.children(document.root()).unwrap().to_vec();
-    let first_text = document.children(branches[0]).unwrap()[0];
-    let second_text = document.children(branches[1]).unwrap()[0];
+    let branches = document.children(document.root()).to_vec();
+    let first_text = document.children(branches[0])[0];
+    let second_text = document.children(branches[1])[0];
     let mut batch = EditBatch::new();
     batch.wrap_range(first_text, first_text, NodeDraft::new(Paragraph));
     batch.wrap_range(second_text, second_text, NodeDraft::new(Paragraph));
@@ -570,9 +550,9 @@ fn wraps_ranges_under_different_parents_in_one_batch() {
     batch.commit(&mut document);
 
     for (branch, text) in branches.into_iter().zip([first_text, second_text]) {
-        let wrapper = document.children(branch).unwrap()[0];
-        assert_eq!(document.children(wrapper).unwrap(), &[text]);
-        assert_eq!(document.parent(text).unwrap(), Some(wrapper));
+        let wrapper = document.children(branch)[0];
+        assert_eq!(document.children(wrapper), &[text]);
+        assert_eq!(document.parent(text), Some(wrapper));
     }
 }
 
@@ -589,8 +569,8 @@ fn value_and_descendant_structure_edits_can_commit_with_wrap() {
     root.children.push(paragraph);
     let mut document = Document::from_legacy("ab", root);
     let root = document.root();
-    let paragraph = document.children(root).unwrap()[0];
-    let texts = document.children(paragraph).unwrap().to_vec();
+    let paragraph = document.children(root)[0];
+    let texts = document.children(paragraph).to_vec();
     let mut batch = EditBatch::new();
     batch.wrap_range(paragraph, paragraph, NodeDraft::new(Paragraph));
     batch.remove_node(texts[0]);
@@ -600,15 +580,15 @@ fn value_and_descendant_structure_edits_can_commit_with_wrap() {
 
     batch.commit(&mut document);
 
-    let wrapper = document.children(root).unwrap()[0];
-    assert_eq!(document.children(wrapper).unwrap(), &[paragraph]);
-    let paragraph_children = document.children(paragraph).unwrap();
+    let wrapper = document.children(root)[0];
+    assert_eq!(document.children(wrapper), &[paragraph]);
+    let paragraph_children = document.children(paragraph);
     assert_eq!(paragraph_children.len(), 2);
     assert_eq!(content(&document, paragraph_children[0]), "inserted");
     assert_eq!(paragraph_children[1], texts[1]);
     assert_eq!(content(&document, texts[1]), "B");
     assert_eq!(
-        document.node(paragraph).unwrap().attrs(),
+        document.node(paragraph).attrs(),
         &[("class".to_owned(), "wrapped-child".to_owned())]
     );
 }
@@ -623,21 +603,20 @@ fn wide_sibling_ranges_are_wrapped_iteratively() {
     }
     let mut document = Document::from_legacy("", root);
     let root = document.root();
-    let original = document.children(root).unwrap().to_vec();
+    let original = document.children(root).to_vec();
     let mut batch = EditBatch::new();
     batch.wrap_range(original[0], original[9_999], NodeDraft::new(Paragraph));
 
     batch.commit(&mut document);
 
     assert_eq!(document.len(), 10_002);
-    let wrapper = document.children(root).unwrap()[0];
-    assert_eq!(document.children(wrapper).unwrap(), original);
+    let wrapper = document.children(root)[0];
+    assert_eq!(document.children(wrapper), original);
     assert!(
         document
             .children(wrapper)
-            .unwrap()
             .iter()
-            .all(|&node| document.parent(node).unwrap() == Some(wrapper))
+            .all(|&node| document.parent(node) == Some(wrapper))
     );
 }
 
@@ -660,7 +639,7 @@ mod validation_tests {
     #[test]
     fn rejects_invalid_text_edits_across_nodes() {
         let document = document(&["abc", "雪"]);
-        let children = document.children(document.root()).unwrap();
+        let children = document.children(document.root());
         let first = children[0];
         let second = children[1];
         let mut batch = EditBatch::new();
@@ -680,7 +659,7 @@ mod validation_tests {
     #[test]
     fn rejects_non_text_and_overlapping_ranges() {
         let document = document(&["abcd"]);
-        let text = document.children(document.root()).unwrap()[0];
+        let text = document.children(document.root())[0];
 
         let mut overlap = EditBatch::new();
         overlap.replace_text(text, 0..2, "x");
@@ -718,7 +697,7 @@ mod validation_tests {
     #[test]
     fn rejects_reversed_text_ranges() {
         let document = document(&["abcdef"]);
-        let text = document.children(document.root()).unwrap()[0];
+        let text = document.children(document.root())[0];
         let mut reversed = EditBatch::new();
         let start = 3;
         let end = 1;
@@ -737,7 +716,7 @@ mod validation_tests {
     #[test]
     fn rejects_conflicting_source_map_edits() {
         let document = document(&["abc"]);
-        let text = document.children(document.root()).unwrap()[0];
+        let text = document.children(document.root())[0];
         let mut batch = EditBatch::new();
         batch.replace_text(text, 0..1, "A");
         batch.set_source_map(text, Some(SourcePos::new(1, 2)));
@@ -753,7 +732,7 @@ mod validation_tests {
     #[test]
     fn rejects_invalid_source_maps() {
         let document = document(&["雪"]);
-        let text = document.children(document.root()).unwrap()[0];
+        let text = document.children(document.root())[0];
         let mut batch = EditBatch::new();
         batch.set_attribute(text, "class", "new");
         batch.set_source_map(text, Some(SourcePos::new(1, 2)));
@@ -772,7 +751,7 @@ mod validation_tests {
     #[test]
     fn rejects_conflicting_attribute_edits() {
         let document = document(&["abc"]);
-        let text = document.children(document.root()).unwrap()[0];
+        let text = document.children(document.root())[0];
         let mut batch = EditBatch::new();
         batch.replace_text(text, 0..1, "A");
         batch.set_attribute(text, "class", "first");
@@ -791,7 +770,7 @@ mod validation_tests {
     #[test]
     fn rejects_invalid_text_edits_beside_other_patches() {
         let document = document(&["雪"]);
-        let text = document.children(document.root()).unwrap()[0];
+        let text = document.children(document.root())[0];
         let mut batch = EditBatch::new();
         batch.set_attribute(text, "class", "new");
         batch.replace_text(text, 1..2, "invalid UTF-8 boundary");
@@ -810,8 +789,8 @@ mod validation_tests {
     fn rejects_root_duplicate_and_overlapping_removals() {
         let document = branched_document();
         let root = document.root();
-        let branch = document.children(root).unwrap()[0];
-        let text = document.children(branch).unwrap()[0];
+        let branch = document.children(root)[0];
+        let text = document.children(branch)[0];
 
         let mut root_removal = EditBatch::new();
         root_removal.replace_text(text, 0..1, "A");
@@ -848,8 +827,8 @@ mod validation_tests {
     #[test]
     fn rejects_edits_inside_a_removed_subtree() {
         let document = branched_document();
-        let branch = document.children(document.root()).unwrap()[0];
-        let text = document.children(branch).unwrap()[0];
+        let branch = document.children(document.root())[0];
+        let text = document.children(branch)[0];
 
         let mut text_conflict = EditBatch::new();
         text_conflict.remove_node(branch);
@@ -891,24 +870,20 @@ mod validation_tests {
     #[test]
     fn rejects_stale_removal_targets() {
         let mut document = branched_document();
-        let removed = document.children(document.root()).unwrap()[0];
+        let removed = document.children(document.root())[0];
         let mut first = EditBatch::new();
         first.remove_node(removed);
         first.commit(&mut document);
 
         let mut stale = EditBatch::new();
         stale.remove_node(removed);
-        assert_invalid(
-            stale,
-            &document,
-            ValidationError::InvalidNode(InvalidNodeId(removed)),
-        );
+        assert_invalid(stale, &document, ValidationError::InvalidNode(removed));
     }
 
     #[test]
     fn rejects_stale_edit_targets_without_mutating_document() {
         let mut document = document(&["abc", "def"]);
-        let children = document.children(document.root()).unwrap().to_vec();
+        let children = document.children(document.root()).to_vec();
         let (stale, live) = (children[0], children[1]);
         let mut removal = EditBatch::new();
         removal.remove_node(stale);
@@ -916,20 +891,12 @@ mod validation_tests {
 
         let mut stale_edit = EditBatch::new();
         stale_edit.replace_text(stale, 0..0, "stale");
-        assert_invalid(
-            stale_edit,
-            &document,
-            ValidationError::InvalidNode(InvalidNodeId(stale)),
-        );
+        assert_invalid(stale_edit, &document, ValidationError::InvalidNode(stale));
 
         let mut mixed = EditBatch::new();
         mixed.replace_text(live, 0..1, "D");
         mixed.set_attribute(stale, "class", "stale");
-        assert_invalid(
-            mixed,
-            &document,
-            ValidationError::InvalidNode(InvalidNodeId(stale)),
-        );
+        assert_invalid(mixed, &document, ValidationError::InvalidNode(stale));
         assert_eq!(content(&document, live), "def");
     }
 
@@ -937,7 +904,7 @@ mod validation_tests {
     fn rejects_root_and_stale_insertion_targets() {
         let mut document = document(&["abc"]);
         let root = document.root();
-        let text = document.children(root).unwrap()[0];
+        let text = document.children(root)[0];
 
         let mut root_target = EditBatch::new();
         root_target.replace_text(text, 0..1, "A");
@@ -953,18 +920,14 @@ mod validation_tests {
         removal.commit(&mut document);
         let mut stale = EditBatch::new();
         stale.insert_after(text, text_draft("invalid"));
-        assert_invalid(
-            stale,
-            &document,
-            ValidationError::InvalidNode(InvalidNodeId(text)),
-        );
+        assert_invalid(stale, &document, ValidationError::InvalidNode(text));
     }
 
     #[test]
     fn rejects_insertions_inside_removed_subtrees() {
         let document = branched_document();
-        let removed = document.children(document.root()).unwrap()[0];
-        let target = document.children(removed).unwrap()[0];
+        let removed = document.children(document.root())[0];
+        let target = document.children(removed)[0];
         let mut batch = EditBatch::new();
         batch.remove_node(removed);
         batch.insert_before(target, text_draft("invalid"));
@@ -980,8 +943,8 @@ mod validation_tests {
     fn rejects_root_duplicate_and_overlapping_replacements() {
         let document = branched_document();
         let root = document.root();
-        let branch = document.children(root).unwrap()[0];
-        let text = document.children(branch).unwrap()[0];
+        let branch = document.children(root)[0];
+        let text = document.children(branch)[0];
 
         let mut root_replacement = EditBatch::new();
         root_replacement.replace_text(text, 0..1, "A");
@@ -1018,25 +981,21 @@ mod validation_tests {
     #[test]
     fn rejects_stale_replacement_targets() {
         let mut document = branched_document();
-        let branch = document.children(document.root()).unwrap()[0];
+        let branch = document.children(document.root())[0];
         let mut replace = EditBatch::new();
         replace.replace_node(branch, text_draft("replacement"));
         replace.commit(&mut document);
 
         let mut stale = EditBatch::new();
         stale.replace_node(branch, text_draft("invalid"));
-        assert_invalid(
-            stale,
-            &document,
-            ValidationError::InvalidNode(InvalidNodeId(branch)),
-        );
+        assert_invalid(stale, &document, ValidationError::InvalidNode(branch));
     }
 
     #[test]
     fn rejects_edits_and_insertions_inside_replaced_subtrees() {
         let document = branched_document();
-        let branch = document.children(document.root()).unwrap()[0];
-        let text = document.children(branch).unwrap()[0];
+        let branch = document.children(document.root())[0];
+        let text = document.children(branch)[0];
 
         let mut text_conflict = EditBatch::new();
         text_conflict.replace_node(branch, text_draft("replacement"));
@@ -1090,8 +1049,8 @@ mod validation_tests {
     #[test]
     fn rejects_overlapping_removal_and_replacement_in_both_directions() {
         let document = branched_document();
-        let branch = document.children(document.root()).unwrap()[0];
-        let text = document.children(branch).unwrap()[0];
+        let branch = document.children(document.root())[0];
+        let text = document.children(branch)[0];
 
         let mut same_target = EditBatch::new();
         same_target.remove_node(branch);
@@ -1134,7 +1093,7 @@ mod validation_tests {
     fn rejects_invalid_wrap_ranges() {
         let document = document(&["a", "b", "c", "d"]);
         let root = document.root();
-        let children = document.children(root).unwrap().to_vec();
+        let children = document.children(root).to_vec();
 
         let mut root_endpoint = EditBatch::new();
         root_endpoint.replace_text(children[0], 0..1, "A");
@@ -1185,9 +1144,9 @@ mod validation_tests {
     #[test]
     fn rejects_different_parent_and_stale_wrap_endpoints() {
         let mut document = branched_document();
-        let branches = document.children(document.root()).unwrap().to_vec();
-        let first = document.children(branches[0]).unwrap()[0];
-        let second = document.children(branches[1]).unwrap()[0];
+        let branches = document.children(document.root()).to_vec();
+        let first = document.children(branches[0])[0];
+        let second = document.children(branches[1])[0];
 
         let mut different_parents = EditBatch::new();
         different_parents.wrap_range(first, second, NodeDraft::new(Paragraph));
@@ -1205,18 +1164,14 @@ mod validation_tests {
         removal.commit(&mut document);
         let mut stale = EditBatch::new();
         stale.wrap_range(first, first, NodeDraft::new(Paragraph));
-        assert_invalid(
-            stale,
-            &document,
-            ValidationError::InvalidNode(InvalidNodeId(first)),
-        );
+        assert_invalid(stale, &document, ValidationError::InvalidNode(first));
     }
 
     #[test]
     fn rejects_destructive_and_insertion_conflicts_with_wrap_ranges() {
         let document = branched_document();
-        let branch = document.children(document.root()).unwrap()[0];
-        let text = document.children(branch).unwrap()[0];
+        let branch = document.children(document.root())[0];
+        let text = document.children(branch)[0];
 
         let mut removal = EditBatch::new();
         removal.remove_node(branch);
@@ -1272,7 +1227,7 @@ mod validation_tests {
     #[test]
     fn commit_leaves_document_unchanged_when_validation_fails() {
         let mut document = document(&["abc", "雪"]);
-        let children = document.children(document.root()).unwrap().to_vec();
+        let children = document.children(document.root()).to_vec();
         let (first, second) = (children[0], children[1]);
 
         let result = catch_unwind(AssertUnwindSafe(|| {

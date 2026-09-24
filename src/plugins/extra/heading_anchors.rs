@@ -329,10 +329,7 @@ impl DocumentTransform for HeadingAnchorsDocumentTransform {
         //     Exit(emphasis)
         //   Exit(inlineRoot)
         // Exit(heading)              -> pop active heading
-        for event in document
-            .events(document.root())
-            .expect("root is always valid")
-        {
+        for event in document.events(document.root()) {
             let node = event.node();
             match event {
                 StructuralEvent::Enter(node) => {
@@ -679,7 +676,6 @@ mod tests {
         assert!(
             first_document
                 .events(first_document.root())
-                .unwrap()
                 .filter(|event| is_document_heading(event.node()))
                 .all(|event| event.node().attrs().iter().all(|(name, _)| name != "id"))
         );

@@ -201,7 +201,6 @@ mod markdown_it_rs_extras {
         let document = direct_md.parse_document_direct("@").unwrap();
         let collected: Vec<_> = document
             .events(document.root())
-            .unwrap()
             .filter_map(|event| event.node().ext().get::<NodeErrors>())
             .flat_map(|errors| errors.0.iter().copied())
             .collect();

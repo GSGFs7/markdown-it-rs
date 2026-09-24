@@ -97,10 +97,7 @@ impl DocumentTransform for TypographerDocumentTransform {
 
     fn run(&self, document: &Document) -> EditBatch {
         let mut edits = EditBatch::new();
-        for event in document
-            .events(document.root())
-            .expect("root is always valid")
-        {
+        for event in document.events(document.root()) {
             let node = match event {
                 StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => node,
                 StructuralEvent::Exit(_) => continue,
@@ -174,7 +171,6 @@ mod tests {
     fn text_contents(document: &Document) -> String {
         document
             .events(document.root())
-            .unwrap()
             .filter_map(|event| match event {
                 StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => {
                     node.cast::<Text>().map(|text| text.content.as_str())
@@ -230,7 +226,6 @@ mod tests {
         assert!(
             document
                 .node(document.root())
-                .unwrap()
                 .attrs()
                 .iter()
                 .any(|(name, value)| name == "observed-order" && value == "true")

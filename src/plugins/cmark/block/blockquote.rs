@@ -37,7 +37,7 @@ impl DocumentNodeRenderer<Blockquote> for BlockquoteDocumentRenderer {
 
         let mut only_invisible_definitions = !node.children().is_empty();
         for &child in node.children() {
-            if !context.document().node(child)?.is::<Definition>() {
+            if !context.document().node(child).is::<Definition>() {
                 only_invisible_definitions = false;
                 break;
             }

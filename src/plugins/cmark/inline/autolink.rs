@@ -283,7 +283,6 @@ mod tests {
 
         let spans: Vec<_> = document
             .events(document.root())
-            .unwrap()
             .filter_map(|event| {
                 if matches!(event, StructuralEvent::Exit(_)) {
                     return None;

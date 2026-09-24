@@ -21,19 +21,6 @@ impl std::fmt::Debug for NodeId {
     }
 }
 
-/// Error returned when a node handle does not belong to the current arena
-/// generation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct InvalidNodeId(pub NodeId);
-
-impl std::fmt::Display for InvalidNodeId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid or stale node ID: {:?}", self.0)
-    }
-}
-
-impl std::error::Error for InvalidNodeId {}
-
 #[derive(Debug)]
 struct Slot<T> {
     /// distinguish between different nodes successively in the same slot

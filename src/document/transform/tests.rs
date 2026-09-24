@@ -5,7 +5,7 @@ use crate::parser::inline::Text;
 use crate::{MarkdownIt, StructuralEvent};
 
 fn append_step(document: &Document, step: &str) -> EditBatch {
-    let root = document.node(document.root()).unwrap();
+    let root = document.node(document.root());
     let previous = root
         .attrs()
         .iter()
@@ -64,7 +64,6 @@ impl DocumentTransform for Failing {
 fn steps(document: &Document) -> Option<&str> {
     document
         .node(document.root())
-        .unwrap()
         .attrs()
         .iter()
         .find(|(name, _)| name == "steps")
@@ -154,7 +153,7 @@ impl DocumentTransform for RewriteText {
 
     fn run(&self, document: &Document) -> EditBatch {
         let mut edits = EditBatch::new();
-        for event in document.events(document.root()).unwrap() {
+        for event in document.events(document.root()) {
             if let StructuralEvent::Leaf(node) = event
                 && let Some(text) = node.cast::<Text>()
             {
@@ -220,7 +219,7 @@ fn markdown_it_registers_an_owned_configured_instance() {
     md.run_document_transforms(&mut document);
 
     assert_eq!(
-        document.node(document.root()).unwrap().attrs(),
+        document.node(document.root()).attrs(),
         &[("configured".into(), "runtime value".into())]
     );
 }

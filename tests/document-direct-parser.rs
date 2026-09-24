@@ -8,12 +8,7 @@ fn assert_direct_matches_bridge(md: &MarkdownIt, source: &str) {
     assert_eq!(direct.source(), source);
     assert_eq!(direct.len(), bridged.len(), "node count for {source:?}");
     assert_eq!(
-        direct
-            .node(direct.root())
-            .unwrap()
-            .cast::<Root>()
-            .unwrap()
-            .content,
+        direct.node(direct.root()).cast::<Root>().unwrap().content,
         source
     );
     assert_eq!(
@@ -210,22 +205,19 @@ fn direct_code_spans_preserve_output_structure_and_source_maps() {
     }
 
     let document = md.parse_document_direct("foo ```bar``` baz").unwrap();
-    let mut spans = document
-        .events(document.root())
-        .unwrap()
-        .filter_map(|event| {
-            if matches!(event, StructuralEvent::Exit(_)) {
-                return None;
-            }
-            let node = event.node();
-            if node.is::<markdown_it::plugins::cmark::inline::backticks::CodeInline>()
-                || node.is::<markdown_it::parser::inline::Text>()
-            {
-                Some((node.name(), node.srcmap().unwrap().get_byte_offsets()))
-            } else {
-                None
-            }
-        });
+    let mut spans = document.events(document.root()).filter_map(|event| {
+        if matches!(event, StructuralEvent::Exit(_)) {
+            return None;
+        }
+        let node = event.node();
+        if node.is::<markdown_it::plugins::cmark::inline::backticks::CodeInline>()
+            || node.is::<markdown_it::parser::inline::Text>()
+        {
+            Some((node.name(), node.srcmap().unwrap().get_byte_offsets()))
+        } else {
+            None
+        }
+    });
     assert_eq!(spans.next().unwrap().1, (0, 4));
     assert_eq!(spans.next().unwrap().1, (4, 13));
     assert_eq!(spans.next().unwrap().1, (7, 10));
@@ -277,7 +269,6 @@ fn trailing_space_removal_maps_inline_offsets_once() {
     ] {
         let spans: Vec<_> = document
             .events(document.root())
-            .unwrap()
             .filter_map(|event| {
                 let node = event.node();
                 node.cast::<Text>().map(|text| {
@@ -366,7 +357,6 @@ fn direct_nested_emphasis_preserves_source_maps() {
 
     let spans: Vec<_> = document
         .events(document.root())
-        .unwrap()
         .filter(|event| !matches!(event, StructuralEvent::Exit(_)))
         .filter_map(|event| {
             let node = event.node();

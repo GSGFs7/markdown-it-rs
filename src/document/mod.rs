@@ -13,7 +13,7 @@ pub mod transform;
 use std::sync::Arc;
 
 use self::arena::Arena;
-pub use self::arena::{InvalidNodeId, NodeId};
+pub use self::arena::NodeId;
 pub use self::events::{StructuralEvent, StructuralEvents};
 pub use self::node::{DocumentNode, NodeDraft, NodeRef};
 pub(crate) use self::structure::SiblingPosition;
@@ -64,23 +64,50 @@ impl Document {
         self.arena.len == 0
     }
 
-    /// Look up a node, rejecting IDs with an unknown slot or stale generation.
-    pub fn node(&self, id: NodeId) -> Result<&DocumentNode, InvalidNodeId> {
-        self.arena.get(id).ok_or(InvalidNodeId(id))
+    /// Return a node if its slot and generation are still valid.
+    /// The ID must originate from this document.
+    pub fn get_node(&self, id: NodeId) -> Option<&DocumentNode> {
+        self.arena.get(id)
     }
 
-    pub(crate) fn node_mut(&mut self, id: NodeId) -> Result<&mut DocumentNode, InvalidNodeId> {
-        self.arena.get_mut(id).ok_or(InvalidNodeId(id))
+    /// Access a node whose ID must be valid in this document.
+    ///
+    /// # Panics
+    /// Panics if the slot is unknown or the generation is stale.
+    #[track_caller]
+    pub fn node(&self, id: NodeId) -> &DocumentNode {
+        match self.arena.get(id) {
+            Some(node) => node,
+            None => panic!("invalid or stale node ID: {id:?}"),
+        }
     }
 
-    /// Look up a node's parent.
-    pub fn parent(&self, id: NodeId) -> Result<Option<NodeId>, InvalidNodeId> {
-        Ok(self.node(id)?.parent())
+    #[track_caller]
+    pub(crate) fn node_mut(&mut self, id: NodeId) -> &mut DocumentNode {
+        match self.arena.get_mut(id) {
+            Some(node) => node,
+            None => {
+                panic!("invalid or stale node ID: {id:?}")
+            }
+        }
     }
 
-    /// Look up a node's ordered children.
-    pub fn children(&self, id: NodeId) -> Result<&[NodeId], InvalidNodeId> {
-        Ok(self.node(id)?.children())
+    /// Return the parent of a valid node, or None for the document root.
+    ///
+    /// # Panics
+    /// Panics if the slot is unknown or the generation is stale.
+    #[track_caller]
+    pub fn parent(&self, id: NodeId) -> Option<NodeId> {
+        self.node(id).parent()
+    }
+
+    /// Return the ordered children of a valid node.
+    ///
+    /// # Panics
+    /// Panics if the slot is unknown or the generation is stale.
+    #[track_caller]
+    pub fn children(&self, id: NodeId) -> &[NodeId] {
+        self.node(id).children()
     }
 }
 

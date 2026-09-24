@@ -1,7 +1,7 @@
 use std::iter::FusedIterator;
 
 use super::node::NodeRef;
-use super::{Document, InvalidNodeId, NodeId};
+use super::{Document, NodeId};
 
 /// One step in a depth-first structural traversal.
 ///
@@ -76,8 +76,12 @@ impl FusedIterator for StructuralEvents<'_> {}
 
 impl Document {
     /// Lazily traverse a node and its descendants in depth-first order.
-    pub fn events(&self, root: NodeId) -> Result<StructuralEvents<'_>, InvalidNodeId> {
-        let root = self.node(root)?;
+    ///
+    /// # Panics
+    /// Panics if the root ID is invalid or stale.
+    #[track_caller]
+    pub fn events(&self, root: NodeId) -> StructuralEvents<'_> {
+        let root = self.node(root);
         let mut stack = Vec::with_capacity(16);
         let pending = if root.children.is_empty() {
             Some(StructuralEvent::Leaf(root))
@@ -88,10 +92,10 @@ impl Document {
             });
             Some(StructuralEvent::Enter(root))
         };
-        Ok(StructuralEvents {
+        StructuralEvents {
             document: self,
             stack,
             pending,
-        })
+        }
     }
 }

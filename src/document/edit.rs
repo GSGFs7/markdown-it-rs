@@ -324,7 +324,6 @@ impl EditBatch {
             let node_id = edits[0].node;
             let text = document
                 .node_mut(node_id)
-                .expect("text edit target must exist")
                 .cast_mut::<Text>()
                 .expect("text edit target must be a Text node");
 
@@ -362,10 +361,7 @@ impl EditBatch {
 
     fn apply_attributes(&mut self, document: &mut Document) {
         for edit in self.node_patches.attributes.drain(..) {
-            let attrs = document
-                .node_mut(edit.node)
-                .expect("attribute edit target must exist")
-                .attrs_mut();
+            let attrs = document.node_mut(edit.node).attrs_mut();
             match edit.change {
                 AttributeChange::Set(value) => {
                     if let Some(index) = attrs.iter().position(|attr| attr.0 == edit.name) {
@@ -391,10 +387,7 @@ impl EditBatch {
 
     fn apply_source_maps(&mut self, document: &mut Document) {
         for edit in self.node_patches.source_maps.drain(..) {
-            document
-                .node_mut(edit.node)
-                .expect("source map edit target must exist")
-                .set_srcmap(edit.source_map);
+            document.node_mut(edit.node).set_srcmap(edit.source_map);
         }
     }
 

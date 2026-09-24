@@ -209,7 +209,7 @@ impl DocumentTransform for TaskListDocumentTransform {
     fn run(&self, document: &Document) -> EditBatch {
         let mut edits = EditBatch::new();
 
-        for event in document.events(document.root()).unwrap() {
+        for event in document.events(document.root()) {
             let list = match event {
                 StructuralEvent::Enter(node)
                     if node.is::<BulletList>() || node.is::<OrderedList>() =>
@@ -245,7 +245,7 @@ impl DocumentTransform for TaskListDocumentTransform {
                     edits.insert_before(plan.marker_target, marker_draft(plan.checked));
                 }
 
-                let item_node = document.node(plan.item).unwrap();
+                let item_node = document.node(plan.item);
                 edits.set_attribute(
                     plan.item,
                     "class",
@@ -270,19 +270,19 @@ impl DocumentTransform for TaskListDocumentTransform {
 
 // check if it is a task list item
 fn task_item_plan(document: &Document, item: NodeId) -> Option<TaskItemPlan> {
-    let item_node = document.node(item).ok()?;
+    let item_node = document.node(item);
     if !item_node.is::<ListItem>() {
         return None;
     }
 
     let first = *item_node.children().first()?;
-    let first_node = document.node(first).ok()?;
+    let first_node = document.node(first);
     let (text, marker_target) = if first_node.is::<Paragraph>() {
         (*first_node.children().first()?, first)
     } else {
         (first, first)
     };
-    let text_node = document.node(text).ok()?;
+    let text_node = document.node(text);
     let text_value = text_node.cast::<Text>()?;
     let (checked, marker_len) = TaskListScanner::marker_len(&text_value.content)?;
 

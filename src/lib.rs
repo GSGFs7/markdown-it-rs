@@ -31,7 +31,6 @@ pub use document::transform::{DocumentTransform, DocumentTransformRegistry, Tran
 pub use document::{
     Document,
     DocumentNode,
-    InvalidNodeId,
     NodeDraft,
     NodeId,
     NodeRef,

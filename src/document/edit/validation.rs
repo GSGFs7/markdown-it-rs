@@ -2,13 +2,14 @@ use std::collections::HashSet;
 use std::ops::Range;
 
 use super::{EditBatch, ReplaceText, attribute_groups, text_groups};
-use crate::document::{Document, InvalidNodeId, NodeId};
+use crate::DocumentNode;
+use crate::document::{Document, NodeId};
 use crate::parser::inline::Text;
 
 /// A validation failure that leaves the document unchanged.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum ValidationError {
-    InvalidNode(InvalidNodeId),
+    InvalidNode(NodeId),
     NotEditableText(NodeId),
     InvalidTextRange {
         node: NodeId,
@@ -102,7 +103,7 @@ pub(super) enum ValidationError {
 impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidNode(error) => error.fmt(f),
+            Self::InvalidNode(node) => write!(f, "invalid or stale node ID: {node:?}"),
             Self::NotEditableText(node) => {
                 write!(f, "node {node:?} is not an editable Text node")
             }
@@ -231,12 +232,6 @@ impl std::fmt::Display for ValidationError {
     }
 }
 
-impl From<InvalidNodeId> for ValidationError {
-    fn from(value: InvalidNodeId) -> Self {
-        Self::InvalidNode(value)
-    }
-}
-
 impl EditBatch {
     pub(super) fn validate(&self, document: &Document) -> Result<(), ValidationError> {
         self.validate_text(document)?;
@@ -260,7 +255,7 @@ impl EditBatch {
     fn validate_text(&self, document: &Document) -> Result<(), ValidationError> {
         for edits in text_groups(&self.node_patches.text) {
             let node_id = edits[0].node;
-            let node = document.node(node_id)?;
+            let node = checked_node(document, node_id)?;
             let Some(text) = node.cast::<Text>() else {
                 return Err(ValidationError::NotEditableText(node_id));
             };
@@ -300,7 +295,7 @@ impl EditBatch {
     fn validate_attributes(&self, document: &Document) -> Result<(), ValidationError> {
         for edits in attribute_groups(&self.node_patches.attributes) {
             let edit = &edits[0];
-            document.node(edit.node)?;
+            checked_node(document, edit.node)?;
             if edits.len() > 1 {
                 return Err(ValidationError::ConflictingAttributeEdits {
                     node: edit.node,
@@ -314,7 +309,7 @@ impl EditBatch {
     fn validate_source_maps(&self, document: &Document) -> Result<(), ValidationError> {
         let mut previous = None;
         for edit in &self.node_patches.source_maps {
-            document.node(edit.node)?;
+            checked_node(document, edit.node)?;
             if previous == Some(edit.node) {
                 return Err(ValidationError::ConflictingSourceMapEdits { node: edit.node });
             }
@@ -340,7 +335,7 @@ impl EditBatch {
     fn validate_removals(&self, document: &Document) -> Result<(), ValidationError> {
         let mut removals = HashSet::with_capacity(self.structural_edits.removals.len());
         for &node in &self.structural_edits.removals {
-            document.node(node)?;
+            checked_node(document, node)?;
             if node == document.root() {
                 return Err(ValidationError::CannotRemoveRoot(node));
             }
@@ -350,7 +345,7 @@ impl EditBatch {
         }
 
         for &descendant in &self.structural_edits.removals {
-            let mut ancestor = document.parent(descendant)?;
+            let mut ancestor = checked_node(document, descendant)?.parent();
             while let Some(node) = ancestor {
                 if removals.contains(&node) {
                     return Err(ValidationError::OverlappingNodeRemovals {
@@ -358,7 +353,7 @@ impl EditBatch {
                         descendant,
                     });
                 }
-                ancestor = document.parent(node)?;
+                ancestor = checked_node(document, node)?.parent();
             }
         }
 
@@ -371,7 +366,7 @@ impl EditBatch {
                         edited,
                     });
                 }
-                current = document.parent(node)?;
+                current = checked_node(document, node)?.parent();
             }
         }
         Ok(())
@@ -380,7 +375,7 @@ impl EditBatch {
     fn validate_insertions(&self, document: &Document) -> Result<(), ValidationError> {
         let removals: HashSet<_> = self.structural_edits.removals.iter().copied().collect();
         for insertion in &self.structural_edits.insertions {
-            let target = document.node(insertion.target)?;
+            let target = checked_node(document, insertion.target)?;
             if target.parent().is_none() {
                 return Err(ValidationError::CannotInsertSiblingOfRoot(insertion.target));
             }
@@ -393,7 +388,7 @@ impl EditBatch {
                         target: insertion.target,
                     });
                 }
-                current = document.parent(node)?;
+                current = checked_node(document, node)?.parent();
             }
         }
         Ok(())
@@ -402,7 +397,7 @@ impl EditBatch {
     fn validate_replacements(&self, document: &Document) -> Result<(), ValidationError> {
         let mut replacements = HashSet::with_capacity(self.structural_edits.replacements.len());
         for replacement in &self.structural_edits.replacements {
-            document.node(replacement.target)?; // check InvalidNode
+            checked_node(document, replacement.target)?; // check InvalidNode
             if replacement.target == document.root() {
                 return Err(ValidationError::CannotReplaceRoot(replacement.target));
             }
@@ -415,7 +410,7 @@ impl EditBatch {
 
         // not allow ancestor/descendant overlap
         for replacement in &self.structural_edits.replacements {
-            let mut ancestor = document.parent(replacement.target)?;
+            let mut ancestor = checked_node(document, replacement.target)?.parent();
             while let Some(node) = ancestor {
                 if replacements.contains(&node) {
                     return Err(ValidationError::OverlappingNodeReplacements {
@@ -423,7 +418,7 @@ impl EditBatch {
                         descendant: replacement.target,
                     });
                 }
-                ancestor = document.parent(node)?;
+                ancestor = checked_node(document, node)?.parent();
             }
         }
 
@@ -438,7 +433,7 @@ impl EditBatch {
                         replaced: replacement.target,
                     });
                 }
-                current = document.parent(node)?;
+                current = checked_node(document, node)?.parent();
             }
         }
         for &removed in &self.structural_edits.removals {
@@ -450,7 +445,7 @@ impl EditBatch {
                         replaced: node,
                     });
                 }
-                current = document.parent(node)?;
+                current = checked_node(document, node)?.parent();
             }
         }
 
@@ -463,7 +458,7 @@ impl EditBatch {
                         edited,
                     });
                 }
-                current = document.parent(node)?;
+                current = checked_node(document, node)?.parent();
             }
         }
 
@@ -476,7 +471,7 @@ impl EditBatch {
                         target: insertion.target,
                     });
                 }
-                current = document.parent(node)?;
+                current = checked_node(document, node)?.parent();
             }
         }
         Ok(())
@@ -485,8 +480,8 @@ impl EditBatch {
     fn validate_wrap_ranges(&self, document: &Document) -> Result<(), ValidationError> {
         let mut resolved = Vec::with_capacity(self.structural_edits.wraps.len());
         for range in &self.structural_edits.wraps {
-            let first = document.node(range.first)?;
-            let last = document.node(range.last)?;
+            let first = checked_node(document, range.first)?;
+            let last = checked_node(document, range.last)?;
             let Some(first_parent) = first.parent() else {
                 return Err(ValidationError::CannotWrapRoot(range.first));
             };
@@ -506,7 +501,7 @@ impl EditBatch {
                 });
             }
 
-            let siblings = document.children(first_parent)?;
+            let siblings = checked_node(document, first_parent)?.children();
             let first_index = siblings
                 .iter()
                 .position(|&node| node == range.first)
@@ -551,7 +546,7 @@ impl EditBatch {
             .map(|replacement| replacement.target)
             .collect();
         for &(parent, first_index, last_index, first, last) in &resolved {
-            let siblings = document.children(parent)?;
+            let siblings = checked_node(document, parent)?.children();
             for &selected in &siblings[first_index..=last_index] {
                 let mut current = Some(selected);
                 while let Some(node) = current {
@@ -569,14 +564,14 @@ impl EditBatch {
                             last,
                         });
                     }
-                    current = document.parent(node)?;
+                    current = checked_node(document, node)?.parent();
                 }
             }
         }
 
         for insertion in &self.structural_edits.insertions {
             for &(parent, first_index, last_index, first, last) in &resolved {
-                let siblings = document.children(parent)?;
+                let siblings = checked_node(document, parent)?.children();
                 if siblings[first_index..=last_index].contains(&insertion.target) {
                     return Err(ValidationError::InsertionTargetsWrappedNode {
                         first,
@@ -588,4 +583,11 @@ impl EditBatch {
         }
         Ok(())
     }
+}
+
+// helper
+fn checked_node(document: &Document, id: NodeId) -> Result<&DocumentNode, ValidationError> {
+    document
+        .get_node(id)
+        .ok_or(ValidationError::InvalidNode(id))
 }

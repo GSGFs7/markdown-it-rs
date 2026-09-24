@@ -86,7 +86,7 @@ impl DocumentTransform for SourcePosDocumentTransform {
         let mapping = SourceWithLineStarts::new(document.source());
         let mut edits = EditBatch::new();
 
-        for event in document.events(document.root()).unwrap() {
+        for event in document.events(document.root()) {
             let node = match event {
                 StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => node,
                 StructuralEvent::Exit(_) => continue,

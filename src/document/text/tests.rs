@@ -60,8 +60,8 @@ fn document() -> Document {
 #[test]
 fn projection_uses_node_ids_and_utf8_byte_offsets() {
     let document = document();
-    let paragraph = document.children(document.root()).unwrap()[0];
-    let text = document.children(paragraph).unwrap()[0];
+    let paragraph = document.children(document.root())[0];
+    let text = document.children(paragraph)[0];
     let chars: Vec<_> = document
         .text_events(TextProjection::new(classify))
         .filter_map(|event| match event {
@@ -87,8 +87,8 @@ fn projection_uses_node_ids_and_utf8_byte_offsets() {
 fn projection_order_depth_and_boundaries_are_stable() {
     let document = document();
     let root = document.root();
-    let paragraph = document.children(root).unwrap()[0];
-    let children = document.children(paragraph).unwrap();
+    let paragraph = document.children(root)[0];
+    let children = document.children(paragraph);
     let events: Vec<_> = document
         .text_events(TextProjection::new(classify))
         .collect();
@@ -124,10 +124,8 @@ fn projection_order_depth_and_boundaries_are_stable() {
 #[test]
 fn subtree_projection_uses_the_subtree_as_depth_zero() {
     let document = document();
-    let paragraph = document.children(document.root()).unwrap()[0];
-    let mut events = document
-        .text_events_from(paragraph, TextProjection::new(classify))
-        .unwrap();
+    let paragraph = document.children(document.root())[0];
+    let mut events = document.text_events_from(paragraph, TextProjection::new(classify));
 
     assert_eq!(
         events.next(),

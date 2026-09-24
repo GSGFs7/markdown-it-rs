@@ -568,7 +568,6 @@ mod tests {
         assert_eq!(
             document
                 .events(document.root())
-                .unwrap()
                 .filter_map(|event| match event {
                     StructuralEvent::Leaf(node) => node
                         .cast::<crate::parser::inline::Text>()
@@ -590,15 +589,12 @@ mod tests {
         const KEY: &'static str = "test::observe-smartquotes";
 
         fn run(&self, document: &Document) -> EditBatch {
-            let transformed = document
-                .events(document.root())
-                .unwrap()
-                .any(|event| match event {
-                    StructuralEvent::Leaf(node) => node
-                        .cast::<crate::parser::inline::Text>()
-                        .is_some_and(|text| text.content.contains('“')),
-                    StructuralEvent::Enter(_) | StructuralEvent::Exit(_) => false,
-                });
+            let transformed = document.events(document.root()).any(|event| match event {
+                StructuralEvent::Leaf(node) => node
+                    .cast::<crate::parser::inline::Text>()
+                    .is_some_and(|text| text.content.contains('“')),
+                StructuralEvent::Enter(_) | StructuralEvent::Exit(_) => false,
+            });
             let mut edits = EditBatch::new();
             edits.set_attribute(
                 document.root(),
@@ -623,7 +619,6 @@ mod tests {
         assert!(
             document
                 .node(document.root())
-                .unwrap()
                 .attrs()
                 .iter()
                 .any(|(name, value)| name == "observed-smartquotes" && value == "true")

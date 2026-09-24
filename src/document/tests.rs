@@ -1,13 +1,9 @@
-use super::text::TextProjectionKind;
 use super::*;
+use crate::document::text::{TextProjection, TextProjectionKind};
 use crate::parser::core::Root;
 use crate::parser::inline::Text;
 use crate::plugins::cmark::block::paragraph::Paragraph;
-use crate::{MarkdownIt, Node, TextProjection, plugins};
-
-fn transparent_text_projection(_: super::NodeRef<'_>) -> TextProjectionKind<'_> {
-    TextProjectionKind::Transparent
-}
+use crate::{MarkdownIt, Node, plugins};
 
 #[test]
 fn legacy_roundtrip_preserves_tree_and_payloads() {
@@ -20,20 +16,15 @@ fn legacy_roundtrip_preserves_tree_and_payloads() {
 
     let document = Document::from_legacy("hello", root);
     let root_id = document.root();
-    let paragraph_id = document.children(root_id).unwrap()[0];
-    let text_id = document.children(paragraph_id).unwrap()[0];
+    let paragraph_id = document.children(root_id)[0];
+    let text_id = document.children(paragraph_id)[0];
 
     assert_eq!(document.source(), "hello");
     assert_eq!(document.len(), 3);
-    assert_eq!(document.parent(root_id).unwrap(), None);
-    assert_eq!(document.parent(text_id).unwrap(), Some(paragraph_id));
+    assert_eq!(document.parent(root_id), None);
+    assert_eq!(document.parent(text_id), Some(paragraph_id));
     assert_eq!(
-        document
-            .node(text_id)
-            .unwrap()
-            .cast::<Text>()
-            .unwrap()
-            .content,
+        document.node(text_id).cast::<Text>().unwrap().content,
         "hello"
     );
 
@@ -63,9 +54,9 @@ fn structural_events_are_ordered_and_balanced() {
 
     let document = Document::from_legacy("hello", root);
     let root = document.root();
-    let paragraph = document.children(root).unwrap()[0];
-    let children = document.children(paragraph).unwrap();
-    let events = document.events(document.root()).unwrap();
+    let paragraph = document.children(root)[0];
+    let children = document.children(paragraph);
+    let events = document.events(document.root());
     let actual: Vec<_> = events
         .map(|event| match event {
             StructuralEvent::Enter(node) => ("enter", node.id()),
@@ -97,42 +88,96 @@ fn structural_events_can_start_at_a_subtree_or_leaf() {
     root.children.push(paragraph);
 
     let document = Document::from_legacy("hello", root);
-    let paragraph = document.children(document.root()).unwrap()[0];
-    let text = document.children(paragraph).unwrap()[0];
+    let paragraph = document.children(document.root())[0];
+    let text = document.children(paragraph)[0];
 
     assert!(matches!(
-        document.events(paragraph).unwrap().next(),
+        document.events(paragraph).next(),
         Some(StructuralEvent::Enter(node)) if node.id() == paragraph
     ));
     assert!(matches!(
-        document.events(text).unwrap().collect::<Vec<_>>().as_slice(),
+        document.events(text).collect::<Vec<_>>().as_slice(),
         [StructuralEvent::Leaf(node)] if node.id() == text
     ));
 }
 
 #[test]
-fn structural_events_reject_a_stale_root() {
-    let mut root = Node::new(Root::new("text".to_owned()));
-    root.children.push(Node::new(Text {
-        content: "text".to_owned(),
-    }));
-    let mut document = Document::from_legacy("", root);
-    let root = document.root();
-    let text = document.children(root).unwrap()[0];
-    assert!(document.arena.remove(root).is_some());
+fn invalid_node_access_panics_in_all_builds() {
+    fn transparent_text_projection(_: NodeRef<'_>) -> TextProjectionKind<'_> {
+        TextProjectionKind::Transparent
+    }
 
-    assert_eq!(
-        document.events(root).unwrap_err(),
-        super::InvalidNodeId(root)
+    let mut root = NodeDraft::new(Root::new(String::new()));
+    root.push_child(NodeDraft::new(Text {
+        content: "old".into(),
+    }));
+    root.push_child(NodeDraft::new(Text {
+        content: "kept".into(),
+    }));
+    let mut document = Document::from_draft("", root);
+    let old = document.children(document.root())[0];
+    let kept = document.children(document.root())[1];
+
+    let mut edits = crate::EditBatch::new();
+    edits.remove_node(old);
+    edits.commit(&mut document);
+    let mut edits = crate::EditBatch::new();
+    edits.insert_before(
+        kept,
+        NodeDraft::new(Text {
+            content: "new".into(),
+        }),
     );
-    assert!(matches!(
-        document.text_events_from(root, TextProjection::new(transparent_text_projection)),
-        Err(error) if error == super::InvalidNodeId(root)
-    ));
-    assert_eq!(
-        document.node(text).unwrap().cast::<Text>().unwrap().content,
-        "text"
-    );
+    edits.commit(&mut document);
+    let new = document.children(document.root())[0];
+    assert_eq!(old.slot(), new.slot());
+    assert_ne!(old.generation(), new.generation());
+    assert!(document.get_node(new).is_some());
+    assert_eq!(document.parent(document.root()), None);
+
+    let unknown = NodeId {
+        slot: u32::MAX,
+        generation: 0,
+    };
+    let accessors: [fn(&Document, NodeId); 5] = [
+        |d, id| {
+            let _ = d.node(id);
+        },
+        |d, id| {
+            let _ = d.parent(id);
+        },
+        |d, id| {
+            let _ = d.children(id);
+        },
+        |d, id| {
+            let _ = d.events(id);
+        },
+        |d, id| {
+            let _ = d.text_events_from(id, TextProjection::new(transparent_text_projection));
+        },
+    ];
+    for id in [old, unknown] {
+        assert!(document.get_node(id).is_none());
+        for access in accessors {
+            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                access(&document, id);
+            }))
+            .expect_err("invalid node access must panic");
+            let message = panic
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| panic.downcast_ref::<&str>().copied())
+                .unwrap_or("");
+            assert!(message.contains("invalid or stale node ID"));
+        }
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _ = document.node_mut(id);
+            }))
+            .is_err()
+        );
+    }
+    assert_eq!(document.node(new).cast::<Text>().unwrap().content, "new");
 }
 
 #[test]
@@ -160,7 +205,7 @@ fn parsed_document_events_visit_every_node_once() {
     let mut stack = Vec::new();
     let mut visited = HashSet::new();
 
-    for event in document.events(document.root()).unwrap() {
+    for event in document.events(document.root()) {
         let node = event.node();
         match event {
             StructuralEvent::Enter(_) => {
@@ -203,14 +248,14 @@ fn node_data_survives_draft_and_legacy_transfers() {
     }
 
     fn assert_document(document: &Document) {
-        let root = document.node(document.root()).unwrap();
+        let root = document.node(document.root());
         assert_eq!(root.cast::<Payload>().unwrap().0, "payload");
         assert!(root.cast::<Text>().is_none());
         assert_eq!(root.srcmap().unwrap().get_byte_offsets(), (0, 3));
         assert_eq!(root.attrs(), &vec![("class".into(), "kept".into())]);
         assert_eq!(root.ext().get::<Metadata>().unwrap().0, "metadata");
         assert_eq!(root.children().len(), 1);
-        let child = document.node(root.children()[0]).unwrap();
+        let child = document.node(root.children()[0]);
         assert_eq!(child.parent(), Some(root.id()));
         assert_eq!(child.cast::<Text>().unwrap().content, "abc");
     }

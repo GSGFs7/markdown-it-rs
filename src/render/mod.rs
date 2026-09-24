@@ -8,7 +8,7 @@ use std::hash::{BuildHasherDefault, Hasher};
 use std::marker::PhantomData;
 
 use crate::common::utils::escape_html;
-use crate::document::{Document, DocumentNode, InvalidNodeId, NodeId, NodeRef, StructuralEvent};
+use crate::document::{Document, DocumentNode, NodeId, NodeRef, StructuralEvent};
 use crate::parser::core::Root;
 use crate::parser::extset::RenderExtSet;
 use crate::parser::node::{HtmlAttribute, NodeValue};
@@ -19,8 +19,6 @@ use crate::parser::render_options::RenderOptions;
 /// Error produced while rendering an arena-backed [`Document`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DocumentRenderError {
-    /// A renderer attempted to visit an invalid or stale node ID.
-    InvalidNodeId(InvalidNodeId),
     /// A leaf payload has no renderer for the requested format.
     MissingRenderer {
         format: String,
@@ -34,7 +32,6 @@ pub enum DocumentRenderError {
 impl fmt::Display for DocumentRenderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidNodeId(source) => source.fmt(f),
             Self::MissingRenderer {
                 format,
                 node,
@@ -49,12 +46,6 @@ impl fmt::Display for DocumentRenderError {
 }
 
 impl std::error::Error for DocumentRenderError {}
-
-impl From<InvalidNodeId> for DocumentRenderError {
-    fn from(value: InvalidNodeId) -> Self {
-        Self::InvalidNodeId(value)
-    }
-}
 
 impl From<fmt::Error> for DocumentRenderError {
     fn from(_: fmt::Error) -> Self {
@@ -357,7 +348,7 @@ impl DocumentRenderContext<'_> {
         node: NodeId,
         output: &mut DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
-        for &child in self.shared.document.children(node)? {
+        for &child in self.shared.document.children(node) {
             stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
                 render_node(self.shared, self.ext, child, output)
             })?;
@@ -373,7 +364,7 @@ fn render_node(
     id: NodeId,
     output: &mut DocumentWriter,
 ) -> Result<(), DocumentRenderError> {
-    let node = shared.document.node(id)?;
+    let node = shared.document.node(id);
     let Some(renderer) = shared
         .renderers
         .and_then(|renderers| renderers.get(&node.type_id()))
@@ -517,7 +508,7 @@ impl DocumentNodeRenderer<Root> for DebugTreeDocumentRenderer {
         output: &mut DocumentWriter,
     ) -> Result<(), DocumentRenderError> {
         let mut depth = 0;
-        for event in context.document().events(node.id())? {
+        for event in context.document().events(node.id()) {
             let (kind, current) = match event {
                 StructuralEvent::Enter(current) => ("container", current),
                 StructuralEvent::Leaf(current) => ("leaf", current),

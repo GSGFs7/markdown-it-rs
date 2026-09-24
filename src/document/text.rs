@@ -3,7 +3,7 @@
 use std::iter::FusedIterator;
 use std::str::CharIndices;
 
-use crate::document::{Document, InvalidNodeId, NodeId, NodeRef};
+use crate::document::{Document, NodeId, NodeRef};
 
 /// A semantic boundary between projected text regions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -94,15 +94,14 @@ pub struct TextEvents<'a> {
 }
 
 impl<'a> TextEvents<'a> {
+    #[track_caller]
     fn new(document: &'a Document, root: NodeId, projection: TextProjection) -> Self {
         let mut events = Self {
             document,
             classifier: projection.classifier,
             stack: Vec::with_capacity(16),
         };
-        let root = document
-            .node(root)
-            .expect("text event root was validated before iterator construction");
+        let root = document.node(root);
         events.push(root, 0);
         events
     }
@@ -181,10 +180,7 @@ impl Iterator for TextEvents<'_> {
                             .nesting_level
                             .checked_add(1)
                             .expect("document nesting level exceeds u32");
-                        let child = self
-                            .document
-                            .node(child)
-                            .expect("document tree is internally valid");
+                        let child = self.document.node(child);
                         self.push(child, nesting_level);
                     } else {
                         frame.phase = Phase::Exit;
@@ -211,14 +207,13 @@ impl Document {
         TextEvents::new(self, self.root(), projection)
     }
 
-    /// Project one document subtree, rejecting an invalid or stale root ID.
-    pub fn text_events_from(
-        &self,
-        root: NodeId,
-        projection: TextProjection,
-    ) -> Result<TextEvents<'_>, InvalidNodeId> {
-        self.node(root)?;
-        Ok(TextEvents::new(self, root, projection))
+    /// Project one document subtree into text events.
+    ///
+    /// # Panics
+    /// Panics if the root ID is invalid or stale.
+    #[track_caller]
+    pub fn text_events_from(&self, root: NodeId, projection: TextProjection) -> TextEvents<'_> {
+        TextEvents::new(self, root, projection)
     }
 }
 

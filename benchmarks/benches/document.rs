@@ -109,7 +109,7 @@ fn one_edit_per_text_node(document: &markdown_it::Document) -> EditBatch {
 
 fn one_attribute_per_node(document: &markdown_it::Document) -> EditBatch {
     let mut batch = EditBatch::new();
-    for event in document.events(document.root()).unwrap() {
+    for event in document.events(document.root()) {
         match event {
             StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => {
                 batch.set_attribute(node.id(), "data-benchmark", "edited");
@@ -122,7 +122,7 @@ fn one_attribute_per_node(document: &markdown_it::Document) -> EditBatch {
 
 fn remove_top_level_subtrees(document: &markdown_it::Document) -> EditBatch {
     let mut batch = EditBatch::new();
-    for &child in document.children(document.root()).unwrap() {
+    for &child in document.children(document.root()) {
         batch.remove_node(child);
     }
     batch
@@ -130,7 +130,7 @@ fn remove_top_level_subtrees(document: &markdown_it::Document) -> EditBatch {
 
 fn insert_before_top_level_nodes(document: &markdown_it::Document) -> EditBatch {
     let mut batch = EditBatch::new();
-    for &child in document.children(document.root()).unwrap() {
+    for &child in document.children(document.root()) {
         batch.insert_before(
             child,
             NodeDraft::new(Text {
@@ -143,7 +143,7 @@ fn insert_before_top_level_nodes(document: &markdown_it::Document) -> EditBatch 
 
 fn replace_top_level_subtrees(document: &markdown_it::Document) -> EditBatch {
     let mut batch = EditBatch::new();
-    for &child in document.children(document.root()).unwrap() {
+    for &child in document.children(document.root()) {
         batch.replace_node(
             child,
             NodeDraft::new(Text {
@@ -156,7 +156,7 @@ fn replace_top_level_subtrees(document: &markdown_it::Document) -> EditBatch {
 
 fn wrap_top_level_range(document: &markdown_it::Document) -> EditBatch {
     let mut batch = EditBatch::new();
-    let children = document.children(document.root()).unwrap();
+    let children = document.children(document.root());
     if let (Some(&first), Some(&last)) = (children.first(), children.last()) {
         batch.wrap_range(first, last, NodeDraft::new(Paragraph));
     }
@@ -231,7 +231,7 @@ fn benchmark(c: &mut Criterion) {
         });
         group.bench_function("arena-structural-events", |b| {
             b.iter(|| {
-                for event in document.events(document.root()).unwrap() {
+                for event in document.events(document.root()) {
                     black_box(event.node().name());
                 }
             })
@@ -276,7 +276,7 @@ fn benchmark(c: &mut Criterion) {
         let attribute_count = document.len();
         let mut edited = md.parse_document(source);
         one_attribute_per_node(&edited).commit(&mut edited);
-        for event in edited.events(edited.root()).unwrap() {
+        for event in edited.events(edited.root()) {
             if let StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) = event {
                 assert!(node
                     .attrs()
@@ -306,7 +306,7 @@ fn benchmark(c: &mut Criterion) {
         let mut edited = md.parse_document(source);
         remove_top_level_subtrees(&edited).commit(&mut edited);
         assert_eq!(edited.len(), 1);
-        assert!(edited.children(edited.root()).unwrap().is_empty());
+        assert!(edited.children(edited.root()).is_empty());
         let mut group = c.benchmark_group(format!("document-subtree-remove/{}", corpus.name));
         group.throughput(Throughput::Elements(removed_count as u64));
         group.bench_function("validate-and-commit", |b| {
@@ -325,11 +325,11 @@ fn benchmark(c: &mut Criterion) {
         });
         group.finish();
 
-        let inserted_count = document.children(document.root()).unwrap().len();
+        let inserted_count = document.children(document.root()).len();
         let mut edited = md.parse_document(source);
-        let original_children = edited.children(edited.root()).unwrap().to_vec();
+        let original_children = edited.children(edited.root()).to_vec();
         insert_before_top_level_nodes(&edited).commit(&mut edited);
-        let edited_children = edited.children(edited.root()).unwrap();
+        let edited_children = edited.children(edited.root());
         assert_eq!(edited_children.len(), original_children.len() * 2);
         let (pairs, remainder) = edited_children.as_chunks::<2>();
         assert!(remainder.is_empty());
@@ -338,7 +338,6 @@ fn benchmark(c: &mut Criterion) {
             assert_eq!(
                 edited
                     .node(pair[0])
-                    .unwrap()
                     .cast::<Text>()
                     .unwrap()
                     .content,
@@ -365,13 +364,13 @@ fn benchmark(c: &mut Criterion) {
 
         let replaced_node_count = document.len() - 1;
         let mut edited = md.parse_document(source);
-        let old_roots = edited.children(edited.root()).unwrap().to_vec();
+        let old_roots = edited.children(edited.root()).to_vec();
         replace_top_level_subtrees(&edited).commit(&mut edited);
         assert_eq!(edited.len(), old_roots.len() + 1);
-        assert!(old_roots.iter().all(|&node| edited.node(node).is_err()));
-        for &node in edited.children(edited.root()).unwrap() {
+        assert!(old_roots.iter().all(|&node| edited.get_node(node).is_none()));
+        for &node in edited.children(edited.root()) {
             assert_eq!(
-                edited.node(node).unwrap().cast::<Text>().unwrap().content,
+                edited.node(node).cast::<Text>().unwrap().content,
                 "generated"
             );
         }
@@ -393,15 +392,15 @@ fn benchmark(c: &mut Criterion) {
         });
         group.finish();
 
-        let wrapped_count = document.children(document.root()).unwrap().len();
+        let wrapped_count = document.children(document.root()).len();
         let mut edited = md.parse_document(source);
-        let original_children = edited.children(edited.root()).unwrap().to_vec();
+        let original_children = edited.children(edited.root()).to_vec();
         wrap_top_level_range(&edited).commit(&mut edited);
         assert_eq!(edited.len(), document.len() + 1);
-        let wrapper = edited.children(edited.root()).unwrap()[0];
-        assert_eq!(edited.children(wrapper).unwrap(), original_children);
-        assert!(edited.children(wrapper).unwrap().iter().all(|&node| {
-            edited.node(node).is_ok() && edited.parent(node).unwrap() == Some(wrapper)
+        let wrapper = edited.children(edited.root())[0];
+        assert_eq!(edited.children(wrapper), original_children);
+        assert!(edited.children(wrapper).iter().all(|&node| {
+            edited.get_node(node).is_some() && edited.parent(node) == Some(wrapper)
         }));
         let mut group = c.benchmark_group(format!("document-sibling-wrap/{}", corpus.name));
         group.throughput(Throughput::Elements(wrapped_count as u64));

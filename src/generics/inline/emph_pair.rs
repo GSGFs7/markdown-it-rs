@@ -694,7 +694,6 @@ mod tests {
 
         let wrapper = direct
             .events(direct.root())
-            .unwrap()
             .find_map(|event| {
                 let node = event.node();
                 node.is::<CustomEmphasis>().then_some(node)
