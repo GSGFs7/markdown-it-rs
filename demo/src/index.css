@@ -1,5 +1,12 @@
+html {
+    height: 100%;
+}
+
 body {
-    margin-top: 1rem;
+    box-sizing: border-box;
+    margin: 0;
+    min-height: 100%;
+    padding-top: 1rem;
 }
 
 .header {
@@ -58,6 +65,306 @@ body {
     border-top-left-radius: 0;
 }
 
+/*
+ * Stretch the editor/preview to the viewport height on desktop so the panels
+ * fill the window instead of sitting in a fixed 400px band at the top.
+ * Narrow (stacked) layouts are handled by the mobile block below.
+ */
+@media (min-width: 768px) {
+    main.container {
+        height: calc(100vh - 1rem);
+    }
+
+    main.container > .row {
+        height: 100%;
+    }
+
+    main.container section {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    #source,
+    #result-preview,
+    #result-html,
+    #result-loading {
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto;
+    }
+}
+
+/*
+ * Mobile / stacked layout:
+ *  - let the preview grow with the page so there is a single scroll instead of
+ *    two nested 400px scroll boxes;
+ *  - shorten the editor so it does not eat the whole viewport;
+ *  - hide the decorative ribbon, which otherwise covers the header;
+ *  - scale down headings that are oversized on a narrow screen.
+ */
+@media (max-width: 767.98px) {
+    #source {
+        height: 40vh;
+        min-height: 14rem;
+    }
+
+    #result-preview {
+        height: auto;
+        min-height: 12rem;
+    }
+
+    #result-html {
+        height: auto;
+        min-height: 12rem;
+        max-height: 60vh;
+    }
+
+    #result-preview {
+        font-size: 0.95rem;
+    }
+
+    #result-preview h1 {
+        font-size: 1.75rem;
+    }
+
+    #result-preview h2 {
+        font-size: 1.4rem;
+    }
+
+    #result-preview h3 {
+        font-size: 1.2rem;
+    }
+
+    #result-preview h4,
+    #result-preview h5,
+    #result-preview h6 {
+        font-size: 1.05rem;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+ * Rendered Markdown content
+ *
+ * Bootstrap only provides app chrome (Reboot); it no longer ships the
+ * markdown-friendly typography of Bootstrap 3/4, and the parser plugins emit no
+ * inline styles. Everything the CommonMark + extra plugins can produce is
+ * styled below, scoped to #result-preview.
+ * ------------------------------------------------------------------------- */
+
+#result-preview {
+    line-height: 1.6;
+}
+
+/* Collapse the outer margins so the box padding stays even. */
+#result-preview > :first-child {
+    margin-top: 0;
+}
+
+#result-preview > :last-child {
+    margin-bottom: 0;
+}
+
+/* Inline code (code spans) */
+#result-preview code {
+    padding: 0.2em 0.4em;
+    margin: 0;
+    font-size: 85%;
+    background-color: rgba(175, 184, 193, 0.2);
+    border-radius: 6px;
+}
+
+/* Fenced and indented code blocks */
+#result-preview pre {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    overflow: auto;
+    font-size: 85%;
+    line-height: 1.45;
+    background-color: #f6f8fa;
+    border-radius: 6px;
+}
+
+#result-preview pre code {
+    padding: 0;
+    margin: 0;
+    font-size: 100%;
+    background-color: transparent;
+    border-radius: 0;
+    white-space: pre;
+    overflow-wrap: normal;
+    word-break: normal;
+}
+
+/* Lines marked with ```rust {1,3} - the plugin only adds the class */
+#result-preview .syntect-line {
+    display: block;
+}
+
+#result-preview .syntect-line-highlighted {
+    background-color: rgba(255, 235, 59, 0.35);
+}
+
+/* Blockquotes */
+#result-preview blockquote {
+    margin: 0 0 1rem;
+    padding: 0 1rem;
+    color: #57606a;
+    border-left: 0.25rem solid #d0d7de;
+}
+
+#result-preview blockquote > :last-child {
+    margin-bottom: 0;
+}
+
+/* Horizontal rules */
+#result-preview hr {
+    height: 0.25rem;
+    padding: 0;
+    margin: 1.5rem 0;
+    background-color: #d0d7de;
+    border: 0;
+}
+
+/* Images */
+#result-preview img {
+    max-width: 100%;
+    box-sizing: content-box;
+    background-color: #fff;
+}
+
+/* Tables (GFM) */
+#result-preview table {
+    display: block;
+    width: max-content;
+    max-width: 100%;
+    margin-bottom: 1rem;
+    overflow: auto;
+    border-spacing: 0;
+    border-collapse: collapse;
+}
+
+#result-preview table th,
+#result-preview table td {
+    padding: 0.375rem 0.8125rem;
+    border: 1px solid #d0d7de;
+}
+
+#result-preview table th {
+    font-weight: 600;
+}
+
+#result-preview table tr:nth-child(2n) {
+    background-color: #f6f8fa;
+}
+
+/* Highlighted text (==mark==) */
+#result-preview mark {
+    padding: 0.15em 0.2em;
+    background-color: #fff8c5;
+    border-radius: 3px;
+}
+
+/* Task lists */
+#result-preview .contains-task-list {
+    /* Keep a gutter so the negatively-offset checkbox stays inside the box. */
+    padding-left: 1.5em;
+    list-style: none;
+}
+
+#result-preview .task-list-item {
+    list-style: none;
+}
+
+#result-preview .task-list-item-checkbox {
+    margin: 0 0.4em 0.2em -1.2em;
+    vertical-align: middle;
+}
+
+/* Footnotes */
+#result-preview .footnote-ref {
+    font-size: 75%;
+    line-height: 0;
+}
+
+#result-preview .footnote-ref a,
+#result-preview .footnote-backref {
+    text-decoration: none;
+}
+
+#result-preview .footnotes {
+    font-size: 0.875em;
+}
+
+#result-preview .footnotes-sep {
+    margin: 2rem 0 1rem;
+}
+
+#result-preview .footnote-item p {
+    margin-bottom: 0.25rem;
+}
+
+/* Math ($...$ / $$...$$). KaTeX itself is styled by katex.min.css. */
+#result-preview .math-inline {
+    white-space: nowrap;
+}
+
+#result-preview .math-block {
+    margin: 1rem 0;
+    overflow-x: auto;
+}
+
+/*
+ * GitHub-style alerts.
+ * https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#alerts
+ */
+#result-preview .markdown-alert {
+    margin: 1rem 0;
+    padding: 0.5rem 1rem;
+    border-left: 0.25rem solid;
+    border-radius: 6px;
+}
+
+#result-preview .markdown-alert > :last-child {
+    margin-bottom: 0;
+}
+
+#result-preview .markdown-alert-title {
+    margin: 0 0 0.5rem;
+    font-weight: 600;
+}
+
+#result-preview .markdown-alert-note {
+    border-left-color: #0969da;
+}
+#result-preview .markdown-alert-note .markdown-alert-title {
+    color: #0969da;
+}
+#result-preview .markdown-alert-tip {
+    border-left-color: #1a7f37;
+}
+#result-preview .markdown-alert-tip .markdown-alert-title {
+    color: #1a7f37;
+}
+#result-preview .markdown-alert-important {
+    border-left-color: #8250df;
+}
+#result-preview .markdown-alert-important .markdown-alert-title {
+    color: #8250df;
+}
+#result-preview .markdown-alert-warning {
+    border-left-color: #9a6700;
+}
+#result-preview .markdown-alert-warning .markdown-alert-title {
+    color: #9a6700;
+}
+#result-preview .markdown-alert-caution {
+    border-left-color: #cf222e;
+}
+#result-preview .markdown-alert-caution .markdown-alert-title {
+    color: #cf222e;
+}
+
 /* https://github.com/markdown-it/markdown-it/blob/master/support/demo_template/index.css */
 .gh-ribbon {
     display: block;
@@ -84,4 +391,11 @@ body {
     outline: medium none;
     padding: 4px 50px 2px;
     text-align: center;
+}
+
+/* Must come after the .gh-ribbon block above to win on narrow screens. */
+@media (max-width: 767.98px) {
+    .gh-ribbon {
+        display: none;
+    }
 }
