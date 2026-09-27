@@ -927,10 +927,7 @@ mod probe_label_tests {
     }
 
     fn render(md: &MarkdownIt, source: &str) -> String {
-        md.parse_document_direct(source)
-            .unwrap()
-            .into_legacy()
-            .render()
+        md.parse_document_direct(source).into_legacy().render()
     }
 
     /// Label bodies shared by the raw-label and combined-candidate tests.
@@ -1286,14 +1283,14 @@ mod probe_label_tests {
     }
 
     #[test]
+    #[should_panic(
+        expected = "parser configuration contains unsupported direct inline rules or factories"
+    )]
     fn legacy_only_link_factory_remains_unsupported_by_direct() {
         let mut md = MarkdownIt::empty();
         crate::plugins::cmark::block::paragraph::add(&mut md);
         add::<false>(&mut md, |_, _| Node::new(crate::parser::node::NodeEmpty));
-        assert!(matches!(
-            md.parse_document_direct("[x](/url)"),
-            Err(crate::DocumentParseError::UnsupportedConfiguration)
-        ));
+        md.parse_document_direct("[x](/url)");
     }
 
     #[test]
@@ -1358,7 +1355,7 @@ mod probe_label_tests {
                 format!("[a {PREFIX}[雪](/in)](/out)"),
                 format!("{PREFIX}[雪](/unfinished"),
             ] {
-                let direct = md.parse_document_direct(&source).unwrap();
+                let direct = md.parse_document_direct(&source);
                 let legacy = md.parse_document(&source);
                 assert_eq!(
                     md.render_document(&direct),

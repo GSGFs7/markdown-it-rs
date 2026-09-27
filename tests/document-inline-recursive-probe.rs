@@ -66,20 +66,20 @@ fn parser(max_nesting: u32) -> MarkdownIt {
 #[test]
 fn recursive_probe_returns_outer_relative_length() {
     let md = parser(4);
-    let document = md.parse_document_direct("@^^雪").unwrap();
+    let document = md.parse_document_direct("@^^雪");
     assert_eq!(document.into_legacy().render(), "<p>0..5</p>\n");
 }
 
 #[test]
 fn nested_default_probe_falls_back_to_text() {
     let md = parser(4);
-    let document = md.parse_document_direct("@^^?").unwrap();
+    let document = md.parse_document_direct("@^^?");
     assert_eq!(document.into_legacy().render(), "<p>0..3</p>\n");
 }
 
 #[test]
 fn recursive_depth_limit_falls_back_inward() {
     let md = parser(3);
-    let document = md.parse_document_direct("@^^x").unwrap();
+    let document = md.parse_document_direct("@^^x");
     assert_eq!(document.into_legacy().render(), "<p>0..2</p>\n");
 }

@@ -1,9 +1,9 @@
 use markdown_it::parser::core::Root;
-use markdown_it::{DocumentParseError, MarkdownIt, NodeDraft, StructuralEvent};
+use markdown_it::{MarkdownIt, NodeDraft, StructuralEvent};
 
 fn assert_direct_matches_bridge(md: &MarkdownIt, source: &str) {
     let bridged = md.parse_document(source);
-    let direct = md.parse_document_direct(source).unwrap();
+    let direct = md.parse_document_direct(source);
 
     assert_eq!(direct.source(), source);
     assert_eq!(direct.len(), bridged.len(), "node count for {source:?}");
@@ -31,6 +31,19 @@ fn assert_direct_matches_bridge(md: &MarkdownIt, source: &str) {
         md.parse(source).render(),
         "legacy conversion for {source:?}"
     );
+}
+
+fn assert_direct_configuration_panics(md: &MarkdownIt, source: &str, expected: &str) {
+    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        md.parse_document_direct(source);
+    }))
+    .expect_err("unsupported direct configuration must panic");
+    let message = payload
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| payload.downcast_ref::<&str>().copied())
+        .expect("configuration panic must carry a string message");
+    assert!(message.contains(expected), "{message}");
 }
 
 #[test]
@@ -71,18 +84,18 @@ fn direct_paragraph_and_text_rules_match_the_legacy_bridge() {
 #[test]
 fn direct_parser_rejects_unmigrated_syntax_rules() {
     let md = MarkdownIt::new();
-    assert!(matches!(
-        md.parse_document_direct("# heading"),
-        Err(DocumentParseError::UnsupportedConfiguration)
-    ));
+    for source in ["# heading", ""] {
+        assert_direct_configuration_panics(&md, source, "unsupported direct block rules");
+    }
 
     let mut partial = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial);
     markdown_it::plugins::cmark::block::hr::add(&mut partial);
-    assert!(matches!(
-        partial.parse_document_direct("---"),
-        Err(DocumentParseError::UnsupportedConfiguration)
-    ));
+    for source in ["---", ""] {
+        assert_direct_configuration_panics(&partial, source, "unsupported direct block rules");
+    }
+    partial.max_nesting = 0;
+    assert_direct_configuration_panics(&partial, "---", "unsupported direct block rules");
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
@@ -94,10 +107,31 @@ fn direct_parser_rejects_unmigrated_syntax_rules() {
             })
         },
     );
-    assert!(matches!(
-        partial_inline.parse_document_direct("~[x](/url)"),
-        Err(DocumentParseError::UnsupportedConfiguration)
-    ));
+    for source in ["~[x](/url)", ""] {
+        assert_direct_configuration_panics(
+            &partial_inline,
+            source,
+            "unsupported direct inline rules or factories",
+        );
+    }
+    partial_inline.max_nesting = 0;
+    assert_direct_configuration_panics(
+        &partial_inline,
+        "~[x](/url)",
+        "unsupported direct inline rules or factories",
+    );
+}
+
+#[test]
+fn direct_parser_checks_core_configuration_before_parsing() {
+    let mut md = MarkdownIt::empty();
+    md.remove_rule::<markdown_it::parser::block::builtin::BlockParserRule>();
+    md.max_nesting = 0;
+    assert_direct_configuration_panics(
+        &md,
+        "",
+        "direct parsing requires the built-in block and inline core rules only",
+    );
 }
 
 #[test]
@@ -106,9 +140,7 @@ fn direct_parser_accepts_migrated_emphasis_rules() {
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
     markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
 
-    let direct = md
-        .parse_document_direct("*em* and **strong**")
-        .expect("emphasis rules have direct implementations");
+    let direct = md.parse_document_direct("*em* and **strong**");
 
     assert_eq!(
         md.render_document(&direct),
@@ -204,7 +236,7 @@ fn direct_code_spans_preserve_output_structure_and_source_maps() {
         assert_direct_matches_bridge(&md, source);
     }
 
-    let document = md.parse_document_direct("foo ```bar``` baz").unwrap();
+    let document = md.parse_document_direct("foo ```bar``` baz");
     let mut spans = document.events(document.root()).filter_map(|event| {
         if matches!(event, StructuralEvent::Exit(_)) {
             return None;
@@ -244,7 +276,7 @@ fn code_pair_factory_uses_drafts_and_supports_unicode_markers() {
         NodeDraft::new(CustomCode(len))
     });
     let source = "a 🦀 雪 🦀 b 🦀🦀x🦀🦀";
-    let direct = md.parse_document_direct(source).unwrap();
+    let direct = md.parse_document_direct(source);
     assert_eq!(direct.into_legacy().render(), "a 1:雪 b 2:x\n");
     assert_eq!(md.parse(source).render(), "a 1:雪 b 2:x\n");
 }
@@ -263,10 +295,7 @@ fn trailing_space_removal_maps_inline_offsets_once() {
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
     markdown_it::plugins::cmark::inline::newline::add(&mut md);
     let source = "雪\r\n次  \r\n行";
-    for document in [
-        md.parse_document(source),
-        md.parse_document_direct(source).unwrap(),
-    ] {
+    for document in [md.parse_document(source), md.parse_document_direct(source)] {
         let spans: Vec<_> = document
             .events(document.root())
             .filter_map(|event| {
@@ -353,7 +382,7 @@ fn direct_nested_emphasis_preserves_source_maps() {
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
     markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
 
-    let document = md.parse_document_direct("***foo***").unwrap();
+    let document = md.parse_document_direct("***foo***");
 
     let spans: Vec<_> = document
         .events(document.root())
@@ -420,7 +449,7 @@ fn direct_links_use_real_registration() {
     ] {
         assert_direct_matches_bridge(&md, source);
     }
-    let document = md.parse_document_direct("[x](/url)").unwrap();
+    let document = md.parse_document_direct("[x](/url)");
     assert_eq!(
         md.render_document(&document),
         "<p><a href=\"/url\">x</a></p>\n",
@@ -430,11 +459,9 @@ fn direct_links_use_real_registration() {
     md.max_nesting = 2;
     assert_direct_matches_bridge(&md, "[x](/url)");
 
+    // Reference definitions are not part of the direct pipeline yet.
     block::reference::add(&mut md);
-    assert!(matches!(
-        md.parse_document_direct("[x](/url)"),
-        Err(DocumentParseError::UnsupportedConfiguration)
-    ));
+    assert_direct_configuration_panics(&md, "[x](/url)", "unsupported direct block rules");
 }
 
 #[test]
@@ -478,7 +505,7 @@ fn direct_images_and_links_match_legacy_in_both_registration_orders() {
         ] {
             assert_direct_matches_bridge(&md, source);
         }
-        let document = md.parse_document_direct("![x](/img)").unwrap();
+        let document = md.parse_document_direct("![x](/img)");
         assert_eq!(
             md.render_document(&document),
             "<p><img src=\"/img\" alt=\"x\"></p>\n"
@@ -530,7 +557,7 @@ fn direct_link_and_image_nesting_thresholds_are_explicit() {
     for limit in [0, 1, 2, 32] {
         md.max_nesting = limit;
         for (source, literal, parsed) in cases {
-            let document = md.parse_document_direct(source).unwrap();
+            let document = md.parse_document_direct(source);
             let expected = match limit {
                 0 => "",
                 1 => literal,
@@ -557,7 +584,7 @@ fn direct_unclosed_link_labels_remain_literal() {
     for size in [64, 1024, 4096] {
         for part in ["[", "![", "雪["] {
             let source = part.repeat(size);
-            let document = md.parse_document_direct(&source).unwrap();
+            let document = md.parse_document_direct(&source);
             assert_eq!(
                 md.render_document(&document),
                 format!("<p>{source}</p>\n"),

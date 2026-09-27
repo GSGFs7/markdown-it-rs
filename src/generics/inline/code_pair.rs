@@ -27,7 +27,7 @@
 //!
 //! let md = &mut MarkdownIt::empty();
 //! code_pair::add_with::<'%'>(md, |_| NodeDraft::new(Ferris));
-//! let html = md.parse_document_direct("hello %world%").unwrap().into_legacy().render();
+//! let html = md.parse_document_direct("hello %world%").into_legacy().render();
 //! assert_eq!(html.trim(), "hello 🦀world🦀");
 //! ```
 //!

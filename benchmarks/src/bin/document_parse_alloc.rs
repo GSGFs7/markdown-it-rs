@@ -85,7 +85,7 @@ fn main() {
             // Warm lazy parser state before enabling the counter.
             let expected = md.parse(source).render();
             assert_eq!(
-                md.render_document(&md.parse_document_direct(source).unwrap()),
+                md.render_document(&md.parse_document_direct(source)),
                 expected
             );
 
@@ -103,7 +103,7 @@ fn main() {
             );
 
             let (direct, direct_stats) =
-                measure(|| md.parse_document_direct(black_box(source)).unwrap());
+                measure(|| md.parse_document_direct(black_box(source)));
             let direct_nodes = direct.len();
             assert_eq!(md.render_document(&direct), expected);
             assert_eq!(direct_nodes, bridge_nodes);

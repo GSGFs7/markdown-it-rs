@@ -59,7 +59,7 @@ fn parser() -> MarkdownIt {
 #[test]
 fn custom_rule_parses_nested_children_without_losing_parent_text() {
     let md = parser();
-    let document = md.parse_document_direct("前{ 雪 {*x*} }尾 {}").unwrap();
+    let document = md.parse_document_direct("前{ 雪 {*x*} }尾 {}");
     assert_eq!(
         document.into_legacy().render(),
         "<p>前{ 雪 {<em>x</em>} }尾 {}</p>\n"
@@ -76,10 +76,7 @@ fn delimiters_and_negative_caches_do_not_leak_between_ranges() {
         ("{`x} `y`", "<p>{`x} <code>y</code></p>\n"),
     ] {
         assert_eq!(
-            md.parse_document_direct(source)
-                .unwrap()
-                .into_legacy()
-                .render(),
+            md.parse_document_direct(source).into_legacy().render(),
             expected,
             "{source}"
         );
@@ -90,7 +87,7 @@ fn delimiters_and_negative_caches_do_not_leak_between_ranges() {
 fn nesting_limit_stops_recursive_container_rules() {
     let mut md = parser();
     md.max_nesting = 2;
-    let document = md.parse_document_direct("{ {*x*} *y* }").unwrap();
+    let document = md.parse_document_direct("{ {*x*} *y* }");
     assert_eq!(
         document.into_legacy().render(),
         "<p>{ {*x*} <em>y</em> }</p>\n"
@@ -225,7 +222,7 @@ fn custom_rule_can_probe_ranges_through_public_interface() {
             "<p>0..1=text;1..2=text;2..3=text;3..4=text;4..5=text;5..6=text;</p>\n",
         ),
     ] {
-        let document = md.parse_document_direct(source).unwrap();
+        let document = md.parse_document_direct(source);
         assert_eq!(document.into_legacy().render(), expected, "{source}");
     }
 }
@@ -236,7 +233,7 @@ fn normal_direct_parsing_never_calls_probe() {
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
     md.inline.add_rule::<PanicProbeRule>();
 
-    let document = md.parse_document_direct("x").unwrap();
+    let document = md.parse_document_direct("x");
     assert_eq!(document.into_legacy().render(), "<p>X</p>\n");
 }
 
@@ -247,18 +244,10 @@ fn default_probe_for_matching_marker_falls_back_to_text() {
     md.inline.add_rule::<ProbeSummaryRule>();
     md.inline.add_rule::<NoProbeRule>();
 
-    let html = md
-        .parse_document_direct("{y}")
-        .unwrap()
-        .into_legacy()
-        .render();
+    let html = md.parse_document_direct("{y}").into_legacy().render();
     assert_eq!(html, "<p>0..1=text;</p>\n");
 
-    let html = md
-        .parse_document_direct("{x}")
-        .unwrap()
-        .into_legacy()
-        .render();
+    let html = md.parse_document_direct("{x}").into_legacy().render();
     assert_eq!(html, "<p>0..1=text;</p>\n");
 }
 
@@ -283,15 +272,11 @@ fn probe_does_not_call_code_pair_factory() {
     code_pair::add_with::<'$'>(&mut md, factory);
     md.inline.add_rule::<ProbeSummaryRule>();
 
-    let html = md
-        .parse_document_direct("{$x$}")
-        .unwrap()
-        .into_legacy()
-        .render();
+    let html = md.parse_document_direct("{$x$}").into_legacy().render();
     assert_eq!(html, "<p>0..3=token;</p>\n");
     assert_eq!(CALLS.load(Ordering::SeqCst), 0);
 
-    md.parse_document_direct("$x$").unwrap();
+    md.parse_document_direct("$x$");
     assert_eq!(CALLS.load(Ordering::SeqCst), 1);
 }
 
@@ -304,11 +289,7 @@ fn autolink_and_html_dispatch_by_registration_order() {
         ("{<foo@example.com>}", "<p>0..17=token;</p>\n"),
         ("{<javascript:alert(1)>}", "<p>0..1=text;1..21=text;</p>\n"),
     ] {
-        let html = md
-            .parse_document_direct(source)
-            .unwrap()
-            .into_legacy()
-            .render();
+        let html = md.parse_document_direct(source).into_legacy().render();
         assert_eq!(html, expected, "{source}");
     }
 }
@@ -326,11 +307,7 @@ fn mixed_rules_probe_through_public_consumer() {
             "<p>0..1=text;1..2=text;2..3=text;3..4=text;4..7=token;7..8=text;8..10=token;</p>\n",
         ),
     ] {
-        let html = md
-            .parse_document_direct(source)
-            .unwrap()
-            .into_legacy()
-            .render();
+        let html = md.parse_document_direct(source).into_legacy().render();
         assert_eq!(html, expected, "{source}");
     }
 }
@@ -344,7 +321,6 @@ fn autolink_probe_uses_formatter_and_rejection_falls_back() {
     }));
     let html = md
         .parse_document_direct("{<https://example.com>}")
-        .unwrap()
         .into_legacy()
         .render();
     assert_eq!(html, "<p>0..21=token;</p>\n");
@@ -364,7 +340,6 @@ fn autolink_probe_uses_formatter_and_rejection_falls_back() {
     }));
     let html = md
         .parse_document_direct("{<https://example.com>}")
-        .unwrap()
         .into_legacy()
         .render();
     assert_eq!(html, "<p>0..1=text;1..21=text;</p>\n");
@@ -383,7 +358,6 @@ fn autolink_probe_uses_formatter_and_rejection_falls_back() {
     }));
     let html = md
         .parse_document_direct("{<https://foo bar>}")
-        .unwrap()
         .into_legacy()
         .render();
     assert_eq!(html, "<p>0..1=text;1..17=text;</p>\n");

@@ -37,7 +37,7 @@ pub use document::{
     StructuralEvent,
     StructuralEvents,
 };
-pub use parser::document_parser::{DocumentInlineState, DocumentParseError};
+pub use parser::document_parser::DocumentInlineState;
 pub use parser::inline::probe::{
     InlineProbeContext,
     InlineProbeEffects,

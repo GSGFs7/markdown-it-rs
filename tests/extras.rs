@@ -198,7 +198,7 @@ mod markdown_it_rs_extras {
 
         let mut direct_md = MarkdownIt::empty();
         direct_md.inline.add_rule::<MyInlineRule>();
-        let document = direct_md.parse_document_direct("@").unwrap();
+        let document = direct_md.parse_document_direct("@");
         let collected: Vec<_> = document
             .events(document.root())
             .filter_map(|event| event.node().ext().get::<NodeErrors>())

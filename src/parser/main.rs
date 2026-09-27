@@ -11,7 +11,7 @@ use crate::document::transform::{
 };
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::{Root, *};
-use crate::parser::document_parser::{DocumentParseContext, DocumentParseError};
+use crate::parser::document_parser::DocumentParseContext;
 use crate::parser::extset::MarkdownItExtSet;
 use crate::parser::inline::{self, InlineParser, Text, TextSpecial};
 use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
@@ -150,17 +150,18 @@ impl MarkdownIt {
     ///
     /// This experimental entry point supports text, paragraphs, newlines,
     /// escapes, entities, code spans, emphasis, autolinks, inline HTML, and
-    /// ordinary inline links and images through their migrated registrations.
-    /// Third-party rules must also provide direct implementations.
-    /// Reference definitions and the full `cmark::add` configuration are not
-    /// supported yet. Legacy-only factories and unsupported block or core
-    /// rules cause `UnsupportedConfiguration`, regardless of the input.
+    /// ordinary inline links and images. Reference definitions and the full
+    /// `cmark::add` configuration are not supported yet. At low `max_nesting`
+    /// values, links and images may remain literal; a zero limit stops block
+    /// parsing.
     ///
-    /// Direct child parsing and label probing consume nesting budget. At low
-    /// `max_nesting` values, links and images may remain literal even where
-    /// the legacy parser recognizes them. A zero limit stops block parsing.
+    /// # Panics
+    ///
+    /// Panics if the parser ruler does not contain exactly the built-in block
+    /// and inline core rules, or if any configured rule lacks support for
+    /// direct parsing.
     #[doc(hidden)]
-    pub fn parse_document_direct(&self, src: &str) -> Result<Document, DocumentParseError> {
+    pub fn parse_document_direct(&self, src: &str) -> Document {
         let has_builtin_core_rules = self.ruler.len() == 2
             && self
                 .ruler
@@ -168,27 +169,25 @@ impl MarkdownIt {
             && self
                 .ruler
                 .contains(RuleMark::of::<inline::builtin::InlineParserRule>());
-        if !has_builtin_core_rules {
-            return Err(DocumentParseError::UnsupportedConfiguration);
-        }
+        assert!(
+            has_builtin_core_rules,
+            "direct parsing requires the built-in block and inline core rules only",
+        );
+
         let block_rules = self
             .block
             .document_rules()
-            .ok_or(DocumentParseError::UnsupportedConfiguration)?;
+            .expect("parser configuration contains unsupported direct block rules");
         let inline_rules = self
             .inline
             .document_rules()
-            .ok_or(DocumentParseError::UnsupportedConfiguration)?;
+            .expect("parser configuration contains unsupported direct inline rules or factories");
 
         if block_rules.is_empty() && self.inline.has_only_text_rule() && self.max_nesting > 0 {
-            return Ok(DocumentParseContext::new(src, &self.render_options).parse_text_fallback());
+            return DocumentParseContext::new(src, &self.render_options).parse_text_fallback();
         }
 
-        Ok(DocumentParseContext::new(src, &self.render_options).parse(
-            self,
-            block_rules,
-            inline_rules,
-        ))
+        DocumentParseContext::new(src, &self.render_options).parse(self, block_rules, inline_rules)
     }
 
     /// Register an arena-backed document transform.

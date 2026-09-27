@@ -11,9 +11,7 @@ fn main() {
     // add the custom inline rule
     inline_rule::add(inline_md);
 
-    let document = inline_md
-        .parse_document_direct("(\\/) hello world (\\/)")
-        .unwrap();
+    let document = inline_md.parse_document_direct("(\\/) hello world (\\/)");
     let inline_html = inline_md.render_document(&document);
 
     // Block/core plugins still use the legacy parser until those protocols flip.

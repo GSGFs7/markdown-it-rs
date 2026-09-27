@@ -595,7 +595,7 @@ mod tests {
         node.walk(|node, _| assert!(node.srcmap.is_some(), "{input:?}: {node:?}"));
         assert_eq!(node.render(), output, "legacy parser for {input:?}");
 
-        let direct = md.parse_document_direct(input).expect("direct parser");
+        let direct = md.parse_document_direct(input);
         assert_eq!(
             md.render_document(&direct),
             output,
@@ -688,9 +688,7 @@ mod tests {
         let text = &wrapper.children[0];
         assert_eq!(text.srcmap.unwrap().get_byte_offsets(), (8, 11),);
 
-        let direct = md
-            .parse_document_direct("🦀🦀雪🦀🦀")
-            .expect("custom delimiter has a direct implementation");
+        let direct = md.parse_document_direct("🦀🦀雪🦀🦀");
 
         let wrapper = direct
             .events(direct.root())

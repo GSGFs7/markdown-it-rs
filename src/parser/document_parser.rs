@@ -1,7 +1,6 @@
 //! Transitional direct-to-arena parser support.
 
 use std::borrow::Cow;
-use std::fmt;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -19,25 +18,6 @@ use crate::parser::inline::probe::InlineProbeContext;
 use crate::parser::inline::{DelimiterRun, DocumentRuleSet, Text, scan_delimiter_run};
 use crate::parser::main::MarkdownIt;
 use crate::parser::render_options::RenderOptions;
-
-/// Error returned while a parser configuration still contains rules that
-/// have not been migrated to the direct arena pipeline.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DocumentParseError {
-    UnsupportedConfiguration,
-}
-
-impl fmt::Display for DocumentParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::UnsupportedConfiguration => f.write_str(
-                "parser configuration contains rules without direct arena implementations",
-            ),
-        }
-    }
-}
-
-impl std::error::Error for DocumentParseError {}
 
 pub(crate) struct DocumentParseContext<'a> {
     source: &'a str,

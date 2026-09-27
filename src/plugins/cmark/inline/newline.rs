@@ -214,7 +214,7 @@ mod test {
                 md.render_document(&md.parse_document(source)),
                 "{source}"
             );
-            let direct = md.parse_document_direct(source).unwrap();
+            let direct = md.parse_document_direct(source);
             assert_eq!(legacy, md.render_document(&direct), "{source}");
         }
     }

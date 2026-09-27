@@ -11,7 +11,7 @@ fn benchmark(c: &mut Criterion) {
             let source = corpus.source();
             let expected = md.parse(source).render();
             let bridged = md.parse_document(source);
-            let direct = md.parse_document_direct(source).unwrap();
+            let direct = md.parse_document_direct(source);
             assert_eq!(md.render_document(&bridged), expected);
             assert_eq!(md.render_document(&direct), expected);
             assert_eq!(direct.len(), bridged.len());
@@ -28,7 +28,7 @@ fn benchmark(c: &mut Criterion) {
                 b.iter(|| black_box(md.parse_document(black_box(source))))
             });
             group.bench_function("arena-direct", |b| {
-                b.iter(|| black_box(md.parse_document_direct(black_box(source)).unwrap()))
+                b.iter(|| black_box(md.parse_document_direct(black_box(source))))
             });
             group.finish();
         }

@@ -210,7 +210,7 @@ mod tests {
         let bridged = md.parse_document(src);
         assert_eq!(legacy, md.render_document(&bridged));
 
-        let direct = md.parse_document_direct(src).unwrap();
+        let direct = md.parse_document_direct(src);
         assert_eq!(legacy, md.render_document(&direct));
 
         legacy
@@ -276,9 +276,7 @@ mod tests {
         use crate::parser::inline::TextSpecial;
 
         let md = parser();
-        let document = md
-            .parse_document_direct("x <https://example.test> y")
-            .unwrap();
+        let document = md.parse_document_direct("x <https://example.test> y");
 
         let spans: Vec<_> = document
             .events(document.root())

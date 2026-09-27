@@ -42,9 +42,7 @@ fn main() {
     // repeated profile region.
     let expected = md.parse(source).render();
     let bridged = md.parse_document(source);
-    let direct = md
-        .parse_document_direct(source)
-        .expect("selected configuration supports direct parsing");
+    let direct = md.parse_document_direct(source);
     assert_eq!(md.render_document(&bridged), expected);
     assert_eq!(md.render_document(&direct), expected);
     assert_eq!(direct.len(), bridged.len());
@@ -62,7 +60,7 @@ fn main() {
         }
         "arena-direct" => {
             for _ in 0..iterations {
-                black_box(md.parse_document_direct(black_box(source)).unwrap());
+                black_box(md.parse_document_direct(black_box(source)));
             }
         }
         _ => usage(),
