@@ -12,8 +12,8 @@ fn benchmark(c: &mut Criterion) {
             let expected = md.parse(source).render();
             let bridged = md.parse_document(source);
             let direct = md.parse_document_direct(source).unwrap();
-            assert_eq!(md.render_document(&bridged).unwrap(), expected);
-            assert_eq!(md.render_document(&direct).unwrap(), expected);
+            assert_eq!(md.render_document(&bridged), expected);
+            assert_eq!(md.render_document(&direct), expected);
             assert_eq!(direct.len(), bridged.len());
 
             let mut group = c.benchmark_group(format!(

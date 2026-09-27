@@ -13,7 +13,6 @@ use crate::plugins::cmark::block::reference::Definition;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     PlainTextBlockDocumentRenderer,
     write_html_close,
     write_html_open,
@@ -31,9 +30,9 @@ impl DocumentNodeRenderer<Blockquote> for BlockquoteDocumentRenderer {
         _: &Blockquote,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        context.cr(output)?;
-        write_html_open(output, "blockquote", node.attrs())?;
+    ) {
+        context.cr(output);
+        write_html_open(output, "blockquote", node.attrs());
 
         let mut only_invisible_definitions = !node.children().is_empty();
         for &child in node.children() {
@@ -43,15 +42,15 @@ impl DocumentNodeRenderer<Blockquote> for BlockquoteDocumentRenderer {
             }
         }
         if !only_invisible_definitions || context.options().xhtml_out {
-            context.cr(output)?;
-            context.render_children(node.id(), output)?;
-            context.cr(output)?;
+            context.cr(output);
+            context.render_children(node.id(), output);
+            context.cr(output);
         } else {
-            context.render_children(node.id(), output)?;
+            context.render_children(node.id(), output);
         }
 
-        write_html_close(output, "blockquote")?;
-        context.cr(output)
+        write_html_close(output, "blockquote");
+        context.cr(output);
     }
 }
 

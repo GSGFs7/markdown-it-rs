@@ -336,11 +336,7 @@ fn benchmark(c: &mut Criterion) {
         for (pair, original) in pairs.iter().zip(original_children) {
             assert_eq!(pair[1], original);
             assert_eq!(
-                edited
-                    .node(pair[0])
-                    .cast::<Text>()
-                    .unwrap()
-                    .content,
+                edited.node(pair[0]).cast::<Text>().unwrap().content,
                 "generated"
             );
         }
@@ -367,7 +363,9 @@ fn benchmark(c: &mut Criterion) {
         let old_roots = edited.children(edited.root()).to_vec();
         replace_top_level_subtrees(&edited).commit(&mut edited);
         assert_eq!(edited.len(), old_roots.len() + 1);
-        assert!(old_roots.iter().all(|&node| edited.get_node(node).is_none()));
+        assert!(old_roots
+            .iter()
+            .all(|&node| edited.get_node(node).is_none()));
         for &node in edited.children(edited.root()) {
             assert_eq!(
                 edited.node(node).cast::<Text>().unwrap().content,

@@ -85,8 +85,7 @@ fn main() {
             // Warm lazy parser state before enabling the counter.
             let expected = md.parse(source).render();
             assert_eq!(
-                md.render_document(&md.parse_document_direct(source).unwrap())
-                    .unwrap(),
+                md.render_document(&md.parse_document_direct(source).unwrap()),
                 expected
             );
 
@@ -95,7 +94,7 @@ fn main() {
 
             let (bridged, bridge_stats) = measure(|| md.parse_document(black_box(source)));
             let bridge_nodes = bridged.len();
-            assert_eq!(md.render_document(&bridged).unwrap(), expected);
+            assert_eq!(md.render_document(&bridged), expected);
             print_row(
                 configuration_name,
                 corpus.name,
@@ -106,7 +105,7 @@ fn main() {
             let (direct, direct_stats) =
                 measure(|| md.parse_document_direct(black_box(source)).unwrap());
             let direct_nodes = direct.len();
-            assert_eq!(md.render_document(&direct).unwrap(), expected);
+            assert_eq!(md.render_document(&direct), expected);
             assert_eq!(direct_nodes, bridge_nodes);
             print_row(
                 configuration_name,

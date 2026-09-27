@@ -45,8 +45,8 @@ fn main() {
     let direct = md
         .parse_document_direct(source)
         .expect("selected configuration supports direct parsing");
-    assert_eq!(md.render_document(&bridged).unwrap(), expected);
-    assert_eq!(md.render_document(&direct).unwrap(), expected);
+    assert_eq!(md.render_document(&bridged), expected);
+    assert_eq!(md.render_document(&direct), expected);
     assert_eq!(direct.len(), bridged.len());
 
     match path.as_str() {

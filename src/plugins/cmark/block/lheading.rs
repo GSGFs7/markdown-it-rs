@@ -13,7 +13,6 @@ use crate::plugins::cmark::block::paragraph::ParagraphScanner;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     PlainTextBlockDocumentRenderer,
     write_html_close,
     write_html_open,
@@ -34,16 +33,16 @@ impl DocumentNodeRenderer<SetextHeader> for SetextHeaderDocumentRenderer {
         heading: &SetextHeader,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         static TAG: [&str; 2] = ["h1", "h2"];
         debug_assert!((1..=2).contains(&heading.level));
         let tag = TAG[heading.level as usize - 1];
 
-        context.cr(output)?;
-        write_html_open(output, tag, node.attrs())?;
-        context.render_children(node.id(), output)?;
-        write_html_close(output, tag)?;
-        context.cr(output)
+        context.cr(output);
+        write_html_open(output, tag, node.attrs());
+        context.render_children(node.id(), output);
+        write_html_close(output, tag);
+        context.cr(output);
     }
 }
 

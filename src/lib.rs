@@ -53,7 +53,6 @@ pub use plugins::presets::{Preset, PresetConfig};
 pub use render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     DocumentRendererRegistry,
     DocumentWriter,
 };

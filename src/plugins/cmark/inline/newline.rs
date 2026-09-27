@@ -14,7 +14,6 @@ use crate::parser::renderer::Renderer;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     PlainTextBreakDocumentRenderer,
     write_html_self_close,
 };
@@ -31,9 +30,9 @@ impl DocumentNodeRenderer<Hardbreak> for HardbreakDocumentRenderer {
         _: &Hardbreak,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        write_html_self_close(output, "br", &[], context.options().xhtml_out)?;
-        context.cr(output)
+    ) {
+        write_html_self_close(output, "br", &[], context.options().xhtml_out);
+        context.cr(output);
     }
 }
 
@@ -56,11 +55,11 @@ impl DocumentNodeRenderer<Softbreak> for SoftbreakDocumentRenderer {
         _: &Softbreak,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         if context.options().breaks {
-            write_html_self_close(output, "br", &[], context.options().xhtml_out)?;
+            write_html_self_close(output, "br", &[], context.options().xhtml_out);
         }
-        context.cr(output)
+        context.cr(output);
     }
 }
 
@@ -212,11 +211,11 @@ mod test {
             let legacy = md.render(source);
             assert_eq!(
                 legacy,
-                md.render_document(&md.parse_document(source)).unwrap(),
+                md.render_document(&md.parse_document(source)),
                 "{source}"
             );
             let direct = md.parse_document_direct(source).unwrap();
-            assert_eq!(legacy, md.render_document(&direct).unwrap(), "{source}");
+            assert_eq!(legacy, md.render_document(&direct), "{source}");
         }
     }
 }

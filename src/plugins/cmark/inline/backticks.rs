@@ -11,7 +11,6 @@ use crate::parser::renderer::Renderer;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     TransparentDocumentRenderer,
     write_html_close,
     write_html_open,
@@ -32,10 +31,10 @@ impl DocumentNodeRenderer<CodeInline> for CodeInlineDocumentRenderer {
         _: &CodeInline,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        write_html_open(output, "code", node.attrs())?;
-        context.render_children(node.id(), output)?;
-        write_html_close(output, "code")
+    ) {
+        write_html_open(output, "code", node.attrs());
+        context.render_children(node.id(), output);
+        write_html_close(output, "code");
     }
 }
 

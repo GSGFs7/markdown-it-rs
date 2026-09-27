@@ -20,7 +20,7 @@ fn benchmark(c: &mut Criterion) {
         let document = md.parse_document(source);
 
         let legacy_html = legacy.render();
-        let direct_html = md.render_document(&document).unwrap();
+        let direct_html = md.render_document(&document);
         let bridge_html = md.parse_document(source).into_legacy().render();
         assert_eq!(direct_html, legacy_html, "{} direct render", corpus.name);
         assert_eq!(bridge_html, legacy_html, "{} bridge render", corpus.name);
@@ -28,7 +28,7 @@ fn benchmark(c: &mut Criterion) {
         let mut render = c.benchmark_group(format!("document-render/{}", corpus.name));
         render.throughput(Throughput::Bytes(corpus.len() as u64));
         render.bench_function("arena-direct", |b| {
-            b.iter(|| black_box(md.render_document(black_box(&document)).unwrap()))
+            b.iter(|| black_box(md.render_document(black_box(&document))))
         });
         render.bench_function("arena-bridge", |b| {
             b.iter_batched(
@@ -37,28 +37,19 @@ fn benchmark(c: &mut Criterion) {
                 BatchSize::SmallInput,
             )
         });
-        render.bench_function("legacy-tree", |b| {
-            b.iter(|| black_box(legacy.render()))
-        });
+        render.bench_function("legacy-tree", |b| b.iter(|| black_box(legacy.render())));
         render.finish();
 
-        let mut end_to_end =
-            c.benchmark_group(format!("document-end-to-end/{}", corpus.name));
+        let mut end_to_end = c.benchmark_group(format!("document-end-to-end/{}", corpus.name));
         end_to_end.throughput(Throughput::Bytes(corpus.len() as u64));
         end_to_end.bench_function("arena-direct", |b| {
             b.iter(|| {
                 let document = md.parse_document(black_box(source));
-                black_box(md.render_document(&document).unwrap())
+                black_box(md.render_document(&document))
             })
         });
         end_to_end.bench_function("arena-bridge", |b| {
-            b.iter(|| {
-                black_box(
-                    md.parse_document(black_box(source))
-                        .into_legacy()
-                        .render(),
-                )
-            })
+            b.iter(|| black_box(md.parse_document(black_box(source)).into_legacy().render()))
         });
         end_to_end.bench_function("legacy-tree", |b| {
             b.iter(|| black_box(md.parse(black_box(source)).render()))

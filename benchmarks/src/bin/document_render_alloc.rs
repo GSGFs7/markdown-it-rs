@@ -94,9 +94,9 @@ fn main() {
 
         // Warm lazy parser/renderer state before enabling the counter.
         let expected = legacy.render();
-        assert_eq!(md.render_document(&document).unwrap(), expected);
+        assert_eq!(md.render_document(&document), expected);
 
-        let (direct, direct_stats) = measure(|| md.render_document(black_box(&document)).unwrap());
+        let (direct, direct_stats) = measure(|| md.render_document(black_box(&document)));
         assert_eq!(direct, expected);
         print_row(corpus.name, "render", "arena-direct", direct_stats, &direct);
 
@@ -117,7 +117,7 @@ fn main() {
 
         let (direct, direct_stats) = measure(|| {
             let document = md.parse_document(black_box(source));
-            md.render_document(&document).unwrap()
+            md.render_document(&document)
         });
         assert_eq!(direct, expected);
         print_row(
@@ -128,11 +128,8 @@ fn main() {
             &direct,
         );
 
-        let (bridge, bridge_stats) = measure(|| {
-            md.parse_document(black_box(source))
-                .into_legacy()
-                .render()
-        });
+        let (bridge, bridge_stats) =
+            measure(|| md.parse_document(black_box(source)).into_legacy().render());
         assert_eq!(bridge, expected);
         print_row(
             corpus.name,

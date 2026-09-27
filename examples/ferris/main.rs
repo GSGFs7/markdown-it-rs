@@ -14,7 +14,7 @@ fn main() {
     let document = inline_md
         .parse_document_direct("(\\/) hello world (\\/)")
         .unwrap();
-    let inline_html = inline_md.render_document(&document).unwrap();
+    let inline_html = inline_md.render_document(&document);
 
     // Block/core plugins still use the legacy parser until those protocols flip.
     let legacy_md = &mut markdown_it::MarkdownIt::empty();

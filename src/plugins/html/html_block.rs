@@ -1,7 +1,6 @@
 //! HTML block syntax from CommonMark
 //!
 //! <https://spec.commonmark.org/0.30/#html-blocks>
-use std::fmt::Write;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -13,7 +12,7 @@ use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
-use crate::render::{DocumentNodeRenderer, DocumentRenderContext, DocumentRenderError};
+use crate::render::{DocumentNodeRenderer, DocumentRenderContext};
 
 #[derive(Debug)]
 pub struct HtmlBlock {
@@ -29,10 +28,10 @@ impl DocumentNodeRenderer<HtmlBlock> for HtmlBlockDocumentRenderer {
         value: &HtmlBlock,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        context.cr(output)?;
-        output.write_str(&value.content)?;
-        context.cr(output)
+    ) {
+        context.cr(output);
+        output.write_str(&value.content);
+        context.cr(output);
     }
 }
 
@@ -45,10 +44,10 @@ impl DocumentNodeRenderer<HtmlBlock> for HtmlBlockTextRenderer {
         value: &HtmlBlock,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        context.cr(output)?;
-        output.write_str(&value.content)?;
-        context.cr(output)
+    ) {
+        context.cr(output);
+        output.write_str(&value.content);
+        context.cr(output);
     }
 }
 

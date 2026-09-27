@@ -1,9 +1,8 @@
-use std::fmt::Write;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     DocumentRendererRegistry,
     DocumentWriter,
 };
@@ -18,6 +17,25 @@ impl NodeValue for UnknownContainer {}
 struct UnknownLeaf(&'static str);
 impl NodeValue for UnknownLeaf {}
 
+#[derive(Debug)]
+struct FailingDisplay;
+
+impl std::fmt::Display for FailingDisplay {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Err(std::fmt::Error)
+    }
+}
+
+fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_owned()
+    } else {
+        "<non-string panic payload>".to_owned()
+    }
+}
+
 struct UnknownLeafRenderer(&'static str);
 
 impl DocumentNodeRenderer<UnknownLeaf> for UnknownLeafRenderer {
@@ -27,9 +45,8 @@ impl DocumentNodeRenderer<UnknownLeaf> for UnknownLeafRenderer {
         value: &UnknownLeaf,
         _: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        write!(output, "{}:{}", self.0, value.0)?;
-        Ok(())
+    ) {
+        write!(output, "{}:{}", self.0, value.0);
     }
 }
 
@@ -42,12 +59,12 @@ impl DocumentNodeRenderer<UnknownLeaf> for DirectWriteAndCrRenderer {
         _: &UnknownLeaf,
         context: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        output.write_str("first")?;
-        context.cr(output)?;
-        context.cr(output)?;
-        output.write_str("second\n")?;
-        context.cr(output)
+    ) {
+        output.write_str("first");
+        context.cr(output);
+        context.cr(output);
+        output.write_str("second\n");
+        context.cr(output);
     }
 }
 
@@ -56,22 +73,13 @@ fn renders_minimal_html_directly_without_consuming_document() {
     let md = MarkdownIt::empty();
     let document = md.parse_document("hello <world>");
 
-    assert_eq!(
-        md.render_document(&document).unwrap(),
-        "hello &lt;world&gt;\n"
-    );
-    assert_eq!(
-        md.render_document_as(&document, "text").unwrap(),
-        "hello <world>\n"
-    );
-    assert_eq!(
-        md.render_document(&document).unwrap(),
-        "hello &lt;world&gt;\n"
-    );
+    assert_eq!(md.render_document(&document), "hello &lt;world&gt;\n");
+    assert_eq!(md.render_document_as(&document, "text"), "hello <world>\n");
+    assert_eq!(md.render_document(&document), "hello &lt;world&gt;\n");
 
     let nul = md.parse_document("\0");
-    assert_eq!(md.render_document(&nul).unwrap(), "\u{FFFD}\n");
-    assert_eq!(md.render_document_as(&nul, "text").unwrap(), "\u{FFFD}\n");
+    assert_eq!(md.render_document(&nul), "\u{FFFD}\n");
+    assert_eq!(md.render_document_as(&nul, "text"), "\u{FFFD}\n");
 }
 
 #[test]
@@ -81,9 +89,7 @@ fn cr_observes_direct_renderer_writes_without_duplicate_line_endings() {
     let document = Document::from_legacy("", Node::new(UnknownLeaf("unused")));
 
     assert_eq!(
-        registry
-            .render(&document, "html", &RenderOptions::default())
-            .unwrap(),
+        registry.render(&document, "html", &RenderOptions::default()),
         "first\nsecond\n"
     );
 }
@@ -100,7 +106,7 @@ fn html_attrs_preserve_grouping_order_and_escaping_on_both_paths() {
         ("id".into(), "two".into()),
     ];
     let mut output = DocumentWriter::new();
-    super::write_html_attrs(&mut output, &small).unwrap();
+    super::write_html_attrs(&mut output, &small);
     assert_eq!(
         output.finish(),
         " class=\"first second\" id=\"one\" id=\"two\" style=\"color:&lt;red&gt;;display:block\" title=\"&lt;&amp;&gt;\""
@@ -109,7 +115,7 @@ fn html_attrs_preserve_grouping_order_and_escaping_on_both_paths() {
     let mut large = small;
     large.extend([("data-a".into(), "a".into()), ("data-b".into(), "b".into())]);
     let mut output = DocumentWriter::new();
-    super::write_html_attrs(&mut output, &large).unwrap();
+    super::write_html_attrs(&mut output, &large);
     assert_eq!(
         output.finish(),
         " class=\"first second\" id=\"one\" id=\"two\" style=\"color:&lt;red&gt;;display:block\" title=\"&lt;&amp;&gt;\" data-a=\"a\" data-b=\"b\""
@@ -127,7 +133,7 @@ fn registered_paragraph_renderer_preserves_attributes() {
     let document = Document::from_legacy("hello", root);
 
     assert_eq!(
-        md.render_document(&document).unwrap(),
+        md.render_document(&document),
         "<p class=\"one two\">hello</p>\n"
     );
 }
@@ -155,7 +161,7 @@ fn commonmark_block_renderers_match_legacy_html() {
             let expected = md.parse(source).render();
             let document = md.parse_document(source);
             assert_eq!(
-                md.render_document(&document).unwrap(),
+                md.render_document(&document),
                 expected,
                 "direct renderer differs for {source:?} with options {:?}",
                 md.render_options
@@ -179,7 +185,7 @@ fn block_renderers_preserve_document_transform_attributes() {
     let mut document = direct.parse_document(source);
     direct.run_document_transforms(&mut document);
 
-    assert_eq!(direct.render_document(&document).unwrap(), expected);
+    assert_eq!(direct.render_document(&document), expected);
 }
 
 #[test]
@@ -205,7 +211,7 @@ fn commonmark_inline_renderers_match_legacy_html() {
                 let expected = md.parse(source).render();
                 let document = md.parse_document(source);
                 assert_eq!(
-                    md.render_document(&document).unwrap(),
+                    md.render_document(&document),
                     expected,
                     "direct renderer differs for {source:?} with options {:?}",
                     md.render_options
@@ -230,7 +236,7 @@ fn inline_renderers_preserve_document_transform_attributes() {
     let mut document = direct.parse_document(source);
     direct.run_document_transforms(&mut document);
 
-    assert_eq!(direct.render_document(&document).unwrap(), expected);
+    assert_eq!(direct.render_document(&document), expected);
 }
 
 #[test]
@@ -242,23 +248,8 @@ fn unknown_container_transparently_renders_children() {
     }));
     let document = Document::from_legacy("", root);
 
-    assert_eq!(md.render_document(&document).unwrap(), "child");
-    assert_eq!(md.render_document_as(&document, "text").unwrap(), "child");
-}
-
-#[test]
-fn unknown_leaf_returns_structured_error() {
-    let md = MarkdownIt::empty();
-    let document = Document::from_legacy("", Node::new(UnknownLeaf("value")));
-
-    assert!(matches!(
-        md.render_document(&document),
-        Err(DocumentRenderError::MissingRenderer {
-            format,
-            node_name,
-            ..
-        }) if format == "html" && node_name == std::any::type_name::<UnknownLeaf>()
-    ));
+    assert_eq!(md.render_document(&document), "child");
+    assert_eq!(md.render_document_as(&document, "text"), "child");
 }
 
 #[test]
@@ -269,17 +260,13 @@ fn custom_renderer_can_be_registered_and_overridden_per_format() {
     assert!(!registry.add::<UnknownLeaf, _>("plain", UnknownLeafRenderer("first")));
     assert!(registry.contains::<UnknownLeaf>("plain"));
     assert_eq!(
-        registry
-            .render(&document, "plain", &RenderOptions::default())
-            .unwrap(),
+        registry.render(&document, "plain", &RenderOptions::default()),
         "first:value"
     );
 
     assert!(registry.add::<UnknownLeaf, _>("plain", UnknownLeafRenderer("second")));
     assert_eq!(
-        registry
-            .render(&document, "plain", &RenderOptions::default())
-            .unwrap(),
+        registry.render(&document, "plain", &RenderOptions::default()),
         "second:value"
     );
     assert!(registry.remove::<UnknownLeaf>("plain"));
@@ -293,25 +280,103 @@ fn markdown_it_selects_and_isolates_renderer_formats() {
     md.add_document_renderer::<UnknownLeaf, _>("html", UnknownLeafRenderer("html"));
     md.add_document_renderer::<UnknownLeaf, _>("text", UnknownLeafRenderer("text"));
 
-    assert_eq!(md.render_document(&document).unwrap(), "html:value");
-    assert_eq!(
-        md.render_document_as(&document, "text").unwrap(),
-        "text:value"
-    );
+    assert_eq!(md.render_document(&document), "html:value");
+    assert_eq!(md.render_document_as(&document, "text"), "text:value");
 
     md.add_document_renderer::<UnknownLeaf, _>("text", UnknownLeafRenderer("override"));
-    assert_eq!(md.render_document(&document).unwrap(), "html:value");
-    assert_eq!(
-        md.render_document_as(&document, "text").unwrap(),
-        "override:value"
+    assert_eq!(md.render_document(&document), "html:value");
+    assert_eq!(md.render_document_as(&document, "text"), "override:value");
+}
+
+#[test]
+fn unknown_leaf_panics_with_format_type_and_node_id() {
+    let md = MarkdownIt::empty();
+    let document = Document::from_legacy("", Node::new(UnknownLeaf("value")));
+
+    let panic = catch_unwind(AssertUnwindSafe(|| {
+        let _ = md.render_document(&document);
+    }))
+    .expect_err("rendering an unregistered leaf must panic");
+    let message = panic_message(panic);
+
+    assert!(message.contains("html"), "{message}");
+    assert!(
+        message.contains(std::any::type_name::<UnknownLeaf>()),
+        "{message}"
+    );
+    assert!(message.contains("NodeId(0:0)"), "{message}");
+}
+
+#[test]
+fn missing_format_panics_with_requested_format() {
+    let md = MarkdownIt::empty();
+    let document = Document::from_legacy("", Node::new(UnknownLeaf("value")));
+
+    let panic = catch_unwind(AssertUnwindSafe(|| {
+        let _ = md.render_document_as(&document, "missing");
+    }))
+    .expect_err("rendering without a registered format must panic");
+    let message = panic_message(panic);
+
+    assert!(message.contains("missing"), "{message}");
+    assert!(
+        message.contains(std::any::type_name::<UnknownLeaf>()),
+        "{message}"
+    );
+    assert!(message.contains("NodeId(0:0)"), "{message}");
+}
+
+#[test]
+fn writer_supports_inherent_string_char_and_format_writes() {
+    let mut output = DocumentWriter::new();
+    output.write_str("hé");
+    output.write_char('🦀');
+    write!(output, "{}", 42);
+    let suffix = "end";
+    writeln!(output, "-{suffix}");
+
+    assert_eq!(output.finish(), "hé🦀42-end\n");
+}
+
+#[test]
+fn inherent_write_fmt_panics_on_formatting_error() {
+    let mut output = DocumentWriter::new();
+
+    let panic = catch_unwind(AssertUnwindSafe(|| {
+        write!(output, "{}", FailingDisplay);
+    }))
+    .expect_err("inherent write_fmt must panic when formatting fails");
+    let message = panic_message(panic);
+
+    assert!(message.contains("failed"), "{message}");
+}
+
+fn write_through_generic<W: std::fmt::Write>(writer: &mut W) {
+    writer.write_str("generic").unwrap();
+    write!(writer, "-{}", 7).unwrap();
+}
+
+#[test]
+fn writer_interoperates_with_generic_and_trait_object_fmt_write() {
+    let mut output = DocumentWriter::new();
+    write_through_generic(&mut output);
+    output.write_char('|');
+
+    let dyn_writer: &mut dyn std::fmt::Write = &mut output;
+    dyn_writer.write_str("dyn").unwrap();
+    write!(dyn_writer, "-{}", 9).unwrap();
+
+    assert_eq!(output.finish(), "generic-7|dyn-9");
+}
+
+#[test]
+fn trait_write_fmt_propagates_formatting_error() {
+    let mut output = DocumentWriter::new();
+
+    let result = <DocumentWriter as std::fmt::Write>::write_fmt(
+        &mut output,
+        format_args!("{}", FailingDisplay),
     );
 
-    assert!(matches!(
-        md.render_document_as(&document, "missing"),
-        Err(DocumentRenderError::MissingRenderer {
-            format,
-            node_name,
-            ..
-        }) if format == "missing" && node_name == std::any::type_name::<UnknownLeaf>()
-    ));
+    assert!(result.is_err());
 }

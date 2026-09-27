@@ -1361,13 +1361,13 @@ mod probe_label_tests {
                 let direct = md.parse_document_direct(&source).unwrap();
                 let legacy = md.parse_document(&source);
                 assert_eq!(
-                    md.render_document(&direct).unwrap(),
-                    md.render_document(&legacy).unwrap(),
+                    md.render_document(&direct),
+                    md.render_document(&legacy),
                     "{source}"
                 );
                 assert_eq!(
-                    md.render_document_as(&direct, "debug").unwrap(),
-                    md.render_document_as(&legacy, "debug").unwrap(),
+                    md.render_document_as(&direct, "debug"),
+                    md.render_document_as(&legacy, "debug"),
                     "{source}"
                 );
             }

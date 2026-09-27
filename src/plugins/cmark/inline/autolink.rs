@@ -17,7 +17,6 @@ use crate::parser::renderer::Renderer;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     TransparentDocumentRenderer,
     write_html_close,
     write_html_open,
@@ -37,12 +36,12 @@ impl DocumentNodeRenderer<Autolink> for AutolinkDocumentRenderer {
         link: &Autolink,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         let mut attrs = node.attrs().clone();
         attrs.push(("href".into(), link.url.clone()));
-        write_html_open(output, "a", &attrs)?;
-        context.render_children(node.id(), output)?;
-        write_html_close(output, "a")
+        write_html_open(output, "a", &attrs);
+        context.render_children(node.id(), output);
+        write_html_close(output, "a");
     }
 }
 
@@ -209,10 +208,10 @@ mod tests {
         let legacy = md.render(src);
 
         let bridged = md.parse_document(src);
-        assert_eq!(legacy, md.render_document(&bridged).unwrap());
+        assert_eq!(legacy, md.render_document(&bridged));
 
         let direct = md.parse_document_direct(src).unwrap();
-        assert_eq!(legacy, md.render_document(&direct).unwrap());
+        assert_eq!(legacy, md.render_document(&direct));
 
         legacy
     }

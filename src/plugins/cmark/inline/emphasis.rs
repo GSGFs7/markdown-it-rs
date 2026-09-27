@@ -12,7 +12,6 @@ use crate::parser::renderer::Renderer;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     TransparentDocumentRenderer,
     write_html_close,
     write_html_open,
@@ -32,8 +31,8 @@ impl DocumentNodeRenderer<Em> for EmDocumentRenderer {
         _: &Em,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        render_inline_container(node, context, output, "em")
+    ) {
+        render_inline_container(node, context, output, "em");
     }
 }
 
@@ -59,8 +58,8 @@ impl DocumentNodeRenderer<Strong> for StrongDocumentRenderer {
         _: &Strong,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        render_inline_container(node, context, output, "strong")
+    ) {
+        render_inline_container(node, context, output, "strong");
     }
 }
 
@@ -69,10 +68,10 @@ fn render_inline_container(
     context: &mut DocumentRenderContext<'_>,
     output: &mut crate::DocumentWriter,
     tag: &str,
-) -> Result<(), DocumentRenderError> {
-    write_html_open(output, tag, node.attrs())?;
-    context.render_children(node.id(), output)?;
-    write_html_close(output, tag)
+) {
+    write_html_open(output, tag, node.attrs());
+    context.render_children(node.id(), output);
+    write_html_close(output, tag);
 }
 
 impl NodeValue for Strong {

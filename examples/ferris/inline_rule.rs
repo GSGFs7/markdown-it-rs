@@ -1,13 +1,10 @@
 // Replaces `(\/)` with `🦀`.
 
-use std::fmt::Write;
-
 use markdown_it::parser::inline::InlineRule;
 use markdown_it::{
     DocumentInlineState,
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     DocumentWriter,
     MarkdownIt,
     Node,
@@ -48,9 +45,8 @@ impl DocumentNodeRenderer<InlineFerris> for InlineFerrisDocumentRenderer {
         _: &InlineFerris,
         _: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        output.write_str("<span class=\"ferris-inline\">🦀</span>")?;
-        Ok(())
+    ) {
+        output.write_str("<span class=\"ferris-inline\">🦀</span>");
     }
 }
 

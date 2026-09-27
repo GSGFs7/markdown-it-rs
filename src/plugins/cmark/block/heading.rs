@@ -12,7 +12,6 @@ use crate::parser::renderer::Renderer;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     PlainTextBlockDocumentRenderer,
     write_html_close,
     write_html_open,
@@ -32,16 +31,16 @@ impl DocumentNodeRenderer<ATXHeading> for ATXHeadingDocumentRenderer {
         heading: &ATXHeading,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         static TAG: [&str; 6] = ["h1", "h2", "h3", "h4", "h5", "h6"];
         debug_assert!((1..=6).contains(&heading.level));
         let tag = TAG[heading.level as usize - 1];
 
-        context.cr(output)?;
-        write_html_open(output, tag, node.attrs())?;
-        context.render_children(node.id(), output)?;
-        write_html_close(output, tag)?;
-        context.cr(output)
+        context.cr(output);
+        write_html_open(output, tag, node.attrs());
+        context.render_children(node.id(), output);
+        write_html_close(output, tag);
+        context.cr(output);
     }
 }
 

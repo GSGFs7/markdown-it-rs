@@ -15,7 +15,6 @@ use crate::plugins::html::html_inline::HtmlInline;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     TransparentDocumentRenderer,
     write_html_self_close,
 };
@@ -35,14 +34,14 @@ impl DocumentNodeRenderer<Image> for ImageDocumentRenderer {
         image: &Image,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         let mut attrs = node.attrs().clone();
         attrs.push(("src".into(), image.url.clone()));
         attrs.push(("alt".into(), collect_document_alt_text(context, node)));
         if let Some(title) = &image.title {
             attrs.push(("title".into(), title.clone()));
         }
-        write_html_self_close(output, "img", &attrs, context.options().xhtml_out)
+        write_html_self_close(output, "img", &attrs, context.options().xhtml_out);
     }
 }
 

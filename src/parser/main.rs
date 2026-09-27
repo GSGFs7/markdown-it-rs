@@ -21,7 +21,6 @@ use crate::plugins::presets::{Preset, PresetConfig};
 use crate::render::{
     DebugTreeDocumentRenderer,
     DocumentNodeRenderer,
-    DocumentRenderError,
     DocumentRendererRegistry,
     HtmlTextDocumentRenderer,
     PlainTextDocumentRenderer,
@@ -228,23 +227,27 @@ impl MarkdownIt {
     /// Standard syntax plugins register HTML and plain-text behavior; plugins
     /// that add leaf payloads must register both explicitly. The diagnostic
     /// debug tree traverses all descendants without per-payload registration.
-    pub fn render_document_as(
-        &self,
-        document: &Document,
-        format: &str,
-    ) -> Result<String, DocumentRenderError> {
+    ///
+    /// # Panics
+    ///
+    /// Panics if a leaf node has no renderer registered for `format`.
+    pub fn render_document_as(&self, document: &Document, format: &str) -> String {
         let output = self
             .document_renderers
-            .render(document, format, &self.render_options)?;
+            .render(document, format, &self.render_options);
         if output.contains('\0') {
-            Ok(output.replace('\0', "\u{FFFD}"))
+            output.replace('\0', "\u{FFFD}")
         } else {
-            Ok(output)
+            output
         }
     }
 
     /// Render an arena-backed document directly as HTML.
-    pub fn render_document(&self, document: &Document) -> Result<String, DocumentRenderError> {
+    ///
+    /// # Panics
+    ///
+    /// Panics if a leaf node has no `"html"` renderer.
+    pub fn render_document(&self, document: &Document) -> String {
         self.render_document_as(document, "html")
     }
 

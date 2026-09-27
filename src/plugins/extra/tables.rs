@@ -1,8 +1,6 @@
 //! GFM tables
 //!
 //! <https://github.github.com/gfm/#tables-extension->
-use std::fmt::Write;
-
 use crate::common::sourcemap::SourcePos;
 use crate::document::NodeRef;
 use crate::parser::block::{BlockRule, BlockState};
@@ -15,7 +13,6 @@ use crate::plugins::cmark::block::list::ListScanner;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     PlainTextBlockDocumentRenderer,
     TransparentDocumentRenderer,
     write_html_close,
@@ -44,7 +41,7 @@ impl DocumentNodeRenderer<Table> for TableDocumentRenderer {
         value: &Table,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         let old_context = context.ext().remove::<TableRenderContext>();
         context.ext().insert(TableRenderContext {
             head: false,
@@ -52,13 +49,12 @@ impl DocumentNodeRenderer<Table> for TableDocumentRenderer {
             index: 0,
         });
 
-        let result = render_block_container(node, context, output, "table");
+        render_block_container(node, context, output, "table");
 
         context.ext().remove::<TableRenderContext>();
         if let Some(old_context) = old_context {
             context.ext().insert(old_context);
         }
-        result
     }
 }
 
@@ -102,17 +98,16 @@ impl DocumentNodeRenderer<TableHead> for TableHeadDocumentRenderer {
         _: &TableHead,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         context
             .ext()
             .get_or_insert_default::<TableRenderContext>()
             .head = true;
-        let result = render_block_container(node, context, output, "thead");
+        render_block_container(node, context, output, "thead");
         context
             .ext()
             .get_or_insert_default::<TableRenderContext>()
             .head = false;
-        result
     }
 }
 
@@ -146,8 +141,8 @@ impl DocumentNodeRenderer<TableBody> for TableBodyDocumentRenderer {
         _: &TableBody,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        render_block_container(node, context, output, "tbody")
+    ) {
+        render_block_container(node, context, output, "tbody");
     }
 }
 
@@ -175,12 +170,12 @@ impl DocumentNodeRenderer<TableRow> for TableRowDocumentRenderer {
         _: &TableRow,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         context
             .ext()
             .get_or_insert_default::<TableRenderContext>()
             .index = 0;
-        render_block_container(node, context, output, "tr")
+        render_block_container(node, context, output, "tr");
     }
 }
 
@@ -193,15 +188,15 @@ impl DocumentNodeRenderer<TableRow> for TableRowTextRenderer {
         _: &TableRow,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        context.cr(output)?;
+    ) {
+        context.cr(output);
         for (index, &cell) in node.children().iter().enumerate() {
             if index != 0 {
-                output.write_char('\t')?;
+                output.write_char('\t');
             }
-            context.render_node(cell, output)?;
+            context.render_node(cell, output);
         }
-        context.cr(output)
+        context.cr(output);
     }
 }
 
@@ -232,7 +227,7 @@ impl DocumentNodeRenderer<TableCell> for TableCellDocumentRenderer {
         _: &TableCell,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         let table_context = context.ext().get_or_insert_default::<TableRenderContext>();
         let tag = if table_context.head { "th" } else { "td" };
         let alignment = table_context
@@ -250,10 +245,10 @@ impl DocumentNodeRenderer<TableCell> for TableCellDocumentRenderer {
             ColumnAlignment::Center => attrs.push(("style".into(), "text-align:center".to_owned())),
         }
 
-        write_html_open(output, tag, &attrs)?;
-        context.render_children(node.id(), output)?;
-        write_html_close(output, tag)?;
-        context.cr(output)
+        write_html_open(output, tag, &attrs);
+        context.render_children(node.id(), output);
+        write_html_close(output, tag);
+        context.cr(output);
     }
 }
 
@@ -262,14 +257,14 @@ fn render_block_container(
     context: &mut DocumentRenderContext<'_>,
     output: &mut crate::DocumentWriter,
     tag: &str,
-) -> Result<(), DocumentRenderError> {
-    context.cr(output)?;
-    write_html_open(output, tag, node.attrs())?;
-    context.cr(output)?;
-    context.render_children(node.id(), output)?;
-    context.cr(output)?;
-    write_html_close(output, tag)?;
-    context.cr(output)
+) {
+    context.cr(output);
+    write_html_open(output, tag, node.attrs());
+    context.cr(output);
+    context.render_children(node.id(), output);
+    context.cr(output);
+    write_html_close(output, tag);
+    context.cr(output);
 }
 
 impl NodeValue for TableCell {

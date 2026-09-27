@@ -3,8 +3,6 @@
 //! ` ```lang ` or `~~~lang`
 //!
 //! <https://spec.commonmark.org/0.30/#code-fence>
-use std::fmt::Write;
-
 use crate::common::utils::unescape_all;
 use crate::document::NodeRef;
 use crate::parser::block::{BlockRule, BlockState};
@@ -14,7 +12,6 @@ use crate::parser::renderer::Renderer;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     write_html_close,
     write_html_open,
     write_html_text,
@@ -38,7 +35,7 @@ impl DocumentNodeRenderer<CodeFence> for CodeFenceDocumentRenderer {
         fence: &CodeFence,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         let info = unescape_all(&fence.info);
         let lang_name = info.split_whitespace().next().unwrap_or("");
         let mut attrs = node.attrs().clone();
@@ -51,13 +48,13 @@ impl DocumentNodeRenderer<CodeFence> for CodeFenceDocumentRenderer {
             attrs.push(("class".into(), format!("{lang_prefix}{lang_name}")));
         }
 
-        context.cr(output)?;
-        write_html_open(output, "pre", &[])?;
-        write_html_open(output, "code", &attrs)?;
-        write_html_text(output, &fence.content)?;
-        write_html_close(output, "code")?;
-        write_html_close(output, "pre")?;
-        context.cr(output)
+        context.cr(output);
+        write_html_open(output, "pre", &[]);
+        write_html_open(output, "code", &attrs);
+        write_html_text(output, &fence.content);
+        write_html_close(output, "code");
+        write_html_close(output, "pre");
+        context.cr(output);
     }
 }
 
@@ -70,10 +67,10 @@ impl DocumentNodeRenderer<CodeFence> for CodeFenceTextRenderer {
         fence: &CodeFence,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        context.cr(output)?;
-        output.write_str(&fence.content)?;
-        context.cr(output)
+    ) {
+        context.cr(output);
+        output.write_str(&fence.content);
+        context.cr(output);
     }
 }
 

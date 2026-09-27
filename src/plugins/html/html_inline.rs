@@ -1,8 +1,6 @@
 //! HTML inline syntax from CommonMark
 //!
 //! <https://spec.commonmark.org/0.30/#raw-html>
-use std::fmt::Write;
-
 use super::utils::regexps::*;
 use crate::document::{NodeDraft, NodeRef};
 use crate::parser::extset::InlineRootExtSet;
@@ -16,7 +14,7 @@ use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
-use crate::render::{DocumentNodeRenderer, DocumentRenderContext, DocumentRenderError};
+use crate::render::{DocumentNodeRenderer, DocumentRenderContext};
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_migrated_rule::<HtmlInlineScanner>();
@@ -43,9 +41,8 @@ impl DocumentNodeRenderer<HtmlInline> for HtmlInlineDocumentRenderer {
         value: &HtmlInline,
         _: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        output.write_str(&value.content)?;
-        Ok(())
+    ) {
+        output.write_str(&value.content);
     }
 }
 
@@ -58,9 +55,8 @@ impl DocumentNodeRenderer<HtmlInline> for HtmlInlineTextRenderer {
         value: &HtmlInline,
         _: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        output.write_str(&value.content)?;
-        Ok(())
+    ) {
+        output.write_str(&value.content);
     }
 }
 

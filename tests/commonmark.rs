@@ -15,8 +15,8 @@ fn run(input: &str, output: &str) {
     assert_eq!(result, output);
 
     let document = md.parse_document(&source);
-    assert_eq!(md.render_document(&document).unwrap(), result);
-    md.render_document_as(&document, "text").unwrap();
+    assert_eq!(md.render_document(&document), result);
+    md.render_document_as(&document, "text");
 
     // The CJK-friendly amendment must not change any original CommonMark case.
     markdown_it::plugins::cjk_friendly::add(md);

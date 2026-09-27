@@ -12,18 +12,18 @@ fn assert_direct_matches_bridge(md: &MarkdownIt, source: &str) {
         source
     );
     assert_eq!(
-        md.render_document(&direct).unwrap(),
-        md.render_document(&bridged).unwrap(),
+        md.render_document(&direct),
+        md.render_document(&bridged),
         "HTML for {source:?}"
     );
     assert_eq!(
-        md.render_document_as(&direct, "text").unwrap(),
-        md.render_document_as(&bridged, "text").unwrap(),
+        md.render_document_as(&direct, "text"),
+        md.render_document_as(&bridged, "text"),
         "text for {source:?}"
     );
     assert_eq!(
-        md.render_document_as(&direct, "debug").unwrap(),
-        md.render_document_as(&bridged, "debug").unwrap(),
+        md.render_document_as(&direct, "debug"),
+        md.render_document_as(&bridged, "debug"),
         "debug tree for {source:?}"
     );
     assert_eq!(
@@ -111,7 +111,7 @@ fn direct_parser_accepts_migrated_emphasis_rules() {
         .expect("emphasis rules have direct implementations");
 
     assert_eq!(
-        md.render_document(&direct).unwrap(),
+        md.render_document(&direct),
         "<p><em>em</em> and <strong>strong</strong></p>\n",
     );
 }
@@ -422,7 +422,7 @@ fn direct_links_use_real_registration() {
     }
     let document = md.parse_document_direct("[x](/url)").unwrap();
     assert_eq!(
-        md.render_document(&document).unwrap(),
+        md.render_document(&document),
         "<p><a href=\"/url\">x</a></p>\n",
     );
 
@@ -480,7 +480,7 @@ fn direct_images_and_links_match_legacy_in_both_registration_orders() {
         }
         let document = md.parse_document_direct("![x](/img)").unwrap();
         assert_eq!(
-            md.render_document(&document).unwrap(),
+            md.render_document(&document),
             "<p><img src=\"/img\" alt=\"x\"></p>\n"
         );
         md.max_nesting = 2;
@@ -537,7 +537,7 @@ fn direct_link_and_image_nesting_thresholds_are_explicit() {
                 _ => parsed,
             };
             assert_eq!(
-                md.render_document(&document).unwrap(),
+                md.render_document(&document),
                 expected,
                 "limit={limit}, source={source:?}",
             );
@@ -559,7 +559,7 @@ fn direct_unclosed_link_labels_remain_literal() {
             let source = part.repeat(size);
             let document = md.parse_document_direct(&source).unwrap();
             assert_eq!(
-                md.render_document(&document).unwrap(),
+                md.render_document(&document),
                 format!("<p>{source}</p>\n"),
                 "size={size}, part={part:?}",
             );

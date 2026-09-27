@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use markdown_it::{Document, HtmlAttribute, MarkdownIt};
 
 fn parser() -> MarkdownIt {
@@ -14,7 +14,7 @@ fn document_with_attrs(md: &MarkdownIt, attrs: &[HtmlAttribute]) -> Document {
     legacy.children[0].attrs = attrs.to_vec();
     let expected = legacy.render();
     let document = Document::from_legacy("text", legacy);
-    assert_eq!(md.render_document(&document).unwrap(), expected);
+    assert_eq!(md.render_document(&document), expected);
     document
 }
 
@@ -53,7 +53,7 @@ fn benchmark(c: &mut Criterion) {
         let mut group = c.benchmark_group(format!("document-attrs/{name}"));
         group.throughput(Throughput::Elements(attrs.len() as u64));
         group.bench_function("arena-direct", |b| {
-            b.iter(|| black_box(md.render_document(black_box(&document)).unwrap()))
+            b.iter(|| black_box(md.render_document(black_box(&document))))
         });
         group.finish();
     }

@@ -19,8 +19,8 @@ fn run(input: &str, output: &str) {
     assert_eq!(result, output);
 
     let document = md.parse_document(&source);
-    assert_eq!(md.render_document(&document).unwrap(), result);
-    md.render_document_as(&document, "text").unwrap();
+    assert_eq!(md.render_document(&document), result);
+    md.render_document_as(&document, "text");
 
     // make sure it doesn't crash without trailing \n
     let _ = md.parse(input.trim_end());

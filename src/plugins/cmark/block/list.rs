@@ -17,7 +17,6 @@ use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     PlainTextBlockDocumentRenderer,
     write_html_close,
     write_html_open,
@@ -38,12 +37,12 @@ impl DocumentNodeRenderer<OrderedList> for OrderedListDocumentRenderer {
         list: &OrderedList,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         let mut attrs = node.attrs().clone();
         if list.start != 1 {
             attrs.push(("start".into(), list.start.to_string()));
         }
-        render_list_container(node, context, output, "ol", &attrs)
+        render_list_container(node, context, output, "ol", &attrs);
     }
 }
 
@@ -79,8 +78,8 @@ impl DocumentNodeRenderer<BulletList> for BulletListDocumentRenderer {
         _: &BulletList,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        render_list_container(node, context, output, "ul", node.attrs())
+    ) {
+        render_list_container(node, context, output, "ul", node.attrs());
     }
 }
 
@@ -108,11 +107,11 @@ impl DocumentNodeRenderer<ListItem> for ListItemDocumentRenderer {
         _: &ListItem,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        write_html_open(output, "li", node.attrs())?;
-        context.render_children(node.id(), output)?;
-        write_html_close(output, "li")?;
-        context.cr(output)
+    ) {
+        write_html_open(output, "li", node.attrs());
+        context.render_children(node.id(), output);
+        write_html_close(output, "li");
+        context.cr(output);
     }
 }
 
@@ -122,14 +121,14 @@ fn render_list_container(
     output: &mut crate::DocumentWriter,
     tag: &str,
     attrs: &[crate::HtmlAttribute],
-) -> Result<(), DocumentRenderError> {
-    context.cr(output)?;
-    write_html_open(output, tag, attrs)?;
-    context.cr(output)?;
-    context.render_children(node.id(), output)?;
-    context.cr(output)?;
-    write_html_close(output, tag)?;
-    context.cr(output)
+) {
+    context.cr(output);
+    write_html_open(output, tag, attrs);
+    context.cr(output);
+    context.render_children(node.id(), output);
+    context.cr(output);
+    write_html_close(output, tag);
+    context.cr(output);
 }
 
 impl NodeValue for ListItem {

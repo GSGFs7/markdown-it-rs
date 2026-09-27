@@ -11,7 +11,6 @@ use crate::parser::renderer::Renderer;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     PlainTextBreakDocumentRenderer,
     write_html_self_close,
 };
@@ -31,10 +30,10 @@ impl DocumentNodeRenderer<ThematicBreak> for ThematicBreakDocumentRenderer {
         _: &ThematicBreak,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        context.cr(output)?;
-        write_html_self_close(output, "hr", node.attrs(), context.options().xhtml_out)?;
-        context.cr(output)
+    ) {
+        context.cr(output);
+        write_html_self_close(output, "hr", node.attrs(), context.options().xhtml_out);
+        context.cr(output);
     }
 }
 

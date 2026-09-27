@@ -597,7 +597,7 @@ mod tests {
 
         let direct = md.parse_document_direct(input).expect("direct parser");
         assert_eq!(
-            md.render_document(&direct).unwrap(),
+            md.render_document(&direct),
             output,
             "direct parser for {input:?}"
         );

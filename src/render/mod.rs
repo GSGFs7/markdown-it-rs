@@ -3,7 +3,7 @@
 use std::any::TypeId;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt::{self, Write};
+use std::fmt;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::marker::PhantomData;
 
@@ -14,54 +14,13 @@ use crate::parser::extset::RenderExtSet;
 use crate::parser::node::{HtmlAttribute, NodeValue};
 use crate::parser::render_options::RenderOptions;
 
-// --- error ---
-
-/// Error produced while rendering an arena-backed [`Document`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DocumentRenderError {
-    /// A leaf payload has no renderer for the requested format.
-    MissingRenderer {
-        format: String,
-        node: NodeId,
-        node_name: &'static str,
-    },
-    /// The output writer rejected a write.
-    Write,
-}
-
-impl fmt::Display for DocumentRenderError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MissingRenderer {
-                format,
-                node,
-                node_name,
-            } => write!(
-                f,
-                "no {format:?} renderer registered for leaf {node_name} at {node:?}"
-            ),
-            Self::Write => f.write_str("renderer output writer rejected a write"),
-        }
-    }
-}
-
-impl std::error::Error for DocumentRenderError {}
-
-impl From<fmt::Error> for DocumentRenderError {
-    fn from(_: fmt::Error) -> Self {
-        Self::Write
-    }
-}
-
 // --- protocol ---
 
 /// Renderer for one payload type in one output format.
 ///
 /// ```
-/// use std::fmt::Write;
-///
 /// use markdown_it::{
-///     Document, DocumentNodeRenderer, DocumentRenderContext, DocumentRenderError,
+///     Document, DocumentNodeRenderer, DocumentRenderContext,
 ///     DocumentWriter, MarkdownIt, Node, NodeRef, NodeValue,
 /// };
 ///
@@ -77,17 +36,15 @@ impl From<fmt::Error> for DocumentRenderError {
 ///         badge: &Badge,
 ///         _: &mut DocumentRenderContext<'_>,
 ///         output: &mut DocumentWriter,
-///     ) -> Result<(), DocumentRenderError> {
-///         output.write_str(badge.0)?;
-///         Ok(())
+///     ) {
+///         output.write_str(badge.0);
 ///     }
 /// }
 ///
 /// let mut md = MarkdownIt::empty();
 /// md.add_document_renderer::<Badge, _>("html", BadgeRenderer);
 /// let document = Document::from_legacy("", Node::new(Badge("new")));
-/// assert_eq!(md.render_document(&document)?, "new");
-/// # Ok::<(), DocumentRenderError>(())
+/// assert_eq!(md.render_document(&document), "new");
 /// ```
 pub trait DocumentNodeRenderer<T: NodeValue>: Send + Sync + 'static {
     fn render(
@@ -96,7 +53,7 @@ pub trait DocumentNodeRenderer<T: NodeValue>: Send + Sync + 'static {
         value: &T,
         context: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError>;
+    );
 }
 
 trait ErasedDocumentNodeRenderer: Send + Sync {
@@ -105,7 +62,7 @@ trait ErasedDocumentNodeRenderer: Send + Sync {
         node: NodeRef<'_>,
         context: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError>;
+    );
 }
 
 // --- machinery ---
@@ -157,11 +114,11 @@ where
         node: NodeRef<'_>,
         context: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         let value = node
             .cast::<T>()
             .expect("document renderer registry type and payload type must agree");
-        self.renderer.render(node, value, context, output)
+        self.renderer.render(node, value, context, output);
     }
 }
 
@@ -230,12 +187,11 @@ impl DocumentRendererRegistry {
     }
 
     /// Render a document without rebuilding the legacy tree.
-    pub fn render(
-        &self,
-        document: &Document,
-        format: &str,
-        options: &RenderOptions,
-    ) -> Result<String, DocumentRenderError> {
+    ///
+    /// # Panics
+    ///
+    /// Panics if a leaf node has no renderer registered for `format`.
+    pub fn render(&self, document: &Document, format: &str, options: &RenderOptions) -> String {
         let mut ext = RenderExtSet::new();
         let mut output = DocumentWriter::new();
         let shared = RenderShared {
@@ -245,8 +201,8 @@ impl DocumentRendererRegistry {
             options,
             scratch_nodes: RefCell::new(Vec::new()),
         };
-        render_node(&shared, &mut ext, document.root(), &mut output)?;
-        Ok(output.finish())
+        render_node(&shared, &mut ext, document.root(), &mut output);
+        output.finish()
     }
 }
 
@@ -262,10 +218,10 @@ struct RenderShared<'a> {
 
 /// Output buffer supplied to [`DocumentNodeRenderer`] implementations.
 ///
-/// It implements [`fmt::Write`], so renderers can continue to use `write!`,
-/// `write_str`, and `write_char`. Keeping the buffer concrete lets
-/// [`DocumentRenderContext::cr`] inspect its actual last byte without tracking
-/// shared line state after every write.
+/// The inherent [`write_str`](Self::write_str), [`write_char`](Self::write_char),
+/// and [`write_fmt`](Self::write_fmt) methods return `()` and panic on a
+/// formatting error. The type also implements [`fmt::Write`], whose methods
+/// return [`fmt::Result`], for interoperability with generic code.
 #[derive(Debug, Default)]
 pub struct DocumentWriter {
     output: String,
@@ -285,11 +241,30 @@ impl DocumentWriter {
     fn finish(self) -> String {
         self.output
     }
+
+    /// Append a string to the output buffer.
+    pub fn write_str(&mut self, value: &str) {
+        self.output.push_str(value);
+    }
+
+    /// Append a char to the output buffer.
+    pub fn write_char(&mut self, value: char) {
+        self.output.push(value);
+    }
+
+    /// Append formatted output.
+    ///
+    /// # Panics
+    /// Panic if a formatting implementation returns an error.
+    pub fn write_fmt(&mut self, args: fmt::Arguments<'_>) {
+        fmt::write(&mut self.output, args)
+            .expect("a formatting implementation failed while rendering");
+    }
 }
 
-impl Write for DocumentWriter {
-    fn write_str(&mut self, value: &str) -> fmt::Result {
-        self.output.push_str(value);
+impl fmt::Write for DocumentWriter {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.output.push_str(s);
         Ok(())
     }
 }
@@ -330,30 +305,34 @@ impl DocumentRenderContext<'_> {
     }
 
     /// Write one line ending unless the output is already at the start of a line.
-    pub fn cr(&mut self, output: &mut DocumentWriter) -> Result<(), DocumentRenderError> {
+    pub fn cr(&mut self, output: &mut DocumentWriter) {
         output.cr();
-        Ok(())
     }
 
-    pub fn render_node(
-        &mut self,
-        node: NodeId,
-        output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        render_node(self.shared, self.ext, node, output)
+    /// Render one node's shell using its registered renderer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `node` is not a valid [`NodeId`] in this document, if a leaf
+    /// has no renderer for the active format, or if a renderer or formatting
+    /// implementation panics.
+    pub fn render_node(&mut self, node: NodeId, output: &mut DocumentWriter) {
+        render_node(self.shared, self.ext, node, output);
     }
 
-    pub fn render_children(
-        &mut self,
-        node: NodeId,
-        output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    /// Render all direct children of `node` in order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `node` is not a valid [`NodeId`] in this document, if a leaf
+    /// descendant has no renderer for the active format, or if a renderer or
+    /// formatting implementation panics.
+    pub fn render_children(&mut self, node: NodeId, output: &mut DocumentWriter) {
         for &child in self.shared.document.children(node) {
             stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
-                render_node(self.shared, self.ext, child, output)
-            })?;
+                render_node(self.shared, self.ext, child, output);
+            });
         }
-        Ok(())
     }
 }
 
@@ -363,32 +342,33 @@ fn render_node(
     ext: &mut RenderExtSet,
     id: NodeId,
     output: &mut DocumentWriter,
-) -> Result<(), DocumentRenderError> {
+) {
     let node = shared.document.node(id);
     let Some(renderer) = shared
         .renderers
         .and_then(|renderers| renderers.get(&node.type_id()))
     else {
-        if node.children().is_empty() {
-            // leaf but no renderer
-            return Err(DocumentRenderError::MissingRenderer {
-                format: shared.format.to_owned(),
-                node: id,
-                node_name: node.name(),
-            });
-        }
+        // leaf but no renderer
+        assert!(
+            !node.children().is_empty(),
+            "no {:?} renderer registered for leaf {} at {:?}",
+            shared.format,
+            node.name(),
+            id,
+        );
+
         // transparent downward traversal
         for &child in node.children() {
             stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
-                render_node(shared, ext, child, output)
-            })?;
+                render_node(shared, ext, child, output);
+            });
         }
-        return Ok(());
+        return;
     };
 
     // render the shell (<h1>,<em>,...)
     let mut context = DocumentRenderContext { shared, ext };
-    renderer.render(node, &mut context, output)
+    renderer.render(node, &mut context, output);
 }
 
 // --- builtin renderers ---
@@ -402,8 +382,8 @@ impl<T: NodeValue> DocumentNodeRenderer<T> for TransparentDocumentRenderer {
         _: &T,
         context: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        context.render_children(node.id(), output)
+    ) {
+        context.render_children(node.id(), output);
     }
 }
 
@@ -416,8 +396,7 @@ impl<T: NodeValue> DocumentNodeRenderer<T> for EmptyDocumentRenderer {
         _: &T,
         _: &mut DocumentRenderContext<'_>,
         _: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        Ok(())
+    ) {
     }
 }
 
@@ -433,9 +412,8 @@ where
         value: &T,
         _: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        output.write_str(&escape_html(value.as_ref()))?;
-        Ok(())
+    ) {
+        output.write_str(&escape_html(value.as_ref()));
     }
 }
 
@@ -451,9 +429,8 @@ where
         value: &T,
         _: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        output.write_str(value.as_ref())?;
-        Ok(())
+    ) {
+        output.write_str(value.as_ref());
     }
 }
 
@@ -466,10 +443,10 @@ impl<T: NodeValue> DocumentNodeRenderer<T> for PlainTextBlockDocumentRenderer {
         _: &T,
         context: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        context.cr(output)?;
-        context.render_children(node.id(), output)?;
-        context.cr(output)
+    ) {
+        context.cr(output);
+        context.render_children(node.id(), output);
+        context.cr(output);
     }
 }
 
@@ -482,8 +459,8 @@ impl<T: NodeValue> DocumentNodeRenderer<T> for PlainTextBreakDocumentRenderer {
         _: &T,
         context: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        context.cr(output)
+    ) {
+        context.cr(output);
     }
 }
 
@@ -506,7 +483,7 @@ impl DocumentNodeRenderer<Root> for DebugTreeDocumentRenderer {
         _: &Root,
         context: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
+    ) {
         let mut depth = 0;
         for event in context.document().events(node.id()) {
             let (kind, current) = match event {
@@ -519,27 +496,26 @@ impl DocumentNodeRenderer<Root> for DebugTreeDocumentRenderer {
             };
 
             for _ in 0..depth {
-                output.write_str("  ")?;
+                output.write_str("  ");
             }
             write!(
                 output,
                 "{kind} type={} id={:?} srcmap=",
                 current.name(),
                 current.id()
-            )?;
+            );
             if let Some(srcmap) = current.srcmap() {
                 let (start, end) = srcmap.get_byte_offsets();
-                write!(output, "{start}..{end}")?;
+                write!(output, "{start}..{end}");
             } else {
-                output.write_char('-')?;
+                output.write_char('-');
             }
-            writeln!(output, " attrs={:?}", current.attrs())?;
+            writeln!(output, " attrs={:?}", current.attrs());
 
             if matches!(event, StructuralEvent::Enter(_)) {
                 depth += 1;
             }
         }
-        Ok(())
     }
 }
 
@@ -552,21 +528,18 @@ impl<T: NodeValue> DocumentNodeRenderer<T> for HtmlBlockElementDocumentRenderer 
         _: &T,
         context: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        context.cr(output)?;
-        write!(output, "<{}", self.0)?;
-        write_html_attrs(output, node.attrs())?;
-        output.write_char('>')?;
-        context.render_children(node.id(), output)?;
-        write!(output, "</{}>", self.0)?;
-        context.cr(output)
+    ) {
+        context.cr(output);
+        write!(output, "<{}", self.0);
+        write_html_attrs(output, node.attrs());
+        output.write_char('>');
+        context.render_children(node.id(), output);
+        write!(output, "</{}>", self.0);
+        context.cr(output);
     }
 }
 
-pub(crate) fn write_html_attrs(
-    output: &mut DocumentWriter,
-    attrs: &[HtmlAttribute],
-) -> Result<(), DocumentRenderError> {
+pub(crate) fn write_html_attrs(output: &mut DocumentWriter, attrs: &[HtmlAttribute]) {
     const LINEAR_SCAN_LIMIT: usize = 8;
 
     // small list, using linear scan. avoid hashmap overhead.
@@ -583,9 +556,9 @@ pub(crate) fn write_html_attrs(
                 attrs
                     .iter()
                     .filter_map(|(candidate, value)| (candidate == name).then_some(value.as_str())),
-            )?;
+            );
         }
-        return Ok(());
+        return;
     }
 
     let mut values = HashMap::<&str, Vec<&str>>::new();
@@ -598,51 +571,40 @@ pub(crate) fn write_html_attrs(
         let Some(parts) = values.remove(name) else {
             continue;
         };
-        write_html_attr_group(output, name, parts.into_iter())?;
+        write_html_attr_group(output, name, parts.into_iter());
     }
-    Ok(())
 }
 
 fn write_html_attr_group<'a>(
     output: &mut DocumentWriter,
     name: &str,
     values: impl Iterator<Item = &'a str>,
-) -> Result<(), DocumentRenderError> {
+) {
     if name == "class" || name == "style" {
-        write!(output, " {}=\"", escape_html(name))?;
+        write!(output, " {}=\"", escape_html(name));
         let separator = if name == "class" { ' ' } else { ';' };
         for (index, value) in values.enumerate() {
             if index != 0 {
-                output.write_char(separator)?;
+                output.write_char(separator);
             }
-            output.write_str(&escape_html(value))?;
+            output.write_str(&escape_html(value));
         }
-        output.write_char('"')?;
+        output.write_char('"');
     } else {
         for value in values {
-            write!(output, " {}=\"{}\"", escape_html(name), escape_html(value))?;
+            write!(output, " {}=\"{}\"", escape_html(name), escape_html(value));
         }
     }
-    Ok(())
 }
 
-pub(crate) fn write_html_open(
-    output: &mut DocumentWriter,
-    tag: &str,
-    attrs: &[HtmlAttribute],
-) -> Result<(), DocumentRenderError> {
-    write!(output, "<{tag}")?;
-    write_html_attrs(output, attrs)?;
-    output.write_char('>')?;
-    Ok(())
+pub(crate) fn write_html_open(output: &mut DocumentWriter, tag: &str, attrs: &[HtmlAttribute]) {
+    write!(output, "<{tag}");
+    write_html_attrs(output, attrs);
+    output.write_char('>');
 }
 
-pub(crate) fn write_html_close(
-    output: &mut DocumentWriter,
-    tag: &str,
-) -> Result<(), DocumentRenderError> {
-    write!(output, "</{tag}>")?;
-    Ok(())
+pub(crate) fn write_html_close(output: &mut DocumentWriter, tag: &str) {
+    write!(output, "</{tag}>");
 }
 
 pub(crate) fn write_html_self_close(
@@ -650,22 +612,17 @@ pub(crate) fn write_html_self_close(
     tag: &str,
     attrs: &[HtmlAttribute],
     xhtml: bool,
-) -> Result<(), DocumentRenderError> {
-    write!(output, "<{tag}")?;
-    write_html_attrs(output, attrs)?;
+) {
+    write!(output, "<{tag}");
+    write_html_attrs(output, attrs);
     if xhtml {
-        output.write_str(" /")?;
+        output.write_str(" /");
     }
-    output.write_char('>')?;
-    Ok(())
+    output.write_char('>');
 }
 
-pub(crate) fn write_html_text(
-    output: &mut DocumentWriter,
-    value: &str,
-) -> Result<(), DocumentRenderError> {
-    output.write_str(&escape_html(value))?;
-    Ok(())
+pub(crate) fn write_html_text(output: &mut DocumentWriter, value: &str) {
+    output.write_str(&escape_html(value));
 }
 
 #[cfg(test)]

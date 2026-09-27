@@ -3,8 +3,6 @@
 //! Parses anything indented with 4 spaces.
 //!
 //! <https://spec.commonmark.org/0.30/#indented-code-block>
-use std::fmt::Write;
-
 use crate::document::NodeRef;
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::main::MarkdownIt;
@@ -13,7 +11,6 @@ use crate::parser::renderer::Renderer;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
-    DocumentRenderError,
     write_html_close,
     write_html_open,
     write_html_text,
@@ -35,14 +32,14 @@ impl DocumentNodeRenderer<CodeBlock> for CodeBlockDocumentRenderer {
         code: &CodeBlock,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        context.cr(output)?;
-        write_html_open(output, "pre", &[])?;
-        write_html_open(output, "code", node.attrs())?;
-        write_html_text(output, &code.content)?;
-        write_html_close(output, "code")?;
-        write_html_close(output, "pre")?;
-        context.cr(output)
+    ) {
+        context.cr(output);
+        write_html_open(output, "pre", &[]);
+        write_html_open(output, "code", node.attrs());
+        write_html_text(output, &code.content);
+        write_html_close(output, "code");
+        write_html_close(output, "pre");
+        context.cr(output);
     }
 }
 
@@ -55,10 +52,10 @@ impl DocumentNodeRenderer<CodeBlock> for CodeBlockTextRenderer {
         code: &CodeBlock,
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
-    ) -> Result<(), DocumentRenderError> {
-        context.cr(output)?;
-        output.write_str(&code.content)?;
-        context.cr(output)
+    ) {
+        context.cr(output);
+        output.write_str(&code.content);
+        context.cr(output);
     }
 }
 
