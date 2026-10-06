@@ -343,7 +343,7 @@ fn direct_parser_checks_core_configuration_before_parsing() {
     assert_direct_configuration_panics(
         &md,
         "",
-        "direct parsing requires the built-in block and inline core rules only",
+        "direct parsing requires the built-in block and inline core rules and supported source preparations",
     );
 }
 
@@ -1275,5 +1275,222 @@ fn direct_math_renders_plain_text_content() {
     assert_eq!(
         md.render_document_as(&document, "text"),
         "x < y\n雪 a&b 后\n"
+    );
+}
+
+#[cfg(feature = "linkify")]
+#[test]
+fn direct_linkify_matches_the_legacy_bridge() {
+    use markdown_it::plugins::extra::linkify::{self, LinkifyOptions};
+    for fuzzy_links in [false, true] {
+        for linkify_first in [false, true] {
+            let mut md = MarkdownIt::empty();
+            if linkify_first {
+                linkify::add_with_options(&mut md, LinkifyOptions { fuzzy_links });
+            }
+            markdown_it::plugins::cmark::add(&mut md);
+            markdown_it::plugins::html::add(&mut md);
+            if !linkify_first {
+                linkify::add_with_options(&mut md, LinkifyOptions { fuzzy_links });
+            }
+            for source in [
+                "",
+                "plain 雪",
+                "https://example.com/path?q=1&x=2.",
+                "www.example.org example.org //example.org",
+                "a@b.co mailto:test@example.com MAILTO:test@example.com",
+                "雪 https://例子.example/路径 后 user@example.com",
+                "https://example.com/🙂",
+                "a\nhttps://example.com\r\nb@c.org\rwww.example.org",
+                "a\0 https://example.com",
+                "https://example.com/foo*bar*baz",
+                "https://example.com/foo`bar`baz",
+                "https://example.com/foo[123](456)bar",
+                "https://example.com/foo&amp;bar",
+                "**https://example.com/path** *a@b.co*",
+                "`https://example.com`",
+                r"\https://example.com",
+                r"https\://example.com",
+                r"https:\//aa.org https://bb.org",
+                r"https:/\/cc.org",
+                "x//example.com 。//example.com 组//example.com",
+                "[https://example.com](other) ![https://example.com](/img)",
+                "[https://example.com/foo[bar]](/url)",
+                "![https://example.com/a[b]](/img)",
+                "[https://example.com][id]\n\n[id]: /url",
+                "[outer ![a@b.co](/img)](/url)",
+                "<https://example.com> <a href='/x'>https://example.com</a>",
+                "</a>[https://example.com](other)",
+                "ftp://example.com javascript://example.com http:/example.com",
+                "> https://example.com\n> 雪 a@b.co\n\n- www.example.org\n  https://example.com/path",
+                "# https://example.com\n\n    https://example.com\n\n```\nhttps://example.com\n```",
+            ] {
+                assert_direct_matches_bridge(&md, source);
+            }
+            markdown_it::plugins::extra::beautify_links::add_with_char_limit(&mut md, 12);
+            assert_direct_matches_bridge(&md, "雪 https://example.com/a/very/long/path a@b.co");
+        }
+    }
+}
+
+#[cfg(feature = "linkify")]
+#[test]
+fn direct_linkify_configuration_and_source_maps() {
+    use markdown_it::plugins::extra::linkify::{self, Linkified, LinkifyOptions, LinkifyPrescan};
+    let mut md = MarkdownIt::new();
+    linkify::add_with_options(&mut md, LinkifyOptions { fuzzy_links: true });
+    let source = "雪 https://example.com 后 a@b.co www.example.org";
+    assert_direct_matches_bridge(&md, source);
+    let direct = md.parse_document_direct(source);
+    let ranges: Vec<_> = direct
+        .events(direct.root())
+        .filter_map(|event| {
+            if matches!(event, StructuralEvent::Exit(_)) {
+                return None;
+            }
+            let node = event.node();
+            node.is::<Linkified>()
+                .then(|| node.srcmap().unwrap().get_byte_offsets())
+        })
+        .collect();
+    assert_eq!(ranges.len(), 3);
+    assert_eq!(
+        ranges
+            .iter()
+            .map(|&(start, end)| &source[start..end])
+            .collect::<Vec<_>>(),
+        vec!["https://example.com", "a@b.co", "www.example.org"]
+    );
+    assert_eq!(
+        md.render_document_as(&direct, "text"),
+        format!("{source}\n")
+    );
+    for limit in [0, 1, 2] {
+        md.max_nesting = limit;
+        assert_direct_matches_bridge(&md, "> https://example.com\n\n雪 a@b.co");
+    }
+    md.max_nesting = 100;
+    md.remove_rule::<LinkifyPrescan>();
+    assert_direct_matches_bridge(&md, source);
+    assert_eq!(
+        md.render_document(&md.parse_document_direct(source)),
+        format!("<p>{source}</p>\n")
+    );
+    md.add_rule::<LinkifyPrescan>()
+        .before::<markdown_it::parser::block::builtin::BlockParserRule>();
+    assert_direct_matches_bridge(&md, source);
+    md.remove_rule::<LinkifyPrescan>();
+    md.add_rule::<LinkifyPrescan>()
+        .after::<markdown_it::parser::block::builtin::BlockParserRule>()
+        .before::<markdown_it::parser::inline::builtin::InlineParserRule>();
+    assert_direct_matches_bridge(&md, source);
+    md.remove_rule::<LinkifyPrescan>();
+    md.add_rule::<LinkifyPrescan>()
+        .after::<markdown_it::parser::inline::builtin::InlineParserRule>();
+    for source in ["", "https://example.com"] {
+        assert_direct_configuration_panics(&md, source, "supported source preparations");
+    }
+    let mut unsupported_core = MarkdownIt::new();
+    linkify::add(&mut unsupported_core);
+    markdown_it::plugins::extra::typographer::add(&mut unsupported_core);
+    assert_direct_configuration_panics(&unsupported_core, "", "supported source preparations");
+}
+
+#[cfg(feature = "linkify")]
+#[test]
+fn direct_linkify_prescan_runs_before_document_postprocessors() {
+    use markdown_it::plugins::extra::{linkify, smartquotes, typographer};
+    let mut legacy = MarkdownIt::new();
+    typographer::add(&mut legacy);
+    smartquotes::add(&mut legacy);
+    linkify::add(&mut legacy);
+    let mut md = MarkdownIt::new();
+    typographer::add_document(&mut md);
+    smartquotes::add_document(&mut md);
+    linkify::add(&mut md);
+    for source in [
+        r#"a~~"foo"~~"#,
+        r#""雪"... https://example.com/(c)"#,
+        "ping a@b.co (tm) www.example.org",
+    ] {
+        let mut document = md.parse_document_direct(source);
+        md.run_document_transforms(&mut document);
+        assert_eq!(md.render_document(&document), legacy.render(source));
+    }
+}
+
+#[test]
+fn direct_core_preparations_share_rule_order_and_lifetime() {
+    use markdown_it::parser::block::builtin::BlockParserRule;
+    use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
+    use markdown_it::parser::extset::RootExtSet;
+    use markdown_it::parser::inline::builtin::InlineParserRule;
+    use markdown_it::plugins::cmark::block::reference::ReferenceMap;
+
+    struct Preparation<const AFTER_BLOCK: bool>;
+    impl<const AFTER_BLOCK: bool> Preparation<AFTER_BLOCK> {
+        fn prepare(_: &str, _: &MarkdownIt, root_ext: &mut RootExtSet) {
+            assert_eq!(root_ext.contains::<ReferenceMap>(), AFTER_BLOCK);
+            root_ext
+                .get_or_insert_default::<Vec<bool>>()
+                .push(AFTER_BLOCK);
+        }
+    }
+    impl<const AFTER_BLOCK: bool> CoreRule for Preparation<AFTER_BLOCK> {
+        fn run(root: &mut markdown_it::Node, md: &MarkdownIt) {
+            let data = root.cast_mut::<Root>().unwrap();
+            Self::prepare(&data.content, md, &mut data.ext);
+        }
+        fn document_rule() -> Option<DocumentCoreRule> {
+            Some(DocumentCoreRule::Preparation(Self::prepare))
+        }
+    }
+
+    let mut md = MarkdownIt::new();
+    md.add_rule::<Preparation<false>>()
+        .before::<BlockParserRule>();
+    md.add_rule::<Preparation<true>>()
+        .after::<BlockParserRule>()
+        .before::<InlineParserRule>();
+    let source = "[x][id]\n\n[id]: /url";
+    assert_direct_matches_bridge(&md, source);
+    let document = md.parse_document_direct(source);
+    assert_eq!(
+        document
+            .node(document.root())
+            .cast::<Root>()
+            .unwrap()
+            .ext
+            .get::<Vec<bool>>()
+            .unwrap(),
+        &[false, true]
+    );
+
+    md.remove_rule::<Preparation<false>>();
+    md.remove_rule::<Preparation<true>>();
+    let document = md.parse_document_direct(source);
+    assert!(
+        !document
+            .node(document.root())
+            .cast::<Root>()
+            .unwrap()
+            .ext
+            .contains::<Vec<bool>>()
+    );
+
+    md.add_rule::<Preparation<true>>()
+        .after::<BlockParserRule>()
+        .before::<InlineParserRule>();
+    assert_direct_matches_bridge(&md, source);
+    let document = md.parse_document_direct(source);
+    assert_eq!(
+        document
+            .node(document.root())
+            .cast::<Root>()
+            .unwrap()
+            .ext
+            .get::<Vec<bool>>()
+            .unwrap(),
+        &[true]
     );
 }

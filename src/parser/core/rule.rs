@@ -1,10 +1,47 @@
 use crate::{MarkdownIt, Node};
 
+pub(crate) type DocumentPreparationFn =
+    fn(&str, &MarkdownIt, &mut crate::parser::extset::RootExtSet);
+
+/// Experimental direct counterpart of a core rule.
+/// Preparation runs at the rule's position, before the inline pass.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub enum DocumentCoreRule {
+    Block,
+    Inline,
+    Preparation(DocumentPreparationFn),
+}
+
 /// Each member of core rule chain must implement this trait
 pub trait CoreRule: 'static {
     const NAMES: &'static [&'static str] = &[];
 
     fn run(root: &mut Node, md: &MarkdownIt);
+
+    /// Optional direct implementation, registered with the legacy rule.
+    /// Existing core rules default to legacy-only support.
+    #[doc(hidden)]
+    fn document_rule() -> Option<DocumentCoreRule> {
+        None
+    }
+}
+
+/// Both implementations share one ruler entry and the same ordering/lifetime.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub struct CoreRuleEntry {
+    pub(crate) legacy: fn(&mut Node, &MarkdownIt),
+    pub(crate) document: Option<DocumentCoreRule>,
+}
+
+impl CoreRuleEntry {
+    pub(crate) fn new<T: CoreRule>() -> Self {
+        Self {
+            legacy: T::run,
+            document: T::document_rule(),
+        }
+    }
 }
 
 macro_rules! rule_builder {

@@ -12,7 +12,7 @@ use crate::parser::block::{
     LineOffset,
     build_line_offsets,
 };
-use crate::parser::core::Root;
+use crate::parser::core::{DocumentPreparationFn, Root};
 use crate::parser::extset::{InlineRootExtSet, RootExtSet};
 use crate::parser::inline::probe::InlineProbeContext;
 use crate::parser::inline::{DelimiterRun, DocumentRuleSet, Text, scan_delimiter_run};
@@ -77,9 +77,15 @@ impl<'a> DocumentParseContext<'a> {
         md: &MarkdownIt,
         block_rules: Vec<DocumentBlockRuleFns>,
         inline_rules: DocumentRuleSet,
+        root_ext: RootExtSet,
+        inline_preparations: Vec<DocumentPreparationFn>,
     ) -> Document {
         let mut state = DocumentBlockState::new(self.source, md, block_rules, self.root);
+        state.root_ext = root_ext;
         state.tokenize();
+        for prepare in inline_preparations {
+            prepare(self.source, md, &mut state.root_ext);
+        }
 
         let DocumentBlockState {
             node: mut root,
@@ -97,7 +103,8 @@ impl<'a> DocumentParseContext<'a> {
         Document::from_draft(Arc::<str>::from(self.source), root)
     }
 
-    pub(crate) fn parse_text_fallback(mut self) -> Document {
+    pub(crate) fn parse_text_fallback(mut self, root_ext: RootExtSet) -> Document {
+        self.root.cast_mut::<Root>().unwrap().ext = root_ext;
         for line in build_line_offsets(self.source) {
             if line.first_nonspace >= line.line_end {
                 continue;

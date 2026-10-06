@@ -1,4 +1,4 @@
-use crate::parser::core::{CoreRule, Root};
+use crate::parser::core::{CoreRule, DocumentCoreRule, Root};
 use crate::{MarkdownIt, Node};
 
 pub fn add(md: &mut MarkdownIt) {
@@ -8,6 +8,10 @@ pub fn add(md: &mut MarkdownIt) {
 pub struct BlockParserRule;
 impl CoreRule for BlockParserRule {
     const NAMES: &'static [&'static str] = &["block"];
+
+    fn document_rule() -> Option<DocumentCoreRule> {
+        Some(DocumentCoreRule::Block)
+    }
 
     fn run(root: &mut Node, md: &MarkdownIt) {
         let mut node = std::mem::take(root);

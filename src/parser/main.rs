@@ -12,7 +12,7 @@ use crate::document::transform::{
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::{Root, *};
 use crate::parser::document_parser::DocumentParseContext;
-use crate::parser::extset::MarkdownItExtSet;
+use crate::parser::extset::{MarkdownItExtSet, RootExtSet};
 use crate::parser::inline::{self, InlineParser, Text, TextSpecial};
 use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
 use crate::parser::node::{Node, NodeValue};
@@ -26,8 +26,6 @@ use crate::render::{
     PlainTextDocumentRenderer,
     TransparentDocumentRenderer,
 };
-
-type RuleFn = fn(&mut Node, &MarkdownIt);
 
 /// Main parser struct, created once and reused for parsing multiple documents.
 pub struct MarkdownIt {
@@ -62,7 +60,7 @@ pub struct MarkdownIt {
     /// Format-specific renderers for arena-backed documents.
     pub document_renderers: DocumentRendererRegistry,
 
-    ruler: Ruler<RuleMark, RuleFn>,
+    ruler: Ruler<RuleMark, CoreRuleEntry>,
 }
 
 impl std::fmt::Debug for MarkdownIt {
@@ -128,7 +126,7 @@ impl MarkdownIt {
         node.srcmap = Some(SourcePos::new(0, src.len()));
 
         for rule in self.ruler.iter() {
-            rule(&mut node, self);
+            (rule.legacy)(&mut node, self);
             debug_assert!(
                 node.is::<Root>(),
                 "root node of the AST must always be Root"
@@ -156,21 +154,40 @@ impl MarkdownIt {
     ///
     /// # Panics
     ///
-    /// Panics if the parser ruler does not contain exactly the built-in block
-    /// and inline core rules, or if any configured rule lacks support for
-    /// direct parsing.
+    /// Panics if the core ruler contains unsupported rules or source preparations
+    /// ordered after the inline pass, or if any syntax rule lacks direct support.
     #[doc(hidden)]
     pub fn parse_document_direct(&self, src: &str) -> Document {
-        let has_builtin_core_rules = self.ruler.len() == 2
-            && self
-                .ruler
-                .contains(RuleMark::of::<block::builtin::BlockParserRule>())
-            && self
-                .ruler
-                .contains(RuleMark::of::<inline::builtin::InlineParserRule>());
+        let mut preparations = Vec::new();
+        let mut inline_preparations = Vec::new();
+        let mut seen_block = false;
+        let mut seen_inline = false;
+        let mut supported = true;
+        for rule in self.ruler.iter() {
+            match rule.document {
+                Some(DocumentCoreRule::Block) => {
+                    supported &= !seen_block && !seen_inline;
+                    seen_block = true;
+                }
+                Some(DocumentCoreRule::Inline) => {
+                    supported &= seen_block && !seen_inline;
+                    seen_inline = true;
+                }
+                Some(DocumentCoreRule::Preparation(prepare)) => {
+                    // Preserve whether source analysis runs before or after blocks.
+                    supported &= !seen_inline;
+                    if seen_block {
+                        inline_preparations.push(prepare);
+                    } else {
+                        preparations.push(prepare);
+                    }
+                }
+                None => supported = false,
+            }
+        }
         assert!(
-            has_builtin_core_rules,
-            "direct parsing requires the built-in block and inline core rules only",
+            supported && seen_block && seen_inline,
+            "direct parsing requires the built-in block and inline core rules and supported source preparations",
         );
 
         let block_rules = self
@@ -182,11 +199,25 @@ impl MarkdownIt {
             .document_rules()
             .expect("parser configuration contains unsupported direct inline rules or factories");
 
+        let mut root_ext = RootExtSet::new();
+        for prepare in preparations {
+            prepare(src, self, &mut root_ext);
+        }
         if block_rules.is_empty() && self.inline.has_only_text_rule() && self.max_nesting > 0 {
-            return DocumentParseContext::new(src, &self.render_options).parse_text_fallback();
+            for prepare in inline_preparations {
+                prepare(src, self, &mut root_ext);
+            }
+            return DocumentParseContext::new(src, &self.render_options)
+                .parse_text_fallback(root_ext);
         }
 
-        DocumentParseContext::new(src, &self.render_options).parse(self, block_rules, inline_rules)
+        DocumentParseContext::new(src, &self.render_options).parse(
+            self,
+            block_rules,
+            inline_rules,
+            root_ext,
+            inline_preparations,
+        )
     }
 
     /// Register an arena-backed document transform.
@@ -257,8 +288,11 @@ impl MarkdownIt {
 
     /// Register a new core rule for type `T`, returning a builder to
     /// position it relative to other rules (before/after/alias/...).
-    pub fn add_rule<T: CoreRule>(&mut self) -> RuleBuilder<'_, RuleFn> {
-        let item = self.ruler.add(RuleMark::of::<T>(), T::run);
+    /// Registers both the legacy function and any direct counterpart together.
+    pub fn add_rule<T: CoreRule>(&mut self) -> RuleBuilder<'_, CoreRuleEntry> {
+        let item = self
+            .ruler
+            .add(RuleMark::of::<T>(), CoreRuleEntry::new::<T>());
         for name in T::NAMES {
             item.alias(RuleMark::named(*name));
         }

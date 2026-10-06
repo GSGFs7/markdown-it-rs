@@ -1,5 +1,5 @@
 use crate::parser::block::builtin::BlockParserRule;
-use crate::parser::core::{CoreRule, Root};
+use crate::parser::core::{CoreRule, DocumentCoreRule, Root};
 use crate::parser::extset::{InlineRootExtSet, RootExtSet};
 use crate::{MarkdownIt, Node, NodeValue};
 
@@ -34,6 +34,10 @@ pub fn add(md: &mut MarkdownIt) {
 pub struct InlineParserRule;
 impl CoreRule for InlineParserRule {
     const NAMES: &'static [&'static str] = &["inline"];
+
+    fn document_rule() -> Option<DocumentCoreRule> {
+        Some(DocumentCoreRule::Inline)
+    }
 
     fn run(root: &mut Node, md: &MarkdownIt) {
         fn walk_recursive(node: &mut Node, md: &MarkdownIt, root_ext: &mut RootExtSet) {

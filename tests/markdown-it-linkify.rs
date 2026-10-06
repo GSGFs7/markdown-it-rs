@@ -12,6 +12,15 @@ fn run(input: &str, output: &str) {
     let md = common::markdown_it_fixture_parser();
     let actual = md.parse(&(input.to_owned() + "\n")).render();
     assert_eq!(actual, expected);
+
+    let mut direct_md = markdown_it::MarkdownIt::new();
+    markdown_it::plugins::html::add(&mut direct_md);
+    markdown_it::plugins::extra::linkify::add(&mut direct_md);
+    markdown_it::plugins::extra::typographer::add_document(&mut direct_md);
+    markdown_it::plugins::extra::smartquotes::add_document(&mut direct_md);
+    let mut document = direct_md.parse_document_direct(&(input.to_owned() + "\n"));
+    direct_md.run_document_transforms(&mut document);
+    assert_eq!(direct_md.render_document(&document), expected);
 }
 
 ///////////////////////////////////////////////////////////////////////////
