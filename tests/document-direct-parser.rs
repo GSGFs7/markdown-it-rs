@@ -90,12 +90,12 @@ fn direct_parser_rejects_unmigrated_syntax_rules() {
 
     let mut partial = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial);
-    markdown_it::plugins::extra::front_matter::add(&mut partial);
-    for source in ["---\ntitle: test\n---", ""] {
+    markdown_it::plugins::extra::tables::add(&mut partial);
+    for source in ["| a |\n| - |", ""] {
         assert_direct_configuration_panics(&partial, source, "unsupported direct block rules");
     }
     partial.max_nesting = 0;
-    assert_direct_configuration_panics(&partial, "---", "unsupported direct block rules");
+    assert_direct_configuration_panics(&partial, "| a |", "unsupported direct block rules");
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
@@ -120,6 +120,127 @@ fn direct_parser_rejects_unmigrated_syntax_rules() {
         "~[x](/url)",
         "unsupported direct inline rules or factories",
     );
+}
+
+#[test]
+fn direct_front_matter_matches_the_legacy_bridge() {
+    use markdown_it::plugins::extra::front_matter::{self, FrontMatter, FrontMatterKind};
+
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut md);
+    front_matter::add_with_max_lines(&mut md, 3);
+
+    for max_lines in [0, 1, 2, 3, 4, front_matter::DEFAULT_MAX_LINES] {
+        front_matter::set_max_lines(&mut md, max_lines);
+        for source in [
+            "",
+            "---",
+            "+++",
+            "---\n---",
+            "+++\n+++\nBody",
+            "---\ntitle: 雪\n---\n# Post",
+            "+++\ntitle = '雪'\n+++\nBody",
+            "---\ntitle: 雪\ntags:\n  - rust\n---\n# Post\n",
+            "---\n\n---\nBody",
+            "--- \t\ntitle: 雪\n--- \t\nBody",
+            "---\r\ntitle: 雪\r\n---\r\nBody",
+            "+++\rtitle = '雪'\r+++\rBody",
+            "---\ntitle: \0\n---\nBody",
+            "---\nunclosed",
+            "---\ntitle: 雪\n+++\nBody",
+            "---\ntitle: 雪\n  ---\nBody",
+            "  ---\ntitle: 雪\n---\nBody",
+            "\n---\ntitle: 雪\n---\nBody",
+            "before\n\n---\ntitle: 雪\n---\nBody",
+            "> ---\n> title: 雪\n> ---\n\nBody",
+            "- ---\n  title: 雪\n  ---\n\nBody",
+            "---\ntitle: 雪\n---\n\n[ref]: /url\n\n[ref]",
+        ] {
+            assert_direct_matches_bridge(&md, source);
+            let bridged = md.parse_document(source);
+            let direct = md.parse_document_direct(source);
+            let metadata = |document: &markdown_it::Document| {
+                document
+                    .node(document.root())
+                    .cast::<Root>()
+                    .unwrap()
+                    .ext
+                    .get::<FrontMatter>()
+                    .map(|value| {
+                        (
+                            value.kind,
+                            value.raw.clone(),
+                            value.start_line,
+                            value.end_line,
+                        )
+                    })
+            };
+            assert_eq!(
+                metadata(&direct),
+                metadata(&bridged),
+                "{source:?}, limit {max_lines}"
+            );
+            let source_maps = |document: &markdown_it::Document| {
+                document
+                    .events(document.root())
+                    .filter(|event| !matches!(event, StructuralEvent::Exit(_)))
+                    .map(|event| event.node().srcmap())
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(source_maps(&direct), source_maps(&bridged), "{source:?}");
+        }
+    }
+
+    let source = "---\ntitle: 雪\n---\n# Post";
+    let document = md.parse_document_direct(source);
+    let root = document.node(document.root());
+    let value = root
+        .cast::<Root>()
+        .unwrap()
+        .ext
+        .get::<FrontMatter>()
+        .unwrap();
+    assert_eq!(value.kind, FrontMatterKind::Yaml);
+    assert_eq!(value.raw, "title: 雪");
+    assert_eq!((value.start_line, value.end_line), (0, 2));
+    assert_eq!(
+        value.parse_with(|_, raw| raw
+            .strip_prefix("title: ")
+            .map(str::to_owned)
+            .ok_or("missing title")),
+        Ok("雪".to_owned())
+    );
+    assert_eq!(md.render_document(&document), "<h1>Post</h1>\n");
+
+    // The closing delimiter must be strictly inside the scan limit.
+    for end_line in [255, 256] {
+        let source = format!("---\n{}---\nBody", "key: value\n".repeat(end_line - 1));
+        assert_direct_matches_bridge(&md, &source);
+        let document = md.parse_document_direct(&source);
+        assert_eq!(
+            document
+                .node(document.root())
+                .cast::<Root>()
+                .unwrap()
+                .ext
+                .get::<FrontMatter>()
+                .is_some(),
+            end_line < front_matter::DEFAULT_MAX_LINES,
+        );
+    }
+
+    // Registering front matter first also keeps it ahead of the thematic break.
+    let mut front_first = MarkdownIt::empty();
+    front_matter::add(&mut front_first);
+    markdown_it::plugins::cmark::add(&mut front_first);
+    assert_direct_matches_bridge(&front_first, source);
+    assert_eq!(
+        front_first.render_document(&front_first.parse_document_direct(source)),
+        "<h1>Post</h1>\n"
+    );
+
+    md.max_nesting = 0;
+    assert_direct_matches_bridge(&md, source);
 }
 
 #[test]
