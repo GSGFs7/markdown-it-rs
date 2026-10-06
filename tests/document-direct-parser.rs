@@ -1,6 +1,34 @@
 use markdown_it::parser::core::Root;
 use markdown_it::{MarkdownIt, NodeDraft, StructuralEvent};
 
+// KaTeX uses unordered attribute/style maps; normalize only their ordering.
+fn normalize_math_html(html: &str) -> String {
+    #[cfg(not(feature = "katex"))]
+    {
+        html.to_owned()
+    }
+    #[cfg(feature = "katex")]
+    {
+        let styles = regex::Regex::new(r#"style="([^"]+)""#).unwrap();
+        let html = styles.replace_all(html, |caps: &regex::Captures| {
+            let mut values: Vec<_> = caps[1]
+                .split(';')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect();
+            values.sort();
+            format!(r#"style="{};""#, values.join("; "))
+        });
+        let math = regex::Regex::new(r#"<math ([^>]+)>"#).unwrap();
+        math.replace_all(&html, |caps: &regex::Captures| {
+            let mut attrs: Vec<_> = caps[1].split_whitespace().collect();
+            attrs.sort();
+            format!("<math {}>", attrs.join(" "))
+        })
+        .into_owned()
+    }
+}
+
 fn assert_direct_matches_bridge(md: &MarkdownIt, source: &str) {
     let bridged = md.parse_document(source);
     let direct = md.parse_document_direct(source);
@@ -12,8 +40,8 @@ fn assert_direct_matches_bridge(md: &MarkdownIt, source: &str) {
         source
     );
     assert_eq!(
-        md.render_document(&direct),
-        md.render_document(&bridged),
+        normalize_math_html(&md.render_document(&direct)),
+        normalize_math_html(&md.render_document(&bridged)),
         "HTML for {source:?}"
     );
     assert_eq!(
@@ -27,8 +55,8 @@ fn assert_direct_matches_bridge(md: &MarkdownIt, source: &str) {
         "debug tree for {source:?}"
     );
     assert_eq!(
-        direct.into_legacy().render(),
-        md.parse(source).render(),
+        normalize_math_html(&direct.into_legacy().render()),
+        normalize_math_html(&md.parse(source).render()),
         "legacy conversion for {source:?}"
     );
 }
@@ -84,19 +112,19 @@ fn direct_paragraph_and_text_rules_match_the_legacy_bridge() {
 #[test]
 fn direct_parser_rejects_unmigrated_syntax_rules() {
     let mut md = MarkdownIt::new();
-    markdown_it::plugins::extra::math::add(&mut md);
+    markdown_it::plugins::directives::add(&mut md);
     for source in ["# heading", ""] {
         assert_direct_configuration_panics(&md, source, "unsupported direct block rules");
     }
 
     let mut partial = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial);
-    markdown_it::plugins::extra::math::add(&mut partial);
-    for source in ["$$\nx\n$$", ""] {
+    markdown_it::plugins::directives::add(&mut partial);
+    for source in [":::note\nx\n:::", ""] {
         assert_direct_configuration_panics(&partial, source, "unsupported direct block rules");
     }
     partial.max_nesting = 0;
-    assert_direct_configuration_panics(&partial, "$$", "unsupported direct block rules");
+    assert_direct_configuration_panics(&partial, ":::note", "unsupported direct block rules");
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
@@ -1184,5 +1212,68 @@ fn direct_emph_pair_extras_match_the_legacy_bridge() {
     assert_eq!(
         md.render_document(&document),
         "<p><mark>highlighted</mark></p>\n",
+    );
+}
+
+#[test]
+fn direct_math_matches_the_legacy_bridge() {
+    let mut md = MarkdownIt::new();
+    markdown_it::plugins::extra::math::add(&mut md);
+    for source in [
+        "",
+        "$",
+        "$$",
+        "$$\n$$",
+        "$$\nx\n$$",
+        "$$\n\nx\n\n$$",
+        "$$\nx",
+        "$$ trailing\nx\n$$",
+        "   $$  \n  x\n  $$",
+        "    $$\nx\n$$",
+        "before\n$$\nx\n$$\nafter",
+        "> $$\n> x\n> $$\nend",
+        "- $$\n  x\n  $$\n- end",
+        "- $$\n  x\noutside",
+        "$x$",
+        "a$x$b",
+        "$ x$",
+        "$x $",
+        "$ x $",
+        "$x$1",
+        "$10 to $20",
+        r"$x\$y$",
+        r"$x\\$y$",
+        r"\$x$",
+        "$$x$",
+        "$x$$y$",
+        "$x\ny$",
+        "$雪🙂$",
+        "雪 $x$ 后",
+        "$$\n雪🙂 <&>\n$$",
+        "$$\r\nx\r\n$$\r\n$x$\rnext",
+        "[$x]y$](/url)",
+        "![$x]y$](/img)",
+        "[$x[y$](/url)",
+        "[$x$][ref]\n\n[ref]: /url",
+        "`$x$` **$x$** <i>$x$</i>",
+        r"$\invalidcommand{<&}$",
+        "$$\n\\invalidcommand{<&}\n$$",
+    ] {
+        assert_direct_matches_bridge(&md, source);
+    }
+    for limit in [0, 1, 2] {
+        md.max_nesting = limit;
+        assert_direct_matches_bridge(&md, "> $$\n> 雪\n> $$\n\n$x]y$");
+    }
+}
+
+#[test]
+fn direct_math_renders_plain_text_content() {
+    let mut md = MarkdownIt::new();
+    markdown_it::plugins::extra::math::add(&mut md);
+    let document = md.parse_document_direct("$$\nx < y\n$$\n\n雪 $a&b$ 后");
+    assert_eq!(
+        md.render_document_as(&document, "text"),
+        "x < y\n雪 a&b 后\n"
     );
 }

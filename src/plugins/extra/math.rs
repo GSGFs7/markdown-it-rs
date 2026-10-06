@@ -1,7 +1,17 @@
 // reference to exist CodeFence & CodeSpan rule in the code base
 
-use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::inline::{InlineState, LegacyInlineRule};
+use crate::document::{NodeDraft, NodeRef};
+use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::document_parser::{DocumentBlockState, DocumentInlineState};
+use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
+use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
+use crate::render::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    write_html_close,
+    write_html_open,
+    write_html_text,
+};
 use crate::{MarkdownIt, Node, NodeValue, Renderer};
 
 #[derive(Debug)]
@@ -47,20 +57,27 @@ impl NodeValue for MathBlock {
 #[doc(hidden)]
 pub struct MathBlockScanner;
 
-impl MathBlockScanner {
-    fn get_header<'a>(state: &'a mut BlockState) -> Option<&'a str> {
-        if state.line_indent(state.line) >= state.md.max_indent {
-            return None;
-        }
+fn math_block_header(line: &str, indent: i32, max_indent: i32) -> Option<()> {
+    (indent < max_indent && line.trim_end() == "$$").then_some(())
+}
 
-        let line = state.get_line(state.line);
-        let trimmed = line.trim_end();
-        if trimmed != "$$" {
-            return None;
+fn scan_math_block<'a>(
+    line: usize,
+    line_max: usize,
+    get_line: impl Fn(usize) -> (&'a str, i32),
+) -> (usize, usize) {
+    let mut next_line = line + 1;
+    while next_line < line_max {
+        let (text, indent) = get_line(next_line);
+        if !text.is_empty() && indent < 0 {
+            break;
         }
-
-        Some(trimmed)
+        if text.trim() == "$$" {
+            return (next_line, next_line - line + 1);
+        }
+        next_line += 1;
     }
+    (next_line, next_line - line)
 }
 
 impl BlockRule for MathBlockScanner {
@@ -68,40 +85,50 @@ impl BlockRule for MathBlockScanner {
     const NAMES: &'static [&'static str] = &["math_block"];
 
     fn check(state: &mut BlockState) -> Option<()> {
-        Self::get_header(state).map(|_| ())
+        math_block_header(
+            state.get_line(state.line),
+            state.line_indent(state.line),
+            state.md.max_indent,
+        )
     }
 
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        Self::get_header(state)?;
-
-        let mut next_line = state.line;
-        let mut have_end_marker = false;
-
-        loop {
-            next_line += 1;
-            if next_line >= state.line_max {
-                break;
-            }
-
-            let line = state.get_line(next_line);
-            let trimmed = line.trim();
-            if !line.is_empty() && state.line_indent(next_line) < 0 {
-                break;
-            }
-            if trimmed == "$$" {
-                have_end_marker = true;
-                break;
-            }
-        }
-
+        <Self as BlockRule>::check(state)?;
+        let (end, consumed) = scan_math_block(state.line, state.line_max, |line| {
+            (state.get_line(line), state.line_indent(line))
+        });
         let indent = state.line_offsets[state.line].indent_nonspace;
-        let (content, _) = state.get_lines(state.line + 1, next_line, indent as usize, false);
-
+        let (content, _) = state.get_lines(state.line + 1, end, indent as usize, false);
         Some((
             Node::new(MathBlock {
                 content: content.trim().to_owned(),
             }),
-            next_line - state.line + if have_end_marker { 1 } else { 0 },
+            consumed,
+        ))
+    }
+}
+
+impl DocumentBlockRule for MathBlockScanner {
+    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+        math_block_header(
+            state.get_line(state.line),
+            state.line_indent(state.line),
+            state.md.max_indent,
+        )
+    }
+
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+        <Self as DocumentBlockRule>::check(state)?;
+        let (end, consumed) = scan_math_block(state.line, state.line_max, |line| {
+            (state.get_line(line), state.line_indent(line))
+        });
+        let indent = state.line_offsets[state.line].indent_nonspace;
+        let (content, _) = state.get_lines(state.line + 1, end, indent as usize, false);
+        Some((
+            NodeDraft::new(MathBlock {
+                content: content.trim().to_owned(),
+            }),
+            consumed,
         ))
     }
 }
@@ -143,61 +170,142 @@ impl NodeValue for MathInline {
 #[doc(hidden)]
 pub struct MathInlineScanner;
 
+fn scan_math_inline(src: &str) -> Option<(&str, usize)> {
+    if !src.starts_with('$') {
+        return None;
+    }
+    for pos in 1..src.len() {
+        if src.as_bytes()[pos] != b'$' || src.as_bytes()[pos - 1] == b'\\' {
+            continue;
+        }
+        let content = &src[1..pos];
+        if content.is_empty()
+            || content.starts_with(char::is_whitespace)
+            || content.ends_with(char::is_whitespace)
+            || src.as_bytes().get(pos + 1).is_some_and(u8::is_ascii_digit)
+        {
+            continue;
+        }
+        return Some((content, pos + 1));
+    }
+    None
+}
+
 impl LegacyInlineRule for MathInlineScanner {
     const MARKER: char = '$';
     const NAMES: &'static [&'static str] = &["math_inline"];
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let mut char = state.src[state.pos..state.pos_max].chars();
-        if char.next()? != '$' {
-            return None;
+        let (content, consumed) = scan_math_inline(&state.src[state.pos..state.pos_max])?;
+        let mut node = Node::new(MathInline {
+            content: content.to_owned(),
+        });
+        node.srcmap = state.get_map(state.pos, state.pos + consumed);
+        Some((node, consumed))
+    }
+}
+
+impl InlineRule for MathInlineScanner {
+    const MARKER: char = '$';
+    const NAMES: &'static [&'static str] = &["math_inline"];
+
+    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        match scan_math_inline(context.remaining()) {
+            Some((_, len)) => InlineProbeResult::Match {
+                len,
+                kind: InlineProbeKind::Token,
+            },
+            None => InlineProbeResult::NoMatch,
         }
+    }
 
-        let mut pos = state.pos + 1;
-        while pos < state.pos_max {
-            if state.src.as_bytes()[pos] == b'$' {
-                if state.src.as_bytes()[pos - 1] == b'\\' {
-                    pos += 1;
-                    continue;
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        let (content, consumed) = scan_math_inline(state.remaining())?;
+        Some((
+            Some(NodeDraft::new(MathInline {
+                content: content.to_owned(),
+            })),
+            consumed,
+        ))
+    }
+}
+
+impl AsRef<str> for MathBlock {
+    fn as_ref(&self) -> &str {
+        &self.content
+    }
+}
+
+impl AsRef<str> for MathInline {
+    fn as_ref(&self) -> &str {
+        &self.content
+    }
+}
+
+struct MathDocumentRenderer {
+    block: bool,
+    text: bool,
+}
+
+impl<T: NodeValue + AsRef<str>> DocumentNodeRenderer<T> for MathDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        value: &T,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut crate::DocumentWriter,
+    ) {
+        if self.block {
+            context.cr(output);
+        }
+        if self.text {
+            output.write_str(value.as_ref());
+        } else {
+            let tag = if self.block { "div" } else { "span" };
+            let mut attrs = node.attrs().clone();
+            attrs.push((
+                "class".into(),
+                if self.block {
+                    "math-block"
+                } else {
+                    "math-inline"
                 }
-
-                let content = &state.src[state.pos + 1..pos];
-                if content.is_empty() {
-                    pos += 1;
-                    continue;
+                .into(),
+            ));
+            write_html_open(output, tag, &attrs);
+            #[cfg(not(feature = "katex"))]
+            write_html_text(output, value.as_ref());
+            #[cfg(feature = "katex")]
+            {
+                let ctx = katex::KatexContext::default();
+                let setting = katex::Settings::builder().display_mode(self.block).build();
+                match katex::render_to_string(&ctx, value.as_ref(), &setting) {
+                    Ok(html) => output.write_str(&html),
+                    Err(_) => write_html_text(output, value.as_ref()),
                 }
-
-                // $ something$ or $something $
-                if content.starts_with(|c: char| c.is_whitespace())
-                    || content.ends_with(|c: char| c.is_whitespace())
-                {
-                    pos += 1;
-                    continue;
-                }
-
-                // $20
-                if pos + 1 < state.pos_max && state.src.as_bytes()[pos + 1].is_ascii_digit() {
-                    pos += 1;
-                    continue;
-                }
-
-                let mut node = Node::new(MathInline {
-                    content: content.to_owned(),
-                });
-                node.srcmap = state.get_map(state.pos, pos + 1);
-                return Some((node, pos - state.pos + 1));
             }
-
-            pos += 1;
+            write_html_close(output, tag);
         }
-
-        None
+        if self.block {
+            context.cr(output);
+        }
     }
 }
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<MathBlockScanner>();
-    md.inline.add_legacy_rule::<MathInlineScanner>();
+    md.block.add_document_rule::<MathBlockScanner>();
+    md.inline.add_migrated_rule::<MathInlineScanner>();
+    for (format, text) in [("html", false), ("text", true)] {
+        md.add_document_renderer::<MathBlock, _>(
+            format,
+            MathDocumentRenderer { block: true, text },
+        );
+        md.add_document_renderer::<MathInline, _>(
+            format,
+            MathDocumentRenderer { block: false, text },
+        );
+    }
 }
 
 #[cfg(test)]
@@ -244,11 +352,20 @@ mod tests {
                 .into_owned()
         }
 
+        let direct = md.parse_document_direct(&(input.to_owned() + "\n"));
+        for event in direct.events(direct.root()) {
+            assert!(event.node().srcmap().is_some());
+        }
         let actual = normalize_katex_attrs(&node.render());
         let expected = normalize_katex_attrs(&output);
         assert_eq!(actual, expected);
+        assert_eq!(
+            normalize_katex_attrs(&md.render_document(&direct)),
+            expected
+        );
 
         let _ = md.parse(input.trim_end());
+        let _ = md.parse_document_direct(input.trim_end());
     }
 
     #[test]
