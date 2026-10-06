@@ -22,6 +22,19 @@ fn run(input: &str, output: &str) {
     assert_eq!(md.render_document(&document), result);
     md.render_document_as(&document, "text");
 
+    let mut direct_md = markdown_it::MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut direct_md);
+    markdown_it::plugins::html::add(&mut direct_md);
+    markdown_it::plugins::extra::tables::add(&mut direct_md);
+    markdown_it::plugins::extra::typographer::add_document(&mut direct_md);
+    let mut direct = direct_md.parse_document_direct(&source);
+    direct_md.run_document_transforms(&mut direct);
+    assert_eq!(direct_md.render_document(&direct), result);
+    assert_eq!(
+        direct_md.render_document_as(&direct, "text"),
+        md.render_document_as(&document, "text"),
+    );
+
     // make sure it doesn't crash without trailing \n
     let _ = md.parse(input.trim_end());
 }

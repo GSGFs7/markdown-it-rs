@@ -83,19 +83,20 @@ fn direct_paragraph_and_text_rules_match_the_legacy_bridge() {
 
 #[test]
 fn direct_parser_rejects_unmigrated_syntax_rules() {
-    let md = MarkdownIt::new();
+    let mut md = MarkdownIt::new();
+    markdown_it::plugins::extra::math::add(&mut md);
     for source in ["# heading", ""] {
         assert_direct_configuration_panics(&md, source, "unsupported direct block rules");
     }
 
     let mut partial = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial);
-    markdown_it::plugins::extra::tables::add(&mut partial);
-    for source in ["| a |\n| - |", ""] {
+    markdown_it::plugins::extra::math::add(&mut partial);
+    for source in ["$$\nx\n$$", ""] {
         assert_direct_configuration_panics(&partial, source, "unsupported direct block rules");
     }
     partial.max_nesting = 0;
-    assert_direct_configuration_panics(&partial, "| a |", "unsupported direct block rules");
+    assert_direct_configuration_panics(&partial, "$$", "unsupported direct block rules");
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
@@ -241,6 +242,69 @@ fn direct_front_matter_matches_the_legacy_bridge() {
 
     md.max_nesting = 0;
     assert_direct_matches_bridge(&md, source);
+}
+
+#[test]
+fn direct_tables_match_the_legacy_bridge() {
+    let mut md = MarkdownIt::new();
+    markdown_it::plugins::html::add(&mut md);
+
+    for max_indent in [4, i32::MAX] {
+        md.max_indent = max_indent;
+        for source in [
+            "",
+            "| a | b |\n| - | - |",
+            "a | b\n:- | -:\nx | y",
+            "| a | b | c | d |\n| :- | -: | :-: | - |\n| 雪 | 雨 | 风 | 云 |",
+            "| a | b |\n| - | - |\nx\nx | y | ignored\n||",
+            "foo\n---\nbar",
+            "|\n| - |",
+            "| a | b |\n| - |",
+            "a | b\n- - | -\nx | y",
+            "a | b\n: | -\nx | y",
+            "a | b\ninvalid | -\nx | y",
+            "before\n| a | b |\n| - | - |\nx | y",
+            "| a | b |\n| - | - |\n\nafter",
+            "| a | b |\n| - | - |\nx | y\n# heading",
+            "| a | b |\n| - | - |\nx | y\n- item",
+            "| a | b |\n| - | - |\nx | y\n> quote",
+            "| a | b |\n| - | - |\nx | y\n---",
+            "| a | b |\n| - | - |\nx | y\n```\ncode\n```",
+            "| a | b |\n| - | - |\nx | y\n<div>\nraw",
+            "| a | b |\n| - | - |\nx | y\nc | d\n- | -\nz | w",
+            "| *雪* | ~~雨~~ |\n| - | - |\n| `x` | [link](/url) |",
+            "| [forward] | ![雪](/image) |\n| - | - |\n\n[forward]: /url",
+            "| a &amp; b | <em>雪</em> |\n| - | - |\n| &#x96EA; | <https://example.com> |",
+            "| a\\|b | c |\n| - | - |\n| `x\\|y` | 雪\\|雨 |",
+            "| a\\\\|b | c |\n| - | - |",
+            "|  雪  |\t雨\t|\n| - | - |\n| x | |",
+            "| a | b |\r\n| - | - |\r\nx | y\r\n",
+            "| a | b |\r| - | - |\rx | y",
+            "| 雪\0 | 雨 |\n| - | - |",
+            "   a | b\n   - | -\n   x | y",
+            "    a | b\n    - | -\n    x | y",
+            "a | b\n    - | -\nx | y",
+            "a | b\n- | -\n    x | y",
+            "> a | b\n> - | -\n> 雪 | 雨\n\noutside",
+            "- a | b\n  - | -\n  雪 | 雨\n- sibling",
+            "> - a | b\n>   - | -\n>   雪 | 雨\n\noutside",
+        ] {
+            assert_direct_matches_bridge(&md, source);
+            let bridged = md.parse_document(source);
+            let direct = md.parse_document_direct(source);
+            let source_maps = |document: &markdown_it::Document| {
+                document
+                    .events(document.root())
+                    .filter(|event| !matches!(event, StructuralEvent::Exit(_)))
+                    .map(|event| event.node().srcmap())
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(source_maps(&direct), source_maps(&bridged), "{source:?}");
+        }
+    }
+
+    md.max_nesting = 0;
+    assert_direct_matches_bridge(&md, "a | b\n- | -\nx | y");
 }
 
 #[test]

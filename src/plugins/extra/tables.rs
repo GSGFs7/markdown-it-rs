@@ -2,8 +2,9 @@
 //!
 //! <https://github.github.com/gfm/#tables-extension->
 use crate::common::sourcemap::SourcePos;
-use crate::document::NodeRef;
-use crate::parser::block::{BlockRule, BlockState};
+use crate::document::{NodeDraft, NodeRef};
+use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::document_parser::DocumentBlockState;
 use crate::parser::inline::InlineRoot;
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
@@ -295,6 +296,7 @@ pub fn add(md: &mut MarkdownIt) {
         .add_rule::<TableScanner>()
         .before::<ListScanner>()
         .before::<HeadingScanner>();
+    md.block.add_document_rule::<TableScanner>();
     md.add_document_renderer::<Table, _>("html", TableDocumentRenderer);
     md.add_document_renderer::<TableHead, _>("html", TableHeadDocumentRenderer);
     md.add_document_renderer::<TableBody, _>("html", TableBodyDocumentRenderer);
@@ -446,27 +448,32 @@ impl TableScanner {
         Some(result)
     }
 
-    fn scan_header(state: &BlockState) -> Option<(Vec<RowContent>, Vec<ColumnAlignment>)> {
+    fn scan_header<'a>(
+        line: usize,
+        line_max: usize,
+        max_indent: i32,
+        get_line: impl Fn(usize) -> (&'a str, i32),
+    ) -> Option<(Vec<RowContent>, Vec<ColumnAlignment>)> {
         // should have at least two lines
-        if state.line + 2 > state.line_max {
+        if line + 2 > line_max {
             return None;
         }
 
-        if state.line_indent(state.line) >= state.md.max_indent {
+        if get_line(line).1 >= max_indent {
             return None;
         }
 
-        let next_line = state.line + 1;
-        if state.line_indent(next_line) < 0 {
+        let next_line = line + 1;
+        if get_line(next_line).1 < 0 {
             return None;
         }
 
-        if state.line_indent(next_line) >= state.md.max_indent {
+        if get_line(next_line).1 >= max_indent {
             return None;
         }
 
-        let alignments = Self::scan_alignment_row(state.get_line(next_line))?;
-        let header_row = Self::scan_row(state.get_line(state.line));
+        let alignments = Self::scan_alignment_row(get_line(next_line).0)?;
+        let header_row = Self::scan_row(get_line(line).0);
 
         // header row must match the delimiter row in the number of cells
         if header_row.len() != alignments.len() {
@@ -490,11 +497,17 @@ impl BlockRule for TableScanner {
             return None;
         }
 
-        Self::scan_header(state).map(|_| ())
+        Self::scan_header(state.line, state.line_max, state.md.max_indent, |line| {
+            (state.get_line(line), state.line_indent(line))
+        })
+        .map(|_| ())
     }
 
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        let (header_row, alignments) = Self::scan_header(state)?;
+        let (header_row, alignments) =
+            Self::scan_header(state.line, state.line_max, state.md.max_indent, |line| {
+                (state.get_line(line), state.line_indent(line))
+            })?;
         let table_cell_count = header_row.len();
         let mut table_node = Node::new(Table { alignments });
 
@@ -606,6 +619,137 @@ impl BlockRule for TableScanner {
     }
 }
 
+impl DocumentBlockRule for TableScanner {
+    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+        if state.node.is::<TableBody>() {
+            return None;
+        }
+
+        Self::scan_header(state.line, state.line_max, state.md.max_indent, |line| {
+            (state.get_line(line), state.line_indent(line))
+        })
+        .map(|_| ())
+    }
+
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+        let (header_row, alignments) =
+            Self::scan_header(state.line, state.line_max, state.md.max_indent, |line| {
+                (state.get_line(line), state.line_indent(line))
+            })?;
+        let table_cell_count = header_row.len();
+        let mut table_node = NodeDraft::new(Table { alignments });
+
+        let mut thead_node = NodeDraft::new(TableHead);
+        thead_node.set_srcmap(state.get_map(state.line, state.line + 1));
+
+        let mut row_node = NodeDraft::new(TableRow);
+        row_node.set_srcmap(state.get_map(state.line, state.line));
+
+        fn add_cell(
+            state: &DocumentBlockState<'_>,
+            row_node: &mut NodeDraft,
+            cell: String,
+            srcmap: Vec<(usize, usize)>,
+        ) {
+            let mut cell_node = NodeDraft::new(TableCell);
+            let (start, _) = row_node.srcmap().unwrap().get_byte_offsets();
+            cell_node.set_srcmap(Some(SourcePos::new(
+                start + srcmap.first().unwrap().1,
+                start + srcmap.last().unwrap().1 + cell.len() - srcmap.last().unwrap().0,
+            )));
+            if !cell.is_empty() {
+                let mapping = srcmap
+                    .into_iter()
+                    .map(|(dstpos, srcpos)| (dstpos, srcpos + start))
+                    .collect();
+                cell_node.push_child(state.pending_inline(cell, mapping));
+            }
+            row_node.push_child(cell_node);
+        }
+
+        for RowContent { str: cell, srcmap } in header_row {
+            add_cell(state, &mut row_node, cell, srcmap);
+        }
+
+        thead_node.push_child(row_node);
+        table_node.push_child(thead_node);
+
+        let tbody_node = NodeDraft::new(TableBody);
+        let old_node = std::mem::replace(&mut state.node, tbody_node);
+
+        //
+        // Iterate table rows
+        //
+
+        let start_line = state.line;
+        state.line += 2;
+        let mut autocompleted_cells = 0usize;
+
+        while state.line < state.line_max {
+            //
+            // Try to check if table is terminated or continued.
+            //
+            if state.line_indent(state.line) < 0 {
+                break;
+            }
+
+            if state.line_indent(state.line) >= state.md.max_indent {
+                break;
+            }
+
+            // stop if the line is empty
+            if state.is_empty(state.line) {
+                break;
+            }
+
+            // fail if terminating block found
+            if state.test_rules_at_line() {
+                break;
+            }
+
+            let line = state.get_line(state.line);
+
+            let mut body_row = Self::scan_row(line);
+            let missing_cells = table_cell_count.saturating_sub(body_row.len());
+            let Some(total_autocompleted_cells) = autocompleted_cells.checked_add(missing_cells)
+            else {
+                break;
+            };
+            if total_autocompleted_cells > MAX_AUTOCOMPLETED_CELLS {
+                break;
+            }
+            autocompleted_cells = total_autocompleted_cells;
+
+            let mut row_node = NodeDraft::new(TableRow);
+            row_node.set_srcmap(state.get_map(state.line, state.line));
+            let mut end_of_line = RowContent {
+                str: String::new(),
+                srcmap: vec![(0, line.len())],
+            };
+
+            for index in 0..table_cell_count {
+                let RowContent { str: cell, srcmap } =
+                    body_row.get_mut(index).unwrap_or(&mut end_of_line);
+                add_cell(state, &mut row_node, cell.clone(), srcmap.clone());
+            }
+
+            state.node.push_child(row_node);
+            state.line += 1;
+        }
+
+        let mut tbody_node = std::mem::replace(&mut state.node, old_node);
+
+        if !tbody_node.children().is_empty() {
+            tbody_node.set_srcmap(state.get_map(start_line + 2, state.line - 1));
+            table_node.push_child(tbody_node);
+        }
+
+        let line_count = state.line - start_line;
+        state.line = start_line;
+        Some((table_node, line_count))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{MAX_AUTOCOMPLETED_CELLS, TableScanner};
@@ -709,6 +853,8 @@ mod tests {
         crate::plugins::cmark::add(&mut md);
         crate::plugins::extra::tables::add(&mut md);
         let html = md.render(&src);
+        let direct = md.parse_document_direct(&src);
+        assert_eq!(md.render_document(&direct), html);
 
         assert_eq!(html.matches("<td>").count(), column_count * accepted_rows);
         assert!(html.ends_with("<p>x|\nx|</p>\n"));
