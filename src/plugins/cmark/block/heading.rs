@@ -155,7 +155,7 @@ impl DocumentBlockRule for HeadingScanner {
         let mapping = vec![(0, state.line_offsets[state.line].first_nonspace + text_pos)];
 
         let mut node = NodeDraft::new(ATXHeading { level });
-        *node.children_mut() = state.parse_inline(content, mapping);
+        node.push_child(state.pending_inline(content, mapping));
         Some((node, 1))
     }
 }

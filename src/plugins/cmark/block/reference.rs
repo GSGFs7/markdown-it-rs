@@ -14,8 +14,10 @@ use derive_more::{Deref, DerefMut};
 use downcast_rs::{Downcast, impl_downcast};
 
 use crate::common::utils::{normalize_reference, unescape_all};
+use crate::document::NodeDraft;
 use crate::generics::inline::full_link;
-use crate::parser::block::{BlockRule, BlockState};
+use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::document_parser::DocumentBlockState;
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::render::EmptyDocumentRenderer;
@@ -209,6 +211,7 @@ impl ReferenceMapEntry {
 /// Add plugin that parses markdown link references
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<ReferenceScanner>();
+    md.block.add_document_rule::<ReferenceScanner>();
     md.add_document_renderer::<Definition, _>("html", EmptyDocumentRenderer);
     md.add_document_renderer::<Definition, _>("text", EmptyDocumentRenderer);
 }
@@ -225,6 +228,62 @@ impl NodeValue for Definition {
 
 #[doc(hidden)]
 pub struct ReferenceScanner;
+
+/// Line accessors shared by the legacy and direct block states.
+///
+/// TODO: Once the legacy `BlockState` parsing path is removed, remove this
+///  trait and its implementation macro, and make the shared scanning helpers
+///  accept `DocumentBlockState` directly.
+trait ReferenceBlockState {
+    fn markdown_it(&self) -> &MarkdownIt;
+    fn start_line(&self) -> Option<(usize, &str)>;
+    fn continuation_line(&mut self, line: usize) -> Option<String>;
+    fn references(&mut self) -> &mut ReferenceMap;
+}
+
+/// Both states expose the same accessors, so generate the impls from one body.
+macro_rules! impl_reference_block_state {
+    ($state:ty) => {
+        impl ReferenceBlockState for $state {
+            fn markdown_it(&self) -> &MarkdownIt {
+                self.md
+            }
+
+            fn start_line(&self) -> Option<(usize, &str)> {
+                if self.line_indent(self.line) >= self.md.max_indent {
+                    return None;
+                }
+                Some((self.line, self.get_line(self.line)))
+            }
+
+            fn continuation_line(&mut self, line: usize) -> Option<String> {
+                if line >= self.line_max || self.is_empty(line) {
+                    return None;
+                }
+                let is_continuation = self.line_indent(line) >= self.md.max_indent
+                    || self.line_offsets[line].indent_nonspace < 0;
+                if !is_continuation {
+                    let old_line = self.line;
+                    self.line = line;
+                    let terminated = self.test_rules_at_line();
+                    self.line = old_line;
+                    if terminated {
+                        return None;
+                    }
+                }
+                Some(self.get_lines(line, line + 1, self.blk_indent, true).0)
+            }
+
+            fn references(&mut self) -> &mut ReferenceMap {
+                self.root_ext.get_or_insert_default::<ReferenceMap>()
+            }
+        }
+    };
+}
+
+impl_reference_block_state!(BlockState<'_, '_>);
+impl_reference_block_state!(DocumentBlockState<'_>);
+
 impl BlockRule for ReferenceScanner {
     const MARKERS: &'static [char] = &['['];
     const NAMES: &'static [&'static str] = &["reference"];
@@ -234,184 +293,180 @@ impl BlockRule for ReferenceScanner {
     }
 
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        if state.line_indent(state.line) >= state.md.max_indent {
-            return None;
-        }
-
-        let mut chars = state.get_line(state.line).chars();
-
-        let Some('[') = chars.next() else {
-            return None;
-        };
-
-        // Simple check to quickly interrupt scan on [link](url) at the start of line.
-        // Can be useful on practice: https://github.com/markdown-it/markdown-it/issues/54
-        loop {
-            match chars.next() {
-                Some('\\') => {
-                    chars.next();
-                }
-                Some(']') => {
-                    if let Some(':') = chars.next() {
-                        break;
-                    } else {
-                        return None;
-                    }
-                }
-                Some(_) => {}
-                None => break,
-            }
-        }
-
-        let start_line = state.line;
-        let mut next_line = start_line + 1;
-        let mut str = state.get_line(start_line).to_owned();
-        str.push('\n');
-
-        let mut pos = 1; // skip '['
-        let label_end;
-
-        loop {
-            let ch = str[pos..].chars().next()?;
-            match ch {
-                '[' => return None,
-                ']' => {
-                    label_end = pos;
-                    pos += 1;
-                    break;
-                }
-                '\n' => {
-                    pos += 1;
-                    if pos == str.len()
-                        && !append_next_reference_line(state, &mut next_line, &mut str)
-                    {
-                        return None;
-                    }
-                }
-                '\\' => {
-                    pos += 1;
-                    let escaped = str[pos..].chars().next()?;
-                    pos += escaped.len_utf8();
-                    if escaped == '\n'
-                        && pos == str.len()
-                        && !append_next_reference_line(state, &mut next_line, &mut str)
-                    {
-                        return None;
-                    }
-                }
-                _ => pos += ch.len_utf8(),
-            }
-        }
-
-        let Some(':') = str[pos..].chars().next() else {
-            return None;
-        };
-        pos += 1;
-
-        // [label]:   destination   'title'
-        //         ^^^ skip optional whitespace here
-        skip_reference_whitespace(state, &mut next_line, &mut str, &mut pos);
-
-        // [label]:   destination   'title'
-        //            ^^^^^^^^^^^ parse this
-        let href;
-        {
-            let res = full_link::parse_link_destination(&str, pos, str.len())?;
-            if pos == res.pos {
-                return None;
-            }
-            href = state.md.link_formatter.normalize_link(&res.str);
-            state.md.link_formatter.validate_link(&href)?;
-            pos = res.pos;
-        }
-
-        // save cursor state, we could require to rollback later
-        let dest_end_pos = pos;
-        let dest_end_next_line = next_line;
-
-        // [label]:   destination   'title'
-        //                       ^^^ skipping those spaces
-        let start = pos;
-        skip_reference_whitespace(state, &mut next_line, &mut str, &mut pos);
-
-        // [label]:   destination   'title'
-        //                          ^^^^^^^ parse this
-        let mut title = None;
-        if pos != start {
-            if let Some(res) = parse_reference_title(state, &mut next_line, &mut str, pos) {
-                title = Some(res.str);
-                pos = res.pos;
-            } else {
-                pos = dest_end_pos;
-                next_line = dest_end_next_line;
-            }
-        }
-
-        // skip trailing spaces until the rest of the line
-        loop {
-            match str[pos..].chars().next() {
-                Some(ch @ (' ' | '\t')) => pos += ch.len_utf8(),
-                Some('\n') | None => break,
-                Some(_) if title.is_some() => {
-                    // garbage at the end of the line after title,
-                    // but it could still be a valid reference if we roll back
-                    title = None;
-                    pos = dest_end_pos;
-                    next_line = dest_end_next_line;
-                }
-                Some(_) => {
-                    // garbage at the end of the line
-                    return None;
-                }
-            }
-        }
-
-        let references = state.root_ext.get_or_insert_default::<ReferenceMap>();
-        if !references.insert(str[1..label_end].to_owned(), href.clone(), title.clone()) {
-            return None;
-        }
-
-        Some((
-            Node::new(Definition {
-                label: str[1..label_end].to_owned(),
-                destination: href,
-                title,
-            }),
-            next_line - start_line,
-        ))
+        let (definition, lines) = scan_reference(state)?;
+        Some((Node::new(definition), lines))
     }
 }
 
-fn append_next_reference_line(
-    state: &mut BlockState,
-    next_line: &mut usize,
-    str: &mut String,
-) -> bool {
-    if *next_line >= state.line_max || state.is_empty(*next_line) {
-        return false;
+impl DocumentBlockRule for ReferenceScanner {
+    fn check(_: &mut DocumentBlockState<'_>) -> Option<()> {
+        None // can't interrupt anything
     }
 
-    let is_continuation = state.line_indent(*next_line) >= state.md.max_indent
-        || state.line_offsets[*next_line].indent_nonspace < 0;
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+        let (definition, lines) = scan_reference(state)?;
+        Some((NodeDraft::new(definition), lines))
+    }
+}
 
-    if !is_continuation {
-        let old_state_line = state.line;
-        state.line = *next_line;
-        let terminated = state.test_rules_at_line();
-        state.line = old_state_line;
-        if terminated {
-            return false;
+fn scan_reference<S: ReferenceBlockState>(state: &mut S) -> Option<(Definition, usize)> {
+    let (start_line, first_line) = state.start_line()?;
+    let mut chars = first_line.chars();
+
+    let Some('[') = chars.next() else {
+        return None;
+    };
+
+    // Simple check to quickly interrupt scan on [link](url) at the start of line.
+    // Can be useful on practice: https://github.com/markdown-it/markdown-it/issues/54
+    loop {
+        match chars.next() {
+            Some('\\') => {
+                chars.next();
+            }
+            Some(']') => {
+                if let Some(':') = chars.next() {
+                    break;
+                } else {
+                    return None;
+                }
+            }
+            Some(_) => {}
+            None => break,
         }
     }
 
-    let (line, _) = state.get_lines(*next_line, *next_line + 1, state.blk_indent, true);
+    let mut next_line = start_line + 1;
+    let mut str = first_line.to_owned();
+    str.push('\n');
+
+    let mut pos = 1; // skip '['
+    let label_end;
+
+    loop {
+        let ch = str[pos..].chars().next()?;
+        match ch {
+            '[' => return None,
+            ']' => {
+                label_end = pos;
+                pos += 1;
+                break;
+            }
+            '\n' => {
+                pos += 1;
+                if pos == str.len() && !append_next_reference_line(state, &mut next_line, &mut str)
+                {
+                    return None;
+                }
+            }
+            '\\' => {
+                pos += 1;
+                let escaped = str[pos..].chars().next()?;
+                pos += escaped.len_utf8();
+                if escaped == '\n'
+                    && pos == str.len()
+                    && !append_next_reference_line(state, &mut next_line, &mut str)
+                {
+                    return None;
+                }
+            }
+            _ => pos += ch.len_utf8(),
+        }
+    }
+
+    let Some(':') = str[pos..].chars().next() else {
+        return None;
+    };
+    pos += 1;
+
+    // [label]:   destination   'title'
+    //         ^^^ skip optional whitespace here
+    skip_reference_whitespace(state, &mut next_line, &mut str, &mut pos);
+
+    // [label]:   destination   'title'
+    //            ^^^^^^^^^^^ parse this
+    let href;
+    {
+        let res = full_link::parse_link_destination(&str, pos, str.len())?;
+        if pos == res.pos {
+            return None;
+        }
+        href = state.markdown_it().link_formatter.normalize_link(&res.str);
+        state.markdown_it().link_formatter.validate_link(&href)?;
+        pos = res.pos;
+    }
+
+    // save cursor state, we could require to rollback later
+    let dest_end_pos = pos;
+    let dest_end_next_line = next_line;
+
+    // [label]:   destination   'title'
+    //                       ^^^ skipping those spaces
+    let start = pos;
+    skip_reference_whitespace(state, &mut next_line, &mut str, &mut pos);
+
+    // [label]:   destination   'title'
+    //                          ^^^^^^^ parse this
+    let mut title = None;
+    if pos != start {
+        if let Some(res) = parse_reference_title(state, &mut next_line, &mut str, pos) {
+            title = Some(res.str);
+            pos = res.pos;
+        } else {
+            pos = dest_end_pos;
+            next_line = dest_end_next_line;
+        }
+    }
+
+    // skip trailing spaces until the rest of the line
+    loop {
+        match str[pos..].chars().next() {
+            Some(ch @ (' ' | '\t')) => pos += ch.len_utf8(),
+            Some('\n') | None => break,
+            Some(_) if title.is_some() => {
+                // garbage at the end of the line after title,
+                // but it could still be a valid reference if we roll back
+                title = None;
+                pos = dest_end_pos;
+                next_line = dest_end_next_line;
+            }
+            Some(_) => {
+                // garbage at the end of the line
+                return None;
+            }
+        }
+    }
+
+    let references = state.references();
+    if !references.insert(str[1..label_end].to_owned(), href.clone(), title.clone()) {
+        return None;
+    }
+
+    Some((
+        Definition {
+            label: str[1..label_end].to_owned(),
+            destination: href,
+            title,
+        },
+        next_line - start_line,
+    ))
+}
+
+fn append_next_reference_line<S: ReferenceBlockState>(
+    state: &mut S,
+    next_line: &mut usize,
+    str: &mut String,
+) -> bool {
+    let Some(line) = state.continuation_line(*next_line) else {
+        return false;
+    };
     str.push_str(&line);
     *next_line += 1;
     true
 }
 
-fn skip_reference_whitespace(
-    state: &mut BlockState,
+fn skip_reference_whitespace<S: ReferenceBlockState>(
+    state: &mut S,
     next_line: &mut usize,
     str: &mut String,
     pos: &mut usize,
@@ -430,8 +485,8 @@ fn skip_reference_whitespace(
     }
 }
 
-fn parse_reference_title(
-    state: &mut BlockState,
+fn parse_reference_title<S: ReferenceBlockState>(
+    state: &mut S,
     next_line: &mut usize,
     str: &mut String,
     start: usize,

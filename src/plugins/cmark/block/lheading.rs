@@ -230,7 +230,7 @@ impl DocumentBlockRule for LHeadingScanner {
             level,
             marker: if level == 2 { '-' } else { '=' },
         });
-        *node.children_mut() = state.parse_inline(content, mapping);
+        node.push_child(state.pending_inline(content, mapping));
 
         Some((node, next_line + 1 - start_line))
     }

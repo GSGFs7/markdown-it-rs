@@ -700,7 +700,8 @@ fn document_link_probe(
     enable_nested: bool,
     offset: usize,
 ) -> InlineProbeResult {
-    match probe_link_candidate(context, offset, enable_nested, None) {
+    let references = context.root_ext().and_then(|ext| ext.get::<ReferenceMap>());
+    match probe_link_candidate(context, offset, enable_nested, references) {
         Some(candidate) => InlineProbeResult::Match {
             len: candidate.end,
             kind: InlineProbeKind::Token,
@@ -721,7 +722,8 @@ fn document_link_run(
 
     let candidate = {
         let context = state.probe_current();
-        probe_link_candidate(&context, offset, enable_nested, None)?
+        let references = context.root_ext().and_then(|ext| ext.get::<ReferenceMap>());
+        probe_link_candidate(&context, offset, enable_nested, references)?
     };
     let mut node = factory(candidate.href, candidate.title);
     let child_link_level = state

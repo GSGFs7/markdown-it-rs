@@ -17,8 +17,47 @@ use crate::parser::extset::{InlineRootExtSet, RootExtSet};
 use crate::parser::inline::probe::InlineProbeContext;
 use crate::parser::inline::{DelimiterRun, DocumentRuleSet, Text, scan_delimiter_run};
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeEmpty;
+use crate::parser::node::{NodeEmpty, NodeValue};
 use crate::parser::render_options::RenderOptions;
+
+/// Inline content queued during the block pass and resolved once all
+/// reference definitions have been collected.
+#[derive(Debug)]
+struct PendingInline {
+    content: String,
+    mapping: Vec<(usize, usize)>,
+}
+
+impl NodeValue for PendingInline {}
+
+/// Replace every [`PendingInline`] draft in `draft` with parsed inline nodes.
+fn resolve_pending_inline(
+    draft: &mut NodeDraft,
+    md: &MarkdownIt,
+    ruleset: &DocumentRuleSet,
+    root_ext: &RootExtSet,
+) {
+    let children = std::mem::take(draft.children_mut());
+    draft.children_mut().reserve(children.len());
+    for mut child in children {
+        if let Some(pending) = child.cast_mut::<PendingInline>() {
+            let content = std::mem::take(&mut pending.content);
+            let mapping = std::mem::take(&mut pending.mapping);
+            draft.children_mut().extend(DocumentInlineState::parse(
+                content,
+                mapping,
+                md,
+                ruleset,
+                Some(root_ext),
+            ));
+        } else {
+            stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+                resolve_pending_inline(&mut child, md, ruleset, root_ext);
+            });
+            draft.push_child(child);
+        }
+    }
+}
 
 pub(crate) struct DocumentParseContext<'a> {
     source: &'a str,
@@ -39,8 +78,7 @@ impl<'a> DocumentParseContext<'a> {
         block_rules: Vec<DocumentBlockRuleFns>,
         inline_rules: DocumentRuleSet,
     ) -> Document {
-        let mut state =
-            DocumentBlockState::new(self.source, md, block_rules, &inline_rules, self.root);
+        let mut state = DocumentBlockState::new(self.source, md, block_rules, self.root);
         state.tokenize();
 
         let DocumentBlockState {
@@ -48,6 +86,9 @@ impl<'a> DocumentParseContext<'a> {
             root_ext,
             ..
         } = state;
+        // Inline parsing runs after the block pass so later reference
+        // definitions can resolve earlier uses.
+        resolve_pending_inline(&mut root, md, &inline_rules, &root_ext);
         // Persist the cross-block extension set on the root payload.
         if let Some(data) = root.cast_mut::<Root>() {
             data.ext = root_ext;
@@ -108,7 +149,6 @@ pub(crate) struct DocumentBlockState<'a> {
     pub(crate) root_ext: RootExtSet,
 
     rules: Vec<DocumentBlockRuleFns>,
-    inline_ruleset: &'a DocumentRuleSet,
 }
 
 impl<'a> DocumentBlockState<'a> {
@@ -116,7 +156,6 @@ impl<'a> DocumentBlockState<'a> {
         src: &'a str,
         md: &'a MarkdownIt,
         rules: Vec<DocumentBlockRuleFns>,
-        inline_ruleset: &'a DocumentRuleSet,
         node: NodeDraft,
     ) -> Self {
         let line_offsets = build_line_offsets(src);
@@ -134,7 +173,6 @@ impl<'a> DocumentBlockState<'a> {
             level: 0,
             root_ext: RootExtSet::new(),
             rules,
-            inline_ruleset,
         }
     }
 
@@ -179,8 +217,8 @@ impl<'a> DocumentBlockState<'a> {
                     let mut content = self.get_line(self.line).to_owned();
                     content.push('\n');
                     let mapping = vec![(0, start)];
-                    let nodes = self.parse_inline(content, mapping);
-                    self.node.children_mut().extend(nodes);
+                    let pending = self.pending_inline(content, mapping);
+                    self.node.push_child(pending);
                     self.line += 1;
                 }
 
@@ -275,18 +313,11 @@ impl<'a> DocumentBlockState<'a> {
         (result, mapping)
     }
 
-    pub(crate) fn parse_inline(
-        &self,
-        source: String,
-        mapping: Vec<(usize, usize)>,
-    ) -> Vec<NodeDraft> {
-        DocumentInlineState::parse(
-            source,
+    pub(crate) fn pending_inline(&self, source: String, mapping: Vec<(usize, usize)>) -> NodeDraft {
+        NodeDraft::new(PendingInline {
+            content: source,
             mapping,
-            self.md,
-            self.inline_ruleset,
-            Some(&self.root_ext),
-        )
+        })
     }
 
     #[must_use]
@@ -476,6 +507,7 @@ impl<'a> DocumentInlineState<'a> {
             self.depth,
             self.link_level,
         )
+        .with_root_ext(self.root_ext)
     }
 
     /// Start an independent probe session for `range` relative to
@@ -489,15 +521,18 @@ impl<'a> DocumentInlineState<'a> {
     /// and unclaimed characters become text.
     pub fn probe_subrange(&self, range: Range<usize>) -> Option<InlineProbeContext<'_>> {
         self.remaining().get(range.clone())?;
-        Some(InlineProbeContext::new(
-            self.src.as_ref(),
-            self.pos + range.start,
-            self.pos + range.end,
-            self.md,
-            self.ruleset,
-            self.depth.saturating_add(1),
-            self.link_level,
-        ))
+        Some(
+            InlineProbeContext::new(
+                self.src.as_ref(),
+                self.pos + range.start,
+                self.pos + range.end,
+                self.md,
+                self.ruleset,
+                self.depth.saturating_add(1),
+                self.link_level,
+            )
+            .with_root_ext(self.root_ext),
+        )
     }
 
     pub(crate) fn trailing_text(&self) -> &str {

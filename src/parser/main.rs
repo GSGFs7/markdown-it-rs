@@ -148,12 +148,11 @@ impl MarkdownIt {
     /// Parse directly into arena storage when every configured parser rule has
     /// a migrated implementation.
     ///
-    /// This experimental entry point supports text, paragraphs, newlines,
-    /// escapes, entities, code spans, emphasis, autolinks, inline HTML, and
-    /// ordinary inline links and images. Reference definitions and the full
-    /// `cmark::add` configuration are not supported yet. At low `max_nesting`
-    /// values, links and images may remain literal; a zero limit stops block
-    /// parsing.
+    /// This experimental entry point supports the full `cmark::add`
+    /// configuration, including link reference definitions and forward
+    /// references (inline content is parsed after the block pass). At low
+    /// `max_nesting` values links and images may remain literal; a zero limit
+    /// stops block parsing.
     ///
     /// # Panics
     ///

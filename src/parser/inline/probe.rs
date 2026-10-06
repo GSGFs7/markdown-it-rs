@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::parser::extset::InlineRootExtSet;
+use crate::parser::extset::{InlineRootExtSet, RootExtSet};
 use crate::parser::main::MarkdownIt;
 
 /// How a probed span is classified.
@@ -62,6 +62,7 @@ pub struct InlineProbeContext<'a> {
     link_level: i32,
     pending_text: Option<(usize, usize)>,
     scratch: InlineRootExtSet,
+    root_ext: Option<&'a RootExtSet>,
 }
 
 impl<'a> InlineProbeContext<'a> {
@@ -89,7 +90,16 @@ impl<'a> InlineProbeContext<'a> {
             link_level,
             pending_text: None,
             scratch: InlineRootExtSet::new(),
+            root_ext: None,
         }
+    }
+
+    /// Attach the document's cross-block storage so probes can resolve
+    /// references.
+    #[must_use]
+    pub(crate) fn with_root_ext(mut self, root_ext: Option<&'a RootExtSet>) -> Self {
+        self.root_ext = root_ext;
+        self
     }
 
     /// Source bytes from the cursor to the end of the probed range.
@@ -109,6 +119,12 @@ impl<'a> InlineProbeContext<'a> {
     #[must_use]
     pub fn markdown_it(&self) -> &MarkdownIt {
         self.md
+    }
+
+    /// Cross-block storage shared with the originating document.
+    #[must_use]
+    pub fn root_ext(&self) -> Option<&RootExtSet> {
+        self.root_ext
     }
 
     /// Current link nesting level of this session.
@@ -223,14 +239,17 @@ impl<'a> InlineProbeContext<'a> {
             return None;
         }
 
-        Some(InlineProbeContext::new(
-            self.source,
-            self.pos + range.start,
-            self.pos + range.end,
-            self.md,
-            self.ruleset,
-            child_depth,
-            self.link_level(),
-        ))
+        Some(
+            InlineProbeContext::new(
+                self.source,
+                self.pos + range.start,
+                self.pos + range.end,
+                self.md,
+                self.ruleset,
+                child_depth,
+                self.link_level(),
+            )
+            .with_root_ext(self.root_ext),
+        )
     }
 }

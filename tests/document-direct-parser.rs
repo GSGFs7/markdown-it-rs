@@ -90,12 +90,12 @@ fn direct_parser_rejects_unmigrated_syntax_rules() {
 
     let mut partial = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial);
-    markdown_it::plugins::cmark::block::reference::add(&mut partial);
-    for source in ["[x]: /url", ""] {
+    markdown_it::plugins::html::html_block::add(&mut partial);
+    for source in ["<div>", ""] {
         assert_direct_configuration_panics(&partial, source, "unsupported direct block rules");
     }
     partial.max_nesting = 0;
-    assert_direct_configuration_panics(&partial, "[x]: /url", "unsupported direct block rules");
+    assert_direct_configuration_panics(&partial, "<div>", "unsupported direct block rules");
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
@@ -459,9 +459,65 @@ fn direct_links_use_real_registration() {
     md.max_nesting = 2;
     assert_direct_matches_bridge(&md, "[x](/url)");
 
-    // Reference definitions are not part of the direct pipeline yet.
+    // Reference definitions are part of the direct pipeline.
     block::reference::add(&mut md);
-    assert_direct_configuration_panics(&md, "[x](/url)", "unsupported direct block rules");
+    assert_direct_matches_bridge(&md, "[x](/url)");
+}
+
+#[test]
+fn direct_references_match_the_legacy_bridge() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut md);
+
+    for source in [
+        "[x]: /url",
+        "[x]: /url\n\n[x]",
+        "[x][id]\n\n[id]: /url \"title\"",
+        "[id]:\n  /url\n  'title'\n\n[x][id]",
+        "[id]: /url\n\n[id]\n\n[id]: /other",
+        "[missing]",
+        "[x]: <>\n\n[x]",
+        "[x]: /url 'title' trailing garbage\n\n[x]",
+        "[x]: /url\n\n[x][x]",
+    ] {
+        assert_direct_matches_bridge(&md, source);
+    }
+
+    let document = md.parse_document_direct("[id]: /url\n\n[id]\n\n[id]: /other");
+    assert_eq!(
+        md.render_document(&document),
+        "<p><a href=\"/url\">id</a></p>\n",
+    );
+}
+
+#[test]
+fn direct_forward_references_match_the_legacy_bridge() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut md);
+
+    for source in [
+        "[x]\n\n[x]: /url",
+        "[x][id]\n\n[id]: /url \"title\"",
+        "![alt][id]\n\n[id]: /image \"title\"",
+        "[雪]\n\n[雪]: /url",
+        "- [x][id]\n\n[id]: /url",
+        "> [x][id]\n\n[id]: /url",
+        "[outer [inner][id]](/out)\n\n[id]: /in",
+        "[![alt][id]](/out)\n\n[id]: /image",
+    ] {
+        assert_direct_matches_bridge(&md, source);
+    }
+}
+
+#[test]
+fn deferred_inline_fallback_preserves_sibling_order() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::reference::add(&mut md);
+    markdown_it::plugins::cmark::inline::link::add(&mut md);
+    markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
+    markdown_it::plugins::cmark::inline::newline::add(&mut md);
+    let source = format!("{}\n[id]: /url", "before *em* [id] after\n".repeat(512));
+    assert_direct_matches_bridge(&md, &source);
 }
 
 #[test]

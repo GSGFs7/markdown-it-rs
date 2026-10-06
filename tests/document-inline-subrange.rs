@@ -159,6 +159,37 @@ fn probe_parser() -> MarkdownIt {
     md
 }
 
+#[test]
+fn nested_probe_resolves_forward_references() {
+    struct ReferenceProbeRule;
+
+    impl InlineRule for ReferenceProbeRule {
+        const MARKER: char = '{';
+
+        fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            let close = state.remaining().find('}')?;
+            let parent = state.probe_subrange(1..close)?;
+            let mut child = parent.probe_subrange(0..close - 1)?;
+            let token = child.next_token().expect("reference link token");
+            assert_eq!(token.kind, InlineProbeKind::Token);
+            assert_eq!(token.range, 0..close - 1);
+            assert!(child.next_token().is_none());
+            Some((
+                Some(NodeDraft::new(Text {
+                    content: "reference".into(),
+                })),
+                close + 1,
+            ))
+        }
+    }
+
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut md);
+    md.inline.add_rule::<ReferenceProbeRule>();
+    let document = md.parse_document_direct("{[x][id]}\n\n[id]: /url");
+    assert_eq!(md.render_document(&document), "<p>reference</p>\n");
+}
+
 fn mixed_probe_parser() -> MarkdownIt {
     let mut md = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);

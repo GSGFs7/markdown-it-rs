@@ -51,7 +51,7 @@ impl DocumentBlockRule for ParagraphScanner {
 
         let (content, mapping) = state.get_lines(start_line, next_line, state.blk_indent, false);
         let mut paragraph = NodeDraft::new(Paragraph);
-        *paragraph.children_mut() = state.parse_inline(content, mapping);
+        paragraph.push_child(state.pending_inline(content, mapping));
         Some((paragraph, next_line - start_line))
     }
 }

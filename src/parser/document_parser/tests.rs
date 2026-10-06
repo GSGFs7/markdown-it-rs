@@ -1598,7 +1598,6 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
     }
 
     let md = MarkdownIt::empty();
-    let inline_ruleset = md.inline.document_rules().unwrap();
     let source = "%%\nhello";
     let mut state = DocumentBlockState::new(
         source,
@@ -1613,7 +1612,6 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
                 LevelProbe::run,
             ),
         ],
-        &inline_ruleset,
         NodeDraft::new(Root::new(source.to_owned())),
     );
     state.tokenize();
