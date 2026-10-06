@@ -90,12 +90,12 @@ fn direct_parser_rejects_unmigrated_syntax_rules() {
 
     let mut partial = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial);
-    markdown_it::plugins::cmark::block::blockquote::add(&mut partial);
-    for source in ["> x", ""] {
+    markdown_it::plugins::cmark::block::reference::add(&mut partial);
+    for source in ["[x]: /url", ""] {
         assert_direct_configuration_panics(&partial, source, "unsupported direct block rules");
     }
     partial.max_nesting = 0;
-    assert_direct_configuration_panics(&partial, "> x", "unsupported direct block rules");
+    assert_direct_configuration_panics(&partial, "[x]: /url", "unsupported direct block rules");
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
@@ -752,5 +752,93 @@ fn direct_code_fences_match_the_legacy_bridge() {
     assert_eq!(
         md.render_document(&document),
         "<pre><code class=\"language-rust\">let x = 1;\n</code></pre>\n",
+    );
+}
+
+#[test]
+fn direct_blockquotes_match_the_legacy_bridge() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::block::heading::add(&mut md);
+    markdown_it::plugins::cmark::block::blockquote::add(&mut md);
+    markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
+
+    for source in [
+        "",
+        "> foo",
+        "> foo\n> bar",
+        "> foo\n\n> bar",
+        "> foo\n\nbar",
+        "> # heading",
+        "> *em*",
+        "> foo\n> > nested",
+        ">",
+        ">\n> foo",
+        "> foo\nbar",
+        "> foo\n- bar",
+        "a\n> b",
+        "雪\n> 雨",
+    ] {
+        assert_direct_matches_bridge(&md, source);
+    }
+
+    let document = md.parse_document_direct("> *雪*");
+    assert_eq!(
+        md.render_document(&document),
+        "<blockquote>\n<p><em>雪</em></p>\n</blockquote>\n",
+    );
+}
+
+#[test]
+fn direct_lists_match_the_legacy_bridge() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+    markdown_it::plugins::cmark::block::heading::add(&mut md);
+    markdown_it::plugins::cmark::block::fence::add(&mut md);
+    markdown_it::plugins::cmark::block::hr::add(&mut md);
+    markdown_it::plugins::cmark::block::list::add(&mut md);
+    markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
+
+    for source in [
+        "",
+        "- foo",
+        "- foo\n- bar",
+        "* foo\n+ bar",
+        "1. foo\n2. bar",
+        "1. foo\n1. bar",
+        "3. foo\n4. bar",
+        "- foo\n\n- bar",
+        "- foo\n  - bar\n    - baz",
+        "- foo\n\n  bar",
+        "1. foo\n\n   bar",
+        "- a\n- b\n\n- c",
+        "-\n- foo",
+        "- foo\n1. bar",
+        "para\n- foo",
+        "- foo\n---",
+        "- foo\n\n---",
+        "1. foo\n   ```\n   code\n   ```",
+        "> - nested",
+        "雪\n- 雨",
+    ] {
+        assert_direct_matches_bridge(&md, source);
+    }
+
+    let document = md.parse_document_direct("- foo\n- bar");
+    assert_eq!(
+        md.render_document(&document),
+        "<ul>\n<li>foo</li>\n<li>bar</li>\n</ul>\n",
+    );
+
+    let document = md.parse_document_direct("- foo\n\n- bar");
+    assert_eq!(
+        md.render_document(&document),
+        "<ul>\n<li>\n<p>foo</p>\n</li>\n<li>\n<p>bar</p>\n</li>\n</ul>\n",
+    );
+
+    let document = md.parse_document_direct("3. foo");
+    assert_eq!(
+        md.render_document(&document),
+        "<ol start=\"3\">\n<li>foo</li>\n</ol>\n",
     );
 }

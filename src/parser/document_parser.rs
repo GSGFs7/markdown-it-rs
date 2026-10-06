@@ -99,7 +99,6 @@ pub(crate) struct DocumentBlockState<'a> {
     pub(crate) tight: bool,
 
     /// Indent of the current list block.
-    #[allow(dead_code)]
     pub(crate) list_indent: Option<u32>,
 
     /// Current nesting level, incremented by recursive block rules.
@@ -204,7 +203,6 @@ impl<'a> DocumentBlockState<'a> {
     ///
     /// Block rules that recursively invoke the block parser must use this
     /// method so [`MarkdownIt::max_nesting`] can stop excessively deep input.
-    #[allow(dead_code)]
     pub(crate) fn tokenize_nested(&mut self) {
         let old_level = self.level;
         self.level = self.level.saturating_add(1);
