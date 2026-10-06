@@ -898,3 +898,28 @@ fn direct_lists_match_the_legacy_bridge() {
         "<ol start=\"3\">\n<li>foo</li>\n</ol>\n",
     );
 }
+
+#[test]
+fn direct_emph_pair_extras_match_the_legacy_bridge() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut md);
+    markdown_it::plugins::extra::mark::add(&mut md);
+    markdown_it::plugins::extra::strikethrough::add(&mut md);
+
+    for source in [
+        "==highlighted==",
+        "==**bold** highlight==",
+        "==one== and ==two==",
+        "==mark ~~strike~~==",
+        "before ==雪== after",
+        "==unclosed",
+    ] {
+        assert_direct_matches_bridge(&md, source);
+    }
+
+    let document = md.parse_document_direct("==highlighted==");
+    assert_eq!(
+        md.render_document(&document),
+        "<p><mark>highlighted</mark></p>\n",
+    );
+}

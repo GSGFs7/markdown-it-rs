@@ -1,10 +1,35 @@
 //! Highlight syntax (like `==this==`)
 
+use crate::document::NodeRef;
 use crate::generics::inline::emph_pair;
-use crate::{MarkdownIt, Node, NodeDraft, NodeValue, Renderer};
+use crate::parser::renderer::Renderer;
+use crate::render::{
+    DocumentNodeRenderer,
+    DocumentRenderContext,
+    TransparentDocumentRenderer,
+    write_html_close,
+    write_html_open,
+};
+use crate::{MarkdownIt, Node, NodeDraft, NodeValue};
 
 #[derive(Debug)]
 pub struct Mark;
+
+struct MarkDocumentRenderer;
+
+impl DocumentNodeRenderer<Mark> for MarkDocumentRenderer {
+    fn render(
+        &self,
+        node: NodeRef<'_>,
+        _: &Mark,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut crate::DocumentWriter,
+    ) {
+        write_html_open(output, "mark", node.attrs());
+        context.render_children(node.id(), output);
+        write_html_close(output, "mark");
+    }
+}
 
 impl NodeValue for Mark {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
@@ -16,6 +41,8 @@ impl NodeValue for Mark {
 
 pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'=', 2, true>(md, || NodeDraft::new(Mark));
+    md.add_document_renderer::<Mark, _>("html", MarkDocumentRenderer);
+    md.add_document_renderer::<Mark, _>("text", TransparentDocumentRenderer);
 }
 
 #[cfg(test)]
