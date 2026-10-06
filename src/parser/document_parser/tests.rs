@@ -52,6 +52,7 @@ fn parent_state<'a>(md: &'a MarkdownIt, ruleset: &'a DocumentRuleSet) -> Documen
         mapping: Cow::Owned(vec![(0, 10), (9, 30)]),
         depth: 0,
         inline_ext,
+        root_ext: None,
         link_level: 2,
         ruleset,
         nodes: vec![NodeDraft::new(Text {
@@ -75,6 +76,7 @@ fn probe_state<'a>(
         mapping: Cow::Owned(vec![(0, 0)]),
         depth: 0,
         inline_ext: InlineRootExtSet::new(),
+        root_ext: None,
         link_level: 0,
         ruleset,
         nodes: vec![],
@@ -98,6 +100,7 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
         mapping: Cow::Owned(vec![(0, 10)]),
         depth: 0,
         inline_ext: InlineRootExtSet::new(),
+        root_ext: None,
         link_level: 1,
         ruleset: &ruleset,
         nodes: vec![NodeDraft::new(Text {
@@ -125,7 +128,7 @@ fn top_level_plain_text_still_skips_finalizers() {
         probes: vec![],
         finalizers: vec![|_| panic!("plain pending text must skip finalizers")],
     };
-    let nodes = DocumentInlineState::parse(" plain ".to_owned(), vec![(0, 0)], &md, &ruleset);
+    let nodes = DocumentInlineState::parse(" plain ".to_owned(), vec![(0, 0)], &md, &ruleset, None);
     assert_eq!(nodes.len(), 1);
     assert_eq!(nodes[0].cast::<Text>().unwrap().content, "plain");
     assert_eq!(nodes[0].srcmap(), Some(SourcePos::new(1, 6)));
@@ -241,7 +244,7 @@ fn normal_parse_does_not_call_probe() {
         probes: vec![probe_rule(|_| panic!("normal parsing must not call probe"))],
         finalizers: vec![],
     };
-    let nodes = DocumentInlineState::parse("x".to_owned(), vec![(0, 0)], &md, &ruleset);
+    let nodes = DocumentInlineState::parse("x".to_owned(), vec![(0, 0)], &md, &ruleset, None);
     assert_eq!(nodes.len(), 1);
     assert_eq!(nodes[0].cast::<Text>().unwrap().content, "x");
 }
@@ -273,7 +276,8 @@ fn run_dispatch_skips_non_matching_markers() {
     };
 
     for source in ["abc", "雪x"] {
-        let nodes = DocumentInlineState::parse(source.to_owned(), vec![(0, 0)], &md, &ruleset);
+        let nodes =
+            DocumentInlineState::parse(source.to_owned(), vec![(0, 0)], &md, &ruleset, None);
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].cast::<Text>().unwrap().content, source);
     }
@@ -307,12 +311,12 @@ fn run_dispatch_matches_unicode_marker() {
         probes: vec![],
         finalizers: vec![],
     };
-    let nodes = DocumentInlineState::parse("雪x".to_owned(), vec![(0, 0)], &md, &ruleset);
+    let nodes = DocumentInlineState::parse("雪x".to_owned(), vec![(0, 0)], &md, &ruleset, None);
     assert_eq!(nodes.len(), 2);
     assert_eq!(nodes[0].cast::<Text>().unwrap().content, "雪");
     assert_eq!(nodes[1].cast::<Text>().unwrap().content, "x");
 
-    let nodes = DocumentInlineState::parse("xx".to_owned(), vec![(0, 0)], &md, &ruleset);
+    let nodes = DocumentInlineState::parse("xx".to_owned(), vec![(0, 0)], &md, &ruleset, None);
     assert_eq!(nodes.len(), 1);
     assert_eq!(nodes[0].cast::<Text>().unwrap().content, "xx");
 }
@@ -348,7 +352,7 @@ fn run_dispatch_preserves_wildcard_order() {
         probes: vec![],
         finalizers: vec![],
     };
-    let nodes = DocumentInlineState::parse("xy".to_owned(), vec![(0, 0)], &md, &marker_first);
+    let nodes = DocumentInlineState::parse("xy".to_owned(), vec![(0, 0)], &md, &marker_first, None);
     assert_eq!(nodes.len(), 2);
     assert_eq!(nodes[0].cast::<Text>().unwrap().content, "X");
     assert_eq!(nodes[1].cast::<Text>().unwrap().content, "y");
@@ -359,7 +363,8 @@ fn run_dispatch_preserves_wildcard_order() {
         probes: vec![],
         finalizers: vec![],
     };
-    let nodes = DocumentInlineState::parse("xy".to_owned(), vec![(0, 0)], &md, &wildcard_first);
+    let nodes =
+        DocumentInlineState::parse("xy".to_owned(), vec![(0, 0)], &md, &wildcard_first, None);
     assert_eq!(nodes.len(), 1);
     assert_eq!(nodes[0].cast::<Text>().unwrap().content, "xy");
 }
@@ -1544,4 +1549,84 @@ fn child_link_level_override_keeps_range_and_depth_rules() {
     let children = state.parse_subrange_with_link_level(0..11, 3).unwrap();
     assert_eq!(children[0].cast::<Text>().unwrap().content, "{ 雪\n次 }");
     assert_eq!(state.link_level, 2);
+}
+
+#[test]
+fn recursive_block_rules_switch_current_node_and_nesting_level() {
+    use crate::document::NodeDraft;
+    use crate::parser::block::DocumentBlockRule;
+    use crate::parser::core::Root;
+    use crate::parser::node::NodeEmpty;
+
+    #[derive(Debug)]
+    struct Wrapper;
+    impl crate::parser::node::NodeValue for Wrapper {}
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct ObservedLevel(u32);
+
+    struct WrapperScanner;
+    impl DocumentBlockRule for WrapperScanner {
+        fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+            if !state.get_line(state.line).starts_with("%%") {
+                return None;
+            }
+
+            let start = state.line;
+            let old_node = std::mem::replace(&mut state.node, NodeDraft::new(Wrapper));
+            let old_line_max = state.line_max;
+            state.line = start + 1;
+            state.line_max = (start + 2).min(old_line_max);
+            state.tokenize_nested();
+            let end = state.line;
+            state.line = start;
+            state.line_max = old_line_max;
+            let node = std::mem::replace(&mut state.node, old_node);
+            Some((node, end - start))
+        }
+    }
+
+    struct LevelProbe;
+    impl DocumentBlockRule for LevelProbe {
+        fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+            if state.get_line(state.line) != "hello" {
+                return None;
+            }
+            state.root_ext.insert(ObservedLevel(state.level));
+            Some((NodeDraft::new(NodeEmpty), 1))
+        }
+    }
+
+    let md = MarkdownIt::empty();
+    let inline_ruleset = md.inline.document_rules().unwrap();
+    let source = "%%\nhello";
+    let mut state = DocumentBlockState::new(
+        source,
+        &md,
+        vec![
+            (
+                WrapperScanner::check as fn(&mut DocumentBlockState<'_>) -> Option<()>,
+                WrapperScanner::run,
+            ),
+            (
+                LevelProbe::check as fn(&mut DocumentBlockState<'_>) -> Option<()>,
+                LevelProbe::run,
+            ),
+        ],
+        &inline_ruleset,
+        NodeDraft::new(Root::new(source.to_owned())),
+    );
+    state.tokenize();
+
+    let DocumentBlockState {
+        node: root,
+        root_ext,
+        ..
+    } = state;
+    let wrapper = &root.children()[0];
+    assert!(wrapper.is::<Wrapper>());
+    assert!(wrapper.children().is_empty());
+
+    assert!(root.is::<Root>());
+    assert_eq!(root_ext.get::<ObservedLevel>(), Some(&ObservedLevel(1)));
 }

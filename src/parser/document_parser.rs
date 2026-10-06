@@ -13,10 +13,11 @@ use crate::parser::block::{
     build_line_offsets,
 };
 use crate::parser::core::Root;
-use crate::parser::extset::InlineRootExtSet;
+use crate::parser::extset::{InlineRootExtSet, RootExtSet};
 use crate::parser::inline::probe::InlineProbeContext;
 use crate::parser::inline::{DelimiterRun, DocumentRuleSet, Text, scan_delimiter_run};
 use crate::parser::main::MarkdownIt;
+use crate::parser::node::NodeEmpty;
 use crate::parser::render_options::RenderOptions;
 
 pub(crate) struct DocumentParseContext<'a> {
@@ -33,16 +34,26 @@ impl<'a> DocumentParseContext<'a> {
     }
 
     pub(crate) fn parse(
-        mut self,
+        self,
         md: &MarkdownIt,
         block_rules: Vec<DocumentBlockRuleFns>,
         inline_rules: DocumentRuleSet,
     ) -> Document {
-        let mut state = DocumentBlockState::new(self.source, md, block_rules, &inline_rules);
+        let mut state =
+            DocumentBlockState::new(self.source, md, block_rules, &inline_rules, self.root);
         state.tokenize();
-        *self.root.children_mut() = state.nodes;
 
-        Document::from_draft(Arc::<str>::from(self.source), self.root)
+        let DocumentBlockState {
+            node: mut root,
+            root_ext,
+            ..
+        } = state;
+        // Persist the cross-block extension set on the root payload.
+        if let Some(data) = root.cast_mut::<Root>() {
+            data.ext = root_ext;
+        }
+
+        Document::from_draft(Arc::<str>::from(self.source), root)
     }
 
     pub(crate) fn parse_text_fallback(mut self) -> Document {
@@ -63,13 +74,40 @@ impl<'a> DocumentParseContext<'a> {
 }
 
 pub(crate) struct DocumentBlockState<'a> {
+    /// Markdown source.
     pub(crate) src: &'a str,
+
+    /// Link to the parser instance.
     pub(crate) md: &'a MarkdownIt,
+
+    /// Start/end/etc. positions for each source line.
     pub(crate) line_offsets: Vec<LineOffset>,
+
+    /// Current line index.
     pub(crate) line: usize,
+
+    /// Maximum allowed line index.
     pub(crate) line_max: usize,
+
+    /// Current block content indent.
     pub(crate) blk_indent: usize,
-    pub(crate) nodes: Vec<NodeDraft>,
+
+    /// Current node, block rules add children to it.
+    pub(crate) node: NodeDraft,
+
+    /// Whether there are no empty lines between paragraphs.
+    pub(crate) tight: bool,
+
+    /// Indent of the current list block.
+    #[allow(dead_code)]
+    pub(crate) list_indent: Option<u32>,
+
+    /// Current nesting level, incremented by recursive block rules.
+    pub(crate) level: u32,
+
+    /// Cross-block storage shared with inline parsing (e.g. link references).
+    pub(crate) root_ext: RootExtSet,
+
     rules: Vec<DocumentBlockRuleFns>,
     inline_ruleset: &'a DocumentRuleSet,
 }
@@ -80,6 +118,7 @@ impl<'a> DocumentBlockState<'a> {
         md: &'a MarkdownIt,
         rules: Vec<DocumentBlockRuleFns>,
         inline_ruleset: &'a DocumentRuleSet,
+        node: NodeDraft,
     ) -> Self {
         let line_offsets = build_line_offsets(src);
         let line_max = line_offsets.len();
@@ -90,53 +129,87 @@ impl<'a> DocumentBlockState<'a> {
             line: 0,
             line_max,
             blk_indent: 0,
-            nodes: Vec::new(),
+            node,
+            tight: false,
+            list_indent: None,
+            level: 0,
+            root_ext: RootExtSet::new(),
             rules,
             inline_ruleset,
         }
     }
 
     fn tokenize(&mut self) {
-        while self.line < self.line_max {
-            if self.md.max_nesting == 0 {
-                break;
-            }
-            self.line = self.skip_empty_lines(self.line);
-            if self.line >= self.line_max {
-                break;
-            }
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+            let mut has_empty_lines = false;
 
-            let mut matched = None;
-            for index in 0..self.rules.len() {
-                let run = self.rules[index].1;
-                if let Some(result) = run(self) {
-                    matched = Some(result);
+            while self.line < self.line_max {
+                self.line = self.skip_empty_lines(self.line);
+                if self.line >= self.line_max {
                     break;
                 }
-            }
 
-            if let Some((mut node, len)) = matched {
-                self.line += len;
-                node.set_srcmap(self.get_map(self.line - len, self.line - 1));
-                self.nodes.push(node);
-            } else {
-                let start = self.line_offsets[self.line].first_nonspace;
-                let mut content = self.get_line(self.line).to_owned();
-                content.push('\n');
-                let mapping = vec![(0, start)];
-                self.nodes.extend(DocumentInlineState::parse(
-                    content,
-                    mapping,
-                    self.md,
-                    self.inline_ruleset,
-                ));
-                self.line += 1;
-            }
+                // Termination condition for nested calls, used by blockquotes & lists.
+                if self.line_indent(self.line) < 0 {
+                    break;
+                }
 
-            if self.line < self.line_max && self.is_empty(self.line) {
-                self.line += 1;
+                // If nesting level exceeded, skip the tail.
+                if self.level >= self.md.max_nesting {
+                    self.line = self.line_max;
+                    break;
+                }
+
+                let mut matched = None;
+                for index in 0..self.rules.len() {
+                    let run = self.rules[index].1;
+                    if let Some(result) = run(self) {
+                        matched = Some(result);
+                        break;
+                    }
+                }
+
+                if let Some((mut node, len)) = matched {
+                    self.line += len;
+                    if !node.is::<NodeEmpty>() {
+                        node.set_srcmap(self.get_map(self.line - len, self.line - 1));
+                        self.node.push_child(node);
+                    }
+                } else {
+                    let start = self.line_offsets[self.line].first_nonspace;
+                    let mut content = self.get_line(self.line).to_owned();
+                    content.push('\n');
+                    let mapping = vec![(0, start)];
+                    let nodes = self.parse_inline(content, mapping);
+                    self.node.children_mut().extend(nodes);
+                    self.line += 1;
+                }
+
+                // Set `tight` if we had an empty line before current tag.
+                self.tight = !has_empty_lines;
+
+                if self.is_empty(self.line - 1) {
+                    has_empty_lines = true;
+                }
+
+                if self.line < self.line_max && self.is_empty(self.line) {
+                    has_empty_lines = true;
+                    self.line += 1;
+                }
             }
-        }
+        });
+    }
+
+    /// Tokenize the contents of a nested block container.
+    ///
+    /// Block rules that recursively invoke the block parser must use this
+    /// method so [`MarkdownIt::max_nesting`] can stop excessively deep input.
+    #[allow(dead_code)]
+    pub(crate) fn tokenize_nested(&mut self) {
+        let old_level = self.level;
+        self.level = self.level.saturating_add(1);
+        self.tokenize();
+        self.level = old_level;
     }
 
     pub(crate) fn test_rules_at_line(&mut self) -> bool {
@@ -209,14 +282,35 @@ impl<'a> DocumentBlockState<'a> {
         source: String,
         mapping: Vec<(usize, usize)>,
     ) -> Vec<NodeDraft> {
-        DocumentInlineState::parse(source, mapping, self.md, self.inline_ruleset)
+        DocumentInlineState::parse(
+            source,
+            mapping,
+            self.md,
+            self.inline_ruleset,
+            Some(&self.root_ext),
+        )
     }
 
-    fn get_map(&self, start_line: usize, end_line: usize) -> Option<SourcePos> {
+    #[must_use]
+    pub(crate) fn get_map(&self, start_line: usize, end_line: usize) -> Option<SourcePos> {
+        debug_assert!(start_line <= end_line);
+
         Some(SourcePos::new(
             self.line_offsets[start_line].first_nonspace,
             self.line_offsets[end_line].line_end,
         ))
+    }
+
+    #[must_use]
+    #[allow(dead_code)]
+    pub(crate) fn get_map_from_offsets(
+        &self,
+        start_pos: usize,
+        end_pos: usize,
+    ) -> Option<SourcePos> {
+        debug_assert!(start_pos <= end_pos);
+
+        Some(SourcePos::new(start_pos, end_pos))
     }
 }
 
@@ -228,6 +322,7 @@ pub struct DocumentInlineState<'a> {
     mapping: Cow<'a, [(usize, usize)]>,
     depth: u32,
     pub(crate) inline_ext: InlineRootExtSet,
+    pub(crate) root_ext: Option<&'a RootExtSet>,
     pub(crate) link_level: i32,
     ruleset: &'a DocumentRuleSet,
     nodes: Vec<NodeDraft>,
@@ -258,6 +353,7 @@ impl<'a> DocumentInlineState<'a> {
         mapping: Vec<(usize, usize)>,
         md: &'a MarkdownIt,
         ruleset: &'a DocumentRuleSet,
+        root_ext: Option<&'a RootExtSet>,
     ) -> Vec<NodeDraft> {
         let mut state = Self {
             pos: 0,
@@ -267,6 +363,7 @@ impl<'a> DocumentInlineState<'a> {
             mapping: Cow::Owned(mapping),
             depth: 0,
             inline_ext: InlineRootExtSet::new(),
+            root_ext,
             link_level: 0,
             ruleset,
             nodes: Vec::new(),
@@ -308,6 +405,7 @@ impl<'a> DocumentInlineState<'a> {
             mapping: Cow::Borrowed(self.mapping.as_ref()),
             depth: self.depth.saturating_add(1),
             inline_ext: InlineRootExtSet::new(),
+            root_ext: self.root_ext,
             link_level,
             ruleset: self.ruleset,
             nodes: Vec::new(),
