@@ -7,8 +7,9 @@ use regex::Regex;
 
 use super::utils::blocks::*;
 use super::utils::regexps::*;
-use crate::document::NodeRef;
-use crate::parser::block::{BlockRule, BlockState};
+use crate::document::{NodeDraft, NodeRef};
+use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::document_parser::DocumentBlockState;
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
@@ -61,6 +62,7 @@ impl NodeValue for HtmlBlock {
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HtmlBlockScanner>();
+    md.block.add_document_rule::<HtmlBlockScanner>();
     md.add_document_renderer::<HtmlBlock, _>("html", HtmlBlockDocumentRenderer);
     md.add_document_renderer::<HtmlBlock, _>("text", HtmlBlockTextRenderer);
 }
@@ -131,57 +133,38 @@ static HTML_SEQUENCES: LazyLock<[HTMLSequence; 7]> = LazyLock::new(|| {
 pub struct HtmlBlockScanner;
 
 impl HtmlBlockScanner {
-    fn get_sequence(state: &mut BlockState) -> Option<&'static HTMLSequence> {
-        if state.line_indent(state.line) >= state.md.max_indent {
+    fn get_sequence(
+        line_text: &str,
+        indent: i32,
+        max_indent: i32,
+    ) -> Option<&'static HTMLSequence> {
+        if indent >= max_indent || !line_text.starts_with('<') {
             return None;
         }
 
-        let line_text = state.get_line(state.line);
-        let Some('<') = line_text.chars().next() else {
-            return None;
-        };
-
-        let mut sequence = None;
-        for seq in HTML_SEQUENCES.iter() {
-            if seq.open.is_match(line_text) {
-                sequence = Some(seq);
-                break;
-            }
-        }
-
-        sequence
-    }
-}
-
-impl BlockRule for HtmlBlockScanner {
-    const MARKERS: &'static [char] = &['<'];
-    const NAMES: &'static [&'static str] = &["html_block"];
-
-    fn check(state: &mut BlockState) -> Option<()> {
-        let sequence = Self::get_sequence(state)?;
-        if !sequence.can_terminate_paragraph {
-            return None;
-        }
-        Some(())
+        HTML_SEQUENCES
+            .iter()
+            .find(|seq| seq.open.is_match(line_text))
     }
 
-    fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        let sequence = Self::get_sequence(state)?;
-
-        let line_text = state.get_line(state.line);
-        let start_line = state.line;
-        let mut next_line = state.line + 1;
+    fn end_line<'a>(
+        sequence: &HTMLSequence,
+        start_line: usize,
+        line_max: usize,
+        get_line: impl Fn(usize) -> (&'a str, i32),
+    ) -> usize {
+        let mut next_line = start_line + 1;
 
         // If we are here - we detected HTML block.
         // Let's roll down till block end.
-        if !sequence.close.is_match(line_text) {
-            while next_line < state.line_max {
-                let line_text = state.get_line(next_line);
+        if !sequence.close.is_match(get_line(start_line).0) {
+            while next_line < line_max {
+                let (line_text, indent) = get_line(next_line);
 
                 // Blank lines may occur inside explicitly terminated HTML
                 // blocks. A non-empty negative-indent line, however, has left
                 // the current list or blockquote container.
-                if state.line_indent(next_line) < 0 && !line_text.is_empty() {
+                if indent < 0 && !line_text.is_empty() {
                     break;
                 }
 
@@ -195,9 +178,70 @@ impl BlockRule for HtmlBlockScanner {
                 next_line += 1;
             }
         }
+        next_line
+    }
+}
+
+impl BlockRule for HtmlBlockScanner {
+    const MARKERS: &'static [char] = &['<'];
+    const NAMES: &'static [&'static str] = &["html_block"];
+
+    fn check(state: &mut BlockState) -> Option<()> {
+        let sequence = Self::get_sequence(
+            state.get_line(state.line),
+            state.line_indent(state.line),
+            state.md.max_indent,
+        )?;
+        if !sequence.can_terminate_paragraph {
+            return None;
+        }
+        Some(())
+    }
+
+    fn run(state: &mut BlockState) -> Option<(Node, usize)> {
+        let sequence = Self::get_sequence(
+            state.get_line(state.line),
+            state.line_indent(state.line),
+            state.md.max_indent,
+        )?;
+
+        let start_line = state.line;
+        let next_line = Self::end_line(sequence, start_line, state.line_max, |line| {
+            (state.get_line(line), state.line_indent(line))
+        });
 
         let (content, _) = state.get_lines(start_line, next_line, state.blk_indent, true);
         let node = Node::new(HtmlBlock { content });
         Some((node, next_line - state.line))
+    }
+}
+
+impl DocumentBlockRule for HtmlBlockScanner {
+    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+        let sequence = Self::get_sequence(
+            state.get_line(state.line),
+            state.line_indent(state.line),
+            state.md.max_indent,
+        )?;
+        sequence.can_terminate_paragraph.then_some(())
+    }
+
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+        let sequence = Self::get_sequence(
+            state.get_line(state.line),
+            state.line_indent(state.line),
+            state.md.max_indent,
+        )?;
+        let start_line = state.line;
+        let next_line = Self::end_line(sequence, start_line, state.line_max, |line| {
+            (state.get_line(line), state.line_indent(line))
+        });
+
+        let (content, _) = state.get_lines(start_line, next_line, state.blk_indent, true);
+        // The block tokenizer assigns the source map for the consumed lines.
+        Some((
+            NodeDraft::new(HtmlBlock { content }),
+            next_line - start_line,
+        ))
     }
 }

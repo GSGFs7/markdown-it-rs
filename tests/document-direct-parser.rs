@@ -90,12 +90,12 @@ fn direct_parser_rejects_unmigrated_syntax_rules() {
 
     let mut partial = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial);
-    markdown_it::plugins::html::html_block::add(&mut partial);
-    for source in ["<div>", ""] {
+    markdown_it::plugins::extra::front_matter::add(&mut partial);
+    for source in ["---\ntitle: test\n---", ""] {
         assert_direct_configuration_panics(&partial, source, "unsupported direct block rules");
     }
     partial.max_nesting = 0;
-    assert_direct_configuration_panics(&partial, "<div>", "unsupported direct block rules");
+    assert_direct_configuration_panics(&partial, "---", "unsupported direct block rules");
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
@@ -349,6 +349,84 @@ fn direct_html_inline_and_autolinks_match_the_legacy_bridge() {
     ] {
         assert_direct_matches_bridge(&md, source);
     }
+}
+
+#[test]
+fn direct_html_blocks_match_the_legacy_bridge() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut md);
+    markdown_it::plugins::html::add(&mut md);
+
+    for max_indent in [4, i32::MAX] {
+        md.max_indent = max_indent;
+        for source in [
+            "",
+            "<script>\n雪\n\n雨\n</script>\nafter",
+            "<PRE>雪</PRE>\nafter",
+            "<style>\nbody {}\n</style>",
+            "<textarea>\n*literal*\n</textarea>",
+            "<!-- 雪\n\n雨 -->\nafter",
+            "<?processing\n\ninstruction?>\nafter",
+            "<!DOCTYPE\nhtml>\nafter",
+            "<![CDATA[\n\n雪 <tag>\n]]>\nafter",
+            "<div>\n*literal*\n</div>\n\nafter",
+            "</DIV>\n雪\n\nafter",
+            "<custom attr='雪'>\n*literal*\n\nafter",
+            "<custom />\n\nafter",
+            "<script>",
+            "<!-- unclosed\n\n雪",
+            "<?unclosed",
+            "<!DOCTYPE",
+            "<![CDATA[unclosed",
+            "<div>",
+            "<custom>",
+            "before\n<script>雪</script>\nafter",
+            "before\n<!-- 雪 -->\nafter",
+            "before\n<?instruction?>\nafter",
+            "before\n<!DOCTYPE html>\nafter",
+            "before\n<![CDATA[雪]]>\nafter",
+            "before\n<div>\n雪\n\nafter",
+            "before\n<custom>\nafter",
+            "before\n\n<custom>\n雪\n\nafter",
+            "<custom> trailing text\nafter",
+            "<invalid attribute=>\nafter",
+            "<3\nafter",
+            "   <div>\n   雪\n\nafter",
+            "    <div>\n    雪\n\nafter",
+            "\t<div>\n\t雪",
+            "<div>\r\n雪\r\n\r\nafter",
+            "<!-- 雪\r\n\r\n雨 -->\rafter",
+            "<!-- nul \0 -->",
+            "> <script>\n> 雪\n>\n> 雨\n> </script>\n\nafter",
+            "> <!-- unclosed\n> 雪\n\noutside",
+            "> <div>\n> 雪\n>\n> after",
+            "- <script>\n  雪\n\n  雨\n  </script>\n\nafter",
+            "- <!-- unclosed\n  雪\n\noutside",
+            "- <!-- unclosed\n  雪\n- sibling",
+            "- <div>\n  雪\n\n  after",
+            "> - <!-- 雪\n>\n>     雨 -->\n\noutside",
+        ] {
+            assert_direct_matches_bridge(&md, source);
+
+            let bridged = md.parse_document(source);
+            let direct = md.parse_document_direct(source);
+            let source_maps = |document: &markdown_it::Document| {
+                document
+                    .events(document.root())
+                    .filter_map(|event| match event {
+                        StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => {
+                            Some(node.srcmap())
+                        }
+                        StructuralEvent::Exit(_) => None,
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(source_maps(&direct), source_maps(&bridged), "{source:?}");
+        }
+    }
+
+    md.max_nesting = 0;
+    assert_direct_matches_bridge(&md, "<div>");
 }
 
 #[test]
