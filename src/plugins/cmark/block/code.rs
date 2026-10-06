@@ -3,8 +3,9 @@
 //! Parses anything indented with 4 spaces.
 //!
 //! <https://spec.commonmark.org/0.30/#indented-code-block>
-use crate::document::NodeRef;
-use crate::parser::block::{BlockRule, BlockState};
+use crate::document::{NodeDraft, NodeRef};
+use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::document_parser::DocumentBlockState;
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
@@ -73,6 +74,7 @@ impl NodeValue for CodeBlock {
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<CodeScanner>();
+    md.block.add_document_rule::<CodeScanner>();
     md.add_document_renderer::<CodeBlock, _>("html", CodeBlockDocumentRenderer);
     md.add_document_renderer::<CodeBlock, _>("text", CodeBlockTextRenderer);
     md.max_indent = CODE_INDENT;
@@ -120,6 +122,48 @@ impl BlockRule for CodeScanner {
 
         let node = Node::new(CodeBlock { content });
         //node.srcmap = state.get_map_from_offsets(mapping[0].1, state.line_offsets[last - 1].line_end);
+
+        Some((node, last - state.line))
+    }
+}
+
+impl DocumentBlockRule for CodeScanner {
+    fn check(_: &mut DocumentBlockState<'_>) -> Option<()> {
+        None
+    }
+
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+        if state.line_indent(state.line) < CODE_INDENT {
+            return None;
+        }
+
+        let mut next_line = state.line + 1;
+        let mut last = next_line;
+
+        while next_line < state.line_max {
+            if state.is_empty(next_line) {
+                next_line += 1;
+                continue;
+            }
+
+            if state.line_indent(next_line) >= CODE_INDENT {
+                next_line += 1;
+                last = next_line;
+                continue;
+            }
+
+            break;
+        }
+
+        let (mut content, _mapping) = state.get_lines(
+            state.line,
+            last,
+            CODE_INDENT as usize + state.blk_indent,
+            false,
+        );
+        content += "\n";
+
+        let node = NodeDraft::new(CodeBlock { content });
 
         Some((node, last - state.line))
     }

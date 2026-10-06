@@ -4,8 +4,9 @@
 //!
 //! <https://spec.commonmark.org/0.30/#code-fence>
 use crate::common::utils::unescape_all;
-use crate::document::NodeRef;
-use crate::parser::block::{BlockRule, BlockState};
+use crate::document::{NodeDraft, NodeRef};
+use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::document_parser::DocumentBlockState;
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{Node, NodeValue};
 use crate::parser::renderer::Renderer;
@@ -110,6 +111,7 @@ impl Default for FenceSettings {
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<FenceScanner>();
+    md.block.add_document_rule::<FenceScanner>();
     md.add_document_renderer::<CodeFence, _>("html", CodeFenceDocumentRenderer);
     md.add_document_renderer::<CodeFence, _>("text", CodeFenceTextRenderer);
 }
@@ -121,37 +123,44 @@ pub fn set_lang_prefix(md: &mut MarkdownIt, lang_prefix: impl Into<String>) {
 #[doc(hidden)]
 pub struct FenceScanner;
 
+fn get_header(line: &str, line_indent: i32, max_indent: i32) -> Option<(char, usize, &str)> {
+    if line_indent >= max_indent {
+        return None;
+    }
+
+    let mut chars = line.chars();
+
+    let marker = chars.next()?;
+    if marker != '~' && marker != '`' {
+        return None;
+    }
+
+    // scan marker length
+    let mut len = 1;
+    while Some(marker) == chars.next() {
+        len += 1;
+    }
+
+    if len < 3 {
+        return None;
+    }
+
+    let params = &line[len..];
+
+    if marker == '`' && params.contains(marker) {
+        return None;
+    }
+
+    Some((marker, len, params))
+}
+
 impl FenceScanner {
     fn get_header<'a>(state: &'a mut BlockState) -> Option<(char, usize, &'a str)> {
-        if state.line_indent(state.line) >= state.md.max_indent {
-            return None;
-        }
-
-        let line = state.get_line(state.line);
-        let mut chars = line.chars();
-
-        let marker = chars.next()?;
-        if marker != '~' && marker != '`' {
-            return None;
-        }
-
-        // scan marker length
-        let mut len = 1;
-        while Some(marker) == chars.next() {
-            len += 1;
-        }
-
-        if len < 3 {
-            return None;
-        }
-
-        let params = &line[len..];
-
-        if marker == '`' && params.contains(marker) {
-            return None;
-        }
-
-        Some((marker, len, params))
+        get_header(
+            state.get_line(state.line),
+            state.line_indent(state.line),
+            state.md.max_indent,
+        )
     }
 }
 
@@ -235,6 +244,105 @@ impl BlockRule for FenceScanner {
             .unwrap_or_default()
             .0;
         let node = Node::new(CodeFence {
+            info: params,
+            marker,
+            marker_len: len,
+            content,
+            lang_prefix,
+        });
+        Some((
+            node,
+            next_line - state.line + if have_end_marker { 1 } else { 0 },
+        ))
+    }
+}
+
+impl DocumentBlockRule for FenceScanner {
+    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+        get_header(
+            state.get_line(state.line),
+            state.line_indent(state.line),
+            state.md.max_indent,
+        )
+        .map(|_| ())
+    }
+
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+        let (marker, len, params) = {
+            let line = state.get_line(state.line);
+            let (marker, len, params) =
+                get_header(line, state.line_indent(state.line), state.md.max_indent)?;
+            (marker, len, params.to_owned())
+        };
+
+        let mut next_line = state.line;
+        let mut have_end_marker = false;
+
+        // search end of block
+        'outer: loop {
+            next_line += 1;
+            if next_line >= state.line_max {
+                // unclosed block should be autoclosed by end of document.
+                // also block seems to be autoclosed by end of parent
+                break;
+            }
+
+            let line = state.get_line(next_line);
+
+            if !line.is_empty() && state.line_indent(next_line) < 0 {
+                // non-empty line with negative indent should stop the list:
+                // - ```
+                //  test
+                break;
+            }
+
+            let mut chars = line.chars().peekable();
+
+            if Some(marker) != chars.next() {
+                continue;
+            }
+
+            if state.line_indent(next_line) >= state.md.max_indent {
+                continue;
+            }
+
+            // scan marker length
+            let mut len_end = 1;
+            while Some(&marker) == chars.peek() {
+                chars.next();
+                len_end += 1;
+            }
+
+            // closing code fence must be at least as long as the opening one
+            if len_end < len {
+                continue;
+            }
+
+            // make sure tail has spaces only
+            loop {
+                match chars.next() {
+                    Some(' ' | '\t') => {}
+                    Some(_) => continue 'outer,
+                    None => {
+                        have_end_marker = true;
+                        break 'outer;
+                    }
+                }
+            }
+        }
+
+        // If a fence has heading spaces, they should be removed from its inner block
+        let indent = state.line_offsets[state.line].indent_nonspace;
+        let (content, _) = state.get_lines(state.line + 1, next_line, indent as usize, true);
+
+        let lang_prefix = state
+            .md
+            .ext
+            .get::<FenceSettings>()
+            .cloned()
+            .unwrap_or_default()
+            .0;
+        let node = NodeDraft::new(CodeFence {
             info: params,
             marker,
             marker_len: len,
