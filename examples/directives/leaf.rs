@@ -1,12 +1,11 @@
-use markdown_it::plugins::directives::DirectiveKind;
-use markdown_it::{Node, Renderer};
+use markdown_it::plugins::directives::{DirectiveKind, DirectiveNode, DirectiveRenderer};
 
 pub fn render_youtube(
     kind: DirectiveKind,
     _name: &str,
     attrs: &[(String, String)],
-    _node: &Node,
-    fmt: &mut dyn Renderer,
+    _node: DirectiveNode<'_>,
+    fmt: &mut DirectiveRenderer<'_, '_>,
 ) {
     assert_eq!(kind, DirectiveKind::Leaf);
 

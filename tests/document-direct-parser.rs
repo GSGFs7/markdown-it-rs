@@ -111,20 +111,31 @@ fn direct_paragraph_and_text_rules_match_the_legacy_bridge() {
 
 #[test]
 fn direct_parser_rejects_unmigrated_syntax_rules() {
+    struct LegacyOnlyBlockScanner;
+    impl markdown_it::parser::block::BlockRule for LegacyOnlyBlockScanner {
+        const MARKERS: &'static [char] = &['!'];
+
+        fn run(
+            _: &mut markdown_it::parser::block::BlockState,
+        ) -> Option<(markdown_it::Node, usize)> {
+            None
+        }
+    }
+
     let mut md = MarkdownIt::new();
-    markdown_it::plugins::directives::add(&mut md);
+    md.block.add_rule::<LegacyOnlyBlockScanner>();
     for source in ["# heading", ""] {
         assert_direct_configuration_panics(&md, source, "unsupported direct block rules");
     }
 
     let mut partial = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial);
-    markdown_it::plugins::directives::add(&mut partial);
-    for source in [":::note\nx\n:::", ""] {
+    partial.block.add_rule::<LegacyOnlyBlockScanner>();
+    for source in ["!note\nx", ""] {
         assert_direct_configuration_panics(&partial, source, "unsupported direct block rules");
     }
     partial.max_nesting = 0;
-    assert_direct_configuration_panics(&partial, ":::note", "unsupported direct block rules");
+    assert_direct_configuration_panics(&partial, "!note", "unsupported direct block rules");
 
     let mut partial_inline = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut partial_inline);
@@ -1531,6 +1542,215 @@ fn direct_footnotes_match_the_legacy_bridge() {
         };
         assert_eq!(maps(&direct), maps(&bridged), "source maps for {source:?}");
     }
+}
+
+#[test]
+fn direct_directives_match_the_legacy_bridge() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut md);
+    markdown_it::plugins::directives::add(&mut md);
+
+    let sources = [
+        "",
+        "hello :name{a=\"b\"} world",
+        "Note: warning",
+        ":::bad trailing",
+        "::name{cia=\"llo\"}",
+        ":::name{cia=\"llo\"}\nworld\n:::",
+        ":::name\n:::child\nhello\n:::\n:::",
+        ":::name\n::::child\nhello\n::::\n:::",
+        ":::name\nhello\n::::",
+        "- :::name\n  hello\noutside",
+        ":name{#my-id .my-class}",
+        ":name{title=\"Ciallo World\"}",
+        ":name{disabled}",
+        "hello :name{a=\"b\"} world\n\n::leaf{x=\"y\"}\n\n:::box\ncontent\n:::",
+        "外:雪{名=\"值\"} end",
+        ":::a\n:::b\n:::c\ndeep\n:::\n:::\n:::",
+        "[caption :name{title=\"[x]\"}](/url)",
+        "![alt :name{a=\"[\"}](/img)",
+        ":name{label=\"a[b]c\"}",
+    ];
+    for source in sources {
+        assert_direct_matches_bridge(&md, source);
+        let direct = md.parse_document_direct(source);
+        let bridged = md.parse_document(source);
+        let maps = |document: &markdown_it::Document| {
+            document
+                .events(document.root())
+                .filter(|event| matches!(event, StructuralEvent::Enter(_)))
+                .map(|event| event.node().srcmap())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(maps(&direct), maps(&bridged), "source maps for {source:?}");
+    }
+}
+
+#[test]
+fn direct_directives_custom_renderers_match_legacy() {
+    use markdown_it::plugins::directives::{self, DirectiveKind, DirectiveNode, DirectiveRenderer};
+
+    fn render_badge(
+        kind: DirectiveKind,
+        name: &str,
+        attrs: &[(String, String)],
+        node: DirectiveNode<'_>,
+        fmt: &mut DirectiveRenderer<'_, '_>,
+    ) {
+        assert_eq!(kind, DirectiveKind::Text);
+        assert_eq!(name, "badge");
+        assert!(node.is::<directives::TextDirective>());
+        assert_eq!(
+            node.cast::<directives::TextDirective>().unwrap().attrs,
+            attrs
+        );
+        assert!(node.srcmap().is_some());
+        assert!(!node.ext().is_empty());
+        assert_eq!(node.children().len(), 0);
+        let count = fmt.ext().get_or_insert_default::<RenderCount>();
+        count.0 += 1;
+        let count = count.0.to_string();
+        let label = attrs
+            .iter()
+            .find_map(|(key, value)| (key == "label").then_some(value.as_str()))
+            .unwrap_or("");
+        fmt.open(
+            "mark",
+            &[
+                ("class".into(), "badge".into()),
+                ("data-count".into(), count),
+            ],
+        );
+        fmt.text(label);
+        fmt.close("mark");
+    }
+
+    #[derive(Debug, Default)]
+    struct RenderCount(usize);
+
+    fn render_leaf(
+        kind: DirectiveKind,
+        name: &str,
+        attrs: &[(String, String)],
+        node: DirectiveNode<'_>,
+        fmt: &mut DirectiveRenderer<'_, '_>,
+    ) {
+        assert_eq!(kind, DirectiveKind::Leaf);
+        assert_eq!(name, "callout");
+        assert!(node.is::<directives::LeafDirective>());
+        assert_eq!(node.children().len(), 0);
+        assert!(node.srcmap().is_some());
+        fmt.cr();
+        fmt.open("aside", node.attrs());
+        fmt.text(&attrs[0].1);
+        fmt.self_close("hr", &[]);
+        fmt.close("aside");
+        fmt.cr();
+    }
+
+    fn render_panel(
+        kind: DirectiveKind,
+        name: &str,
+        _: &[(String, String)],
+        node: DirectiveNode<'_>,
+        fmt: &mut DirectiveRenderer<'_, '_>,
+    ) {
+        assert_eq!(kind, DirectiveKind::Container);
+        assert_eq!(name, "panel");
+        assert!(node.is::<directives::ContainerDirective>());
+        assert!(node.srcmap().is_some());
+        assert!(!node.ext().is_empty());
+        assert!(node.children().len() > 0);
+        assert!(node.children().all(|child| !child.name().is_empty()));
+        fmt.cr();
+        fmt.open("section", node.attrs());
+        fmt.contents(node.children());
+        // This must see the state written by nested badge callbacks.
+        let count = fmt.ext().get::<RenderCount>().map_or(0, |count| count.0);
+        fmt.text_raw(&format!("<!-- badges: {count} -->"));
+        fmt.softbreak();
+        fmt.close("section");
+        fmt.cr();
+    }
+
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut md);
+    directives::add(&mut md);
+    directives::add_render(&mut md, DirectiveKind::Text, "badge", render_badge);
+    directives::add_render(&mut md, DirectiveKind::Leaf, "callout", render_leaf);
+    directives::add_render(&mut md, DirectiveKind::Container, "panel", render_panel);
+
+    for xhtml in [false, true] {
+        md.render_options.xhtml_out = xhtml;
+        md.render_options.breaks = xhtml;
+        for source in [
+            ":badge{label=\"Beta\"}",
+            "hello :badge{label=\"雪 & <tag>\"} world",
+            "::callout{title=\"雪 & <tag>\"}",
+            ":::panel\nhello **world** :badge{label=\"Beta\"}\n\n::callout{title=\"Note\"}\n:::",
+            ":::panel\n:badge{label=\"First\"}\n\n:::panel\n:badge{label=\"Second\"}\n:::\n\n:::default\nfallback\n:::\n:::",
+        ] {
+            assert_direct_matches_bridge(&md, source);
+            let direct = md.parse_document_direct(source);
+            assert_eq!(
+                md.render_document(&direct),
+                md.parse(source).render(),
+                "custom renderer for {source:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn direct_directive_callbacks_render_current_document_children() {
+    use markdown_it::document::edit::EditBatch;
+    use markdown_it::parser::inline::Text;
+    use markdown_it::plugins::directives::{self, DirectiveKind, DirectiveNode, DirectiveRenderer};
+    use markdown_it::{DocumentNodeRenderer, DocumentRenderContext, DocumentWriter, NodeRef};
+
+    fn panel(
+        _: DirectiveKind,
+        _: &str,
+        _: &[(String, String)],
+        node: DirectiveNode<'_>,
+        fmt: &mut DirectiveRenderer<'_, '_>,
+    ) {
+        fmt.open("section", node.attrs());
+        fmt.contents(node.children());
+        fmt.close("section");
+        fmt.cr();
+    }
+
+    struct CustomTextRenderer;
+    impl DocumentNodeRenderer<Text> for CustomTextRenderer {
+        fn render(
+            &self,
+            _: NodeRef<'_>,
+            text: &Text,
+            _: &mut DocumentRenderContext<'_>,
+            output: &mut DocumentWriter,
+        ) {
+            output.write_str(&format!("custom:{}", text.content));
+        }
+    }
+
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut md);
+    directives::add(&mut md);
+    directives::add_render(&mut md, DirectiveKind::Container, "panel", panel);
+    md.add_document_renderer::<Text, _>("html", CustomTextRenderer);
+    let mut document = md.parse_document_direct(":::panel\nbefore\n:::");
+    let panel = document.children(document.root())[0];
+    let paragraph = document.children(panel)[0];
+    let text = document.children(paragraph)[0];
+    let mut edits = EditBatch::new();
+    edits.set_attribute(panel, "data-edited", "yes");
+    edits.replace_text(text, 0..6, "after");
+    edits.commit(&mut document);
+    assert_eq!(
+        md.render_document(&document),
+        "<section data-edited=\"yes\">\n<p>custom:after</p>\n</section>\n"
+    );
 }
 
 #[test]

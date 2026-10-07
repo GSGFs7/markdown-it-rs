@@ -1,12 +1,11 @@
-use markdown_it::plugins::directives::DirectiveKind;
-use markdown_it::{Node, Renderer};
+use markdown_it::plugins::directives::{DirectiveKind, DirectiveNode, DirectiveRenderer};
 
 pub fn render_alert(
     kind: DirectiveKind,
     name: &str,
     _attrs: &[(String, String)],
-    node: &Node,
-    fmt: &mut dyn Renderer,
+    node: DirectiveNode<'_>,
+    fmt: &mut DirectiveRenderer<'_, '_>,
 ) {
     assert_eq!(kind, DirectiveKind::Container);
 
@@ -30,7 +29,7 @@ pub fn render_alert(
     fmt.open("p", &[("class".into(), "markdown-alert-title".to_owned())]);
     fmt.text(title);
     fmt.close("p");
-    fmt.contents(&node.children);
+    fmt.contents(node.children());
     fmt.close("div");
     fmt.cr();
 }

@@ -275,8 +275,8 @@ pub struct DocumentRenderContext<'a> {
     ext: &'a mut RenderExtSet,
 }
 
-impl DocumentRenderContext<'_> {
-    pub fn document(&self) -> &Document {
+impl<'a> DocumentRenderContext<'a> {
+    pub fn document(&self) -> &'a Document {
         self.shared.document
     }
 
