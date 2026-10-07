@@ -1795,3 +1795,189 @@ fn direct_draft_finalizers_run_in_order_on_all_parse_paths() {
         assert!(document.node(document.root()).attrs().is_empty());
     }
 }
+
+#[cfg(feature = "syntect")]
+fn assert_direct_syntect_matches_bridge(md: &mut MarkdownIt, source: &str) {
+    use markdown_it::plugins::extra::syntect;
+    syntect::add(md);
+    let legacy = md.parse(source);
+    let expected = legacy.render_with(&md.render_options);
+    let bridged = markdown_it::Document::from_legacy(source, legacy);
+    md.remove_rule::<syntect::SyntectRule>();
+    let mut direct = md.parse_document_direct(source);
+    let raw_text = md.render_document_as(&direct, "text");
+    let ids: Vec<_> = direct
+        .events(direct.root())
+        .map(|event| event.node().id())
+        .collect();
+    md.run_document_transforms(&mut direct);
+    assert_eq!(md.render_document(&direct), expected, "{source:?}");
+    assert_eq!(
+        md.render_document_as(&direct, "text"),
+        raw_text,
+        "{source:?}"
+    );
+    assert_eq!(
+        md.render_document_as(&direct, "text"),
+        md.render_document_as(&bridged, "text")
+    );
+    assert_eq!(
+        md.render_document_as(&direct, "debug"),
+        md.render_document_as(&bridged, "debug")
+    );
+    assert_eq!(direct.len(), bridged.len());
+    assert_eq!(direct.source(), source);
+    assert_eq!(
+        direct
+            .events(direct.root())
+            .map(|event| event.node().id())
+            .collect::<Vec<_>>(),
+        ids
+    );
+    for (direct_event, bridged_event) in direct
+        .events(direct.root())
+        .zip(bridged.events(bridged.root()))
+    {
+        assert_eq!(direct_event.node().srcmap(), bridged_event.node().srcmap());
+        assert_eq!(direct_event.node().attrs(), bridged_event.node().attrs());
+    }
+    let rendered = md.render_document(&direct);
+    md.run_document_transforms(&mut direct);
+    assert_eq!(md.render_document(&direct), rendered);
+    assert_eq!(
+        direct.into_legacy().render_with(&md.render_options),
+        expected
+    );
+}
+
+#[cfg(feature = "syntect")]
+#[test]
+fn direct_syntect_matches_the_legacy_bridge() {
+    use markdown_it::plugins::cmark;
+    use markdown_it::plugins::extra::syntect;
+    let mut md = MarkdownIt::empty();
+    cmark::add(&mut md);
+    syntect::add_document(&mut md);
+    let sources = [
+        "",
+        "just text 雪",
+        "    plain <&> 雪\n",
+        "```\n```",
+        "```rust\n```",
+        "```rust\nfn main() { println!(\"雪<&>\"); }\n```",
+        "```unknown-language\n<&> 雪\n```",
+        "~~~rust{2}\nfn main() {\n    // 雪\n}\n~~~",
+        "```rust {1, 3-5, 7-3, nope}\nfn main() {}\n\n// hi\n```",
+        "```{1}\nplain\n```",
+        "```rust\nfn main() {}",
+        "```rust\r\nfn main() {}\r\n```\r\n",
+        "> ```rust\n> fn main() {}\n> ```\n\n- item\n\n      code\n",
+        "before\n\n```rust\nfn main() {}\n```\n\nafter\n",
+        "```rust\n/* multiline\ncomment */\nfn main() {}\n```",
+        "```rust&quot; onclick=&quot;alert(1)\nfn main() {}\n```",
+    ];
+    for classed in [false, true] {
+        if classed {
+            syntect::set_to_classed_with_prefix(&mut md, "custom-");
+        }
+        for source in sources {
+            assert_direct_syntect_matches_bridge(&mut md, source);
+        }
+    }
+}
+
+#[cfg(feature = "syntect")]
+#[test]
+fn direct_syntect_observes_configuration_before_and_after_registration() {
+    use markdown_it::plugins::cmark;
+    use markdown_it::plugins::extra::syntect;
+    let mut md = MarkdownIt::empty();
+    cmark::add(&mut md);
+    syntect::set_theme(&mut md, "base16-ocean.dark");
+    syntect::set_prefix(&mut md, "before-");
+    cmark::block::fence::set_lang_prefix(&mut md, "fence-");
+    syntect::add_document(&mut md);
+    let source = "```rust {1}\nfn main() {}\n```";
+    assert_direct_syntect_matches_bridge(&mut md, source);
+    let mut document = md.parse_document_direct(source);
+    md.run_document_transforms(&mut document);
+    let before = md.render_document(&document);
+    assert!(before.contains("before-line-highlighted"));
+    assert!(before.contains("fence-rust"));
+
+    syntect::set_theme(&mut md, "InspiredGitHub");
+    syntect::set_prefix(&mut md, "after-");
+    md.render_options.lang_prefix = Some("render-".into());
+    assert_direct_syntect_matches_bridge(&mut md, source);
+    let mut document = md.parse_document_direct(source);
+    md.run_document_transforms(&mut document);
+    let after = md.render_document(&document);
+    assert_ne!(before, after);
+    assert!(after.contains("after-line-highlighted"));
+    assert!(after.contains("render-rust"));
+    syntect::set_to_classed(&mut md);
+    assert_direct_syntect_matches_bridge(&mut md, source);
+    assert!(syntect::theme_css(&md).unwrap().contains(".syntect-code"));
+}
+
+#[cfg(feature = "syntect")]
+#[test]
+fn direct_syntect_is_explicit_preserves_extensions_and_isolates_parsers() {
+    use markdown_it::plugins::cmark;
+    use markdown_it::plugins::extra::syntect;
+    #[derive(Debug, PartialEq)]
+    struct Marker(u8);
+    let mut md = MarkdownIt::empty();
+    cmark::add(&mut md);
+    syntect::add_document(&mut md);
+    syntect::set_to_classed_with_prefix(&mut md, "first-");
+    let source = "```rust\nfn main() {}\n```";
+    let mut root = md.parse(source);
+    root.children[0].ext.insert(Marker(42));
+    root.children[0].attrs.push(("id".into(), "keep".into()));
+    let mut document = markdown_it::Document::from_legacy(source, root);
+    let code = document.children(document.root())[0];
+    assert!(document.node(code).is::<cmark::block::fence::CodeFence>());
+    let attrs = document.node(code).attrs().clone();
+    let map = document.node(code).srcmap();
+    md.run_document_transforms(&mut document);
+    assert!(document.node(code).is::<syntect::SyntectSnippet>());
+    assert_eq!(document.node(code).ext().get::<Marker>(), Some(&Marker(42)));
+    assert_eq!(document.node(code).attrs(), &attrs);
+    assert_eq!(document.node(code).srcmap(), map);
+
+    let mut second = MarkdownIt::empty();
+    cmark::add(&mut second);
+    syntect::add_document(&mut second);
+    syntect::set_to_classed_with_prefix(&mut second, "second-");
+    let mut second_document = second.parse_document_direct(source);
+    second.run_document_transforms(&mut second_document);
+    assert!(
+        second
+            .render_document(&second_document)
+            .contains("second-code")
+    );
+    assert!(md.render_document(&document).contains("first-code"));
+    md.document_transforms
+        .remove::<syntect::SyntectDocumentTransform>();
+    let mut raw = md.parse_document_direct(source);
+    md.run_document_transforms(&mut raw);
+    assert!(!md.render_document(&raw).contains("first-code"));
+    syntect::add_document(&mut md);
+    md.run_document_transforms(&mut raw);
+    assert!(md.render_document(&raw).contains("first-code"));
+}
+
+#[cfg(feature = "syntect")]
+#[test]
+#[should_panic(expected = "unknown syntect theme: definitely-not-a-theme")]
+fn direct_syntect_invalid_theme_panics() {
+    use markdown_it::plugins::cmark;
+    use markdown_it::plugins::extra::syntect;
+    let mut md = MarkdownIt::empty();
+    cmark::add(&mut md);
+    syntect::add_document(&mut md);
+    syntect::set_theme(&mut md, "definitely-not-a-theme");
+    let mut document = md.parse_document_direct("```rust\nfn main() {}\n```");
+    md.run_document_transforms(&mut document);
+}

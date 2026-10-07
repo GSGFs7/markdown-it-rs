@@ -59,6 +59,11 @@ impl NodeData {
         self.node_value = Box::new(value);
     }
 
+    pub(super) fn replace_value(&mut self, replacement: Self) {
+        self.node_type = replacement.node_type;
+        self.node_value = replacement.node_value;
+    }
+
     // Transitional legacy boundary: move ownership, do not clone payload/ext.
     pub(super) fn from_legacy_parts(parts: NodeParts) -> (Self, Vec<Node>) {
         let NodeParts {

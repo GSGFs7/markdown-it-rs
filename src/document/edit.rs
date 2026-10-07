@@ -3,8 +3,10 @@
 use std::ops::Range;
 
 use crate::common::sourcemap::SourcePos;
+use crate::document::data::NodeData;
 use crate::document::{Document, NodeDraft, NodeId, SiblingPosition};
 use crate::parser::inline::Text;
+use crate::parser::node::NodeValue;
 
 #[derive(Clone, Debug)]
 enum TextReplacement {
@@ -55,8 +57,15 @@ struct EditSourceMap {
     source_map: Option<SourcePos>,
 }
 
+#[derive(Debug)]
+struct ReplaceValue {
+    node: NodeId,
+    value: NodeData,
+}
+
 #[derive(Debug, Default)]
 struct NodePatchSet {
+    values: Vec<ReplaceValue>,
     text: Vec<ReplaceText>,
     attributes: Vec<EditAttribute>,
     source_maps: Vec<EditSourceMap>,
@@ -64,11 +73,14 @@ struct NodePatchSet {
 
 impl NodePatchSet {
     fn len(&self) -> usize {
-        self.text.len() + self.attributes.len() + self.source_maps.len()
+        self.values.len() + self.text.len() + self.attributes.len() + self.source_maps.len()
     }
 
     fn is_empty(&self) -> bool {
-        self.text.is_empty() && self.attributes.is_empty() && self.source_maps.is_empty()
+        self.values.is_empty()
+            && self.text.is_empty()
+            && self.attributes.is_empty()
+            && self.source_maps.is_empty()
     }
 
     #[cfg(debug_assertions)]
@@ -78,6 +90,7 @@ impl NodePatchSet {
             .map(|edit| edit.node)
             .chain(self.attributes.iter().map(|edit| edit.node))
             .chain(self.source_maps.iter().map(|edit| edit.node))
+            .chain(self.values.iter().map(|edit| edit.node))
     }
 }
 
@@ -140,6 +153,14 @@ impl EditBatch {
 
     pub fn is_empty(&self) -> bool {
         self.node_patches.is_empty() && self.structural_edits.is_empty()
+    }
+
+    /// Replace a node's payload, preserving its ID, children and metadata.
+    pub fn replace_value<T: NodeValue>(&mut self, node: NodeId, value: T) {
+        self.node_patches.values.push(ReplaceValue {
+            node,
+            value: NodeData::new(value),
+        });
     }
 
     /// Replace one byte range in a built-in `Text` node.
@@ -267,6 +288,9 @@ impl EditBatch {
         }
 
         self.apply_text(document);
+        for edit in self.node_patches.values.drain(..) {
+            document.node_mut(edit.node).data.replace_value(edit.value);
+        }
         self.apply_removals(document);
         self.apply_replacements(document);
         self.apply_wrap_ranges(document);

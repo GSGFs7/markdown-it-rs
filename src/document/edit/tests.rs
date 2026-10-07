@@ -30,6 +30,61 @@ fn branched_document() -> Document {
 }
 
 #[test]
+fn payload_replacement_preserves_identity_children_and_metadata() {
+    #[derive(Debug, PartialEq)]
+    struct Marker(u8);
+    let mut root = Node::new(Root::new("abc".to_owned()));
+    let mut paragraph = Node::new(Paragraph);
+    paragraph.srcmap = Some(SourcePos::new(0, 3));
+    paragraph.attrs.push(("id".into(), "keep".into()));
+    paragraph.ext.insert(Marker(42));
+    paragraph.children.push(Node::new(Text {
+        content: "abc".into(),
+    }));
+    root.children.push(paragraph);
+    let mut document = Document::from_legacy("abc", root);
+    let paragraph = document.children(document.root())[0];
+    let child = document.children(paragraph)[0];
+    let mut batch = EditBatch::new();
+    batch.replace_value(
+        paragraph,
+        Text {
+            content: "replacement".into(),
+        },
+    );
+    batch.set_attribute(paragraph, "title", "new");
+    assert_eq!(batch.len(), 2);
+    batch.commit(&mut document);
+    assert_eq!(content(&document, paragraph), "replacement");
+    assert_eq!(document.node(paragraph).parent(), Some(document.root()));
+    assert_eq!(document.children(paragraph), &[child]);
+    assert_eq!(document.node(child).parent(), Some(paragraph));
+    assert_eq!(
+        document.node(paragraph).srcmap(),
+        Some(SourcePos::new(0, 3))
+    );
+    assert_eq!(
+        document.node(paragraph).ext().get::<Marker>(),
+        Some(&Marker(42))
+    );
+    assert_eq!(
+        document.node(paragraph).attrs(),
+        &vec![("id".into(), "keep".into()), ("title".into(), "new".into())]
+    );
+}
+
+#[test]
+fn text_edits_run_before_payload_replacement() {
+    let mut document = document(&["abc"]);
+    let text = document.children(document.root())[0];
+    let mut batch = EditBatch::new();
+    batch.replace_value(text, Paragraph);
+    batch.replace_text(text, 0..1, "A");
+    batch.commit(&mut document);
+    assert!(document.node(text).is::<Paragraph>());
+}
+
+#[test]
 fn applies_multiple_edits_to_each_text_node_once() {
     let mut document = document(&["a雪c", "def"]);
     let children = document.children(document.root());
@@ -626,6 +681,49 @@ mod validation_tests {
 
     use super::*;
     use crate::document::edit::validation::ValidationError;
+
+    #[test]
+    fn payload_replacements_validate_duplicates_stale_ids_and_structural_conflicts() {
+        let mut document = branched_document();
+        let paragraph = document.children(document.root())[0];
+        let text = document.children(paragraph)[0];
+        let mut duplicate = EditBatch::new();
+        duplicate.replace_value(text, Paragraph);
+        duplicate.replace_value(text, Paragraph);
+        assert_invalid(
+            duplicate,
+            &document,
+            ValidationError::DuplicateValueReplacement(text),
+        );
+        let mut removal = EditBatch::new();
+        removal.replace_value(text, Paragraph);
+        removal.remove_node(paragraph);
+        assert_invalid(
+            removal,
+            &document,
+            ValidationError::EditTargetsRemovedNode {
+                removed: paragraph,
+                edited: text,
+            },
+        );
+        let mut replacement = EditBatch::new();
+        replacement.replace_value(text, Paragraph);
+        replacement.replace_node(paragraph, NodeDraft::new(Paragraph));
+        assert_invalid(
+            replacement,
+            &document,
+            ValidationError::EditTargetsReplacedNode {
+                replaced: paragraph,
+                edited: text,
+            },
+        );
+        let mut delete = EditBatch::new();
+        delete.remove_node(text);
+        delete.commit(&mut document);
+        let mut stale = EditBatch::new();
+        stale.replace_value(text, Paragraph);
+        assert_invalid(stale, &document, ValidationError::InvalidNode(text));
+    }
 
     fn error_for(mut batch: EditBatch, document: &Document) -> ValidationError {
         batch.normalize();

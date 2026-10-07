@@ -10,6 +10,7 @@ use crate::parser::inline::Text;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum ValidationError {
     InvalidNode(NodeId),
+    DuplicateValueReplacement(NodeId),
     NotEditableText(NodeId),
     InvalidTextRange {
         node: NodeId,
@@ -103,6 +104,9 @@ pub(super) enum ValidationError {
 impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::DuplicateValueReplacement(node) => {
+                write!(f, "node {node:?} has multiple payload replacements")
+            }
             Self::InvalidNode(node) => write!(f, "invalid or stale node ID: {node:?}"),
             Self::NotEditableText(node) => {
                 write!(f, "node {node:?} is not an editable Text node")
@@ -234,6 +238,13 @@ impl std::fmt::Display for ValidationError {
 
 impl EditBatch {
     pub(super) fn validate(&self, document: &Document) -> Result<(), ValidationError> {
+        let mut values = HashSet::new();
+        for edit in &self.node_patches.values {
+            checked_node(document, edit.node)?;
+            if !values.insert(edit.node) {
+                return Err(ValidationError::DuplicateValueReplacement(edit.node));
+            }
+        }
         self.validate_text(document)?;
         self.validate_attributes(document)?;
         self.validate_source_maps(document)?;
