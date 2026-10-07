@@ -12,7 +12,7 @@ use crate::document::transform::{
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::{Root, *};
 use crate::parser::document_parser::DocumentParseContext;
-use crate::parser::extset::{MarkdownItExtSet, RootExtSet};
+use crate::parser::extset::MarkdownItExtSet;
 use crate::parser::inline::{self, InlineParser, Text, TextSpecial};
 use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
 use crate::parser::node::{Node, NodeValue};
@@ -164,73 +164,13 @@ impl MarkdownIt {
     /// out of order, or if any syntax rule lacks direct support.
     #[doc(hidden)]
     pub fn parse_document_direct(&self, src: &str) -> Document {
-        let mut preparations = Vec::new();
-        let mut inline_preparations = Vec::new();
-        let mut draft_finalizers = Vec::new();
-        let mut seen_block = false;
-        let mut seen_inline = false;
-        let mut supported = true;
-        for rule in self.ruler.iter() {
-            match rule.document {
-                Some(DocumentCoreRule::ParseBlocks) => {
-                    supported &= !seen_block && !seen_inline;
-                    seen_block = true;
-                }
-                Some(DocumentCoreRule::ParseInlines) => {
-                    supported &= seen_block && !seen_inline;
-                    seen_inline = true;
-                }
-                Some(DocumentCoreRule::PrepareState(prepare)) => {
-                    // Preserve whether source analysis runs before or after blocks.
-                    supported &= !seen_inline;
-                    if seen_block {
-                        inline_preparations.push(prepare);
-                    } else {
-                        preparations.push(prepare);
-                    }
-                }
-                Some(DocumentCoreRule::FinalizeDraft(finalize)) => {
-                    // Finalizers must follow the inline pass.
-                    supported &= seen_inline;
-                    draft_finalizers.push(finalize);
-                }
-                None => supported = false,
-            }
-        }
-        assert!(
-            supported && seen_block && seen_inline,
-            "direct parsing requires the built-in block and inline core rules and supported source preparations",
-        );
+        DocumentParseContext::new(src, self).parse()
+    }
 
-        let block_rules = self
-            .block
-            .document_rules()
-            .expect("parser configuration contains unsupported direct block rules");
-        let inline_rules = self
-            .inline
-            .document_rules()
-            .expect("parser configuration contains unsupported direct inline rules or factories");
-
-        let mut root_ext = RootExtSet::new();
-        for prepare in preparations {
-            prepare(src, self, &mut root_ext);
-        }
-        if block_rules.is_empty() && self.inline.has_only_text_rule() && self.max_nesting > 0 {
-            for prepare in inline_preparations {
-                prepare(src, self, &mut root_ext);
-            }
-            return DocumentParseContext::new(src, &self.render_options)
-                .parse_text_fallback(root_ext, draft_finalizers);
-        }
-
-        DocumentParseContext::new(src, &self.render_options).parse(
-            self,
-            block_rules,
-            inline_rules,
-            root_ext,
-            inline_preparations,
-            draft_finalizers,
-        )
+    pub(super) fn document_core_rules(
+        &self,
+    ) -> impl Iterator<Item = Option<DocumentCoreRule>> + '_ {
+        self.ruler.iter().map(|rule| rule.document)
     }
 
     /// Register an arena-backed document transform.

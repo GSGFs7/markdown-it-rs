@@ -12,13 +12,17 @@ use crate::parser::block::{
     LineOffset,
     build_line_offsets,
 };
-use crate::parser::core::{DocumentFinalizeDraftFn, DocumentPrepareStateFn, Root};
+use crate::parser::core::{
+    DocumentCoreRule,
+    DocumentFinalizeDraftFn,
+    DocumentPrepareStateFn,
+    Root,
+};
 use crate::parser::extset::{InlineRootExtSet, RootExtSet};
 use crate::parser::inline::probe::InlineProbeContext;
 use crate::parser::inline::{DelimiterRun, DocumentRuleSet, Text, scan_delimiter_run};
 use crate::parser::main::MarkdownIt;
 use crate::parser::node::{NodeEmpty, NodeValue};
-use crate::parser::render_options::RenderOptions;
 
 /// Inline content queued during the block pass and resolved once all
 /// reference definitions have been collected.
@@ -61,67 +65,117 @@ fn resolve_pending_inline(
 
 pub(crate) struct DocumentParseContext<'a> {
     source: &'a str,
+    md: &'a MarkdownIt,
     root: NodeDraft,
+    root_ext: RootExtSet,
+    inline_preparations: Vec<DocumentPrepareStateFn>,
+    draft_finalizers: Vec<DocumentFinalizeDraftFn>,
 }
 
 impl<'a> DocumentParseContext<'a> {
-    pub(crate) fn new(source: &'a str, options: &RenderOptions) -> Self {
+    pub(crate) fn new(source: &'a str, md: &'a MarkdownIt) -> Self {
         let mut root = NodeDraft::new(Root::new(source.to_owned()));
         root.set_srcmap(Some(SourcePos::new(0, source.len())));
-        root.ext_mut().insert(options.clone());
-        Self { source, root }
+        root.ext_mut().insert(md.render_options.clone());
+        Self {
+            source,
+            md,
+            root,
+            root_ext: RootExtSet::new(),
+            inline_preparations: Vec::new(),
+            draft_finalizers: Vec::new(),
+        }
     }
 
-    pub(crate) fn parse(
-        self,
-        md: &MarkdownIt,
-        block_rules: Vec<DocumentBlockRuleFns>,
-        inline_rules: DocumentRuleSet,
-        root_ext: RootExtSet,
-        inline_preparations: Vec<DocumentPrepareStateFn>,
-        draft_finalizers: Vec<DocumentFinalizeDraftFn>,
-    ) -> Document {
-        let mut state = DocumentBlockState::new(self.source, md, block_rules, self.root);
-        state.root_ext = root_ext;
-        state.tokenize();
-        for prepare in inline_preparations {
-            prepare(self.source, md, &mut state.root_ext);
+    pub(crate) fn parse(mut self) -> Document {
+        let mut preparations = Vec::new();
+        let mut seen_block = false;
+        let mut seen_inline = false;
+        let mut supported = true;
+        for rule in self.md.document_core_rules() {
+            match rule {
+                Some(DocumentCoreRule::ParseBlocks) => {
+                    supported &= !seen_block && !seen_inline;
+                    seen_block = true;
+                }
+                Some(DocumentCoreRule::ParseInlines) => {
+                    supported &= seen_block && !seen_inline;
+                    seen_inline = true;
+                }
+                Some(DocumentCoreRule::PrepareState(prepare)) => {
+                    // Preserve whether source analysis runs before or after blocks.
+                    supported &= !seen_inline;
+                    if seen_block {
+                        self.inline_preparations.push(prepare);
+                    } else {
+                        preparations.push(prepare);
+                    }
+                }
+                Some(DocumentCoreRule::FinalizeDraft(finalize)) => {
+                    // Finalizers must follow the inline pass.
+                    supported &= seen_inline;
+                    self.draft_finalizers.push(finalize);
+                }
+                None => supported = false,
+            }
+        }
+        assert!(
+            supported && seen_block && seen_inline,
+            "direct parsing requires the built-in block and inline core rules and supported source preparations",
+        );
+
+        let block_rules = self
+            .md
+            .block
+            .document_rules()
+            .expect("parser configuration contains unsupported direct block rules");
+        let inline_rules =
+            self.md.inline.document_rules().expect(
+                "parser configuration contains unsupported direct inline rules or factories",
+            );
+
+        for prepare in preparations {
+            prepare(self.source, self.md, &mut self.root_ext);
+        }
+        if block_rules.is_empty() && self.md.inline.has_only_text_rule() && self.md.max_nesting > 0
+        {
+            self.prepare_inlines();
+            return self.parse_text_fallback();
         }
 
-        let DocumentBlockState {
-            node: mut root,
-            root_ext,
-            ..
-        } = state;
+        let mut state = DocumentBlockState::new(self.source, self.md, block_rules, self.root);
+        state.root_ext = self.root_ext;
+        state.tokenize();
+        self.root = state.node;
+        self.root_ext = state.root_ext;
+        self.prepare_inlines();
+
         // Inline parsing runs after the block pass so later reference
         // definitions can resolve earlier uses.
-        resolve_pending_inline(&mut root, md, &inline_rules, &root_ext);
-        Self::finish(self.source, root, root_ext, draft_finalizers)
+        resolve_pending_inline(&mut self.root, self.md, &inline_rules, &self.root_ext);
+        self.finish()
     }
 
-    fn finish(
-        source: &str,
-        mut root: NodeDraft,
-        root_ext: RootExtSet,
-        draft_finalizers: Vec<DocumentFinalizeDraftFn>,
-    ) -> Document {
+    fn prepare_inlines(&mut self) {
+        for prepare in &self.inline_preparations {
+            prepare(self.source, self.md, &mut self.root_ext);
+        }
+    }
+
+    fn finish(mut self) -> Document {
         // Post-inline core rules may now reorder the resolved draft.
-        for finalize in draft_finalizers {
-            finalize(&mut root, &root_ext);
+        for finalize in self.draft_finalizers {
+            finalize(&mut self.root, &self.root_ext);
         }
         // Persist the cross-block extension set on the root payload.
-        if let Some(data) = root.cast_mut::<Root>() {
-            data.ext = root_ext;
+        if let Some(data) = self.root.cast_mut::<Root>() {
+            data.ext = self.root_ext;
         }
 
-        Document::from_draft(Arc::<str>::from(source), root)
+        Document::from_draft(Arc::<str>::from(self.source), self.root)
     }
 
-    pub(crate) fn parse_text_fallback(
-        mut self,
-        root_ext: RootExtSet,
-        draft_finalizers: Vec<DocumentFinalizeDraftFn>,
-    ) -> Document {
+    fn parse_text_fallback(mut self) -> Document {
         for line in build_line_offsets(self.source) {
             if line.first_nonspace >= line.line_end {
                 continue;
@@ -134,7 +188,7 @@ impl<'a> DocumentParseContext<'a> {
             self.root.push_child(text);
         }
 
-        Self::finish(self.source, self.root, root_ext, draft_finalizers)
+        self.finish()
     }
 }
 
