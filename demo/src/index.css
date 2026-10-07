@@ -314,57 +314,6 @@ body {
     overflow-x: auto;
 }
 
-/*
- * GitHub-style alerts.
- * https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#alerts
- */
-#result-preview .markdown-alert {
-    margin: 1rem 0;
-    padding: 0.5rem 1rem;
-    border-left: 0.25rem solid;
-    border-radius: 6px;
-}
-
-#result-preview .markdown-alert > :last-child {
-    margin-bottom: 0;
-}
-
-#result-preview .markdown-alert-title {
-    margin: 0 0 0.5rem;
-    font-weight: 600;
-}
-
-#result-preview .markdown-alert-note {
-    border-left-color: #0969da;
-}
-#result-preview .markdown-alert-note .markdown-alert-title {
-    color: #0969da;
-}
-#result-preview .markdown-alert-tip {
-    border-left-color: #1a7f37;
-}
-#result-preview .markdown-alert-tip .markdown-alert-title {
-    color: #1a7f37;
-}
-#result-preview .markdown-alert-important {
-    border-left-color: #8250df;
-}
-#result-preview .markdown-alert-important .markdown-alert-title {
-    color: #8250df;
-}
-#result-preview .markdown-alert-warning {
-    border-left-color: #9a6700;
-}
-#result-preview .markdown-alert-warning .markdown-alert-title {
-    color: #9a6700;
-}
-#result-preview .markdown-alert-caution {
-    border-left-color: #cf222e;
-}
-#result-preview .markdown-alert-caution .markdown-alert-title {
-    color: #cf222e;
-}
-
 /* https://github.com/markdown-it/markdown-it/blob/master/support/demo_template/index.css */
 .gh-ribbon {
     display: block;

@@ -17,26 +17,11 @@ The sections below showcase the CommonMark and extra syntax it supports.
 "Smart quotes", "nested 'quotes'", ellipsis..., and (c) are handled by the
 typographer. Bare URLs are linkified: <https://example.com>.
 
-## Blockquotes & alerts
+## Blockquotes
 
 > A plain blockquote.
 >
 > > Nested quotes work too.
-
-> [!NOTE]
-> Useful information that users should know.
-
-> [!TIP]
-> Helpful advice for doing things better.
-
-> [!IMPORTANT]
-> Key information users need to know.
-
-> [!WARNING]
-> Urgent info that needs immediate attention.
-
-> [!CAUTION]
-> Advises about risks or negative outcomes.
 
 ## Lists
 
