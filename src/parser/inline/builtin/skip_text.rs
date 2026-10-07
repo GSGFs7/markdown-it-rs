@@ -5,11 +5,10 @@ use regex::{self, Regex};
 
 use crate::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
+use crate::parser::inline::InlineRule;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 
 #[derive(Debug)]
 /// Plain text AST node.
@@ -23,11 +22,7 @@ impl AsRef<str> for Text {
     }
 }
 
-impl NodeValue for Text {
-    fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
-        fmt.text(&self.content);
-    }
-}
+impl NodeValue for Text {}
 
 #[derive(Debug)]
 /// Escaped text AST node (backslash escapes and entities).
@@ -43,14 +38,10 @@ impl AsRef<str> for TextSpecial {
     }
 }
 
-impl NodeValue for TextSpecial {
-    fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
-        fmt.text(&self.content);
-    }
-}
+impl NodeValue for TextSpecial {}
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_migrated_rule::<TextScanner>().before_all();
+    md.inline.add_rule::<TextScanner>().before_all();
 }
 
 #[derive(Debug)]
@@ -101,14 +92,7 @@ impl TextScannerImpl {
 ///
 pub struct TextScanner;
 
-impl TextScanner {
-    fn find_text_length(state: &mut InlineState) -> usize {
-        state
-            .md
-            .inline
-            .text_length(&state.src, state.pos, state.pos_max)
-    }
-}
+impl TextScanner {}
 
 impl InlineRule for TextScanner {
     const MARKER: char = '\0';
@@ -139,29 +123,6 @@ impl InlineRule for TextScanner {
 
         state.push_text(state.pos, state.pos + len);
         Some((None, len))
-    }
-}
-
-impl LegacyInlineRule for TextScanner {
-    const MARKER: char = '\0';
-    const NAMES: &'static [&'static str] = &["text"];
-
-    fn check(state: &mut InlineState) -> Option<usize> {
-        let len = Self::find_text_length(state);
-        if len == 0 {
-            return None;
-        }
-        Some(len)
-    }
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let len = Self::find_text_length(state);
-        if len == 0 {
-            return None;
-        }
-        state.trailing_text_push(state.pos, state.pos + len);
-        state.pos += len;
-        Some((Node::default(), 0))
     }
 }
 

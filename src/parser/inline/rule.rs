@@ -1,9 +1,8 @@
 use crate::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeResult};
-use crate::parser::node::Node;
 
-pub(crate) type DocumentFinalizeFn =
+pub type DocumentFinalizeFn =
     for<'a> fn(&mut crate::parser::document_parser::DocumentInlineState<'a>);
 
 /// An arena-backed inline parser rule.
@@ -34,26 +33,4 @@ pub trait InlineRule: 'static {
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)>;
 }
 
-pub(crate) type LegacyInlineFinalizeFn = for<'a, 'b> fn(&mut super::InlineState<'a, 'b>);
-
-pub(crate) trait LegacyInlineRule: 'static {
-    const MARKER: char;
-    const NAMES: &'static [&'static str] = &[];
-
-    fn check(state: &mut super::InlineState) -> Option<usize> {
-        Self::run(state).map(|(_node, len)| len)
-    }
-
-    fn run(state: &mut super::InlineState) -> Option<(Node, usize)>;
-}
-
 crate::parser::core::rule_builder!(InlineRule);
-
-#[allow(dead_code)]
-mod legacy_builder {
-    use super::LegacyInlineRule;
-
-    crate::parser::core::rule_builder!(LegacyInlineRule);
-}
-
-pub(crate) use legacy_builder::RuleBuilder as LegacyRuleBuilder;

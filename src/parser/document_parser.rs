@@ -422,17 +422,38 @@ impl<'a> DocumentBlockState<'a> {
 }
 
 pub struct DocumentInlineState<'a> {
+    /// Markdown source.
     pub(crate) src: Cow<'a, str>,
+
+    /// Current byte offset in `src`, it must respect char boundaries.
     pub(crate) pos: usize,
+
+    /// Maximum allowed byte offset in `src`, it must respect char boundaries.
     pub(crate) pos_max: usize,
+
+    /// Link to parser instance.
     md: &'a MarkdownIt,
+
+    /// For each line, it holds offset of the start of the line in original
+    /// markdown source and offset of the start of the line in `src`.
     mapping: Cow<'a, [(usize, usize)]>,
+
+    /// Counter used to prevent recursion by image and link rules.
     depth: u32,
+
     pub(crate) inline_ext: InlineRootExtSet,
+
     pub(crate) root_ext: Option<&'a RootExtSet>,
+
+    /// Counter used to disable inline linkifier execution
+    /// inside raw html and markdown links.
     pub(crate) link_level: i32,
-    ruleset: &'a DocumentRuleSet,
+
+    pub(crate) ruleset: &'a DocumentRuleSet,
+
+    /// Nodes accumulated for the current inline container; rules append to it.
     nodes: Vec<NodeDraft>,
+
     pending_text: Option<(usize, usize)>,
 }
 

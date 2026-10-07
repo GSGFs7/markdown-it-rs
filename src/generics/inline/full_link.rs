@@ -11,17 +11,16 @@
 //!  - `PREFIX` - marker character before label (`!` in case of images)
 //!  - `ENABLE_NESTED` - allow nested links inside
 //!  - `md` - parser instance
-//!  - `f` - function that should return your custom [Node] given href and title
+//!  - `f` - function that should return your custom [NodeDraft] given href and title
 //!
 use std::collections::HashMap;
 
 use crate::common::utils::unescape_all;
 use crate::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
+use crate::parser::inline::InlineRule;
 use crate::parser::inline::probe::{InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::Node;
 use crate::plugins::cmark::block::reference::ReferenceMap;
 
 #[derive(Debug)]
@@ -32,95 +31,39 @@ struct InlineLinkTarget {
 }
 
 #[derive(Debug)]
-struct LinkCfg<const PREFIX: char>(fn(Option<String>, Option<String>) -> Node);
-
-#[derive(Debug)]
 struct DocumentLinkCfg<const PREFIX: char>(fn(Option<String>, Option<String>) -> NodeDraft);
 
-/// adds custom rule with no prefix
+/// Register a link rule with a draft factory.
 pub fn add<const ENABLE_NESTED: bool>(
     md: &mut MarkdownIt,
-    f: fn(url: Option<String>, title: Option<String>) -> Node,
+    factory: fn(Option<String>, Option<String>) -> NodeDraft,
 ) {
-    md.ext.insert(LinkCfg::<'\0'>(f));
-    md.inline.add_legacy_rule::<LinkScanner<ENABLE_NESTED>>();
-    if !md.inline.has_legacy_rule::<LinkScannerEnd>() {
-        md.inline.add_migrated_rule::<LinkScannerEnd>();
+    md.ext.insert(DocumentLinkCfg::<'\0'>(factory));
+    md.inline.add_rule::<LinkScanner<ENABLE_NESTED>>();
+    if !md.inline.has_rule::<LinkScannerEnd>() {
+        md.inline.add_rule::<LinkScannerEnd>();
     }
 }
 
-/// adds custom rule with given `PREFIX` character
+/// Register a prefixed link rule with a draft factory.
 pub fn add_prefix<const PREFIX: char, const ENABLE_NESTED: bool>(
     md: &mut MarkdownIt,
-    f: fn(url: Option<String>, title: Option<String>) -> Node,
+    factory: fn(Option<String>, Option<String>) -> NodeDraft,
 ) {
-    md.ext.insert(LinkCfg::<PREFIX>(f));
+    md.ext.insert(DocumentLinkCfg::<PREFIX>(factory));
     let builder = md
         .inline
-        .add_legacy_rule::<LinkPrefixScanner<PREFIX, ENABLE_NESTED>>();
+        .add_rule::<LinkPrefixScanner<PREFIX, ENABLE_NESTED>>();
     if PREFIX == '!' {
         builder.alias_named("image");
     }
-    if !md.inline.has_legacy_rule::<LinkScannerEnd>() {
-        md.inline.add_migrated_rule::<LinkScannerEnd>();
-    }
-}
-
-pub(crate) fn add_migrated<const ENABLE_NESTED: bool>(
-    md: &mut MarkdownIt,
-    legacy_factory: fn(Option<String>, Option<String>) -> Node,
-    document_factory: fn(Option<String>, Option<String>) -> NodeDraft,
-) {
-    md.ext.insert(LinkCfg::<'\0'>(legacy_factory));
-    md.ext.insert(DocumentLinkCfg::<'\0'>(document_factory));
-    md.inline.add_migrated_rule::<LinkScanner<ENABLE_NESTED>>();
-    if !md.inline.has_legacy_rule::<LinkScannerEnd>() {
-        md.inline.add_migrated_rule::<LinkScannerEnd>();
-    }
-}
-
-pub(crate) fn add_prefix_migrated<const PREFIX: char, const ENABLE_NESTED: bool>(
-    md: &mut MarkdownIt,
-    legacy_factory: fn(Option<String>, Option<String>) -> Node,
-    document_factory: fn(Option<String>, Option<String>) -> NodeDraft,
-) {
-    md.ext.insert(LinkCfg::<PREFIX>(legacy_factory));
-    md.ext.insert(DocumentLinkCfg::<PREFIX>(document_factory));
-    let builder = md
-        .inline
-        .add_migrated_rule::<LinkPrefixScanner<PREFIX, ENABLE_NESTED>>();
-    if PREFIX == '!' {
-        builder.alias_named("image");
-    }
-    if !md.inline.has_legacy_rule::<LinkScannerEnd>() {
-        md.inline.add_migrated_rule::<LinkScannerEnd>();
+    if !md.inline.has_rule::<LinkScannerEnd>() {
+        md.inline.add_rule::<LinkScannerEnd>();
     }
 }
 
 #[doc(hidden)]
 pub struct LinkScanner<const ENABLE_NESTED: bool>;
-
-impl<const ENABLE_NESTED: bool> LegacyInlineRule for LinkScanner<ENABLE_NESTED> {
-    const MARKER: char = '[';
-    const NAMES: &'static [&'static str] = &["link"];
-
-    fn check(state: &mut InlineState) -> Option<usize> {
-        let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next().unwrap() != '[' {
-            return None;
-        }
-        rule_check(state, ENABLE_NESTED, 0)
-    }
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next().unwrap() != '[' {
-            return None;
-        }
-        let f = state.md.ext.get::<LinkCfg<'\0'>>().unwrap().0;
-        rule_run(state, ENABLE_NESTED, 0, f)
-    }
-}
 
 impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
     const MARKER: char = '[';
@@ -143,38 +86,6 @@ impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
 
 #[doc(hidden)]
 pub struct LinkPrefixScanner<const PREFIX: char, const ENABLE_NESTED: bool>;
-
-impl<const PREFIX: char, const ENABLE_NESTED: bool> LegacyInlineRule
-    for LinkPrefixScanner<PREFIX, ENABLE_NESTED>
-{
-    const MARKER: char = PREFIX;
-    const NAMES: &'static [&'static str] = &["link_prefix"];
-
-    fn check(state: &mut InlineState) -> Option<usize> {
-        let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next() != Some(PREFIX) {
-            return None;
-        }
-        if chars.next() != Some('[') {
-            return None;
-        }
-
-        rule_check(state, ENABLE_NESTED, PREFIX.len_utf8())
-    }
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next() != Some(PREFIX) {
-            return None;
-        }
-        if chars.next() != Some('[') {
-            return None;
-        }
-
-        let f = state.md.ext.get::<LinkCfg<PREFIX>>().unwrap().0;
-        rule_run(state, ENABLE_NESTED, PREFIX.len_utf8(), f)
-    }
-}
 
 impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
     for LinkPrefixScanner<PREFIX, ENABLE_NESTED>
@@ -210,18 +121,6 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
 /// but it actually doesn't do anything
 pub struct LinkScannerEnd;
 
-impl LegacyInlineRule for LinkScannerEnd {
-    const MARKER: char = ']';
-    const NAMES: &'static [&'static str] = &["link_end"];
-
-    fn check(_: &mut InlineState) -> Option<usize> {
-        None
-    }
-    fn run(_: &mut InlineState) -> Option<(Node, usize)> {
-        None
-    }
-}
-
 impl InlineRule for LinkScannerEnd {
     const MARKER: char = ']';
     const NAMES: &'static [&'static str] = &["link_end"];
@@ -231,113 +130,10 @@ impl InlineRule for LinkScannerEnd {
     }
 }
 
-fn rule_check(state: &mut InlineState, enable_nested: bool, offset: usize) -> Option<usize> {
-    if let Some(result) = parse_link(state, state.pos + offset, enable_nested) {
-        Some(result.end - state.pos)
-    } else {
-        None
-    }
-}
-
-fn rule_run(
-    state: &mut InlineState,
-    enable_nested: bool,
-    offset: usize,
-    f: fn(Option<String>, Option<String>) -> Node,
-) -> Option<(Node, usize)> {
-    let start = state.pos;
-    let result = parse_link(state, state.pos + offset, enable_nested)?;
-
-    //
-    // We found the end of the link, and know for a fact it's a valid link;
-    // so all that's left to do is to call tokenizer.
-    //
-    let old_node = std::mem::replace(&mut state.node, f(result.href, result.title));
-    let max = state.pos_max;
-
-    state.link_level += 1;
-    state.pos = result.label_start;
-    state.pos_max = result.label_end;
-    state.md.inline.tokenize(state);
-    state.pos = start;
-    state.pos_max = max;
-    state.link_level -= 1;
-
-    let node = std::mem::replace(&mut state.node, old_node);
-    Some((node, result.end - state.pos))
-}
-
-#[derive(Debug, Default)]
-struct LinkLabelScanCache(HashMap<(usize, bool), Option<usize>>);
-
-// Parse link label
+// Scan a link label using independent probe sessions.
 //
-// this function assumes that first character ("[") already matches;
-// returns the end of the label
-fn parse_link_label(state: &mut InlineState, start: usize, enable_nested: bool) -> Option<usize> {
-    let cache = state
-        .inline_ext
-        .get_or_insert_default::<LinkLabelScanCache>();
-    if let Some(&cached) = cache.0.get(&(start, enable_nested)) {
-        return cached;
-    }
-
-    let old_pos = state.pos;
-    let mut found = false;
-    let mut label_end = None;
-    let mut level = 1;
-
-    state.pos = start + 1;
-
-    while let Some(ch) = state.src[state.pos..state.pos_max].chars().next() {
-        if ch == ']' {
-            level -= 1;
-            if level == 0 {
-                found = true;
-                break;
-            }
-        }
-
-        let prev_pos = state.pos;
-        state.md.inline.skip_token(state);
-        if ch == '[' {
-            if prev_pos == state.pos - 1 {
-                // increase level if we find text `[`, which is not a part of any token
-                level += 1;
-
-                let cache = state
-                    .inline_ext
-                    .get_or_insert_default::<LinkLabelScanCache>();
-                if let Some(&cached) = cache.0.get(&(prev_pos, enable_nested)) {
-                    // maybe cache appeared as a result of skip_token
-                    if let Some(cached_pos) = cached {
-                        state.pos = cached_pos;
-                    } else {
-                        break;
-                    }
-                }
-            } else if !enable_nested {
-                break;
-            }
-        }
-    }
-
-    if found {
-        label_end = Some(state.pos);
-    }
-
-    // restore old state
-    state.pos = old_pos;
-
-    let cache = state
-        .inline_ext
-        .get_or_insert_default::<LinkLabelScanCache>();
-    cache.0.insert((start, enable_nested), label_end);
-
-    label_end
-}
-
-// private migration helper
+// This function assumes that the first character ("[") already matches;
+// it returns the byte length of the label including the closing "]".
 fn probe_link_label(
     mut context: crate::parser::inline::InlineProbeContext<'_>,
     enable_nested: bool,
@@ -524,44 +320,6 @@ struct ParseLinkResult {
     pub end: usize,
 }
 
-// Parses [link](<to> "stuff")
-//
-// this function assumes that first character ("[") already matches
-//
-fn parse_link(state: &mut InlineState, pos: usize, enable_nested: bool) -> Option<ParseLinkResult> {
-    let label_end = parse_link_label(state, pos, enable_nested)?;
-    let label_start = pos + 1;
-
-    if let Some(target) =
-        parse_inline_link_target(state.md, &state.src, label_end + 1, state.pos_max)
-    {
-        return Some(ParseLinkResult {
-            label_start,
-            label_end,
-            href: target.href,
-            title: target.title,
-            end: target.end,
-        });
-    }
-
-    // Link reference
-    let suffix_start = label_end + 1;
-    let reference_end = if state.src[suffix_start..state.pos_max].starts_with('[') {
-        parse_link_label(state, suffix_start, false)
-    } else {
-        None
-    };
-
-    let references = state.root_ext.get::<ReferenceMap>()?;
-    resolve_reference_link(
-        &state.src,
-        label_start,
-        label_end,
-        reference_end,
-        references,
-    )
-}
-
 // [link](  <href>  "title"  )
 //        ^^ skipping these spaces
 fn skip_link_spaces(source: &str, mut pos: usize, max: usize) -> usize {
@@ -654,6 +412,10 @@ fn probe_link_candidate(
     references: Option<&ReferenceMap>,
 ) -> Option<ParseLinkResult> {
     let source = context.remaining();
+    if references.is_none() && !source.contains('(') {
+        return None;
+    }
+
     if !source.get(pos..)?.starts_with('[') {
         return None;
     }
@@ -720,11 +482,15 @@ fn document_link_run(
         return None;
     }
 
+    // Parses [link](<to> "stuff") and other link forms (inline target or
+    // reference), then parses the label as inline children.
     let candidate = {
         let context = state.probe_current();
         let references = context.root_ext().and_then(|ext| ext.get::<ReferenceMap>());
         probe_link_candidate(&context, offset, enable_nested, references)?
     };
+    // We found the end of the link and know for a fact it's a valid link;
+    // all that's left to do is to parse the label contents as inline children.
     let mut node = factory(candidate.href, candidate.title);
     let child_link_level = state
         .link_level
@@ -742,6 +508,85 @@ fn document_link_run(
 struct LastLinkLabelClose {
     end: usize,
     last: Option<usize>,
+    plain_closes: Option<HashMap<usize, usize>>,
+    has_target: bool,
+}
+
+/// Index label ends directly, bypassing probe sessions for plain input.
+///
+/// Returns `None` when the source contains syntax the index pass cannot
+/// handle; label ends must then be scanned normally.
+fn plain_label_closes(
+    source: &str,
+    end: usize,
+    rules: &crate::parser::inline::DocumentRuleSet,
+) -> Option<HashMap<usize, usize>> {
+    let source = &source[..end];
+    if !is_plain_label_source(source) || !has_only_supported_probes(source, rules) {
+        return None;
+    }
+    Some(index_bracket_closes(source))
+}
+
+/// Whether the source is simple enough to index directly.
+///
+/// Only plain characters and empty `()` targets are allowed; other syntax
+/// could change how a label is scanned.
+fn is_plain_label_source(source: &str) -> bool {
+    let bytes = source.as_bytes();
+    let is_plain = |byte: u8| {
+        byte.is_ascii_alphanumeric() || byte.is_ascii_whitespace() || b"[]!()".contains(&byte)
+    };
+    if !bytes.iter().all(|&byte| is_plain(byte)) {
+        return false;
+    }
+
+    // Parentheses may only appear as an empty `()` target.
+    bytes.iter().enumerate().all(|(index, &byte)| match byte {
+        b'(' => bytes.get(index + 1) == Some(&b')'),
+        b')' => index.checked_sub(1).and_then(|i| bytes.get(i)) == Some(&b'('),
+        _ => true,
+    })
+}
+
+/// Whether every probe rule triggered by this source is handled by the index pass.
+fn has_only_supported_probes(
+    source: &str,
+    rules: &crate::parser::inline::DocumentRuleSet,
+) -> bool {
+    rules.probes.iter().all(|rule| {
+        !source.chars().any(|ch| rule.matches_marker(ch)) || is_index_supported(rule.type_id)
+    })
+}
+
+fn is_index_supported(type_id: std::any::TypeId) -> bool {
+    use std::any::TypeId;
+    [
+        TypeId::of::<LinkScanner<false>>(),
+        TypeId::of::<LinkPrefixScanner<'!', true>>(),
+        TypeId::of::<LinkScannerEnd>(),
+        TypeId::of::<crate::parser::inline::builtin::TextScanner>(),
+        TypeId::of::<crate::plugins::extra::footnote::FootnoteReferenceScanner>(),
+    ]
+    .contains(&type_id)
+}
+
+/// Map each `[` byte index to its matching `]`.
+fn index_bracket_closes(source: &str) -> HashMap<usize, usize> {
+    let mut open = Vec::new();
+    let mut closes = HashMap::new();
+    for (index, byte) in source.bytes().enumerate() {
+        match byte {
+            b'[' => open.push(index),
+            b']' => {
+                if let Some(open) = open.pop() {
+                    closes.insert(open, index);
+                }
+            }
+            _ => {}
+        }
+    }
+    closes
 }
 
 fn has_possible_link_label_close(state: &mut DocumentInlineState<'_>, offset: usize) -> bool {
@@ -758,12 +603,27 @@ fn has_possible_link_label_close(state: &mut DocumentInlineState<'_>, offset: us
     let cache = state.inline_ext.get_or_insert_with(|| LastLinkLabelClose {
         end,
         last: source[..end].rfind(']'),
+        plain_closes: plain_label_closes(source, end, state.ruleset),
+        has_target: source[..end].contains('('),
     });
     if cache.end != end {
         cache.end = end;
         cache.last = source[..end].rfind(']');
+        cache.plain_closes = plain_label_closes(source, end, state.ruleset);
+        cache.has_target = source[..end].contains('(');
     }
 
+    if !cache.has_target
+        && state
+            .root_ext
+            .and_then(|ext| ext.get::<ReferenceMap>())
+            .is_none()
+    {
+        return false;
+    }
+    if let Some(closes) = &cache.plain_closes {
+        return closes.contains_key(&(state.pos + offset));
+    }
     cache.last.is_some_and(|last| last > state.pos + offset)
 }
 
@@ -875,7 +735,7 @@ mod probe_label_tests {
         Text,
     };
     use crate::plugins::cmark::inline::link::Link;
-    use crate::{DocumentInlineState, MarkdownIt, Node, NodeDraft};
+    use crate::{DocumentInlineState, MarkdownIt, NodeDraft};
 
     // Register both brackets so the built-in text classifier stops at them.
     struct Bracket<const C: char>;
@@ -916,7 +776,7 @@ mod probe_label_tests {
         let mut md = MarkdownIt::empty();
         crate::plugins::cmark::block::paragraph::add(&mut md);
         md.inline
-            .add_migrated_rule::<crate::parser::inline::builtin::TextScanner>()
+            .add_rule::<crate::parser::inline::builtin::TextScanner>()
             .before_all();
         md.inline.add_rule::<Bracket<'['>>();
         md.inline.add_rule::<Bracket<']'>>();
@@ -929,7 +789,7 @@ mod probe_label_tests {
     }
 
     fn render(md: &MarkdownIt, source: &str) -> String {
-        md.parse_document_direct(source).into_legacy().render()
+        md.render(source)
     }
 
     /// Label bodies shared by the raw-label and combined-candidate tests.
@@ -1010,7 +870,7 @@ mod probe_label_tests {
     }
 
     #[test]
-    fn nested_flag_preserves_legacy_consumption_rule() {
+    fn nested_flag_preserves_consumption_rule() {
         let mut no = parser::<false>();
         no.inline.add_rule::<BracketToken>();
         assert_eq!(render(&no, "@[[x]]"), "<p>none</p>\n");
@@ -1032,7 +892,7 @@ mod probe_label_tests {
         crate::plugins::cmark::inline::link::add(&mut md);
         crate::plugins::cmark::inline::image::add(&mut md);
         md.max_nesting = 3;
-        let rules = md.inline.document_rules().unwrap();
+        let rules = md.inline.document_rules();
 
         for source in ["[雪](/url)", "[](/url)", "![雪](/img)", "![](/img)"] {
             for depth in [1, 2] {
@@ -1059,45 +919,11 @@ mod probe_label_tests {
         }
     }
 
-    #[test]
-    fn supported_boundaries_match_legacy_helper() {
-        use crate::parser::extset::{InlineRootExtSet, RootExtSet};
-        use crate::parser::inline::InlineState;
-        for source in [
-            "@[]",
-            "@[abc]",
-            "@[雪[a]雨]",
-            "@[`]`]",
-            r"@[\]]",
-            "@[&#93;]",
-            "@[<i x=']'>]",
-            "@[a[b]",
-            "@[abc",
-        ] {
-            let md = parser::<false>();
-            let mut root_ext = RootExtSet::new();
-            let mut inline_ext = InlineRootExtSet::new();
-            let mut state = InlineState::new(
-                source.to_owned(),
-                vec![(0, 0)],
-                &md,
-                &mut root_ext,
-                &mut inline_ext,
-                crate::Node::default(),
-            );
-            let expected = match super::parse_link_label(&mut state, 1, false) {
-                Some(end) => format!("<p>end={}</p>\n", end - 2),
-                None => "<p>none</p>\n".to_owned(),
-            };
-            assert_eq!(render(&md, source), expected, "{source}");
-        }
-    }
-
     fn utf8_parser<const PREFIX: char>() -> MarkdownIt {
         let mut md = MarkdownIt::empty();
         crate::plugins::cmark::add(&mut md);
         super::add_prefix::<PREFIX, true>(&mut md, |href, title| {
-            Node::new(Link {
+            NodeDraft::new(Link {
                 url: href.unwrap_or_default(),
                 title,
             })
@@ -1115,19 +941,15 @@ mod probe_label_tests {
             ),
             ("雪[文字]", "<p>雪[文字]</p>\n"),
         ] {
-            assert_eq!(
-                utf8_parser::<'雪'>().parse(source).render(),
-                html,
-                "{source}"
-            );
+            assert_eq!(utf8_parser::<'雪'>().render(source), html, "{source}");
         }
 
         assert_eq!(
-            utf8_parser::<'😀'>().parse("😀[x](/url)").render(),
+            utf8_parser::<'😀'>().render("😀[x](/url)"),
             "<p><a href=\"/url\">x</a></p>\n",
         );
         assert_eq!(
-            utf8_parser::<'~'>().parse("~[x](/url)").render(),
+            utf8_parser::<'~'>().render("~[x](/url)"),
             "<p><a href=\"/url\">x</a></p>\n",
         );
     }
@@ -1137,9 +959,7 @@ mod probe_label_tests {
         // Image label scanning calls the custom rule's check before its run.
         // The nested custom link contributes its text to the image alt value.
         assert_eq!(
-            utf8_parser::<'雪'>()
-                .parse("![雪[x](/inner)](/image)")
-                .render(),
+            utf8_parser::<'雪'>().render("![雪[x](/inner)](/image)"),
             "<p><img src=\"/image\" alt=\"x\"></p>\n",
         );
     }
@@ -1147,7 +967,7 @@ mod probe_label_tests {
     #[test]
     fn candidate_combines_label_target_and_reference() {
         let md = parser::<false>();
-        let ruleset = md.inline.document_rules().unwrap();
+        let ruleset = md.inline.document_rules();
         let mut references = ReferenceMap::default();
         references.insert("x".into(), "/shortcut".into(), None);
         references.insert("ref".into(), "/ref".into(), Some("t".into()));
@@ -1180,7 +1000,7 @@ mod probe_label_tests {
     #[test]
     fn candidate_offsets_are_relative_to_current_window() {
         let md = parser::<false>();
-        let ruleset = md.inline.document_rules().unwrap();
+        let ruleset = md.inline.document_rules();
         let source = "前雪[x](/url)";
         let context =
             InlineProbeContext::new(source, "前".len(), source.len(), &md, &ruleset, 0, 0);
@@ -1197,7 +1017,7 @@ mod probe_label_tests {
     #[test]
     fn candidate_combines_opaque_labels_with_target() {
         let md = parser::<false>();
-        let ruleset = md.inline.document_rules().unwrap();
+        let ruleset = md.inline.document_rules();
         for label in LABELS {
             let source = format!("[{label}](/url)");
             let context = InlineProbeContext::new(&source, 0, source.len(), &md, &ruleset, 0, 0);
@@ -1218,7 +1038,7 @@ mod probe_label_tests {
     #[test]
     fn candidate_requires_reference_map_and_label_window() {
         let md = parser::<false>();
-        let ruleset = md.inline.document_rules().unwrap();
+        let ruleset = md.inline.document_rules();
 
         // Inline targets parse without references, shortcut references do not.
         let source = "[x](/url)";
@@ -1239,7 +1059,7 @@ mod probe_label_tests {
         // the whole candidate is rejected even though the syntax is valid.
         let mut md = parser::<false>();
         md.max_nesting = 2;
-        let ruleset = md.inline.document_rules().unwrap();
+        let ruleset = md.inline.document_rules();
         let source = "[x](/url)";
         let root = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
         assert!(probe_link_candidate(&root, 0, false, None).is_some());
@@ -1253,7 +1073,7 @@ mod probe_label_tests {
     #[test]
     fn candidate_respects_window_edges_and_parent_cursor() {
         let md = parser::<false>();
-        let ruleset = md.inline.document_rules().unwrap();
+        let ruleset = md.inline.document_rules();
 
         // The full source parses, but the window ends before the closing
         // parenthesis; bytes after `remaining()` must stay invisible.
@@ -1285,25 +1105,10 @@ mod probe_label_tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "parser configuration contains unsupported direct inline rules or factories"
-    )]
-    fn legacy_only_link_factory_remains_unsupported_by_direct() {
-        let mut md = MarkdownIt::empty();
-        crate::plugins::cmark::block::paragraph::add(&mut md);
-        add::<false>(&mut md, |_, _| Node::new(crate::parser::node::NodeEmpty));
-        md.parse_document_direct("[x](/url)");
-    }
-
-    #[test]
     fn registered_link_probe_does_not_require_running_the_factory() {
         let mut md = MarkdownIt::empty();
-        add_migrated::<false>(
-            &mut md,
-            |_, _| panic!("probe must not call legacy factory"),
-            |_, _| panic!("probe must not call draft factory"),
-        );
-        let ruleset = md.inline.document_rules().unwrap();
+        add::<false>(&mut md, |_, _| panic!("probe must not call draft factory"));
+        let ruleset = md.inline.document_rules();
         let source = "[x](/url)";
         let mut context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
         let token = context.next_token().unwrap();
@@ -1316,12 +1121,8 @@ mod probe_label_tests {
     #[test]
     fn registered_prefix_probe_does_not_require_running_the_factory() {
         let mut md = MarkdownIt::empty();
-        add_prefix_migrated::<'雪', true>(
-            &mut md,
-            |_, _| panic!("probe must not call legacy factory"),
-            |_, _| panic!("probe must not call draft factory"),
-        );
-        let ruleset = md.inline.document_rules().unwrap();
+        add_prefix::<'雪', true>(&mut md, |_, _| panic!("probe must not call draft factory"));
+        let ruleset = md.inline.document_rules();
         let source = "雪[x](/url)";
         let mut context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
         let token = context.next_token().unwrap();
@@ -1337,42 +1138,71 @@ mod probe_label_tests {
             let mut md = MarkdownIt::empty();
             crate::plugins::cmark::block::paragraph::add(&mut md);
             crate::plugins::cmark::inline::link::add(&mut md);
-            add_prefix_migrated::<PREFIX, true>(
-                &mut md,
-                |href, title| {
-                    Node::new(Link {
-                        url: href.unwrap_or_default(),
-                        title,
+            add_prefix::<PREFIX, true>(&mut md, |href, title| {
+                NodeDraft::new(Link {
+                    url: href.unwrap_or_default(),
+                    title,
+                })
+            });
+            // Expected outputs captured from the pre-migration legacy parser.
+            let cases = [
+                (
+                    format!("{PREFIX}[雪](/url)"),
+                    "<p><a href=\"/url\">雪</a></p>\n".to_owned(),
+                    1,
+                ),
+                (
+                    format!("[a {PREFIX}[雪](/in)](/out)"),
+                    "<p><a href=\"/out\">a <a href=\"/in\">雪</a></a></p>\n".to_owned(),
+                    2,
+                ),
+                (
+                    format!("{PREFIX}[雪](/unfinished"),
+                    format!("<p>{PREFIX}[雪](/unfinished</p>\n"),
+                    0,
+                ),
+            ];
+            for (source, expected, link_count) in cases {
+                let document = md.parse_document(&source);
+                assert_eq!(md.render_document(&document), expected, "{source}");
+                let links = document
+                    .events(document.root())
+                    .filter(|event| {
+                        matches!(event, crate::StructuralEvent::Enter(_))
+                            && event.node().is::<Link>()
                     })
-                },
-                |href, title| {
-                    NodeDraft::new(Link {
-                        url: href.unwrap_or_default(),
-                        title,
-                    })
-                },
-            );
-            for source in [
-                format!("{PREFIX}[雪](/url)"),
-                format!("[a {PREFIX}[雪](/in)](/out)"),
-                format!("{PREFIX}[雪](/unfinished"),
-            ] {
-                let direct = md.parse_document_direct(&source);
-                let legacy = md.parse_document(&source);
-                assert_eq!(
-                    md.render_document(&direct),
-                    md.render_document(&legacy),
-                    "{source}"
-                );
-                assert_eq!(
-                    md.render_document_as(&direct, "debug"),
-                    md.render_document_as(&legacy, "debug"),
-                    "{source}"
-                );
+                    .count();
+                assert_eq!(links, link_count, "{source}");
+                if link_count > 0 {
+                    let start = source.find("[雪]").unwrap() + 1;
+                    let text_ranges: Vec<_> = document
+                        .events(document.root())
+                        .filter_map(|event| {
+                            let node = event.node();
+                            node.cast::<crate::parser::inline::Text>()
+                                .filter(|text| text.content == "雪")
+                                .map(|_| node.srcmap().unwrap().get_byte_offsets())
+                        })
+                        .collect();
+                    assert_eq!(text_ranges, [(start, start + "雪".len())], "{source}");
+                }
             }
         }
         check::<'~'>();
         check::<'雪'>();
         check::<'🦀'>();
     }
+}
+
+#[cfg(test)]
+#[test]
+fn plain_brackets_have_a_linear_close_index() {
+    let mut md = MarkdownIt::new();
+    crate::plugins::html::add(&mut md);
+    crate::plugins::extra::add(&mut md);
+    let rules = md.inline.document_rules();
+    let closes = plain_label_closes("![[]()", 6, &rules)
+        .expect("plain cmark brackets support a close index");
+    assert!(!closes.contains_key(&1));
+    assert_eq!(closes.get(&2), Some(&3));
 }

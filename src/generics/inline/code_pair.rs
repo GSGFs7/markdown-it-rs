@@ -13,41 +13,38 @@
 //!
 //! ```rust
 //! use markdown_it::generics::inline::code_pair;
-//! use markdown_it::{MarkdownIt, Node, NodeDraft, NodeValue, Renderer};
-//!
+//! use markdown_it::{MarkdownIt, NodeDraft, NodeValue, NodeRef, DocumentNodeRenderer, DocumentRenderContext, DocumentWriter};
 //! #[derive(Debug)]
 //! struct Ferris;
-//! impl NodeValue for Ferris {
-//!     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-//!         fmt.text("🦀");
-//!         fmt.contents(&node.children);
-//!         fmt.text("🦀");
+//! impl NodeValue for Ferris {}
+//! struct CustomRenderer;
+//! impl DocumentNodeRenderer<Ferris> for CustomRenderer {
+//!     fn render(&self, node: NodeRef<'_>, _: &Ferris, ctx: &mut DocumentRenderContext<'_>, out: &mut DocumentWriter) {
+//!         out.write_str("🦀"); ctx.render_children(node.id(), out); out.write_str("🦀");
 //!     }
 //! }
-//!
 //! let md = &mut MarkdownIt::empty();
 //! code_pair::add_with::<'%'>(md, |_| NodeDraft::new(Ferris));
-//! let html = md.parse_document_direct("hello %world%").into_legacy().render();
-//! assert_eq!(html.trim(), "hello 🦀world🦀");
+//! md.add_document_renderer::<Ferris, _>("html", CustomRenderer);
+//! assert_eq!(md.render("hello %world%").trim(), "hello 🦀world🦀");
 //! ```
 //!
 //! This generic structure follows exact rules of code span in CommonMark:
 //!
 //! 1. Literal marker character sequence can be used inside of structure if its length
 //!    doesn't match length of the opening/closing sequence (e.g. with `%` defined
-//!    as a marker, `%%foo%bar%%` gets parsed as `Node("foo%bar")`).
+//!    as a marker, `%%foo%bar%%` gets parsed as `NodeDraft("foo%bar")`).
 //!
 //! 2. Single space inside is trimmed to allow you to write `% %%foo %` to be parsed as
-//!    `Node("%%foo")`.
+//!    `NodeDraft("%%foo")`.
 //!
 //! If you define two structures with the same marker, only the first one will work.
 //!
 use crate::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, Text};
+use crate::parser::inline::{InlineRule, Text};
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::Node;
 
 #[derive(Debug, Default, Clone)]
 struct CodePairCache<const MARKER: char> {
@@ -60,7 +57,7 @@ struct CodePairConfig<const MARKER: char>(fn(usize) -> NodeDraft);
 pub fn add_with<const MARKER: char>(md: &mut MarkdownIt, f: fn(length: usize) -> NodeDraft) {
     md.ext.insert(CodePairConfig::<MARKER>(f));
 
-    let builder = md.inline.add_migrated_rule::<CodePairScanner<MARKER>>();
+    let builder = md.inline.add_rule::<CodePairScanner<MARKER>>();
     if MARKER == '`' {
         builder.alias_named("backticks");
     }
@@ -107,40 +104,6 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
         text.set_srcmap(state.get_map(matched.content_start, matched.content_end));
         node.push_child(text);
         Some((Some(node), matched.consumed))
-    }
-}
-
-impl<const MARKER: char> LegacyInlineRule for CodePairScanner<MARKER> {
-    const MARKER: char = MARKER;
-    const NAMES: &'static [&'static str] = &["code_pair"];
-
-    fn check(state: &mut InlineState) -> Option<usize> {
-        // avoid polluting cache
-        let old_cache = state.inline_ext.get::<CodePairCache<MARKER>>().cloned();
-        let result = <Self as LegacyInlineRule>::run(state).map(|(_, len)| len);
-
-        if let Some(cache) = old_cache {
-            state.inline_ext.insert(cache);
-        } else {
-            state.inline_ext.remove::<CodePairCache<MARKER>>();
-        }
-
-        result
-    }
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let follows_marker = state.trailing_text_get().ends_with(MARKER);
-        let matched = state.with_inline_ext(|src, pos, pos_max, inline_ext| {
-            scan_code_pair::<MARKER>(src, pos, pos_max, follows_marker, inline_ext)
-        })?;
-        let f = state.md.ext.get::<CodePairConfig<MARKER>>().unwrap().0;
-        let mut node = f(matched.marker_len).into_legacy();
-        let mut text = Node::new(Text {
-            content: matched.content,
-        });
-        text.srcmap = state.get_map(matched.content_start, matched.content_end);
-        node.children.push(text);
-        Some((node, matched.consumed))
     }
 }
 
