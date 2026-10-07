@@ -354,8 +354,85 @@ fn direct_parser_checks_core_configuration_before_parsing() {
     assert_direct_configuration_panics(
         &md,
         "",
-        "direct parsing requires the built-in block and inline core rules and supported source preparations",
+        "direct parsing requires exactly one block stage followed by exactly one inline stage",
     );
+}
+
+#[test]
+fn direct_parser_rejects_invalid_core_stages_before_callbacks() {
+    use markdown_it::parser::block::builtin::BlockParserRule;
+    use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
+    use markdown_it::parser::inline::builtin::InlineParserRule;
+
+    struct ExtraStage<const INLINE: bool>;
+    impl<const INLINE: bool> CoreRule for ExtraStage<INLINE> {
+        fn run(_: &mut markdown_it::Node, _: &MarkdownIt) {
+            unreachable!("invalid configuration must be rejected before parsing");
+        }
+        fn document_rule() -> Option<DocumentCoreRule> {
+            Some(if INLINE {
+                DocumentCoreRule::ParseInlines
+            } else {
+                DocumentCoreRule::ParseBlocks
+            })
+        }
+    }
+
+    struct EarlyFinalizer;
+    impl CoreRule for EarlyFinalizer {
+        fn run(_: &mut markdown_it::Node, _: &MarkdownIt) {
+            unreachable!("invalid configuration must be rejected before parsing");
+        }
+        fn document_rule() -> Option<DocumentCoreRule> {
+            Some(DocumentCoreRule::FinalizeDraft(|_, _| {
+                panic!("invalid configuration must be rejected before finalizing");
+            }))
+        }
+    }
+
+    let mut missing_block = MarkdownIt::new();
+    missing_block.remove_rule::<BlockParserRule>();
+    let mut missing_inline = MarkdownIt::new();
+    missing_inline.remove_rule::<InlineParserRule>();
+    let mut duplicate_block = MarkdownIt::new();
+    duplicate_block
+        .add_rule::<ExtraStage<false>>()
+        .after::<BlockParserRule>()
+        .before::<InlineParserRule>();
+    let mut duplicate_inline = MarkdownIt::new();
+    duplicate_inline
+        .add_rule::<ExtraStage<true>>()
+        .after::<InlineParserRule>();
+    let mut reversed = MarkdownIt::new();
+    reversed.remove_rule::<InlineParserRule>();
+    reversed
+        .add_rule::<InlineParserRule>()
+        .before::<BlockParserRule>();
+    let mut early_finalizer = MarkdownIt::new();
+    early_finalizer
+        .add_rule::<EarlyFinalizer>()
+        .after::<BlockParserRule>()
+        .before::<InlineParserRule>();
+
+    for mut md in [
+        missing_block,
+        missing_inline,
+        duplicate_block,
+        duplicate_inline,
+        reversed,
+        early_finalizer,
+    ] {
+        for limit in [100, 0] {
+            md.max_nesting = limit;
+            for source in ["", "# 雪\n\ntext"] {
+                assert_direct_configuration_panics(
+                    &md,
+                    source,
+                    "direct parsing requires exactly one block stage followed by exactly one inline stage, supported core rules, preparations before inlines, and draft finalizers after inlines",
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -1399,12 +1476,12 @@ fn direct_linkify_configuration_and_source_maps() {
     md.add_rule::<LinkifyPrescan>()
         .after::<markdown_it::parser::inline::builtin::InlineParserRule>();
     for source in ["", "https://example.com"] {
-        assert_direct_configuration_panics(&md, source, "supported source preparations");
+        assert_direct_configuration_panics(&md, source, "supported core rules");
     }
     let mut unsupported_core = MarkdownIt::new();
     linkify::add(&mut unsupported_core);
     markdown_it::plugins::extra::typographer::add(&mut unsupported_core);
-    assert_direct_configuration_panics(&unsupported_core, "", "supported source preparations");
+    assert_direct_configuration_panics(&unsupported_core, "", "supported core rules");
 }
 
 #[cfg(feature = "linkify")]
@@ -1776,23 +1853,31 @@ fn direct_draft_finalizers_run_in_order_on_all_parse_paths() {
     }
 
     for mut md in [MarkdownIt::empty(), MarkdownIt::new()] {
-        md.add_rule::<Finalize<false>>().after::<InlineParserRule>();
-        md.add_rule::<Finalize<true>>().after::<Finalize<false>>();
-        for source in ["", "text"] {
-            assert_direct_matches_bridge(&md, source);
-            let document = md.parse_document_direct(source);
-            assert_eq!(
-                document.node(document.root()).attrs(),
-                &[
-                    ("finalizer".into(), "false".into()),
-                    ("finalizer".into(), "true".into()),
-                ]
-            );
+        for _ in 0..2 {
+            md.add_rule::<Finalize<false>>().after::<InlineParserRule>();
+            md.add_rule::<Finalize<true>>().after::<Finalize<false>>();
+            for limit in [100, 0] {
+                md.max_nesting = limit;
+                for source in ["", "text", "# 雪\n\n*inline*"] {
+                    assert_direct_matches_bridge(&md, source);
+                    let document = md.parse_document_direct(source);
+                    assert_eq!(
+                        document.node(document.root()).attrs(),
+                        &[
+                            ("finalizer".into(), "false".into()),
+                            ("finalizer".into(), "true".into()),
+                        ]
+                    );
+                }
+            }
+            md.remove_rule::<Finalize<false>>();
+            md.remove_rule::<Finalize<true>>();
+            for source in ["", "text"] {
+                assert_direct_matches_bridge(&md, source);
+                let document = md.parse_document_direct(source);
+                assert!(document.node(document.root()).attrs().is_empty());
+            }
         }
-        md.remove_rule::<Finalize<false>>();
-        md.remove_rule::<Finalize<true>>();
-        let document = md.parse_document_direct("text");
-        assert!(document.node(document.root()).attrs().is_empty());
     }
 }
 

@@ -121,7 +121,7 @@ impl<'a> DocumentParseContext<'a> {
         }
         assert!(
             supported && seen_block && seen_inline,
-            "direct parsing requires the built-in block and inline core rules and supported source preparations",
+            "direct parsing requires exactly one block stage followed by exactly one inline stage, supported core rules, preparations before inlines, and draft finalizers after inlines",
         );
 
         let block_rules = self
