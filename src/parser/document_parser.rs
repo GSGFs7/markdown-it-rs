@@ -12,7 +12,7 @@ use crate::parser::block::{
     LineOffset,
     build_line_offsets,
 };
-use crate::parser::core::{DocumentPreparationFn, Root};
+use crate::parser::core::{DocumentFinalizeDraftFn, DocumentPrepareStateFn, Root};
 use crate::parser::extset::{InlineRootExtSet, RootExtSet};
 use crate::parser::inline::probe::InlineProbeContext;
 use crate::parser::inline::{DelimiterRun, DocumentRuleSet, Text, scan_delimiter_run};
@@ -78,7 +78,8 @@ impl<'a> DocumentParseContext<'a> {
         block_rules: Vec<DocumentBlockRuleFns>,
         inline_rules: DocumentRuleSet,
         root_ext: RootExtSet,
-        inline_preparations: Vec<DocumentPreparationFn>,
+        inline_preparations: Vec<DocumentPrepareStateFn>,
+        draft_finalizers: Vec<DocumentFinalizeDraftFn>,
     ) -> Document {
         let mut state = DocumentBlockState::new(self.source, md, block_rules, self.root);
         state.root_ext = root_ext;
@@ -95,16 +96,32 @@ impl<'a> DocumentParseContext<'a> {
         // Inline parsing runs after the block pass so later reference
         // definitions can resolve earlier uses.
         resolve_pending_inline(&mut root, md, &inline_rules, &root_ext);
+        Self::finish(self.source, root, root_ext, draft_finalizers)
+    }
+
+    fn finish(
+        source: &str,
+        mut root: NodeDraft,
+        root_ext: RootExtSet,
+        draft_finalizers: Vec<DocumentFinalizeDraftFn>,
+    ) -> Document {
+        // Post-inline core rules may now reorder the resolved draft.
+        for finalize in draft_finalizers {
+            finalize(&mut root, &root_ext);
+        }
         // Persist the cross-block extension set on the root payload.
         if let Some(data) = root.cast_mut::<Root>() {
             data.ext = root_ext;
         }
 
-        Document::from_draft(Arc::<str>::from(self.source), root)
+        Document::from_draft(Arc::<str>::from(source), root)
     }
 
-    pub(crate) fn parse_text_fallback(mut self, root_ext: RootExtSet) -> Document {
-        self.root.cast_mut::<Root>().unwrap().ext = root_ext;
+    pub(crate) fn parse_text_fallback(
+        mut self,
+        root_ext: RootExtSet,
+        draft_finalizers: Vec<DocumentFinalizeDraftFn>,
+    ) -> Document {
         for line in build_line_offsets(self.source) {
             if line.first_nonspace >= line.line_end {
                 continue;
@@ -117,7 +134,7 @@ impl<'a> DocumentParseContext<'a> {
             self.root.push_child(text);
         }
 
-        Document::from_draft(Arc::<str>::from(self.source), self.root)
+        Self::finish(self.source, self.root, root_ext, draft_finalizers)
     }
 }
 
@@ -429,6 +446,23 @@ impl<'a> DocumentInlineState<'a> {
         range: Range<usize>,
         link_level: i32,
     ) -> Option<Vec<NodeDraft>> {
+        self.parse_subrange_at_depth(range, link_level, self.depth.saturating_add(1))
+    }
+
+    /// Parse an isolated range without consuming an extra nesting level.
+    pub(crate) fn parse_subrange_at_current_depth(
+        &self,
+        range: Range<usize>,
+    ) -> Option<Vec<NodeDraft>> {
+        self.parse_subrange_at_depth(range, self.link_level, self.depth)
+    }
+
+    fn parse_subrange_at_depth(
+        &self,
+        range: Range<usize>,
+        link_level: i32,
+        depth: u32,
+    ) -> Option<Vec<NodeDraft>> {
         self.remaining().get(range.clone())?;
 
         let start = self.pos + range.start;
@@ -439,7 +473,7 @@ impl<'a> DocumentInlineState<'a> {
             pos_max: end,
             md: self.md,
             mapping: Cow::Borrowed(self.mapping.as_ref()),
-            depth: self.depth.saturating_add(1),
+            depth,
             inline_ext: InlineRootExtSet::new(),
             root_ext: self.root_ext,
             link_level,
@@ -505,13 +539,22 @@ impl<'a> DocumentInlineState<'a> {
 
     /// Inspect the current position without entering a child parse level.
     pub(crate) fn probe_current(&self) -> InlineProbeContext<'_> {
+        self.probe_at_depth(0..self.remaining().len(), self.depth)
+    }
+
+    /// Probe a later offset from the current position at the current depth.
+    pub(crate) fn probe_from(&self, offset: usize) -> InlineProbeContext<'_> {
+        self.probe_at_depth(offset..self.remaining().len(), self.depth)
+    }
+
+    fn probe_at_depth(&self, range: Range<usize>, depth: u32) -> InlineProbeContext<'_> {
         InlineProbeContext::new(
             self.src.as_ref(),
-            self.pos,
-            self.pos_max,
+            self.pos + range.start,
+            self.pos + range.end,
             self.md,
             self.ruleset,
-            self.depth,
+            depth,
             self.link_level,
         )
         .with_root_ext(self.root_ext)
@@ -528,18 +571,7 @@ impl<'a> DocumentInlineState<'a> {
     /// and unclaimed characters become text.
     pub fn probe_subrange(&self, range: Range<usize>) -> Option<InlineProbeContext<'_>> {
         self.remaining().get(range.clone())?;
-        Some(
-            InlineProbeContext::new(
-                self.src.as_ref(),
-                self.pos + range.start,
-                self.pos + range.end,
-                self.md,
-                self.ruleset,
-                self.depth.saturating_add(1),
-                self.link_level,
-            )
-            .with_root_ext(self.root_ext),
-        )
+        Some(self.probe_at_depth(range, self.depth.saturating_add(1)))
     }
 
     pub(crate) fn trailing_text(&self) -> &str {

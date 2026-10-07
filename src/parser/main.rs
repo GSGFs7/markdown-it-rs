@@ -152,28 +152,35 @@ impl MarkdownIt {
     /// `max_nesting` values links and images may remain literal; a zero limit
     /// stops block parsing.
     ///
+    /// Core rules select their direct stage via [`DocumentCoreRule`]:
+    /// `PrepareState` runs before/after `ParseBlocks`, then `ParseInlines`, then
+    /// `FinalizeDraft`, each in core-ruler order. Finalizers also run on the
+    /// pure-text fast path. Registered document transforms require an explicit
+    /// [`Self::run_document_transforms`].
+    ///
     /// # Panics
     ///
-    /// Panics if the core ruler contains unsupported rules or source preparations
-    /// ordered after the inline pass, or if any syntax rule lacks direct support.
+    /// Panics if a core rule is unsupported or stages are missing, repeated, or
+    /// out of order, or if any syntax rule lacks direct support.
     #[doc(hidden)]
     pub fn parse_document_direct(&self, src: &str) -> Document {
         let mut preparations = Vec::new();
         let mut inline_preparations = Vec::new();
+        let mut draft_finalizers = Vec::new();
         let mut seen_block = false;
         let mut seen_inline = false;
         let mut supported = true;
         for rule in self.ruler.iter() {
             match rule.document {
-                Some(DocumentCoreRule::Block) => {
+                Some(DocumentCoreRule::ParseBlocks) => {
                     supported &= !seen_block && !seen_inline;
                     seen_block = true;
                 }
-                Some(DocumentCoreRule::Inline) => {
+                Some(DocumentCoreRule::ParseInlines) => {
                     supported &= seen_block && !seen_inline;
                     seen_inline = true;
                 }
-                Some(DocumentCoreRule::Preparation(prepare)) => {
+                Some(DocumentCoreRule::PrepareState(prepare)) => {
                     // Preserve whether source analysis runs before or after blocks.
                     supported &= !seen_inline;
                     if seen_block {
@@ -181,6 +188,11 @@ impl MarkdownIt {
                     } else {
                         preparations.push(prepare);
                     }
+                }
+                Some(DocumentCoreRule::FinalizeDraft(finalize)) => {
+                    // Finalizers must follow the inline pass.
+                    supported &= seen_inline;
+                    draft_finalizers.push(finalize);
                 }
                 None => supported = false,
             }
@@ -208,7 +220,7 @@ impl MarkdownIt {
                 prepare(src, self, &mut root_ext);
             }
             return DocumentParseContext::new(src, &self.render_options)
-                .parse_text_fallback(root_ext);
+                .parse_text_fallback(root_ext, draft_finalizers);
         }
 
         DocumentParseContext::new(src, &self.render_options).parse(
@@ -217,6 +229,7 @@ impl MarkdownIt {
             inline_rules,
             root_ext,
             inline_preparations,
+            draft_finalizers,
         )
     }
 

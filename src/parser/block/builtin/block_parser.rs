@@ -10,7 +10,7 @@ impl CoreRule for BlockParserRule {
     const NAMES: &'static [&'static str] = &["block"];
 
     fn document_rule() -> Option<DocumentCoreRule> {
-        Some(DocumentCoreRule::Block)
+        Some(DocumentCoreRule::ParseBlocks)
     }
 
     fn run(root: &mut Node, md: &MarkdownIt) {

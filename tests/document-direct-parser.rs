@@ -1442,7 +1442,7 @@ fn direct_core_preparations_share_rule_order_and_lifetime() {
             Self::prepare(&data.content, md, &mut data.ext);
         }
         fn document_rule() -> Option<DocumentCoreRule> {
-            Some(DocumentCoreRule::Preparation(Self::prepare))
+            Some(DocumentCoreRule::PrepareState(Self::prepare))
         }
     }
 
@@ -1493,4 +1493,85 @@ fn direct_core_preparations_share_rule_order_and_lifetime() {
             .unwrap(),
         &[true]
     );
+}
+
+#[test]
+fn direct_footnotes_match_the_legacy_bridge() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut md);
+    markdown_it::plugins::extra::footnote::add(&mut md);
+
+    let sources = [
+        "Text[^a]\n\n[^a]: note",
+        "[^a]: first paragraph\n\n    second paragraph\n\nText[^a]",
+        "Text[^a] and[^a]\n\n[^a]: note",
+        "inline^[note **strong**] text",
+        "Text[^a] B^[inline]\n\n[^a]: named",
+        "> quote[^a]\n\n[^a]: note",
+        "Text without references\n\n[^unused]: never referenced",
+        "Text[^a]\n\n[^a]: outer^[inner]",
+        "[label ^[note]](/url)",
+        "![alt ^[note]](/img)",
+        "Text ^[code `]` span] end",
+        "Text ^[escaped \\] and [link](/url) and ![alt](/img)] end",
+        "Text ^[outer ^[inner]] end",
+        "外[^雪]\n\n[^雪]: 雪",
+        "no footnotes here",
+    ];
+    for source in sources {
+        assert_direct_matches_bridge(&md, source);
+        let direct = md.parse_document_direct(source);
+        let bridged = md.parse_document(source);
+        let maps = |document: &markdown_it::Document| {
+            document
+                .events(document.root())
+                .filter(|event| matches!(event, StructuralEvent::Enter(_)))
+                .map(|event| event.node().srcmap())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(maps(&direct), maps(&bridged), "source maps for {source:?}");
+    }
+}
+
+#[test]
+fn direct_draft_finalizers_run_in_order_on_all_parse_paths() {
+    use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
+    use markdown_it::parser::inline::builtin::InlineParserRule;
+
+    struct Finalize<const SECOND: bool>;
+    impl<const SECOND: bool> CoreRule for Finalize<SECOND> {
+        fn run(root: &mut markdown_it::Node, _: &MarkdownIt) {
+            root.attrs.push(("finalizer".into(), SECOND.to_string()));
+        }
+        fn document_rule() -> Option<DocumentCoreRule> {
+            Some(DocumentCoreRule::FinalizeDraft(|root, _| {
+                assert_eq!(root.attrs().len(), usize::from(SECOND));
+                if SECOND {
+                    assert_eq!(root.attrs()[0].1, "false");
+                }
+                root.attrs_mut()
+                    .push(("finalizer".into(), SECOND.to_string()));
+            }))
+        }
+    }
+
+    for mut md in [MarkdownIt::empty(), MarkdownIt::new()] {
+        md.add_rule::<Finalize<false>>().after::<InlineParserRule>();
+        md.add_rule::<Finalize<true>>().after::<Finalize<false>>();
+        for source in ["", "text"] {
+            assert_direct_matches_bridge(&md, source);
+            let document = md.parse_document_direct(source);
+            assert_eq!(
+                document.node(document.root()).attrs(),
+                &[
+                    ("finalizer".into(), "false".into()),
+                    ("finalizer".into(), "true".into()),
+                ]
+            );
+        }
+        md.remove_rule::<Finalize<false>>();
+        md.remove_rule::<Finalize<true>>();
+        let document = md.parse_document_direct("text");
+        assert!(document.node(document.root()).attrs().is_empty());
+    }
 }

@@ -1,16 +1,47 @@
-use crate::{MarkdownIt, Node};
+use crate::document::NodeDraft;
+use crate::parser::extset::RootExtSet;
+use crate::parser::main::MarkdownIt;
+use crate::parser::node::Node;
 
-pub(crate) type DocumentPreparationFn =
-    fn(&str, &MarkdownIt, &mut crate::parser::extset::RootExtSet);
+/// Prepare shared state from the source. Runs before or after block parsing,
+/// as placed in the core ruler.
+pub(crate) type DocumentPrepareStateFn = fn(&str, &MarkdownIt, &mut RootExtSet);
+
+/// Finalize the resolved draft tree from shared state. Runs after inline
+/// parsing, before arena conversion.
+pub(crate) type DocumentFinalizeDraftFn = fn(&mut NodeDraft, &RootExtSet);
 
 /// Experimental direct counterpart of a core rule.
-/// Preparation runs at the rule's position, before the inline pass.
+///
+/// Registered through [`CoreRule::document_rule`] and sharing the legacy rule's
+/// ruler position. Stages run in this order:
+///
+/// ```text
+/// PrepareState (before blocks) -> ParseBlocks -> PrepareState (after blocks)
+///     -> ParseInlines -> FinalizeDraft -> persist RootExtSet -> Document
+/// ```
+///
+/// Exactly one `ParseBlocks` and one `ParseInlines` are required, in that order;
+/// callbacks outside their stage are rejected and preserve core-ruler order.
+/// The pure-text fast path still runs preparations and finalizers. Arena-backed
+/// document transforms remain a separate, explicitly executed pipeline.
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy)]
 pub enum DocumentCoreRule {
-    Block,
-    Inline,
-    Preparation(DocumentPreparationFn),
+    /// Build the block draft tree, deferring inline content until all block
+    /// definitions are available. Marks the built-in block parser.
+    ParseBlocks,
+    /// Resolve deferred inline content from block-pass state. Must follow
+    /// `ParseBlocks`; marks the built-in inline parser.
+    ParseInlines,
+    /// Prepare [`RootExtSet`] from the source. Must precede `ParseInlines`;
+    /// placed before `ParseBlocks` it runs before block parsing, otherwise
+    /// after (with block state available).
+    PrepareState(DocumentPrepareStateFn),
+    /// Modify the resolved [`NodeDraft`], e.g. to move footnote definitions to
+    /// the end. Must follow `ParseInlines`; state is read-only and persisted to
+    /// `Root.ext` after all finalizers.
+    FinalizeDraft(DocumentFinalizeDraftFn),
 }
 
 /// Each member of core rule chain must implement this trait
@@ -19,8 +50,8 @@ pub trait CoreRule: 'static {
 
     fn run(root: &mut Node, md: &MarkdownIt);
 
-    /// Optional direct implementation, registered with the legacy rule.
-    /// Existing core rules default to legacy-only support.
+    /// Optional direct implementation. Defaults to legacy-only support; see
+    /// [`DocumentCoreRule`] for stages and ordering.
     #[doc(hidden)]
     fn document_rule() -> Option<DocumentCoreRule> {
         None

@@ -108,6 +108,11 @@ impl<'a> InlineProbeContext<'a> {
         &self.source[self.pos..self.end]
     }
 
+    /// Source identity and absolute window for syntax-specific scan caches.
+    pub(crate) fn source_window(&self) -> (&str, usize, usize) {
+        (self.source, self.pos, self.end)
+    }
+
     /// Original source of the pending [`InlineProbeKind::Text`] span, or `""`.
     #[must_use]
     pub fn trailing_text(&self) -> &str {
@@ -239,17 +244,24 @@ impl<'a> InlineProbeContext<'a> {
             return None;
         }
 
-        Some(
-            InlineProbeContext::new(
-                self.source,
-                self.pos + range.start,
-                self.pos + range.end,
-                self.md,
-                self.ruleset,
-                child_depth,
-                self.link_level(),
-            )
-            .with_root_ext(self.root_ext),
+        Some(self.probe_at_depth(range, child_depth))
+    }
+
+    /// Probe a later offset without entering a child parse level.
+    pub(crate) fn probe_from(&self, offset: usize) -> InlineProbeContext<'_> {
+        self.probe_at_depth(offset..self.remaining().len(), self.depth)
+    }
+
+    fn probe_at_depth(&self, range: Range<usize>, depth: u32) -> InlineProbeContext<'_> {
+        InlineProbeContext::new(
+            self.source,
+            self.pos + range.start,
+            self.pos + range.end,
+            self.md,
+            self.ruleset,
+            depth,
+            self.link_level,
         )
+        .with_root_ext(self.root_ext)
     }
 }

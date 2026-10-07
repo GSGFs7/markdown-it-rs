@@ -96,7 +96,7 @@ impl CoreRule for LinkifyPrescan {
     const NAMES: &'static [&'static str] = &["linkify_prescan"];
 
     fn document_rule() -> Option<DocumentCoreRule> {
-        Some(DocumentCoreRule::Preparation(Self::prepare))
+        Some(DocumentCoreRule::PrepareState(Self::prepare))
     }
 
     fn run(root: &mut Node, md: &MarkdownIt) {

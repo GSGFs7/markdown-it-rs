@@ -36,7 +36,7 @@ impl CoreRule for InlineParserRule {
     const NAMES: &'static [&'static str] = &["inline"];
 
     fn document_rule() -> Option<DocumentCoreRule> {
-        Some(DocumentCoreRule::Inline)
+        Some(DocumentCoreRule::ParseInlines)
     }
 
     fn run(root: &mut Node, md: &MarkdownIt) {
