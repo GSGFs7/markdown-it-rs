@@ -4,7 +4,7 @@ use super::NodeId;
 use super::data::NodeData;
 use crate::common::sourcemap::SourcePos;
 use crate::parser::extset::NodeExtSet;
-use crate::parser::node::{HtmlAttributes, NodeEmpty, NodeValue};
+use crate::parser::node::{ConsumeOnly, HtmlAttributes, NodeEmpty, NodeValue};
 
 /// Borrowed view of a node produced by a structural traversal.
 pub type NodeRef<'a> = &'a DocumentNode;
@@ -97,10 +97,7 @@ impl NodeDraft {
     ///
     /// Block rules return this to consume input without producing a node.
     pub fn placeholder() -> Self {
-        Self {
-            children: Vec::new(),
-            data: NodeData::new(NodeEmpty),
-        }
+        Self::new(ConsumeOnly)
     }
 
     pub fn children(&self) -> &[NodeDraft] {

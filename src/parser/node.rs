@@ -11,5 +11,11 @@ pub trait NodeValue: Debug + Downcast + Send + Sync {}
 impl_downcast!(NodeValue);
 
 #[derive(Debug)]
+/// Temporary payload used when moving data out of a draft during destruction.
 pub(crate) struct NodeEmpty;
 impl NodeValue for NodeEmpty {}
+
+#[derive(Debug)]
+/// A block rule matched and consumed input without producing a document node.
+pub(crate) struct ConsumeOnly;
+impl NodeValue for ConsumeOnly {}

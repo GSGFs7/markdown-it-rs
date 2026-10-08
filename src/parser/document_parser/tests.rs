@@ -1567,7 +1567,6 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
     use crate::document::NodeDraft;
     use crate::parser::block::BlockRule;
     use crate::parser::core::Root;
-    use crate::parser::node::NodeEmpty;
 
     #[derive(Debug)]
     struct Wrapper;
@@ -1604,7 +1603,7 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
                 return None;
             }
             state.root_ext.insert(ObservedLevel(state.level));
-            Some((NodeDraft::new(NodeEmpty), 1))
+            Some((NodeDraft::placeholder(), 1))
         }
     }
 

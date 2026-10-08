@@ -18,7 +18,7 @@ use crate::parser::extset::{InlineRootExtSet, RootExtSet};
 use crate::parser::inline::probe::InlineProbeContext;
 use crate::parser::inline::{DelimiterRun, DocumentRuleSet, Text, scan_delimiter_run};
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{NodeEmpty, NodeValue};
+use crate::parser::node::{ConsumeOnly, NodeValue};
 
 /// Inline content queued during the block pass and resolved once all
 /// reference definitions have been collected.
@@ -274,7 +274,7 @@ impl<'a> DocumentBlockState<'a> {
 
                 if let Some((mut node, len)) = matched {
                     self.line += len;
-                    if !node.is::<NodeEmpty>() {
+                    if !node.is::<ConsumeOnly>() {
                         node.set_srcmap(self.get_map(self.line - len, self.line - 1));
                         self.node.push_child(node);
                     }

@@ -197,6 +197,51 @@ fn direct_text_fallback_matches_snapshots() {
 }
 
 #[test]
+fn consume_only_block_rule_preserves_surrounding_nodes_and_source_maps() {
+    use markdown_it::common::sourcemap::SourcePos;
+    use markdown_it::parser::block::BlockRule;
+    use markdown_it::{DocumentBlockState, NodeDraft};
+
+    struct ConsumeLine;
+    impl BlockRule for ConsumeLine {
+        fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+            (state.get_line(state.line) == "%%").then_some(())
+        }
+
+        fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+            Self::check(state)?;
+            Some((NodeDraft::placeholder(), 1))
+        }
+    }
+
+    let mut md = MarkdownIt::empty();
+    md.block.add_rule::<ConsumeLine>();
+    markdown_it::plugins::cmark::block::paragraph::add(&mut md);
+
+    for source in ["%%", "%%\n%%"] {
+        let document = assert_document_structure(&md, source);
+        assert_eq!(document.len(), 1);
+        assert!(document.node(document.root()).children().is_empty());
+        assert_eq!(md.render_document(&document), "");
+    }
+
+    let document = assert_document_structure(&md, "first\n%%\nlast");
+    let children = document.node(document.root()).children();
+    assert_eq!(children.len(), 2);
+    assert_eq!(document.len(), 5);
+    assert_eq!(
+        document.node(children[0]).srcmap(),
+        Some(SourcePos::new(0, 5))
+    );
+    assert_eq!(
+        document.node(children[1]).srcmap(),
+        Some(SourcePos::new(9, 13))
+    );
+    assert_eq!(md.render_document(&document), "<p>first</p>\n<p>last</p>\n");
+    assert_eq!(md.render_document_as(&document, "text"), "first\nlast\n");
+}
+
+#[test]
 fn direct_paragraph_and_text_rules_match_snapshots() {
     let mut md = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
