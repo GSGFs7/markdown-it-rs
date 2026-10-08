@@ -1,7 +1,7 @@
-use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::block::BlockRule;
 use crate::parser::document_parser::DocumentBlockState;
 use crate::parser::node::NodeEmpty;
-use crate::{MarkdownIt, Node, NodeDraft};
+use crate::{MarkdownIt, NodeDraft};
 
 /// Default maximum number of document lines searched for the closing delimiter.
 pub const DEFAULT_MAX_LINES: usize = 256;
@@ -40,22 +40,6 @@ impl BlockRule for FrontMatterScanner {
     const MARKERS: &'static [char] = &['-', '+'];
     const NAMES: &'static [&'static str] = &["front_matter", "frontmatter"];
 
-    fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        let (kind, end_line) = scan_front_matter(state.md, state.line, state.line_max, |line| {
-            (state.get_line(line), state.line_indent(line))
-        })?;
-        let (raw, _) = state.get_lines(1, end_line, 0, false);
-        state.root_ext.insert(FrontMatter {
-            kind,
-            raw,
-            start_line: 0,
-            end_line,
-        });
-        Some((Node::default(), end_line + 1))
-    }
-}
-
-impl DocumentBlockRule for FrontMatterScanner {
     fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
         let (kind, end_line) = scan_front_matter(state.md, state.line, state.line_max, |line| {
             (state.get_line(line), state.line_indent(line))
@@ -105,7 +89,6 @@ pub fn add(md: &mut MarkdownIt) {
 pub fn add_with_max_lines(md: &mut MarkdownIt, max_lines: usize) {
     md.ext.insert(FrontMatterSettings { max_lines });
     md.block.add_rule::<FrontMatterScanner>().before_all();
-    md.block.add_document_rule::<FrontMatterScanner>();
 }
 
 pub fn set_max_lines(md: &mut MarkdownIt, max_lines: usize) {
@@ -125,15 +108,15 @@ mod tests {
         markdown_it::plugins::extra::front_matter::add(md);
         markdown_it::plugins::cmark::add(md);
 
-        let ast = md.parse("---\ntitle: Hello\ntags:\n  - rust\n---\n# Post\n");
-        let root = ast.cast::<Root>().unwrap();
+        let ast = md.parse_document("---\ntitle: Hello\ntags:\n  - rust\n---\n# Post\n");
+        let root = ast.node(ast.root()).cast::<Root>().unwrap();
         let front_matter = root.ext.get::<FrontMatter>().unwrap();
 
         assert_eq!(front_matter.kind, FrontMatterKind::Yaml);
         assert_eq!(front_matter.raw, "title: Hello\ntags:\n  - rust");
         assert_eq!(front_matter.start_line, 0);
         assert_eq!(front_matter.end_line, 4);
-        assert_eq!(ast.render(), "<h1>Post</h1>\n");
+        assert_eq!(md.render_document(&ast), "<h1>Post</h1>\n");
     }
 
     #[test]
@@ -145,13 +128,13 @@ mod tests {
         markdown_it::plugins::extra::front_matter::add(md);
         markdown_it::plugins::cmark::add(md);
 
-        let ast = md.parse("+++\ntitle = \"Hello\"\n+++\nBody");
-        let root = ast.cast::<Root>().unwrap();
+        let ast = md.parse_document("+++\ntitle = \"Hello\"\n+++\nBody");
+        let root = ast.node(ast.root()).cast::<Root>().unwrap();
         let front_matter = root.ext.get::<FrontMatter>().unwrap();
 
         assert_eq!(front_matter.kind, FrontMatterKind::Toml);
         assert_eq!(front_matter.raw, "title = \"Hello\"");
-        assert_eq!(ast.render(), "<p>Body</p>\n");
+        assert_eq!(md.render_document(&ast), "<p>Body</p>\n");
     }
 
     #[test]
@@ -168,8 +151,8 @@ mod tests {
         markdown_it::plugins::extra::front_matter::add(md);
         markdown_it::plugins::cmark::add(md);
 
-        let ast = md.parse("---\ntitle: Hello\n---\nBody");
-        let root = ast.cast::<Root>().unwrap();
+        let ast = md.parse_document("---\ntitle: Hello\n---\nBody");
+        let root = ast.node(ast.root()).cast::<Root>().unwrap();
         let front_matter = root.ext.get::<FrontMatter>().unwrap();
 
         let metadata = front_matter
@@ -201,12 +184,12 @@ mod tests {
         markdown_it::plugins::extra::front_matter::add_with_max_lines(md, 3);
         markdown_it::plugins::cmark::add(md);
 
-        let ast = md.parse("---\ntitle: Hello\nstill: metadata\n---\nBody");
-        let root = ast.cast::<Root>().unwrap();
+        let ast = md.parse_document("---\ntitle: Hello\nstill: metadata\n---\nBody");
+        let root = ast.node(ast.root()).cast::<Root>().unwrap();
 
         assert!(root.ext.get::<FrontMatter>().is_none());
         assert_eq!(
-            ast.render(),
+            md.render_document(&ast),
             "<hr>\n<h2>title: Hello\nstill: metadata</h2>\n<p>Body</p>\n"
         );
     }

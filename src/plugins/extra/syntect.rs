@@ -25,18 +25,17 @@
 //! markdown_it::plugins::extra::syntect::add(&mut md);
 //! markdown_it::plugins::extra::syntect::set_theme(&mut md, "base16-ocean.dark");
 //!
-//! let html = md.parse("```rust\nfn main() {}\n```").render();
+//! let html = md.render("```rust\nfn main() {}\n```");
 //! assert!(html.contains(r#"class="language-rust""#));
 //! ```
 
-//! For the arena-backed pipeline, use [`add_document`] and run transforms:
+//! Highlighting runs automatically during document parsing:
 //!
 //! ```rust
 //! let mut md = markdown_it::MarkdownIt::empty();
 //! markdown_it::plugins::cmark::add(&mut md);
-//! markdown_it::plugins::extra::syntect::add_document(&mut md);
-//! let mut document = md.parse_document_direct("```rust\nfn main() {}\n```");
-//! md.run_document_transforms(&mut document);
+//! markdown_it::plugins::extra::syntect::add(&mut md);
+//! let mut document = md.parse_document("```rust\nfn main() {}\n```");
 //! assert!(md.render_document(&document).contains("language-rust"));
 //! ```
 
@@ -60,7 +59,6 @@ use crate::common::utils::unescape_all;
 use crate::document::edit::EditBatch;
 use crate::document::transform::DocumentTransform;
 use crate::document::{Document, NodeRef, StructuralEvent};
-use crate::parser::core::CoreRule;
 use crate::plugins::cmark::block::code::CodeBlock;
 use crate::plugins::cmark::block::fence::CodeFence;
 use crate::render::{
@@ -69,7 +67,7 @@ use crate::render::{
     write_html_close,
     write_html_open,
 };
-use crate::{DocumentWriter, MarkdownIt, Node, NodeValue, Renderer};
+use crate::{DocumentWriter, MarkdownIt, NodeValue};
 
 // lazy load themes. it wast a lot of performance
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(two_face::syntax::extra_newlines);
@@ -95,20 +93,7 @@ pub struct SyntectSnippet {
     code_class: Option<String>,
 }
 
-impl NodeValue for SyntectSnippet {
-    fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
-        let attrs = self.code_attrs(
-            fmt.options()
-                .and_then(|options| options.lang_prefix.as_deref()),
-        );
-
-        fmt.open("pre", &[]);
-        fmt.open("code", &attrs);
-        fmt.text_raw(&self.html);
-        fmt.close("code");
-        fmt.close("pre");
-    }
-}
+impl NodeValue for SyntectSnippet {}
 
 impl SyntectSnippet {
     fn code_attrs(&self, lang_prefix: Option<&str>) -> Vec<(String, String)> {
@@ -277,26 +262,6 @@ impl FenceMeta {
 // --- behavior ---
 
 /// Replaces code blocks with syntect highlighted HTML.
-pub struct SyntectRule;
-
-impl CoreRule for SyntectRule {
-    const NAMES: &'static [&'static str] = &["syntect"];
-
-    fn run(root: &mut Node, md: &MarkdownIt) {
-        let settings = load_syntect_settings(md);
-
-        root.walk_mut(|node, _| {
-            if let Some(snippet) = highlight_node(
-                node.cast::<CodeBlock>(),
-                node.cast::<CodeFence>(),
-                &settings,
-            ) {
-                node.replace(snippet);
-            }
-        });
-    }
-}
-
 fn highlight_node(
     code: Option<&CodeBlock>,
     fence: Option<&CodeFence>,
@@ -356,7 +321,7 @@ fn highlight_node(
 #[derive(Debug, Clone, Default)]
 struct SharedSyntectSettings(Arc<RwLock<SyntectSettings>>);
 
-/// Highlights code blocks in an explicitly executed document transform pipeline.
+/// Highlights code blocks during document postprocessing.
 #[derive(Debug, Default)]
 pub struct SyntectDocumentTransform {
     settings: SharedSyntectSettings,
@@ -391,13 +356,6 @@ impl DocumentTransform for SyntectDocumentTransform {
 ///
 /// The rule will replace [`CodeBlock`] and [`CodeFence`] nodes with syntect rendered HTML snippets.
 pub fn add(md: &mut MarkdownIt) {
-    md.add_rule::<SyntectRule>();
-    register_document_renderers(md);
-}
-
-/// Register syntax highlighting for an explicit arena-backed document pipeline.
-/// Run [`MarkdownIt::run_document_transforms`] after parsing.
-pub fn add_document(md: &mut MarkdownIt) {
     let settings = md
         .ext
         .get_or_insert_default::<SharedSyntectSettings>()
@@ -639,11 +597,16 @@ mod test {
 
     #[test]
     fn render_options_override_syntect_lang_prefix() {
-        let ast = parser().parse("```rust\nfn main() {}\n```");
-        let html = ast.render_with(&RenderOptions {
-            lang_prefix: Some("lang-".into()),
-            ..Default::default()
-        });
+        let md = parser();
+        let ast = md.parse_document("```rust\nfn main() {}\n```");
+        let html = md.document_renderers.render(
+            &ast,
+            "html",
+            &RenderOptions {
+                lang_prefix: Some("lang-".into()),
+                ..Default::default()
+            },
+        );
 
         assert!(html.contains(r#"class="lang-rust""#));
         assert!(!html.contains("language-rust"));
@@ -651,7 +614,7 @@ mod test {
 
     #[test]
     fn highlights_indented_code_blocks() {
-        let html = parser().parse("    plain code\n").render();
+        let html = parser().render("    plain code\n");
 
         assert!(html.contains(r#"class="syntect-line""#));
     }

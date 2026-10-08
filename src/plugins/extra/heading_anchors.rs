@@ -6,7 +6,7 @@
 //! markdown_it::plugins::extra::heading_anchors::add(md);
 //!
 //! assert_eq!(
-//!     md.parse("## An example heading").render(),
+//!     md.render("## An example heading"),
 //!     "<h2 id=\"an-example-heading\">An example heading</h2>\n",
 //! );
 //! ```
@@ -15,13 +15,11 @@ use std::collections::{HashMap, HashSet};
 use crate::document::edit::EditBatch;
 use crate::document::transform::DocumentTransform;
 use crate::document::{Document, NodeRef};
-use crate::parser::core::CoreRule;
-use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::inline::{Text, TextSpecial};
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
 use crate::plugins::cmark::inline::newline::Softbreak;
-use crate::{MarkdownIt, Node, StructuralEvent};
+use crate::{MarkdownIt, StructuralEvent};
 
 // --- pub method ---
 
@@ -29,20 +27,8 @@ pub fn add(md: &mut MarkdownIt) {
     add_with_options(md, HeadingAnchorsOptions::default());
 }
 
+/// Register heading anchors with per-parser configuration.
 pub fn add_with_options(md: &mut MarkdownIt, options: HeadingAnchorsOptions) {
-    md.ext.insert(options);
-    md.add_rule::<AddHeadingAnchors>()
-        .after::<InlineParserRule>();
-}
-
-/// Register heading anchors for an explicit arena-backed document pipeline.
-pub fn add_document(md: &mut MarkdownIt) {
-    add_document_with_options(md, HeadingAnchorsOptions::default());
-}
-
-/// Register heading anchors with per-parser runtime configuration for an
-/// explicit arena-backed document pipeline.
-pub fn add_document_with_options(md: &mut MarkdownIt, options: HeadingAnchorsOptions) {
     md.add_document_transform_instance(HeadingAnchorsDocumentTransform::new(options));
 }
 
@@ -157,13 +143,7 @@ pub fn github_slugify_fn(s: &str) -> String {
     result
 }
 
-// --- helper method ---
-
-pub fn is_heading(node: &Node) -> bool {
-    node.is::<ATXHeading>() || node.is::<SetextHeader>()
-}
-
-fn is_document_heading(node: NodeRef<'_>) -> bool {
+pub fn is_heading(node: NodeRef<'_>) -> bool {
     node.is::<ATXHeading>() || node.is::<SetextHeader>()
 }
 
@@ -209,7 +189,8 @@ impl<'a> HeadingAnchorState<'a> {
         }
     }
 
-    // collect ids from AST
+    // Reserve IDs already assigned by earlier rules. IDs on headings are
+    // excluded when they are going to be overridden.
     fn reserve_ids<'b>(
         &mut self,
         is_heading: bool,
@@ -262,42 +243,6 @@ impl<'a> HeadingAnchorState<'a> {
 
 // --- rule ---
 
-pub struct AddHeadingAnchors;
-impl CoreRule for AddHeadingAnchors {
-    const NAMES: &'static [&'static str] = &["heading_anchors", "heading-anchors"];
-
-    fn run(root: &mut Node, md: &MarkdownIt) {
-        let options = md
-            .ext
-            .get::<HeadingAnchorsOptions>()
-            .expect("heading anchor options must be registered with the rule");
-
-        // Reserve IDs already assigned by earlier rules. IDs on headings are
-        // excluded when they are going to be overridden.
-        let mut state = HeadingAnchorState::new(options);
-        root.walk(|node, _| {
-            state.reserve_ids(is_heading(node), &node.attrs);
-        });
-
-        root.walk_mut(|node, _| {
-            if !is_heading(node) {
-                return;
-            }
-
-            let text = node.collect_text();
-            let has_id = node.attrs.iter().any(|(name, _)| name == "id");
-            match state.edit_for_heading(has_id, &text) {
-                HeadingIdEdit::Keep => {}
-                HeadingIdEdit::Remove => node.attrs.retain(|(name, _)| name != "id"),
-                HeadingIdEdit::Set(slug) => {
-                    node.attrs.retain(|(name, _)| name != "id");
-                    node.attrs.push(("id".into(), slug));
-                }
-            }
-        });
-    }
-}
-
 /// Arena-backed heading anchors with owned runtime configuration.
 #[derive(Debug, Default)]
 pub struct HeadingAnchorsDocumentTransform {
@@ -333,23 +278,23 @@ impl DocumentTransform for HeadingAnchorsDocumentTransform {
             let node = event.node();
             match event {
                 StructuralEvent::Enter(node) => {
-                    state.reserve_ids(is_document_heading(node), node.attrs());
-                    if is_document_heading(node) {
+                    state.reserve_ids(is_heading(node), node.attrs());
+                    if is_heading(node) {
                         active_headings.push(headings.len());
                         headings.push(DocumentHeading::new(node));
                     }
                     append_document_text(node, &active_headings, &mut headings);
                 }
                 StructuralEvent::Leaf(node) => {
-                    state.reserve_ids(is_document_heading(node), node.attrs());
-                    if is_document_heading(node) {
+                    state.reserve_ids(is_heading(node), node.attrs());
+                    if is_heading(node) {
                         headings.push(DocumentHeading::new(node));
                     } else {
                         append_document_text(node, &active_headings, &mut headings);
                     }
                 }
                 StructuralEvent::Exit(_) => {
-                    if is_document_heading(node) {
+                    if is_heading(node) {
                         let heading = active_headings
                             .pop()
                             .expect("balanced heading events have an active heading");
@@ -411,15 +356,27 @@ fn append_document_text(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::core::{CoreRule, DocumentCoreRule};
+    use crate::parser::inline::builtin::InlineParserRule;
 
     struct AddExistingHeadingId;
     impl CoreRule for AddExistingHeadingId {
-        fn run(root: &mut Node, _: &MarkdownIt) {
-            root.walk_mut(|node, _| {
-                if is_heading(node) && node.collect_text() == "Existing" {
-                    node.attrs.push(("id".into(), "generated".into()));
+        fn document_rule() -> DocumentCoreRule {
+            DocumentCoreRule::FinalizeDraft(|root, _| {
+                let mut stack = vec![root];
+                while let Some(node) = stack.pop() {
+                    if (node.is::<ATXHeading>() || node.is::<SetextHeader>())
+                        && node.children().iter().any(|child| {
+                            child
+                                .cast::<Text>()
+                                .is_some_and(|text| text.content == "Existing")
+                        })
+                    {
+                        node.attrs_mut().push(("id".into(), "generated".into()));
+                    }
+                    stack.extend(node.children_mut());
                 }
-            });
+            })
         }
     }
 
@@ -431,25 +388,6 @@ mod tests {
                 .after::<InlineParserRule>();
         }
         md
-    }
-
-    fn render_both(
-        input: &str,
-        options: HeadingAnchorsOptions,
-        add_existing_id: bool,
-    ) -> (String, String) {
-        let mut legacy = parser(add_existing_id);
-        add_with_options(&mut legacy, options.clone());
-        let legacy_html = legacy.parse(input).render();
-
-        let document_parser = parser(add_existing_id);
-        let mut transforms = MarkdownIt::empty();
-        add_document_with_options(&mut transforms, options);
-        let mut document = document_parser.parse_document(input);
-        transforms.run_document_transforms(&mut document);
-        let document_html = document.into_legacy().render();
-
-        (legacy_html, document_html)
     }
 
     #[test]
@@ -484,7 +422,7 @@ mod tests {
         add(md);
 
         assert_eq!(
-            md.parse("# Test\n# Test\n\nTest\n====").render(),
+            md.render("# Test\n# Test\n\nTest\n===="),
             "<h1 id=\"test\">Test</h1>\n\
              <h1 id=\"test-1\">Test</h1>\n\
              <h1 id=\"test-2\">Test</h1>\n"
@@ -498,8 +436,7 @@ mod tests {
         add(md);
 
         assert_eq!(
-            md.parse("# Test\n# Test\n# Test\n# Test-1\n# Test-2\n# Test-1-1")
-                .render(),
+            md.render("# Test\n# Test\n# Test\n# Test-1\n# Test-2\n# Test-1-1"),
             "<h1 id=\"test\">Test</h1>\n\
              <h1 id=\"test-1\">Test</h1>\n\
              <h1 id=\"test-2\">Test</h1>\n\
@@ -523,7 +460,7 @@ mod tests {
         );
 
         assert_eq!(
-            md.parse("# !!!\n# ???").render(),
+            md.render("# !!!\n# ???"),
             "<h1 id=\"doc-section\">!!!</h1>\n\
              <h1 id=\"doc-section-1\">???</h1>\n"
         );
@@ -535,7 +472,7 @@ mod tests {
         crate::plugins::cmark::add(md);
         add(md);
 
-        assert_eq!(md.parse("# !!!").render(), "<h1>!!!</h1>\n");
+        assert_eq!(md.render("# !!!"), "<h1>!!!</h1>\n");
     }
 
     #[test]
@@ -555,7 +492,7 @@ mod tests {
         );
 
         assert_eq!(
-            md.parse("# A&amp;B").render(),
+            md.render("# A&amp;B"),
             "<h1 id=\"custom-a&amp;b\">A&amp;B</h1>\n"
         );
     }
@@ -569,7 +506,7 @@ mod tests {
         add(md);
 
         assert_eq!(
-            md.parse("# Generated\n# Existing").render(),
+            md.render("# Generated\n# Existing"),
             "<h1 id=\"generated-1\">Generated</h1>\n\
              <h1 id=\"generated\">Existing</h1>\n"
         );
@@ -590,13 +527,13 @@ mod tests {
         );
 
         assert_eq!(
-            md.parse("# Existing").render(),
+            md.render("# Existing"),
             "<h1 id=\"existing\">Existing</h1>\n"
         );
     }
 
     #[test]
-    fn document_transform_matches_legacy_options_and_text_semantics() {
+    fn document_transform_matches_expected_output_options_and_text_semantics() {
         fn custom(text: &str) -> String {
             format!("custom-{}", text.to_lowercase())
         }
@@ -606,6 +543,7 @@ mod tests {
                 "# Test\n# Test\n\nTest\n====\n# Test-1",
                 HeadingAnchorsOptions::default(),
                 false,
+                "<h1 id=\"test\">Test</h1>\n<h1 id=\"test-1\">Test</h1>\n<h1 id=\"test-2\">Test</h1>\n<h1 id=\"test-1-1\">Test-1</h1>\n",
             ),
             (
                 "# !!!\n# ???",
@@ -615,8 +553,14 @@ mod tests {
                     ..HeadingAnchorsOptions::default()
                 },
                 false,
+                "<h1 id=\"doc-section\">!!!</h1>\n<h1 id=\"doc-section-1\">???</h1>\n",
             ),
-            ("# !!!", HeadingAnchorsOptions::default(), false),
+            (
+                "# !!!",
+                HeadingAnchorsOptions::default(),
+                false,
+                "<h1>!!!</h1>\n",
+            ),
             (
                 "# A&amp;B",
                 HeadingAnchorsOptions {
@@ -624,16 +568,19 @@ mod tests {
                     ..HeadingAnchorsOptions::default()
                 },
                 false,
+                "<h1 id=\"custom-a&amp;b\">A&amp;B</h1>\n",
             ),
             (
                 "A&amp;B\ncontinued\n---",
                 HeadingAnchorsOptions::default(),
                 false,
+                "<h2 id=\"a-b-continued\">A&amp;B\ncontinued</h2>\n",
             ),
             (
                 "# Generated\n# Existing",
                 HeadingAnchorsOptions::default(),
                 true,
+                "<h1 id=\"generated-1\">Generated</h1>\n<h1 id=\"generated\">Existing</h1>\n",
             ),
             (
                 "# Existing",
@@ -642,64 +589,56 @@ mod tests {
                     ..HeadingAnchorsOptions::default()
                 },
                 true,
+                "<h1 id=\"existing\">Existing</h1>\n",
             ),
         ];
 
-        for (input, options, add_existing_id) in cases {
-            let (legacy, document) = render_both(input, options, add_existing_id);
-            assert_eq!(document, legacy, "{input:?}");
+        // Expected HTML captured from the pre-migration legacy parser.
+        for (input, options, add_existing_id, expected) in cases {
+            let mut md = parser(add_existing_id);
+            add_with_options(&mut md, options);
+            assert_eq!(md.render(input), expected, "{input:?}");
         }
     }
 
     #[test]
     fn document_configuration_is_isolated_per_parser() {
-        let mut first = MarkdownIt::empty();
-        add_document_with_options(
+        let mut first = parser(false);
+        add_with_options(
             &mut first,
             HeadingAnchorsOptions {
                 prefix: Some("first-".into()),
                 ..HeadingAnchorsOptions::default()
             },
         );
-        let mut second = MarkdownIt::empty();
-        add_document_with_options(
+        let mut second = parser(false);
+        add_with_options(
             &mut second,
             HeadingAnchorsOptions {
                 prefix: Some("second-".into()),
                 ..HeadingAnchorsOptions::default()
             },
         );
-        let parser = parser(false);
-        let mut first_document = parser.parse_document("# Heading");
-        let mut second_document = parser.parse_document("# Heading");
-
-        assert!(
-            first_document
-                .events(first_document.root())
-                .filter(|event| is_document_heading(event.node()))
-                .all(|event| event.node().attrs().iter().all(|(name, _)| name != "id"))
-        );
-
-        first.run_document_transforms(&mut first_document);
-        second.run_document_transforms(&mut second_document);
+        let first_document = first.parse_document("# Heading");
+        let second_document = second.parse_document("# Heading");
 
         assert_eq!(
-            first_document.into_legacy().render(),
+            first.render_document(&first_document),
             "<h1 id=\"first-heading\">Heading</h1>\n"
         );
         assert_eq!(
-            second_document.into_legacy().render(),
+            second.render_document(&second_document),
             "<h1 id=\"second-heading\">Heading</h1>\n"
         );
     }
 
     #[test]
-    fn legacy_registration_does_not_populate_document_registry() {
+    fn registration_populates_document_registry() {
         let mut md = MarkdownIt::empty();
         add(&mut md);
 
         assert!(
-            !md.document_transforms
+            md.document_transforms
                 .contains::<HeadingAnchorsDocumentTransform>()
         );
     }

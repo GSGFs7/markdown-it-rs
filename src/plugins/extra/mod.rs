@@ -16,10 +16,10 @@
 //! markdown_it::plugins::cmark::add(md);
 //! markdown_it::plugins::extra::add(md);
 //!
-//! let html = md.parse("hello ~~world~~").render();
+//! let html = md.render("hello ~~world~~");
 //! assert_eq!(html.trim(), r#"<p>hello <s>world</s></p>"#);
 //!
-//! let html = md.parse(r#"Markdown done "The Right Way(TM)""#).render();
+//! let html = md.render(r#"Markdown done "The Right Way(TM)""#);
 //! assert_eq!(html.trim(), r#"<p>Markdown done “The Right Way™”</p>"#);
 //! ```
 
@@ -41,6 +41,7 @@ pub mod typographer;
 
 use crate::MarkdownIt;
 
+// TODO: remove this
 pub fn add(md: &mut MarkdownIt) {
     strikethrough::add(md);
     mark::add(md);

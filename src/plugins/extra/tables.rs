@@ -3,12 +3,10 @@
 //! <https://github.github.com/gfm/#tables-extension->
 use crate::common::sourcemap::SourcePos;
 use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::block::BlockRule;
 use crate::parser::document_parser::DocumentBlockState;
-use crate::parser::inline::InlineRoot;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 use crate::plugins::cmark::block::heading::HeadingScanner;
 use crate::plugins::cmark::block::list::ListScanner;
 use crate::render::{
@@ -59,26 +57,7 @@ impl DocumentNodeRenderer<Table> for TableDocumentRenderer {
     }
 }
 
-impl NodeValue for Table {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        let old_context = fmt.ext().remove::<TableRenderContext>();
-        fmt.ext().insert(TableRenderContext {
-            head: false,
-            alignments: self.alignments.clone(),
-            index: 0,
-        });
-
-        fmt.cr();
-        fmt.open("table", &node.attrs);
-        fmt.cr();
-        fmt.contents(&node.children);
-        fmt.cr();
-        fmt.close("table");
-        fmt.cr();
-
-        old_context.map(|ctx| fmt.ext().insert(ctx));
-    }
-}
+impl NodeValue for Table {}
 
 #[derive(Debug, Default)]
 pub struct TableRenderContext {
@@ -112,23 +91,7 @@ impl DocumentNodeRenderer<TableHead> for TableHeadDocumentRenderer {
     }
 }
 
-impl NodeValue for TableHead {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        let ctx = fmt.ext().get_or_insert_default::<TableRenderContext>();
-        ctx.head = true;
-
-        fmt.cr();
-        fmt.open("thead", &node.attrs);
-        fmt.cr();
-        fmt.contents(&node.children);
-        fmt.cr();
-        fmt.close("thead");
-        fmt.cr();
-
-        let ctx = fmt.ext().get_or_insert_default::<TableRenderContext>();
-        ctx.head = false;
-    }
-}
+impl NodeValue for TableHead {}
 
 #[derive(Debug)]
 pub struct TableBody;
@@ -147,17 +110,7 @@ impl DocumentNodeRenderer<TableBody> for TableBodyDocumentRenderer {
     }
 }
 
-impl NodeValue for TableBody {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        fmt.cr();
-        fmt.open("tbody", &node.attrs);
-        fmt.cr();
-        fmt.contents(&node.children);
-        fmt.cr();
-        fmt.close("tbody");
-        fmt.cr();
-    }
-}
+impl NodeValue for TableBody {}
 
 #[derive(Debug)]
 pub struct TableRow;
@@ -201,20 +154,7 @@ impl DocumentNodeRenderer<TableRow> for TableRowTextRenderer {
     }
 }
 
-impl NodeValue for TableRow {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        let ctx = fmt.ext().get_or_insert_default::<TableRenderContext>();
-        ctx.index = 0;
-
-        fmt.cr();
-        fmt.open("tr", &node.attrs);
-        fmt.cr();
-        fmt.contents(&node.children);
-        fmt.cr();
-        fmt.close("tr");
-        fmt.cr();
-    }
-}
+impl NodeValue for TableRow {}
 
 #[derive(Debug)]
 pub struct TableCell;
@@ -268,35 +208,13 @@ fn render_block_container(
     context.cr(output);
 }
 
-impl NodeValue for TableCell {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        let ctx = fmt.ext().get_or_insert_default::<TableRenderContext>();
-        let tag = if ctx.head { "th" } else { "td" };
-
-        let mut attrs = node.attrs.clone();
-
-        match ctx.alignments.get(ctx.index).copied().unwrap_or_default() {
-            ColumnAlignment::None => (),
-            ColumnAlignment::Left => attrs.push(("style".into(), "text-align:left".to_owned())),
-            ColumnAlignment::Right => attrs.push(("style".into(), "text-align:right".to_owned())),
-            ColumnAlignment::Center => attrs.push(("style".into(), "text-align:center".to_owned())),
-        }
-
-        ctx.index += 1;
-
-        fmt.open(tag, &attrs);
-        fmt.contents(&node.children);
-        fmt.close(tag);
-        fmt.cr();
-    }
-}
+impl NodeValue for TableCell {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block
         .add_rule::<TableScanner>()
         .before::<ListScanner>()
         .before::<HeadingScanner>();
-    md.block.add_document_rule::<TableScanner>();
     md.add_document_renderer::<Table, _>("html", TableDocumentRenderer);
     md.add_document_renderer::<TableHead, _>("html", TableHeadDocumentRenderer);
     md.add_document_renderer::<TableBody, _>("html", TableBodyDocumentRenderer);
@@ -491,135 +409,6 @@ impl TableScanner {
 
 impl BlockRule for TableScanner {
     const NAMES: &'static [&'static str] = &["table", "tables"];
-
-    fn check(state: &mut BlockState) -> Option<()> {
-        if state.node.is::<TableBody>() {
-            return None;
-        }
-
-        Self::scan_header(state.line, state.line_max, state.md.max_indent, |line| {
-            (state.get_line(line), state.line_indent(line))
-        })
-        .map(|_| ())
-    }
-
-    fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        let (header_row, alignments) =
-            Self::scan_header(state.line, state.line_max, state.md.max_indent, |line| {
-                (state.get_line(line), state.line_indent(line))
-            })?;
-        let table_cell_count = header_row.len();
-        let mut table_node = Node::new(Table { alignments });
-
-        let mut thead_node = Node::new(TableHead);
-        thead_node.srcmap = state.get_map(state.line, state.line + 1);
-
-        let mut row_node = Node::new(TableRow);
-        row_node.srcmap = state.get_map(state.line, state.line);
-
-        fn add_cell(row_node: &mut Node, cell: String, srcmap: Vec<(usize, usize)>) {
-            let mut cell_node = Node::new(TableCell);
-            let (start, _) = row_node.srcmap.unwrap().get_byte_offsets();
-            cell_node.srcmap = Some(SourcePos::new(
-                start + srcmap.first().unwrap().1,
-                start + srcmap.last().unwrap().1 + cell.len() - srcmap.last().unwrap().0,
-            ));
-            if !cell.is_empty() {
-                let mapping = srcmap
-                    .into_iter()
-                    .map(|(dstpos, srcpos)| (dstpos, srcpos + start))
-                    .collect();
-                cell_node
-                    .children
-                    .push(Node::new(InlineRoot::new(cell, mapping)));
-            }
-            row_node.children.push(cell_node);
-        }
-
-        for RowContent { str: cell, srcmap } in header_row {
-            add_cell(&mut row_node, cell, srcmap);
-        }
-
-        thead_node.children.push(row_node);
-        table_node.children.push(thead_node);
-
-        let tbody_node = Node::new(TableBody);
-        let old_node = std::mem::replace(&mut state.node, tbody_node);
-
-        //
-        // Iterate table rows
-        //
-
-        let start_line = state.line;
-        state.line += 2;
-        let mut autocompleted_cells = 0usize;
-
-        while state.line < state.line_max {
-            //
-            // Try to check if table is terminated or continued.
-            //
-            if state.line_indent(state.line) < 0 {
-                break;
-            }
-
-            if state.line_indent(state.line) >= state.md.max_indent {
-                break;
-            }
-
-            // stop if the line is empty
-            if state.is_empty(state.line) {
-                break;
-            }
-
-            // fail if terminating block found
-            if state.test_rules_at_line() {
-                break;
-            }
-
-            let line = state.get_line(state.line);
-
-            let mut body_row = Self::scan_row(line);
-            let missing_cells = table_cell_count.saturating_sub(body_row.len());
-            let Some(total_autocompleted_cells) = autocompleted_cells.checked_add(missing_cells)
-            else {
-                break;
-            };
-            if total_autocompleted_cells > MAX_AUTOCOMPLETED_CELLS {
-                break;
-            }
-            autocompleted_cells = total_autocompleted_cells;
-
-            let mut row_node = Node::new(TableRow);
-            row_node.srcmap = state.get_map(state.line, state.line);
-            let mut end_of_line = RowContent {
-                str: String::new(),
-                srcmap: vec![(0, line.len())],
-            };
-
-            for index in 0..table_cell_count {
-                let RowContent { str: cell, srcmap } =
-                    body_row.get_mut(index).unwrap_or(&mut end_of_line);
-                add_cell(&mut row_node, cell.clone(), srcmap.clone());
-            }
-
-            state.node.children.push(row_node);
-            state.line += 1;
-        }
-
-        let mut tbody_node = std::mem::replace(&mut state.node, old_node);
-
-        if !tbody_node.children.is_empty() {
-            tbody_node.srcmap = state.get_map(start_line + 2, state.line - 1);
-            table_node.children.push(tbody_node);
-        }
-
-        let line_count = state.line - start_line;
-        state.line = start_line;
-        Some((table_node, line_count))
-    }
-}
-
-impl DocumentBlockRule for TableScanner {
     fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
         if state.node.is::<TableBody>() {
             return None;
@@ -825,13 +614,13 @@ mod tests {
     fn require_pipe_or_colon_in_align_row() {
         let md = &mut crate::MarkdownIt::empty();
         crate::plugins::extra::tables::add(md);
-        let html = md.parse("foo\n---\nbar").render();
+        let html = md.render("foo\n---\nbar");
         assert_eq!(html.trim(), "foo\n---\nbar");
-        let html = md.parse("|foo\n---\nbar").render();
+        let html = md.render("|foo\n---\nbar");
         assert_eq!(html.trim(), "|foo\n---\nbar");
-        let html = md.parse("foo\n|---\nbar").render();
+        let html = md.render("foo\n|---\nbar");
         assert!(html.trim().starts_with("<table"));
-        let html = md.parse("foo\n:---\nbar").render();
+        let html = md.render("foo\n:---\nbar");
         assert!(html.trim().starts_with("<table"));
     }
 
@@ -853,8 +642,6 @@ mod tests {
         crate::plugins::cmark::add(&mut md);
         crate::plugins::extra::tables::add(&mut md);
         let html = md.render(&src);
-        let direct = md.parse_document_direct(&src);
-        assert_eq!(md.render_document(&direct), html);
 
         assert_eq!(html.matches("<td>").count(), column_count * accepted_rows);
         assert!(html.ends_with("<p>x|\nx|</p>\n"));
