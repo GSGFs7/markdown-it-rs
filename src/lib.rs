@@ -37,7 +37,7 @@ pub use document::{
     StructuralEvent,
     StructuralEvents,
 };
-pub use parser::document_parser::DocumentInlineState;
+pub use parser::document_parser::{DocumentBlockState, DocumentInlineState};
 pub use parser::inline::probe::{
     InlineProbeContext,
     InlineProbeEffects,
@@ -46,9 +46,8 @@ pub use parser::inline::probe::{
     InlineProbeToken,
 };
 pub use parser::main::MarkdownIt;
-pub use parser::node::{HtmlAttribute, HtmlAttributes, Node, NodeValue};
+pub use parser::node::{HtmlAttribute, HtmlAttributes, NodeValue};
 pub use parser::render_options::RenderOptions;
-pub use parser::renderer::Renderer;
 pub use plugins::presets::{Preset, PresetConfig};
 pub use render::{
     DocumentNodeRenderer,

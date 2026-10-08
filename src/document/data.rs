@@ -1,10 +1,9 @@
 use std::any::TypeId;
 
-use crate::Node;
 use crate::common::TypeKey;
 use crate::common::sourcemap::SourcePos;
 use crate::parser::extset::NodeExtSet;
-use crate::parser::node::{HtmlAttributes, NodeParts, NodeValue};
+use crate::parser::node::{HtmlAttributes, NodeValue};
 
 #[derive(Debug)]
 pub(super) struct NodeData {
@@ -62,45 +61,5 @@ impl NodeData {
     pub(super) fn replace_value(&mut self, replacement: Self) {
         self.node_type = replacement.node_type;
         self.node_value = replacement.node_value;
-    }
-
-    // Transitional legacy boundary: move ownership, do not clone payload/ext.
-    pub(super) fn from_legacy_parts(parts: NodeParts) -> (Self, Vec<Node>) {
-        let NodeParts {
-            children,
-            srcmap,
-            ext,
-            attrs,
-            node_type,
-            node_value,
-        } = parts;
-        (
-            Self {
-                srcmap,
-                ext,
-                attrs,
-                node_type,
-                node_value,
-            },
-            children,
-        )
-    }
-
-    pub(super) fn into_legacy(self, children: Vec<Node>) -> Node {
-        let Self {
-            srcmap,
-            ext,
-            attrs,
-            node_type,
-            node_value,
-        } = self;
-        Node::from_parts(NodeParts {
-            children,
-            srcmap,
-            ext,
-            attrs,
-            node_type,
-            node_value,
-        })
     }
 }

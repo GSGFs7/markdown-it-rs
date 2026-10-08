@@ -165,8 +165,7 @@ mod tests {
         // Keep this measurement close to the storage definition so future
         // layout changes cannot happen without an explicit review point.
         eprintln!(
-            "Node={} DocumentNode={} Slot<DocumentNode>={}",
-            size_of::<crate::Node>(),
+            "DocumentNode={} Slot<DocumentNode>={}",
             size_of::<DocumentNode>(),
             size_of::<Slot<DocumentNode>>()
         );

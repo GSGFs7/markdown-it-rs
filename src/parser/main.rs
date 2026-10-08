@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
-use crate::common::sourcemap::SourcePos;
 use crate::document::Document;
 use crate::document::transform::{
     DocumentTransform,
@@ -15,7 +12,7 @@ use crate::parser::document_parser::DocumentParseContext;
 use crate::parser::extset::MarkdownItExtSet;
 use crate::parser::inline::{self, InlineParser, Text, TextSpecial};
 use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
-use crate::parser::node::{Node, NodeValue};
+use crate::parser::node::NodeValue;
 use crate::parser::render_options::RenderOptions;
 use crate::plugins::presets::{Preset, PresetConfig};
 use crate::render::{
@@ -60,7 +57,7 @@ pub struct MarkdownIt {
     /// Format-specific renderers for arena-backed documents.
     pub document_renderers: DocumentRendererRegistry,
 
-    ruler: Ruler<RuleMark, CoreRuleEntry>,
+    ruler: Ruler<RuleMark, DocumentCoreRule>,
 }
 
 impl std::fmt::Debug for MarkdownIt {
@@ -116,61 +113,20 @@ impl MarkdownIt {
         md
     }
 
-    /// Parse a markdown source string into an AST ([`Node`]).
+    /// Parse Markdown into an arena-backed document and run registered transforms.
     ///
-    /// The default [`MarkdownIt::render_options`] are stored in the node,
-    /// so calling [`Node::render`] will use them.
-    pub fn parse(&self, src: &str) -> Node {
-        let mut node = Node::new(Root::new(src.to_owned()));
-        node.ext.insert(self.render_options.clone());
-        node.srcmap = Some(SourcePos::new(0, src.len()));
-
-        for rule in self.ruler.iter() {
-            (rule.legacy)(&mut node, self);
-            debug_assert!(
-                node.is::<Root>(),
-                "root node of the AST must always be Root"
-            );
-        }
-        node
-    }
-
-    /// Parse a Markdown source into the experimental arena-backed document.
-    ///
-    /// Parser rules currently build the legacy tree first; this method then
-    /// moves its nodes into the arena without cloning their payloads.
-    pub fn parse_document(&self, src: &str) -> Document {
-        Document::from_legacy(Arc::<str>::from(src), self.parse(src))
-    }
-
-    /// Parse directly into arena storage when every configured parser rule has
-    /// a migrated implementation.
-    ///
-    /// This experimental entry point supports the full `cmark::add`
-    /// configuration, including link reference definitions and forward
-    /// references (inline content is parsed after the block pass). At low
-    /// `max_nesting` values links and images may remain literal; a zero limit
-    /// stops block parsing.
-    ///
-    /// Core rules select their direct stage via [`DocumentCoreRule`]:
-    /// `PrepareState` runs before/after `ParseBlocks`, then `ParseInlines`, then
-    /// `FinalizeDraft`, each in core-ruler order. Finalizers also run on the
-    /// pure-text fast path. Registered document transforms require an explicit
-    /// [`Self::run_document_transforms`].
+    /// At low `max_nesting` values links and images may remain literal; a zero
+    /// limit stops block parsing.
     ///
     /// # Panics
     ///
-    /// Panics if a core rule is unsupported or stages are missing, repeated, or
-    /// out of order, or if any syntax rule lacks direct support.
-    #[doc(hidden)]
-    pub fn parse_document_direct(&self, src: &str) -> Document {
+    /// Panics if core-rule stages are missing, repeated, or out of order.
+    pub fn parse_document(&self, src: &str) -> Document {
         DocumentParseContext::new(src, self).parse()
     }
 
-    pub(super) fn document_core_rules(
-        &self,
-    ) -> impl Iterator<Item = Option<DocumentCoreRule>> + '_ {
-        self.ruler.iter().map(|rule| rule.document)
+    pub(super) fn document_core_rules(&self) -> impl Iterator<Item = DocumentCoreRule> + '_ {
+        self.ruler.iter().copied()
     }
 
     /// Register an arena-backed document transform.
@@ -188,7 +144,8 @@ impl MarkdownIt {
         self.document_transforms.add_instance(transform)
     }
 
-    /// Explicitly run all registered document transforms in resolved order.
+    /// Run registered transforms again after manually editing a document.
+    /// Parsing already runs this pipeline once automatically.
     pub fn run_document_transforms(&self, document: &mut Document) {
         self.document_transforms.run(document);
     }
@@ -233,19 +190,16 @@ impl MarkdownIt {
         self.render_document_as(document, "html")
     }
 
-    /// Parse `src` and render it to HTML, using the options stored in the
-    /// AST (see [`MarkdownIt::render_options`]).
+    /// Parse `src`, apply postprocessing, and render HTML using
+    /// [`MarkdownIt::render_options`].
     pub fn render(&self, src: &str) -> String {
-        self.parse(src).render()
+        self.render_document(&self.parse_document(src))
     }
 
     /// Register a new core rule for type `T`, returning a builder to
     /// position it relative to other rules (before/after/alias/...).
-    /// Registers both the legacy function and any direct counterpart together.
-    pub fn add_rule<T: CoreRule>(&mut self) -> RuleBuilder<'_, CoreRuleEntry> {
-        let item = self
-            .ruler
-            .add(RuleMark::of::<T>(), CoreRuleEntry::new::<T>());
+    pub fn add_rule<T: CoreRule>(&mut self) -> RuleBuilder<'_, DocumentCoreRule> {
+        let item = self.ruler.add(RuleMark::of::<T>(), T::document_rule());
         for name in T::NAMES {
             item.alias(RuleMark::named(*name));
         }

@@ -1,4 +1,4 @@
-//! Transitional direct-to-arena parser support.
+//! Document parsing through transient drafts and arena storage.
 
 use std::borrow::Cow;
 use std::ops::Range;
@@ -7,11 +7,7 @@ use std::sync::Arc;
 use crate::common::sourcemap::SourcePos;
 use crate::common::utils::calc_right_whitespace_with_tabstops;
 use crate::document::{Document, NodeDraft};
-use crate::parser::block::{
-    DocumentRuleFns as DocumentBlockRuleFns,
-    LineOffset,
-    build_line_offsets,
-};
+use crate::parser::block::{DocumentRuleFns as BlockRuleFns, LineOffset, build_line_offsets};
 use crate::parser::core::{
     DocumentCoreRule,
     DocumentFinalizeDraftFn,
@@ -94,15 +90,15 @@ impl<'a> DocumentParseContext<'a> {
         let mut supported = true;
         for rule in self.md.document_core_rules() {
             match rule {
-                Some(DocumentCoreRule::ParseBlocks) => {
+                DocumentCoreRule::ParseBlocks => {
                     supported &= !seen_block && !seen_inline;
                     seen_block = true;
                 }
-                Some(DocumentCoreRule::ParseInlines) => {
+                DocumentCoreRule::ParseInlines => {
                     supported &= seen_block && !seen_inline;
                     seen_inline = true;
                 }
-                Some(DocumentCoreRule::PrepareState(prepare)) => {
+                DocumentCoreRule::PrepareState(prepare) => {
                     // Preserve whether source analysis runs before or after blocks.
                     supported &= !seen_inline;
                     if seen_block {
@@ -111,12 +107,11 @@ impl<'a> DocumentParseContext<'a> {
                         preparations.push(prepare);
                     }
                 }
-                Some(DocumentCoreRule::FinalizeDraft(finalize)) => {
+                DocumentCoreRule::FinalizeDraft(finalize) => {
                     // Finalizers must follow the inline pass.
                     supported &= seen_inline;
                     self.draft_finalizers.push(finalize);
                 }
-                None => supported = false,
             }
         }
         assert!(
@@ -124,15 +119,8 @@ impl<'a> DocumentParseContext<'a> {
             "direct parsing requires exactly one block stage followed by exactly one inline stage, supported core rules, preparations before inlines, and draft finalizers after inlines",
         );
 
-        let block_rules = self
-            .md
-            .block
-            .document_rules()
-            .expect("parser configuration contains unsupported direct block rules");
-        let inline_rules =
-            self.md.inline.document_rules().expect(
-                "parser configuration contains unsupported direct inline rules or factories",
-            );
+        let block_rules = self.md.block.document_rules();
+        let inline_rules = self.md.inline.document_rules();
 
         for prepare in preparations {
             prepare(self.source, self.md, &mut self.root_ext);
@@ -172,7 +160,9 @@ impl<'a> DocumentParseContext<'a> {
             data.ext = self.root_ext;
         }
 
-        Document::from_draft(Arc::<str>::from(self.source), self.root)
+        let mut document = Document::from_draft(Arc::<str>::from(self.source), self.root);
+        self.md.run_document_transforms(&mut document);
+        document
     }
 
     fn parse_text_fallback(mut self) -> Document {
@@ -192,50 +182,46 @@ impl<'a> DocumentParseContext<'a> {
     }
 }
 
-pub(crate) struct DocumentBlockState<'a> {
+/// State passed to block rules while building the block draft tree.
+pub struct DocumentBlockState<'a> {
     /// Markdown source.
-    pub(crate) src: &'a str,
+    pub src: &'a str,
 
     /// Link to the parser instance.
-    pub(crate) md: &'a MarkdownIt,
+    pub md: &'a MarkdownIt,
 
     /// Start/end/etc. positions for each source line.
-    pub(crate) line_offsets: Vec<LineOffset>,
+    pub line_offsets: Vec<LineOffset>,
 
     /// Current line index.
-    pub(crate) line: usize,
+    pub line: usize,
 
     /// Maximum allowed line index.
-    pub(crate) line_max: usize,
+    pub line_max: usize,
 
     /// Current block content indent.
-    pub(crate) blk_indent: usize,
+    pub blk_indent: usize,
 
     /// Current node, block rules add children to it.
-    pub(crate) node: NodeDraft,
+    pub node: NodeDraft,
 
     /// Whether there are no empty lines between paragraphs.
-    pub(crate) tight: bool,
+    pub tight: bool,
 
     /// Indent of the current list block.
-    pub(crate) list_indent: Option<u32>,
+    pub list_indent: Option<u32>,
 
     /// Current nesting level, incremented by recursive block rules.
-    pub(crate) level: u32,
+    pub level: u32,
 
     /// Cross-block storage shared with inline parsing (e.g. link references).
-    pub(crate) root_ext: RootExtSet,
+    pub root_ext: RootExtSet,
 
-    rules: Vec<DocumentBlockRuleFns>,
+    rules: Vec<BlockRuleFns>,
 }
 
 impl<'a> DocumentBlockState<'a> {
-    fn new(
-        src: &'a str,
-        md: &'a MarkdownIt,
-        rules: Vec<DocumentBlockRuleFns>,
-        node: NodeDraft,
-    ) -> Self {
+    fn new(src: &'a str, md: &'a MarkdownIt, rules: Vec<BlockRuleFns>, node: NodeDraft) -> Self {
         let line_offsets = build_line_offsets(src);
         let line_max = line_offsets.len();
         Self {
@@ -404,15 +390,17 @@ impl<'a> DocumentBlockState<'a> {
         (result, mapping)
     }
 
-    pub(crate) fn pending_inline(&self, source: String, mapping: Vec<(usize, usize)>) -> NodeDraft {
+    /// Create a placeholder node for inline content parsed after the block pass.
+    pub fn pending_inline(&self, source: String, mapping: Vec<(usize, usize)>) -> NodeDraft {
         NodeDraft::new(PendingInline {
             content: source,
             mapping,
         })
     }
 
+    /// Return the source span covering lines `start_line..=end_line`.
     #[must_use]
-    pub(crate) fn get_map(&self, start_line: usize, end_line: usize) -> Option<SourcePos> {
+    pub fn get_map(&self, start_line: usize, end_line: usize) -> Option<SourcePos> {
         debug_assert!(start_line <= end_line);
 
         Some(SourcePos::new(
@@ -421,17 +409,6 @@ impl<'a> DocumentBlockState<'a> {
         ))
     }
 
-    #[must_use]
-    #[allow(dead_code)]
-    pub(crate) fn get_map_from_offsets(
-        &self,
-        start_pos: usize,
-        end_pos: usize,
-    ) -> Option<SourcePos> {
-        debug_assert!(start_pos <= end_pos);
-
-        Some(SourcePos::new(start_pos, end_pos))
-    }
 }
 
 pub struct DocumentInlineState<'a> {

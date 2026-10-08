@@ -252,7 +252,7 @@ impl Document {
         let mut pending = vec![(root_parent, false, draft)];
         let mut root = None;
         while let Some((parent, link_to_parent, draft)) = pending.pop() {
-            let NodeDraft { children, data } = draft;
+            let (children, data) = draft.into_parts();
             let id = self.arena.insert_with(|id| super::node::DocumentNode {
                 id,
                 parent,

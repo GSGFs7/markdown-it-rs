@@ -1,10 +1,10 @@
 use std::any::TypeId;
 
+use super::NodeId;
 use super::data::NodeData;
-use super::{Node, NodeId};
 use crate::common::sourcemap::SourcePos;
 use crate::parser::extset::NodeExtSet;
-use crate::parser::node::{HtmlAttributes, NodeValue};
+use crate::parser::node::{HtmlAttributes, NodeEmpty, NodeValue};
 
 /// Borrowed view of a node produced by a structural traversal.
 pub type NodeRef<'a> = &'a DocumentNode;
@@ -109,7 +109,7 @@ impl NodeDraft {
         self.data.srcmap
     }
 
-    pub(crate) fn set_srcmap(&mut self, srcmap: Option<SourcePos>) {
+    pub fn set_srcmap(&mut self, srcmap: Option<SourcePos>) {
         self.data.srcmap = srcmap;
     }
 
@@ -145,12 +145,25 @@ impl NodeDraft {
         self.data.cast_mut::<T>()
     }
 
-    pub(crate) fn into_legacy(self) -> Node {
-        let Self { children, data } = self;
-        data.into_legacy(children.into_iter().map(Self::into_legacy).collect())
+    pub(super) fn into_parts(mut self) -> (Vec<NodeDraft>, NodeData) {
+        // Drop prevents moving fields out directly
+        let children = std::mem::take(&mut self.children);
+        let data = std::mem::replace(&mut self.data, NodeData::new(NodeEmpty));
+        (children, data)
     }
 
     pub(crate) fn replace<T: NodeValue>(&mut self, value: T) {
         self.data.replace::<T>(value);
+    }
+}
+
+impl Drop for NodeDraft {
+    fn drop(&mut self) {
+        let mut pending = std::mem::take(&mut self.children);
+        // use iteration instead of recursion
+        // avoid stack overflow when nested deeply
+        while let Some(mut child) = pending.pop() {
+            pending.append(&mut child.children);
+        }
     }
 }

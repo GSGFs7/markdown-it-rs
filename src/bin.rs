@@ -103,24 +103,33 @@ fn main() {
         markdown_it::plugins::extra::typographer::add(md);
     }
 
-    let ast = md.parse(&source);
+    let ast = md.parse_document(&source);
 
     if show_tree {
-        ast.walk(|node, depth| {
-            print!("{}", "    ".repeat(depth as usize));
-            let name = &node.name()[node.name().rfind("::").map(|x| x + 2).unwrap_or_default()..];
-            if let Some(data) = node.cast::<Text>() {
-                println!("{name}: {:?}", data.content);
-            } else if let Some(data) = node.cast::<TextSpecial>() {
-                println!("{name}: {:?}", data.content);
+        let mut depth = 0usize;
+        for event in ast.events(ast.root()) {
+            if matches!(event, markdown_it::StructuralEvent::Exit(_)) {
+                depth -= 1;
+                continue;
+            }
+            let node = event.node();
+            let name = node.name().rsplit("::").next().unwrap();
+            print!("{}", "    ".repeat(depth));
+            if let Some(text) = node.cast::<Text>() {
+                println!("{name}: {:?}", text.content);
+            } else if let Some(text) = node.cast::<TextSpecial>() {
+                println!("{name}: {:?}", text.content);
             } else {
                 println!("{name}");
             }
-        });
+            if matches!(event, markdown_it::StructuralEvent::Enter(_)) {
+                depth += 1;
+            }
+        }
         return;
     }
 
-    let result = ast.render();
+    let result = md.render_document(&ast);
 
     if output == "-" {
         std::io::stdout().write_all(result.as_bytes()).unwrap();

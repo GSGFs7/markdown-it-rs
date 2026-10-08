@@ -1,20 +1,18 @@
 use crate::document::NodeDraft;
 use crate::parser::extset::RootExtSet;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::Node;
 
 /// Prepare shared state from the source. Runs before or after block parsing,
 /// as placed in the core ruler.
-pub(crate) type DocumentPrepareStateFn = fn(&str, &MarkdownIt, &mut RootExtSet);
+pub type DocumentPrepareStateFn = fn(&str, &MarkdownIt, &mut RootExtSet);
 
 /// Finalize the resolved draft tree from shared state. Runs after inline
 /// parsing, before arena conversion.
-pub(crate) type DocumentFinalizeDraftFn = fn(&mut NodeDraft, &RootExtSet);
+pub type DocumentFinalizeDraftFn = fn(&mut NodeDraft, &RootExtSet);
 
-/// Experimental direct counterpart of a core rule.
+/// Execution stage of a document core rule.
 ///
-/// Registered through [`CoreRule::document_rule`] and sharing the legacy rule's
-/// ruler position. Stages run in this order:
+/// Registered through [`CoreRule::document_rule`]. Stages run in this order:
 ///
 /// ```text
 /// PrepareState (before blocks) -> ParseBlocks -> PrepareState (after blocks)
@@ -24,8 +22,7 @@ pub(crate) type DocumentFinalizeDraftFn = fn(&mut NodeDraft, &RootExtSet);
 /// Exactly one `ParseBlocks` and one `ParseInlines` are required, in that order;
 /// callbacks outside their stage are rejected and preserve core-ruler order.
 /// The pure-text fast path still runs preparations and finalizers. Arena-backed
-/// document transforms remain a separate, explicitly executed pipeline.
-#[doc(hidden)]
+/// document transforms run after arena conversion.
 #[derive(Debug, Clone, Copy)]
 pub enum DocumentCoreRule {
     /// Build the block draft tree, deferring inline content until all block
@@ -48,31 +45,8 @@ pub enum DocumentCoreRule {
 pub trait CoreRule: 'static {
     const NAMES: &'static [&'static str] = &[];
 
-    fn run(root: &mut Node, md: &MarkdownIt);
-
-    /// Optional direct implementation. Defaults to legacy-only support; see
-    /// [`DocumentCoreRule`] for stages and ordering.
-    #[doc(hidden)]
-    fn document_rule() -> Option<DocumentCoreRule> {
-        None
-    }
-}
-
-/// Both implementations share one ruler entry and the same ordering/lifetime.
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct CoreRuleEntry {
-    pub(crate) legacy: fn(&mut Node, &MarkdownIt),
-    pub(crate) document: Option<DocumentCoreRule>,
-}
-
-impl CoreRuleEntry {
-    pub(crate) fn new<T: CoreRule>() -> Self {
-        Self {
-            legacy: T::run,
-            document: T::document_rule(),
-        }
-    }
+    /// Select the execution stage and callback for this rule.
+    fn document_rule() -> DocumentCoreRule;
 }
 
 macro_rules! rule_builder {

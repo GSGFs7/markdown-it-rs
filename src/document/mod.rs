@@ -1,7 +1,6 @@
-//! Experimental arena-backed document storage.
+//! Arena-backed document storage.
 
 mod arena;
-mod bridge;
 mod data;
 pub mod edit;
 mod events;
@@ -17,12 +16,9 @@ pub use self::arena::NodeId;
 pub use self::events::{StructuralEvent, StructuralEvents};
 pub use self::node::{DocumentNode, NodeDraft, NodeRef};
 pub(crate) use self::structure::SiblingPosition;
-use crate::parser::node::Node;
 
 /// Arena-backed representation of one parsed Markdown document.
 ///
-/// This is currently an opt-in migration API. Existing [`crate::MarkdownIt::parse`]
-/// callers continue to receive a legacy [`Node`] tree.
 #[derive(Debug)]
 pub struct Document {
     source: Arc<str>,
@@ -31,7 +27,10 @@ pub struct Document {
 }
 
 impl Document {
-    pub(crate) fn from_draft(source: impl Into<Arc<str>>, root: NodeDraft) -> Self {
+    /// Build an arena-backed document from a draft tree and its source text.
+    ///
+    /// The source is kept for source mapping and access via [`Document::source`].
+    pub fn from_draft(source: impl Into<Arc<str>>, root: NodeDraft) -> Self {
         let mut document = Self {
             source: source.into(),
             arena: Arena::new(),
@@ -43,6 +42,15 @@ impl Document {
         };
         document.root = document.insert_draft_with_parent(None, root);
         document
+    }
+
+    /// Append a generated subtree to a valid parent, returning its new ID.
+    /// Panics if `parent` is invalid or stale.
+    pub fn append_child(&mut self, parent: NodeId, draft: NodeDraft) -> NodeId {
+        self.node(parent);
+        let child = self.insert_draft_with_parent(Some(parent), draft);
+        self.node_mut(parent).children.push(child);
+        child
     }
 
     /// Original Markdown source owned by this document.

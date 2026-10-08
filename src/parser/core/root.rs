@@ -1,5 +1,5 @@
+use crate::NodeValue;
 use crate::parser::extset::RootExtSet;
-use crate::{Node, NodeValue, Renderer};
 
 #[derive(Debug)]
 /// Root node of the AST.
@@ -17,8 +17,4 @@ impl Root {
     }
 }
 
-impl NodeValue for Root {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        fmt.contents(&node.children);
-    }
-}
+impl NodeValue for Root {}
