@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use super::*;
 use crate::parser::inline::probe::{InlineProbeKind, InlineProbeResult, InlineProbeToken};
-use crate::parser::inline::{InlineProbeFn, InlineRuleFn, InlineRuleFns, InlineRule};
+use crate::parser::inline::{InlineProbeFn, InlineRule, InlineRuleFn, InlineRuleFns};
 use crate::parser::linkfmt::LinkFormatter;
 
 fn probe_rule(probe: InlineProbeFn) -> InlineRuleFns {

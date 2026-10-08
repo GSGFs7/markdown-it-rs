@@ -550,10 +550,7 @@ fn is_plain_label_source(source: &str) -> bool {
 }
 
 /// Whether every probe rule triggered by this source is handled by the index pass.
-fn has_only_supported_probes(
-    source: &str,
-    rules: &crate::parser::inline::DocumentRuleSet,
-) -> bool {
+fn has_only_supported_probes(source: &str, rules: &crate::parser::inline::DocumentRuleSet) -> bool {
     rules.probes.iter().all(|rule| {
         !source.chars().any(|ch| rule.matches_marker(ch)) || is_index_supported(rule.type_id)
     })

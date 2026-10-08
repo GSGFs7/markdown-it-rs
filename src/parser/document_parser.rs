@@ -408,7 +408,6 @@ impl<'a> DocumentBlockState<'a> {
             self.line_offsets[end_line].line_end,
         ))
     }
-
 }
 
 pub struct DocumentInlineState<'a> {
