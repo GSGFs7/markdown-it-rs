@@ -12,7 +12,7 @@ impl NodeValue for CustomLeaf {}
 
 #[test]
 fn debug_format_records_hierarchy_identity_source_and_attributes() {
-    let mut root = NodeDraft::new(Root::new("abcdef".into()));
+    let mut root = NodeDraft::new(Root::new("abcdef"));
     root.set_srcmap(Some(SourcePos::new(0, 6)));
 
     let mut container = NodeDraft::new(CustomContainer);

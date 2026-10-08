@@ -45,7 +45,7 @@ fn sourcepos_deduplicates_existing_attributes_and_skips_generated_nodes() {
     let mut md = MarkdownIt::new();
     sourcepos::add(&mut md);
     let source = "# 雪";
-    let mut root = NodeDraft::new(Root::new(source.into()));
+    let mut root = NodeDraft::new(Root::new(source));
     let mut heading = NodeDraft::new(cmark::block::heading::ATXHeading { level: 1 });
     heading.set_srcmap(Some(markdown_it::common::sourcemap::SourcePos::new(
         0,

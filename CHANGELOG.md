@@ -4,6 +4,10 @@
 
 ### Breaking changes
 
+- changed `Root.content` from `String` to `Arc<str>` to share source storage
+  with `Document`; use `.as_ref()` for borrowed text or `.to_string()` for an
+  owned, mutable copy. `Root::new` accepts `String`, `&str`, and `Arc<str>`;
+  pass these directly instead of using an ambiguous `.into()` call
 - required custom `NodeValue` implementations to be `Send + Sync`
 - removed `syntect` from the default features; enable it explicitly when needed
 

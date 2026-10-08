@@ -60,7 +60,7 @@ fn resolve_pending_inline(
 }
 
 pub(crate) struct DocumentParseContext<'a> {
-    source: &'a str,
+    source: Arc<str>,
     md: &'a MarkdownIt,
     root: NodeDraft,
     root_ext: RootExtSet,
@@ -69,8 +69,9 @@ pub(crate) struct DocumentParseContext<'a> {
 }
 
 impl<'a> DocumentParseContext<'a> {
-    pub(crate) fn new(source: &'a str, md: &'a MarkdownIt) -> Self {
-        let mut root = NodeDraft::new(Root::new(source.to_owned()));
+    pub(crate) fn new(source: &str, md: &'a MarkdownIt) -> Self {
+        let source: Arc<str> = Arc::from(source);
+        let mut root = NodeDraft::new(Root::new(Arc::clone(&source)));
         root.set_srcmap(Some(SourcePos::new(0, source.len())));
         root.ext_mut().insert(md.render_options.clone());
         Self {
@@ -123,7 +124,7 @@ impl<'a> DocumentParseContext<'a> {
         let inline_rules = self.md.inline.document_rules();
 
         for prepare in preparations {
-            prepare(self.source, self.md, &mut self.root_ext);
+            prepare(&self.source, self.md, &mut self.root_ext);
         }
         if block_rules.is_empty() && self.md.inline.has_only_text_rule() && self.md.max_nesting > 0
         {
@@ -131,7 +132,7 @@ impl<'a> DocumentParseContext<'a> {
             return self.parse_text_fallback();
         }
 
-        let mut state = DocumentBlockState::new(self.source, self.md, block_rules, self.root);
+        let mut state = DocumentBlockState::new(&self.source, self.md, block_rules, self.root);
         state.root_ext = self.root_ext;
         state.tokenize();
         self.root = state.node;
@@ -146,7 +147,7 @@ impl<'a> DocumentParseContext<'a> {
 
     fn prepare_inlines(&mut self) {
         for prepare in &self.inline_preparations {
-            prepare(self.source, self.md, &mut self.root_ext);
+            prepare(&self.source, self.md, &mut self.root_ext);
         }
     }
 
@@ -160,13 +161,13 @@ impl<'a> DocumentParseContext<'a> {
             data.ext = self.root_ext;
         }
 
-        let mut document = Document::from_draft(Arc::<str>::from(self.source), self.root);
+        let mut document = Document::from_draft(self.source, self.root);
         self.md.run_document_transforms(&mut document);
         document
     }
 
     fn parse_text_fallback(mut self) -> Document {
-        for line in build_line_offsets(self.source) {
+        for line in build_line_offsets(&self.source) {
             if line.first_nonspace >= line.line_end {
                 continue;
             }

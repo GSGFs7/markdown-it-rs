@@ -1,17 +1,20 @@
+use std::sync::Arc;
+
 use crate::NodeValue;
 use crate::parser::extset::RootExtSet;
 
 #[derive(Debug)]
 /// Root node of the AST.
 pub struct Root {
-    pub content: String,
+    /// Original source shared with the parsed document.
+    pub content: Arc<str>,
     pub ext: RootExtSet,
 }
 
 impl Root {
-    pub fn new(content: String) -> Self {
+    pub fn new(content: impl Into<Arc<str>>) -> Self {
         Self {
-            content,
+            content: content.into(),
             ext: RootExtSet::new(),
         }
     }

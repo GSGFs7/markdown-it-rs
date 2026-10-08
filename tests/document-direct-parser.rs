@@ -65,9 +65,19 @@ fn assert_document_structure(md: &MarkdownIt, source: &str) -> markdown_it::Docu
             .node(document.root())
             .cast::<Root>()
             .unwrap()
-            .content,
+            .content
+            .as_ref(),
         source
     );
+    assert!(std::ptr::eq(
+        document
+            .node(document.root())
+            .cast::<Root>()
+            .unwrap()
+            .content
+            .as_ref(),
+        document.source(),
+    ));
     let mut stack = Vec::new();
     let mut visited = std::collections::HashSet::new();
     for event in document.events(document.root()) {
