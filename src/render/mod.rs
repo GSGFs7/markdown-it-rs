@@ -290,18 +290,22 @@ pub struct DocumentRenderContext<'a> {
 }
 
 impl<'a> DocumentRenderContext<'a> {
+    /// The document being rendered.
     pub fn document(&self) -> &'a Document {
         self.shared.document
     }
 
+    /// The active output format, e.g. `"html"`.
     pub fn format(&self) -> &str {
         self.shared.format
     }
 
+    /// Render options for the active format.
     pub fn options(&self) -> &RenderOptions {
         self.shared.options
     }
 
+    /// Extension set for renderer-specific state.
     pub fn ext(&mut self) -> &mut RenderExtSet {
         self.ext
     }
