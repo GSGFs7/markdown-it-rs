@@ -82,14 +82,15 @@ impl MarkdownParser {
     }
 
     pub fn render_with_metadata(&self, source: String) -> RenderResult {
-        let root = self.inner.parse(&source);
+        let root = self.inner.parse_document(&source);
         let front_matter = root
+            .node(root.root())
             .cast::<Root>()
             .and_then(|root| root.ext.get::<RustFrontMatter>())
             .map(FrontMatter::from);
 
         RenderResult {
-            html: root.render(),
+            html: self.inner.render_document(&root),
             front_matter,
         }
     }

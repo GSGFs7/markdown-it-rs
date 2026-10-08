@@ -1,8 +1,8 @@
 use markdown_it::MarkdownIt;
 use markdown_it::plugins::extra::heading_anchors::{
-    AddHeadingAnchors,
     EmptySlugPolicy,
     ExistingIdPolicy,
+    HeadingAnchorsDocumentTransform,
     HeadingAnchorsOptions,
     SlugStrategy,
     add_with_options,
@@ -163,7 +163,8 @@ pub(crate) fn heading_anchors(
         // use default
         None => {
             state.heading_anchors = None;
-            md.remove_rule::<AddHeadingAnchors>();
+            md.document_transforms
+                .remove::<HeadingAnchorsDocumentTransform>();
             add_with_options(
                 md,
                 HeadingAnchorsOptions {
@@ -182,7 +183,8 @@ pub(crate) fn heading_anchors(
                 empty_slug,
                 prefix,
             });
-            md.remove_rule::<AddHeadingAnchors>();
+            md.document_transforms
+                .remove::<HeadingAnchorsDocumentTransform>();
         }
         // use builtins
         Some(value) => {
@@ -204,7 +206,8 @@ pub(crate) fn heading_anchors(
             };
 
             state.heading_anchors = None;
-            md.remove_rule::<AddHeadingAnchors>();
+            md.document_transforms
+                .remove::<HeadingAnchorsDocumentTransform>();
             add_with_options(md, options);
         }
     };

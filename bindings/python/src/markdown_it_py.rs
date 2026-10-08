@@ -85,7 +85,7 @@ impl PyMarkdownIt {
     fn render(&self, py: Python<'_>, src: &str) -> PyResult<String> {
         let ast = self.parse(py, src)?;
         let ast_ref = ast.borrow(py);
-        let html = ast_ref.root.borrow().render();
+        let html = self.inner.render_document(&ast_ref.root.borrow());
         self.run_postprocessors(py, html)
     }
 
@@ -93,7 +93,9 @@ impl PyMarkdownIt {
         let ast = Py::new(
             py,
             PyAst {
-                root: RefCell::new(self.inner.parse(src)),
+                root: RefCell::new(self.inner.parse_document(src)),
+                renderers: self.inner.document_renderers.clone(),
+                options: self.inner.render_options.clone(),
             },
         )?;
 
@@ -107,8 +109,8 @@ impl PyMarkdownIt {
     }
 
     fn parse_frontmatter(&self, src: &str) -> Option<PyFrontMatter> {
-        let ast = self.inner.parse(src);
-        let root = ast.cast::<Root>()?;
+        let ast = self.inner.parse_document(src);
+        let root = ast.node(ast.root()).cast::<Root>()?;
         root.ext.get::<FrontMatter>().map(PyFrontMatter::from)
     }
 
@@ -117,10 +119,11 @@ impl PyMarkdownIt {
         let ast_ref = ast.borrow(py);
         let root = ast_ref.root.borrow();
         let frontmatter = root
+            .node(root.root())
             .cast::<Root>()
             .and_then(|root| root.ext.get::<FrontMatter>())
             .map(PyFrontMatter::from);
-        let html = root.render();
+        let html = self.inner.render_document(&root);
         let html = self.run_postprocessors(py, html)?;
 
         Ok(PyMarkdownOutput { html, frontmatter })
@@ -207,7 +210,7 @@ impl PyMarkdownIt {
             py,
             PyNode {
                 ast: ast.clone_ref(py),
-                path: Vec::new(),
+                id: ast.borrow(py).root.borrow().root(),
             },
         )?;
         for rule in &self.core_rules {

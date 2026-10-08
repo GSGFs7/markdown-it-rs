@@ -6,7 +6,7 @@ use markdown_it::plugins::extra::heading_anchors::{
     is_heading,
     unique_slug,
 };
-use markdown_it::{MarkdownIt, Node};
+use markdown_it::{Document, EditBatch, MarkdownIt, StructuralEvent};
 use pyo3::prelude::*;
 use pyo3::{PyAny, PyResult};
 
@@ -51,78 +51,85 @@ pub(crate) struct PythonHeadingAnchors {
 
 impl PythonHeadingAnchors {
     /// This mirrors `AddHeadingAnchors::run` but calls into Python for slug generation.
-    pub(crate) fn apply(&self, py: Python<'_>, root: &mut Node) -> PyResult<()> {
+    pub(crate) fn apply(&self, py: Python<'_>, root: &mut Document) -> PyResult<()> {
         // 1. reserve IDs already present in the tree
         let mut used_ids = HashSet::new();
-        root.walk(|node, _| {
+        for event in root.events(root.root()) {
+            if matches!(event, StructuralEvent::Exit(_)) {
+                continue;
+            }
+            let node = event.node();
             if is_heading(node) && matches!(self.existing_id, ExistingIdPolicy::Override) {
-                return;
+                continue;
             }
             used_ids.extend(
-                node.attrs
+                node.attrs()
                     .iter()
-                    .filter(|(name, _)| *name == "id")
+                    .filter(|(name, _)| name == "id")
                     .map(|(_, value)| value.clone()),
             );
-        });
+        }
         let mut next_suffix = HashMap::new();
-
         // 2. generate slugs via the Python callback
-        let mut first_error: Option<PyErr> = None;
-        root.walk_mut(|node, _| {
-            if first_error.is_some() || !is_heading(node) {
-                return;
+        let mut edits = EditBatch::new();
+        for event in root.events(root.root()) {
+            if matches!(event, StructuralEvent::Exit(_)) {
+                continue;
             }
-
+            let node = event.node();
+            if !is_heading(node) {
+                continue;
+            }
             // handle existing id attribute
-            if node.attrs.iter().any(|(name, _)| *name == "id") {
-                match self.existing_id {
-                    ExistingIdPolicy::Keep => return,
-                    ExistingIdPolicy::Override => {
-                        node.attrs.retain(|(name, _)| *name != "id");
-                    }
-                }
+            if node.attrs().iter().any(|(name, _)| name == "id")
+                && matches!(self.existing_id, ExistingIdPolicy::Keep)
+            {
+                continue;
             }
-
+            let text: String = root
+                .events(node.id())
+                .filter_map(|event| {
+                    if matches!(event, StructuralEvent::Exit(_)) {
+                        return None;
+                    }
+                    let node = event.node();
+                    if let Some(text) = node.cast::<markdown_it::parser::inline::Text>() {
+                        Some(text.content.clone())
+                    } else if let Some(text) =
+                        node.cast::<markdown_it::parser::inline::TextSpecial>()
+                    {
+                        Some(text.content.clone())
+                    } else if node.is::<markdown_it::plugins::cmark::inline::newline::Softbreak>() {
+                        Some("\n".into())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
             // call Python callback: slug = strategy(text)
-            let text = node.collect_text();
-            let slug_result = self
-                .callback
-                .call1(py, (&text,))
-                .and_then(|obj| obj.extract::<String>(py));
-
-            let mut slug = match slug_result {
-                Ok(s) => s,
-                Err(e) => {
-                    first_error = Some(e);
-                    return;
-                }
-            };
-
+            let mut slug = self.callback.call1(py, (&text,))?.extract::<String>(py)?;
             // empty slug handling
             if slug.is_empty() {
                 match &self.empty_slug {
-                    EmptySlugPolicy::Skip => return,
+                    EmptySlugPolicy::Skip => {
+                        edits.remove_attribute(node.id(), "id");
+                        continue;
+                    }
                     EmptySlugPolicy::Use(fallback) => slug.clone_from(fallback),
                 }
             }
             if slug.is_empty() {
-                return;
+                edits.remove_attribute(node.id(), "id");
+                continue;
             }
-
             // apply prefix
             if let Some(prefix) = &self.prefix {
                 slug.insert_str(0, prefix);
             }
-
             let slug = unique_slug(slug, &mut used_ids, &mut next_suffix);
-            node.attrs.push(("id".into(), slug));
-        });
-
-        if let Some(err) = first_error {
-            return Err(err);
+            edits.set_attribute(node.id(), "id", slug);
         }
-
+        edits.commit(root);
         Ok(())
     }
 }
