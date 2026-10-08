@@ -3,8 +3,7 @@ use crate::NodeDraft;
 use crate::document::NodeRef;
 use crate::generics::inline::emph_pair;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -34,13 +33,7 @@ impl DocumentNodeRenderer<Strikethrough> for StrikethroughDocumentRenderer {
     }
 }
 
-impl NodeValue for Strikethrough {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        fmt.open("s", &node.attrs);
-        fmt.contents(&node.children);
-        fmt.close("s");
-    }
-}
+impl NodeValue for Strikethrough {}
 
 pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'~', 2, true>(md, || NodeDraft::new(Strikethrough { marker: '~' }));

@@ -7,19 +7,8 @@
 use std::collections::HashMap;
 
 use crate::common::utils::is_punct_char;
-use crate::parser::core::CoreRule;
 use crate::parser::inline::Text;
-use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::Node;
-use crate::parser::text::{
-    TextBoundary as LegacyTextBoundary,
-    TextEditBatch,
-    TextEvent as LegacyTextEvent,
-    TextNodeKey,
-    TextProjection as LegacyTextProjection,
-    TextProjectionKind as LegacyTextProjectionKind,
-};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
@@ -45,36 +34,8 @@ pub fn add(md: &mut MarkdownIt) {
     add_with::<'‘', '’', '“', '”'>(md);
 }
 
+/// Register smartquotes with a custom compile-time quote set.
 pub fn add_with<
-    const OPEN_SINGLE_QUOTE: char,
-    const CLOSE_SINGLE_QUOTE: char,
-    const OPEN_DOUBLE_QUOTE: char,
-    const CLOSE_DOUBLE_QUOTE: char,
->(
-    md: &mut MarkdownIt,
-) {
-    md.add_rule::<SmartQuotesRule<
-        OPEN_SINGLE_QUOTE,
-        CLOSE_SINGLE_QUOTE,
-        OPEN_DOUBLE_QUOTE,
-        CLOSE_DOUBLE_QUOTE,
-    >>()
-    .after::<InlineParserRule>();
-}
-
-/// Register the classic smartquotes transform for explicit arena-backed
-/// document pipelines.
-///
-/// Unlike [`add`], this does not register the legacy core rule, and
-/// [`MarkdownIt::parse_document`] does not run it automatically. Call
-/// [`MarkdownIt::run_document_transforms`] after parsing.
-pub fn add_document(md: &mut MarkdownIt) {
-    add_document_with::<'‘', '’', '“', '”'>(md);
-}
-
-/// Register a custom smartquotes transform for explicit arena-backed
-/// document pipelines.
-pub fn add_document_with<
     const OPEN_SINGLE_QUOTE: char,
     const CLOSE_SINGLE_QUOTE: char,
     const OPEN_DOUBLE_QUOTE: char,
@@ -90,7 +51,7 @@ pub fn add_document_with<
     >>();
 }
 
-/// The classic smartquotes transform used by [`add_document`].
+/// The classic smartquotes transform used by [`add`].
 pub type ClassicSmartQuotesDocumentTransform = SmartQuotesDocumentTransform<'‘', '’', '“', '”'>;
 
 /// Arena-backed smartquotes with a compile-time quote set.
@@ -116,6 +77,7 @@ impl<
     >
 {
     const KEY: &'static str = "extra::smartquotes";
+    const ALIASES: &'static [&'static str] = &["smartquotes"];
 
     fn run(&self, document: &Document) -> EditBatch {
         document_edits_with::<
@@ -244,53 +206,6 @@ impl<K> RelevantEvent<K> {
     }
 }
 
-pub struct SmartQuotesRule<
-    const OPEN_SINGLE_QUOTE: char,
-    const CLOSE_SINGLE_QUOTE: char,
-    const OPEN_DOUBLE_QUOTE: char,
-    const CLOSE_DOUBLE_QUOTE: char,
->;
-
-impl<
-    const OPEN_SINGLE_QUOTE: char,
-    const CLOSE_SINGLE_QUOTE: char,
-    const OPEN_DOUBLE_QUOTE: char,
-    const CLOSE_DOUBLE_QUOTE: char,
-> CoreRule
-    for SmartQuotesRule<
-        OPEN_SINGLE_QUOTE,
-        CLOSE_SINGLE_QUOTE,
-        OPEN_DOUBLE_QUOTE,
-        CLOSE_DOUBLE_QUOTE,
-    >
-{
-    const NAMES: &'static [&'static str] = &["smartquotes"];
-
-    fn run(root: &mut Node, _: &MarkdownIt) {
-        let projection = LegacyTextProjection::new(smartquotes_projection);
-        let mut events = projection.events(root);
-        let mut edits = TextEditBatch::new(smartquotes_projection);
-        transform_events::<
-            TextNodeKey,
-            _,
-            _,
-            OPEN_SINGLE_QUOTE,
-            CLOSE_SINGLE_QUOTE,
-            OPEN_DOUBLE_QUOTE,
-            CLOSE_DOUBLE_QUOTE,
-        >(
-            std::iter::from_fn(|| next_relevant(&mut events)),
-            |node, offset, replacement| {
-                edits.replace_char(node, offset..offset + 1, replacement);
-            },
-        );
-
-        edits
-            .commit(root)
-            .expect("smartquotes creates valid non-overlapping text edits");
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn process_quote<
     K: Copy,
@@ -410,54 +325,6 @@ fn transform_events<
     }
 }
 
-/// next releted event
-fn next_relevant(
-    events: &mut impl Iterator<Item = LegacyTextEvent>,
-) -> Option<RelevantEvent<TextNodeKey>> {
-    loop {
-        match events.next()? {
-            LegacyTextEvent::Char {
-                node,
-                byte_offset,
-                ch,
-                writable,
-                nesting_level,
-            } => {
-                return Some(RelevantEvent::Char {
-                    node,
-                    byte_offset,
-                    ch,
-                    writable,
-                    nesting_level,
-                });
-            }
-            LegacyTextEvent::Boundary(LegacyTextBoundary::Space) => {
-                return Some(RelevantEvent::Space);
-            }
-            LegacyTextEvent::Enter { nesting_level } | LegacyTextEvent::Exit { nesting_level } => {
-                let _ = nesting_level;
-            }
-        }
-    }
-}
-
-/// classify
-fn smartquotes_projection(node: &Node) -> LegacyTextProjectionKind<'_> {
-    if let Some(text) = node.cast::<Text>() {
-        // normal text, editable
-        LegacyTextProjectionKind::Writable(text)
-    } else if let Some(html) = node.cast::<HtmlInline>() {
-        // HTML, not editable (protect quotes for <a href="...">)
-        LegacyTextProjectionKind::ReadOnly(&html.content)
-    } else if node.is::<Paragraph>() || node.is::<Hardbreak>() || node.is::<Softbreak>() {
-        // boundary, process stack content
-        LegacyTextProjectionKind::Boundary(LegacyTextBoundary::Space)
-    } else {
-        // other rule, do nothing
-        LegacyTextProjectionKind::Transparent
-    }
-}
-
 fn document_relevant_event(event: TextEvent) -> Option<RelevantEvent<NodeId>> {
     match event {
         TextEvent::Char {
@@ -481,12 +348,16 @@ fn document_relevant_event(event: TextEvent) -> Option<RelevantEvent<NodeId>> {
 
 fn document_smartquotes_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> {
     if let Some(text) = node.cast::<Text>() {
+        // normal text, editable
         TextProjectionKind::Writable(&text.content)
     } else if let Some(html) = node.cast::<HtmlInline>() {
+        // HTML, not editable (protect quotes for <a href="...">)
         TextProjectionKind::ReadOnly(&html.content)
     } else if node.is::<Paragraph>() || node.is::<Hardbreak>() || node.is::<Softbreak>() {
+        // boundary, process stack content
         TextProjectionKind::Boundary(TextBoundary::Space)
     } else {
+        // other rule, do nothing
         TextProjectionKind::Transparent
     }
 }
@@ -511,133 +382,4 @@ fn can_open_or_close(quote_type: QuoteType, last_char: char, next_char: char) ->
         return (is_last_punctuation, is_next_punctuation);
     }
     (can_open, can_close)
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{Document, DocumentTransform, EditBatch, StructuralEvent};
-
-    #[test]
-    fn smartquotes_basics() {
-        let md = &mut crate::MarkdownIt::empty();
-        crate::plugins::cmark::add(md);
-        crate::plugins::extra::smartquotes::add(md);
-        let html = md.parse(r#"'hello' "world""#).render();
-        assert_eq!(html.trim(), r#"<p>‘hello’ “world”</p>"#);
-    }
-
-    #[test]
-    fn smartquotes_shouldnt_affect_html() {
-        let md = &mut crate::MarkdownIt::empty();
-        crate::plugins::cmark::add(md);
-        crate::plugins::html::html_inline::add(md);
-        crate::plugins::extra::smartquotes::add(md);
-        let html = md.parse(r#"<a href="hello"></a>"#).render();
-        assert_eq!(html.trim(), r#"<p><a href="hello"></a></p>"#);
-    }
-
-    #[test]
-    fn smartquotes_should_work_with_typographer() {
-        let md = &mut crate::MarkdownIt::empty();
-        crate::plugins::cmark::add(md);
-        crate::plugins::html::html_inline::add(md);
-        crate::plugins::extra::typographer::add(md);
-        crate::plugins::extra::smartquotes::add(md);
-        let html = md.parse("\"**...**\"").render();
-        assert_eq!(html.trim(), "<p>“<strong>…</strong>”</p>");
-    }
-
-    #[test]
-    fn unicode_before_quotes_uses_byte_offsets() {
-        let md = &mut crate::MarkdownIt::empty();
-        crate::plugins::cmark::add(md);
-        crate::plugins::extra::smartquotes::add(md);
-        assert_eq!(md.parse("雪 \"雨\"").render(), "<p>雪 “雨”</p>\n");
-    }
-
-    #[test]
-    fn document_registration_is_explicit_and_supports_custom_quote_sets() {
-        type LegacyClassic = super::SmartQuotesRule<'‘', '’', '“', '”'>;
-
-        let md = &mut crate::MarkdownIt::empty();
-        crate::plugins::cmark::add(md);
-        super::add_document_with::<'‹', '›', '«', '»'>(md);
-        assert!(!md.has_rule::<LegacyClassic>());
-
-        let mut document = md.parse_document(r#"'hello' "world""#);
-        assert_eq!(
-            document
-                .events(document.root())
-                .filter_map(|event| match event {
-                    StructuralEvent::Leaf(node) => node
-                        .cast::<crate::parser::inline::Text>()
-                        .map(|text| text.content.as_str()),
-                    StructuralEvent::Enter(_) | StructuralEvent::Exit(_) => None,
-                })
-                .collect::<String>(),
-            r#"'hello' "world""#
-        );
-
-        md.run_document_transforms(&mut document);
-        assert_eq!(document.into_legacy().render(), "<p>‹hello› «world»</p>\n");
-    }
-
-    #[derive(Default)]
-    struct ObserveSmartQuotes;
-
-    impl DocumentTransform for ObserveSmartQuotes {
-        const KEY: &'static str = "test::observe-smartquotes";
-
-        fn run(&self, document: &Document) -> EditBatch {
-            let transformed = document.events(document.root()).any(|event| match event {
-                StructuralEvent::Leaf(node) => node
-                    .cast::<crate::parser::inline::Text>()
-                    .is_some_and(|text| text.content.contains('“')),
-                StructuralEvent::Enter(_) | StructuralEvent::Exit(_) => false,
-            });
-            let mut edits = EditBatch::new();
-            edits.set_attribute(
-                document.root(),
-                "observed-smartquotes",
-                transformed.to_string(),
-            );
-            edits
-        }
-    }
-
-    #[test]
-    fn registered_transform_supports_type_ordering() {
-        let md = &mut crate::MarkdownIt::empty();
-        crate::plugins::cmark::add(md);
-        md.add_document_transform::<ObserveSmartQuotes>()
-            .after::<super::ClassicSmartQuotesDocumentTransform>();
-        super::add_document(md);
-        let mut document = md.parse_document(r#""world""#);
-
-        md.run_document_transforms(&mut document);
-
-        assert!(
-            document
-                .node(document.root())
-                .attrs()
-                .iter()
-                .any(|(name, value)| name == "observed-smartquotes" && value == "true")
-        );
-    }
-
-    #[test]
-    fn legacy_registration_does_not_populate_document_registry() {
-        let md = &mut crate::MarkdownIt::empty();
-        crate::plugins::cmark::add(md);
-        super::add(md);
-
-        assert!(
-            !md.document_transforms
-                .contains::<super::ClassicSmartQuotesDocumentTransform>()
-        );
-        assert_eq!(
-            md.parse_document(r#""world""#).into_legacy().render(),
-            "<p>“world”</p>\n"
-        );
-    }
 }

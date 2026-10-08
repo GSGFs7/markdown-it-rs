@@ -1,10 +1,10 @@
 // reference to exist CodeFence & CodeSpan rule in the code base
 
 use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::block::BlockRule;
 use crate::parser::document_parser::{DocumentBlockState, DocumentInlineState};
+use crate::parser::inline::InlineRule;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -12,47 +12,14 @@ use crate::render::{
     write_html_open,
     write_html_text,
 };
-use crate::{MarkdownIt, Node, NodeValue, Renderer};
+use crate::{MarkdownIt, NodeValue};
 
 #[derive(Debug)]
 struct MathBlock {
     pub content: String,
 }
 
-impl NodeValue for MathBlock {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        #[cfg(not(feature = "katex"))]
-        {
-            let mut attrs = node.attrs.clone();
-            attrs.push(("class".into(), "math-block".into()));
-
-            fmt.cr();
-            fmt.open("div", &attrs);
-            fmt.text(&self.content);
-            fmt.close("div");
-            fmt.cr();
-        }
-
-        #[cfg(feature = "katex")]
-        {
-            let mut attrs = node.attrs.clone();
-            attrs.push(("class".into(), "math-block".into()));
-            fmt.cr();
-            fmt.open("div", &attrs);
-
-            // render katex
-            let ctx = katex::KatexContext::default();
-            let setting = katex::Settings::builder().display_mode(true).build();
-            match katex::render_to_string(&ctx, &self.content, &setting) {
-                Ok(html) => fmt.text_raw(&html),
-                Err(_) => fmt.text(&self.content),
-            }
-
-            fmt.close("div");
-            fmt.cr();
-        }
-    }
-}
+impl NodeValue for MathBlock {}
 
 #[doc(hidden)]
 pub struct MathBlockScanner;
@@ -84,31 +51,6 @@ impl BlockRule for MathBlockScanner {
     const MARKERS: &'static [char] = &['$'];
     const NAMES: &'static [&'static str] = &["math_block"];
 
-    fn check(state: &mut BlockState) -> Option<()> {
-        math_block_header(
-            state.get_line(state.line),
-            state.line_indent(state.line),
-            state.md.max_indent,
-        )
-    }
-
-    fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        <Self as BlockRule>::check(state)?;
-        let (end, consumed) = scan_math_block(state.line, state.line_max, |line| {
-            (state.get_line(line), state.line_indent(line))
-        });
-        let indent = state.line_offsets[state.line].indent_nonspace;
-        let (content, _) = state.get_lines(state.line + 1, end, indent as usize, false);
-        Some((
-            Node::new(MathBlock {
-                content: content.trim().to_owned(),
-            }),
-            consumed,
-        ))
-    }
-}
-
-impl DocumentBlockRule for MathBlockScanner {
     fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
         math_block_header(
             state.get_line(state.line),
@@ -118,7 +60,7 @@ impl DocumentBlockRule for MathBlockScanner {
     }
 
     fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
-        <Self as DocumentBlockRule>::check(state)?;
+        <Self as BlockRule>::check(state)?;
         let (end, consumed) = scan_math_block(state.line, state.line_max, |line| {
             (state.get_line(line), state.line_indent(line))
         });
@@ -138,34 +80,7 @@ struct MathInline {
     pub content: String,
 }
 
-impl NodeValue for MathInline {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        #[cfg(not(feature = "katex"))]
-        {
-            let mut attrs = node.attrs.clone();
-            attrs.push(("class".into(), "math-inline".into()));
-            fmt.open("span", &attrs);
-            fmt.text(&self.content);
-            fmt.close("span");
-        }
-
-        #[cfg(feature = "katex")]
-        {
-            let mut attrs = node.attrs.clone();
-            attrs.push(("class".into(), "math-inline".into()));
-            fmt.open("span", &attrs);
-
-            let ctx = katex::KatexContext::default();
-            let setting = katex::Settings::builder().display_mode(false).build();
-            match katex::render_to_string(&ctx, &self.content, &setting) {
-                Ok(html) => fmt.text_raw(&html),
-                Err(_) => fmt.text(&self.content),
-            }
-
-            fmt.close("span");
-        }
-    }
-}
+impl NodeValue for MathInline {}
 
 #[doc(hidden)]
 pub struct MathInlineScanner;
@@ -189,20 +104,6 @@ fn scan_math_inline(src: &str) -> Option<(&str, usize)> {
         return Some((content, pos + 1));
     }
     None
-}
-
-impl LegacyInlineRule for MathInlineScanner {
-    const MARKER: char = '$';
-    const NAMES: &'static [&'static str] = &["math_inline"];
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let (content, consumed) = scan_math_inline(&state.src[state.pos..state.pos_max])?;
-        let mut node = Node::new(MathInline {
-            content: content.to_owned(),
-        });
-        node.srcmap = state.get_map(state.pos, state.pos + consumed);
-        Some((node, consumed))
-    }
 }
 
 impl InlineRule for MathInlineScanner {
@@ -277,6 +178,7 @@ impl<T: NodeValue + AsRef<str>> DocumentNodeRenderer<T> for MathDocumentRenderer
             write_html_text(output, value.as_ref());
             #[cfg(feature = "katex")]
             {
+                // render katex
                 let ctx = katex::KatexContext::default();
                 let setting = katex::Settings::builder().display_mode(self.block).build();
                 match katex::render_to_string(&ctx, value.as_ref(), &setting) {
@@ -294,8 +196,7 @@ impl<T: NodeValue + AsRef<str>> DocumentNodeRenderer<T> for MathDocumentRenderer
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<MathBlockScanner>();
-    md.block.add_document_rule::<MathBlockScanner>();
-    md.inline.add_migrated_rule::<MathInlineScanner>();
+    md.inline.add_rule::<MathInlineScanner>();
     for (format, text) in [("html", false), ("text", true)] {
         md.add_document_renderer::<MathBlock, _>(
             format,
@@ -324,8 +225,10 @@ mod tests {
         markdown_it::plugins::html::add(md);
         markdown_it::plugins::extra::math::add(md);
 
-        let node = md.parse(&(input.to_owned() + "\n"));
-        node.walk(|node, _| assert!(node.srcmap.is_some()));
+        let node = md.parse_document(&(input.to_owned() + "\n"));
+        for event in node.events(node.root()) {
+            assert!(event.node().srcmap().is_some());
+        }
 
         // fix attrs order in katex
         fn normalize_katex_attrs(html: &str) -> String {
@@ -352,20 +255,11 @@ mod tests {
                 .into_owned()
         }
 
-        let direct = md.parse_document_direct(&(input.to_owned() + "\n"));
-        for event in direct.events(direct.root()) {
-            assert!(event.node().srcmap().is_some());
-        }
-        let actual = normalize_katex_attrs(&node.render());
+        let actual = normalize_katex_attrs(&md.render_document(&node));
         let expected = normalize_katex_attrs(&output);
         assert_eq!(actual, expected);
-        assert_eq!(
-            normalize_katex_attrs(&md.render_document(&direct)),
-            expected
-        );
 
-        let _ = md.parse(input.trim_end());
-        let _ = md.parse_document_direct(input.trim_end());
+        let _ = md.parse_document(input.trim_end());
     }
 
     #[test]

@@ -5,15 +5,14 @@ use std::cmp::Ordering;
 use linkify::{LinkKind, Linkify};
 
 use crate::document::{NodeDraft, NodeRef};
-use crate::parser::core::{CoreRule, DocumentCoreRule, Root};
+use crate::parser::core::{CoreRule, DocumentCoreRule};
 use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::extset::RootExtSet;
 use crate::parser::inline::builtin::InlineParserRule;
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, TextSpecial};
+use crate::parser::inline::{InlineRule, TextSpecial};
 use crate::parser::linkfmt::LinkFormatter;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -27,16 +26,7 @@ pub struct Linkified {
     pub url: String,
 }
 
-impl NodeValue for Linkified {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        let mut attrs = node.attrs.clone();
-        attrs.push(("href".into(), self.url.clone()));
-
-        fmt.open("a", &attrs);
-        fmt.contents(&node.children);
-        fmt.close("a");
-    }
-}
+impl NodeValue for Linkified {}
 
 struct LinkifiedDocumentRenderer;
 
@@ -74,9 +64,9 @@ pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
         .before::<InlineParserRule>()
         .before_all();
 
-    md.inline.add_migrated_rule::<LinkifyScanner>();
-    md.inline.add_migrated_rule::<LinkifyFuzzyScanner>();
-    md.inline.add_migrated_rule::<LinkifyEmailScanner>();
+    md.inline.add_rule::<LinkifyScanner>();
+    md.inline.add_rule::<LinkifyFuzzyScanner>();
+    md.inline.add_rule::<LinkifyEmailScanner>();
     md.add_document_renderer::<Linkified, _>("html", LinkifiedDocumentRenderer);
     md.add_document_renderer::<Linkified, _>("text", TransparentDocumentRenderer);
 }
@@ -95,13 +85,8 @@ pub struct LinkifyPrescan;
 impl CoreRule for LinkifyPrescan {
     const NAMES: &'static [&'static str] = &["linkify_prescan"];
 
-    fn document_rule() -> Option<DocumentCoreRule> {
-        Some(DocumentCoreRule::PrepareState(Self::prepare))
-    }
-
-    fn run(root: &mut Node, md: &MarkdownIt) {
-        let root_data = root.cast_mut::<Root>().unwrap();
-        root_data.ext.insert(scan_positions(&root_data.content, md));
+    fn document_rule() -> DocumentCoreRule {
+        DocumentCoreRule::PrepareState(Self::prepare)
     }
 }
 
@@ -158,61 +143,12 @@ impl LinkifyMode {
 
 #[doc(hidden)]
 pub struct LinkifyScanner;
-impl LegacyInlineRule for LinkifyScanner {
-    const MARKER: char = ':';
-    const NAMES: &'static [&'static str] = &["linkify"];
-
-    // `run_candidate` mutates trailing text and the current position. The
-    // default `check` calls `run`, which would pollute speculative scans.
-    fn check(_: &mut InlineState) -> Option<usize> {
-        None
-    }
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next().unwrap() != ':' {
-            return None;
-        }
-        run_candidate(state, LinkifyMode::Scheme)
-    }
-}
 
 #[doc(hidden)]
 pub struct LinkifyFuzzyScanner;
-impl LegacyInlineRule for LinkifyFuzzyScanner {
-    const MARKER: char = '.';
-    const NAMES: &'static [&'static str] = &["linkify_fuzzy"];
-
-    fn check(_: &mut InlineState) -> Option<usize> {
-        None
-    }
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        // entrance guard
-        if !state.src[state.pos..state.pos_max].starts_with('.') {
-            return None;
-        }
-        run_candidate(state, LinkifyMode::Fuzzy)
-    }
-}
 
 #[doc(hidden)]
 pub struct LinkifyEmailScanner;
-impl LegacyInlineRule for LinkifyEmailScanner {
-    const MARKER: char = '@';
-    const NAMES: &'static [&'static str] = &["linkify_email"];
-
-    fn check(_: &mut InlineState) -> Option<usize> {
-        None
-    }
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        if !state.src[state.pos..state.pos_max].starts_with('@') {
-            return None;
-        }
-        run_candidate(state, LinkifyMode::Email)
-    }
-}
 
 // Legacy `check` deliberately declines these mutating rules. Keep the default
 // NoMatch probe so label boundary scans do not consume or rewind linkify spans.
@@ -262,18 +198,6 @@ struct PreparedLink {
     content: String,
 }
 
-// process pipeline
-fn run_candidate(state: &mut InlineState, mode: LinkifyMode) -> Option<(Node, usize)> {
-    let candidate = find_candidate(state, mode)?;
-    let url = &state.src[candidate.start..candidate.end];
-    let link = prepare_link(state.md.link_formatter.as_ref(), mode, url)?;
-    let node = build_link_node(state, candidate, link);
-
-    state.trailing_text_pop(candidate.rewind);
-    state.pos -= candidate.rewind;
-    Some((node, candidate.len()))
-}
-
 struct CandidateInput<'a> {
     src: &'a str,
     pos: usize,
@@ -282,22 +206,6 @@ struct CandidateInput<'a> {
     link_level: i32,
     source_start: usize,
     positions: &'a [LinkifyPosition],
-}
-
-fn find_candidate(state: &InlineState, mode: LinkifyMode) -> Option<CandidateRange> {
-    let (source_start, _) = state.get_map(state.pos, state.pos_max)?.get_byte_offsets();
-    scan_candidate(
-        CandidateInput {
-            src: &state.src,
-            pos: state.pos,
-            pos_max: state.pos_max,
-            trailing: state.trailing_text_get(),
-            link_level: state.link_level,
-            source_start,
-            positions: state.root_ext.get::<LinkifyState>()?,
-        },
-        mode,
-    )
 }
 
 fn scan_candidate(input: CandidateInput<'_>, mode: LinkifyMode) -> Option<CandidateRange> {
@@ -391,19 +299,6 @@ fn prepare_link(
     }
 
     Some(PreparedLink { href, content })
-}
-
-fn build_link_node(state: &InlineState, candidate: CandidateRange, link: PreparedLink) -> Node {
-    let mut inner_node = Node::new(TextSpecial {
-        content: link.content.clone(),
-        markup: link.content,
-        info: "autolink",
-    });
-    inner_node.srcmap = state.get_map(candidate.start, candidate.end);
-
-    let mut node = Node::new(Linkified { url: link.href });
-    node.children.push(inner_node);
-    node
 }
 
 fn run_document_candidate(
@@ -504,21 +399,26 @@ mod tests {
             for limit in [0, 100] {
                 md.max_nesting = limit;
                 for source in ["", "雪 https://example.com\r\na@b.co"] {
-                    let legacy = md.parse(source);
-                    let direct = md.parse_document_direct(source);
-                    let positions = |root: &Root| {
-                        root.ext
-                            .get::<LinkifyState>()
-                            .unwrap()
-                            .iter()
-                            .map(|position| (position.start, position.end, position.email))
-                            .collect::<Vec<_>>()
+                    let document = md.parse_document(source);
+                    let positions: Vec<_> = document
+                        .node(document.root())
+                        .cast::<Root>()
+                        .unwrap()
+                        .ext
+                        .get::<LinkifyState>()
+                        .unwrap()
+                        .iter()
+                        .map(|position| (position.start, position.end, position.email))
+                        .collect();
+                    let expected = if source.is_empty() {
+                        vec![]
+                    } else {
+                        vec![(4, 23, false), (25, 31, true)]
                     };
                     assert_eq!(
-                        positions(legacy.cast::<Root>().unwrap()),
-                        positions(direct.node(direct.root()).cast::<Root>().unwrap())
+                        positions, expected,
+                        "{source:?}, before_blocks={before_blocks}, limit={limit}"
                     );
-                    assert_eq!(md.render_document(&direct), legacy.render());
                 }
             }
         }
@@ -535,7 +435,7 @@ mod tests {
         smartquotes::add(md);
         linkify::add(md);
 
-        assert_eq!(md.parse(r#"a~~"foo"~~"#).render(), "<p>a~~“foo”~~</p>\n");
+        assert_eq!(md.render(r#"a~~"foo"~~"#), "<p>a~~“foo”~~</p>\n");
     }
 
     fn run(input: &str, output: &str) {
@@ -548,22 +448,17 @@ mod tests {
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::html::add(md);
         markdown_it::plugins::extra::linkify::add(md);
-        let node = md.parse(&(input.to_owned() + "\n"));
+        let node = md.parse_document(&(input.to_owned() + "\n"));
 
         // make sure we have sourcemaps for everything
-        node.walk(|node, _| assert!(node.srcmap.is_some()));
-
-        let result = node.render();
-        assert_eq!(result, output);
-        let document = md.parse_document_direct(&(input.to_owned() + "\n"));
-        assert_eq!(md.render_document(&document), output);
-        for event in document.events(document.root()) {
+        for event in node.events(node.root()) {
             assert!(event.node().srcmap().is_some());
         }
 
+        let result = md.render_document(&node);
+        assert_eq!(result, output);
         // make sure it doesn't crash without trailing \n
-        let _ = md.parse(input.trim_end());
-        let _ = md.parse_document_direct(input.trim_end());
+        let _ = md.parse_document(input.trim_end());
     }
 
     #[test]
@@ -674,7 +569,7 @@ mod tests {
         );
 
         assert_eq!(
-            md.parse("www.example.org").render(),
+            md.render("www.example.org"),
             "<p><a href=\"http://www.example.org\">www.example.org</a></p>\n"
         );
     }
@@ -685,10 +580,7 @@ mod tests {
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::extra::linkify::add(md);
 
-        assert_eq!(
-            md.parse("www.example.org").render(),
-            "<p>www.example.org</p>\n"
-        );
+        assert_eq!(md.render("www.example.org"), "<p>www.example.org</p>\n");
     }
 
     #[test]
@@ -720,7 +612,7 @@ mod tests {
         markdown_it::plugins::extra::linkify::add(md);
 
         assert_eq!(
-            md.parse("ping a@b.co ok").render(),
+            md.render("ping a@b.co ok"),
             "<p>ping <a href=\"mailto:a@b.co\">a@b.co</a> ok</p>\n"
         );
     }

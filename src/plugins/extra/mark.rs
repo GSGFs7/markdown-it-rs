@@ -2,7 +2,6 @@
 
 use crate::document::NodeRef;
 use crate::generics::inline::emph_pair;
-use crate::parser::renderer::Renderer;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -10,7 +9,7 @@ use crate::render::{
     write_html_close,
     write_html_open,
 };
-use crate::{MarkdownIt, Node, NodeDraft, NodeValue};
+use crate::{MarkdownIt, NodeDraft, NodeValue};
 
 #[derive(Debug)]
 pub struct Mark;
@@ -31,13 +30,7 @@ impl DocumentNodeRenderer<Mark> for MarkDocumentRenderer {
     }
 }
 
-impl NodeValue for Mark {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        fmt.open("mark", &node.attrs);
-        fmt.contents(&node.children);
-        fmt.close("mark");
-    }
-}
+impl NodeValue for Mark {}
 
 pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'=', 2, true>(md, || NodeDraft::new(Mark));
@@ -56,7 +49,7 @@ mod tests {
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::extra::mark::add(md);
         markdown_it::plugins::extra::strikethrough::add(md);
-        let html = md.parse(input).render();
+        let html = md.render(input);
         assert_eq!(html.trim(), output);
     }
 
