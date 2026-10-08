@@ -6,7 +6,7 @@ use crate::parser::inline::Text;
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
-use crate::{MarkdownIt, Node, NodeValue, plugins};
+use crate::{MarkdownIt, NodeDraft, NodeValue, plugins};
 
 #[derive(Debug)]
 struct ReadOnlyText(String);
@@ -45,16 +45,16 @@ fn count_classifications(_: NodeRef<'_>) -> TextProjectionKind<'_> {
 }
 
 fn document() -> Document {
-    let mut root = Node::new(Root::new("a雪<q>".to_owned()));
-    let mut paragraph = Node::new(Paragraph);
-    paragraph.children.push(Node::new(Text {
+    let mut root = NodeDraft::new(Root::new("a雪<q>".to_owned()));
+    let mut paragraph = NodeDraft::new(Paragraph);
+    paragraph.push_child(NodeDraft::new(Text {
         content: "a雪".to_owned(),
     }));
     paragraph
         .children
-        .push(Node::new(ReadOnlyText("<q>".to_owned())));
-    root.children.push(paragraph);
-    Document::from_legacy("a雪<q>", root)
+        .push(NodeDraft::new(ReadOnlyText("<q>".to_owned())));
+    root.push_child(paragraph);
+    Document::from_draft("a雪<q>", root)
 }
 
 #[test]

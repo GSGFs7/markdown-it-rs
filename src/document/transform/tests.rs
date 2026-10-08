@@ -135,15 +135,17 @@ fn remove_invalidates_resolved_order() {
 }
 
 #[test]
-fn markdown_it_runner_is_explicit() {
+fn parser_runs_transforms_once_and_explicit_reruns_are_opt_in() {
     let mut md = MarkdownIt::empty();
     md.add_document_transform::<First>();
 
     let mut document = md.parse_document("");
-    assert_eq!(steps(&document), None);
+    assert_eq!(steps(&document), Some("1"));
 
     md.run_document_transforms(&mut document);
-    assert_eq!(steps(&document), Some("1"));
+    assert_eq!(steps(&document), Some("11"));
+    crate::plugins::cmark::add(&mut md);
+    assert_eq!(steps(&md.parse_document("text")), Some("1"));
 }
 
 #[derive(Default)]
@@ -173,7 +175,7 @@ fn transform_can_build_edits_from_an_immutable_document() {
 
     md.run_document_transforms(&mut document);
 
-    assert_eq!(document.into_legacy().render(), "<p>rewritten</p>\n");
+    assert_eq!(md.render_document(&document), "<p>rewritten</p>\n");
 }
 
 #[derive(Default)]

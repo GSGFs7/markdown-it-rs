@@ -1,16 +1,15 @@
 use super::*;
-use crate::document::Node;
 use crate::parser::core::Root;
 use crate::plugins::cmark::block::paragraph::Paragraph;
 
 fn document(texts: &[&str]) -> Document {
-    let mut root = Node::new(Root::new(texts.join("")));
+    let mut root = NodeDraft::new(Root::new(texts.join("")));
     for content in texts {
-        root.children.push(Node::new(Text {
+        root.push_child(NodeDraft::new(Text {
             content: (*content).to_owned(),
         }));
     }
-    Document::from_legacy(texts.join(""), root)
+    Document::from_draft(texts.join(""), root)
 }
 
 fn content(document: &Document, node: NodeId) -> &str {
@@ -18,31 +17,31 @@ fn content(document: &Document, node: NodeId) -> &str {
 }
 
 fn branched_document() -> Document {
-    let mut root = Node::new(Root::new("ab".to_owned()));
+    let mut root = NodeDraft::new(Root::new("ab".to_owned()));
     for content in ["a", "b"] {
-        let mut paragraph = Node::new(Paragraph);
-        paragraph.children.push(Node::new(Text {
+        let mut paragraph = NodeDraft::new(Paragraph);
+        paragraph.push_child(NodeDraft::new(Text {
             content: content.to_owned(),
         }));
-        root.children.push(paragraph);
+        root.push_child(paragraph);
     }
-    Document::from_legacy("ab", root)
+    Document::from_draft("ab", root)
 }
 
 #[test]
 fn payload_replacement_preserves_identity_children_and_metadata() {
     #[derive(Debug, PartialEq)]
     struct Marker(u8);
-    let mut root = Node::new(Root::new("abc".to_owned()));
-    let mut paragraph = Node::new(Paragraph);
-    paragraph.srcmap = Some(SourcePos::new(0, 3));
-    paragraph.attrs.push(("id".into(), "keep".into()));
-    paragraph.ext.insert(Marker(42));
-    paragraph.children.push(Node::new(Text {
+    let mut root = NodeDraft::new(Root::new("abc".to_owned()));
+    let mut paragraph = NodeDraft::new(Paragraph);
+    paragraph.data.srcmap = Some(SourcePos::new(0, 3));
+    paragraph.data.attrs.push(("id".into(), "keep".into()));
+    paragraph.data.ext.insert(Marker(42));
+    paragraph.push_child(NodeDraft::new(Text {
         content: "abc".into(),
     }));
-    root.children.push(paragraph);
-    let mut document = Document::from_legacy("abc", root);
+    root.push_child(paragraph);
+    let mut document = Document::from_draft("abc", root);
     let paragraph = document.children(document.root())[0];
     let child = document.children(paragraph)[0];
     let mut batch = EditBatch::new();
@@ -135,18 +134,18 @@ fn empty_batch_is_a_no_op() {
 
 #[test]
 fn sets_removes_and_normalizes_attributes() {
-    let mut root = Node::new(Root::new("text".to_owned()));
-    let mut text = Node::new(Text {
+    let mut root = NodeDraft::new(Root::new("text".to_owned()));
+    let mut text = NodeDraft::new(Text {
         content: "text".to_owned(),
     });
-    text.attrs = vec![
+    text.data.attrs = vec![
         ("class".to_owned(), "old".to_owned()),
         ("id".to_owned(), "remove-me".to_owned()),
         ("class".to_owned(), "duplicate".to_owned()),
         ("data-key".to_owned(), "kept".to_owned()),
     ];
-    root.children.push(text);
-    let mut document = Document::from_legacy("text", root);
+    root.push_child(text);
+    let mut document = Document::from_draft("text", root);
     let text = document.children(document.root())[0];
     let mut batch = EditBatch::new();
     batch.set_attribute(text, "class", "new");
@@ -233,15 +232,6 @@ fn removes_a_complete_subtree_and_invalidates_all_ids() {
     assert_eq!(document.parent(kept), Some(root));
     assert!(document.get_node(removed).is_none());
     assert!(document.get_node(removed_text).is_none());
-    let legacy = document.into_legacy();
-    assert_eq!(legacy.children.len(), 1);
-    assert_eq!(
-        legacy.children[0].children[0]
-            .cast::<Text>()
-            .unwrap()
-            .content,
-        "b"
-    );
 }
 
 #[test]
@@ -285,17 +275,17 @@ fn edits_outside_a_removed_subtree_commit_normally() {
 
 #[test]
 fn deeply_nested_subtrees_are_removed_iteratively() {
-    let mut subtree = Node::new(Text {
+    let mut subtree = NodeDraft::new(Text {
         content: "leaf".to_owned(),
     });
     for _ in 0..10_000 {
-        let mut parent = Node::new(Paragraph);
-        parent.children.push(subtree);
+        let mut parent = NodeDraft::new(Paragraph);
+        parent.push_child(subtree);
         subtree = parent;
     }
-    let mut root = Node::new(Root::new("leaf".to_owned()));
-    root.children.push(subtree);
-    let mut document = Document::from_legacy("leaf", root);
+    let mut root = NodeDraft::new(Root::new("leaf".to_owned()));
+    root.push_child(subtree);
+    let mut document = Document::from_draft("leaf", root);
     let subtree = document.children(document.root())[0];
     let mut batch = EditBatch::new();
     batch.remove_node(subtree);
@@ -444,16 +434,6 @@ fn replaces_a_complete_subtree_in_place_and_invalidates_old_ids() {
     assert_eq!(document.parent(replacement_child), Some(replacement));
     assert!(document.get_node(replaced).is_none());
     assert!(document.get_node(replaced_child).is_none());
-
-    let legacy = document.into_legacy();
-    assert_eq!(legacy.children.len(), 2);
-    assert_eq!(
-        legacy.children[0].children[0]
-            .cast::<Text>()
-            .unwrap()
-            .content,
-        "replacement"
-    );
 }
 
 #[test]
@@ -507,21 +487,21 @@ fn disjoint_structural_and_value_edits_commit_together() {
 
 #[test]
 fn deeply_nested_subtrees_can_be_replaced_iteratively() {
-    let mut old_subtree = Node::new(Text {
+    let mut old_subtree = NodeDraft::new(Text {
         content: "old".to_owned(),
     });
     let mut draft = text_draft("new");
     for _ in 0..10_000 {
-        let mut old_parent = Node::new(Paragraph);
-        old_parent.children.push(old_subtree);
+        let mut old_parent = NodeDraft::new(Paragraph);
+        old_parent.push_child(old_subtree);
         old_subtree = old_parent;
         let mut draft_parent = NodeDraft::new(Paragraph);
         draft_parent.push_child(draft);
         draft = draft_parent;
     }
-    let mut root = Node::new(Root::new("old".to_owned()));
-    root.children.push(old_subtree);
-    let mut document = Document::from_legacy("old", root);
+    let mut root = NodeDraft::new(Root::new("old".to_owned()));
+    root.push_child(old_subtree);
+    let mut document = Document::from_draft("old", root);
     let replaced = document.children(document.root())[0];
     let mut batch = EditBatch::new();
     batch.replace_node(replaced, draft);
@@ -565,10 +545,6 @@ fn wraps_an_inclusive_sibling_range_without_changing_node_ids() {
     assert_eq!(document.parent(original[2]), Some(wrapper));
     assert_eq!(content(&document, original[1]), "b");
     assert_eq!(content(&document, original[2]), "c");
-
-    let legacy = document.into_legacy();
-    assert_eq!(legacy.children.len(), 3);
-    assert_eq!(legacy.children[1].children.len(), 2);
 }
 
 #[test]
@@ -613,16 +589,16 @@ fn wraps_ranges_under_different_parents_in_one_batch() {
 
 #[test]
 fn value_and_descendant_structure_edits_can_commit_with_wrap() {
-    let mut root = Node::new(Root::new("ab".to_owned()));
-    let mut paragraph = Node::new(Paragraph);
-    paragraph.children.push(Node::new(Text {
+    let mut root = NodeDraft::new(Root::new("ab".to_owned()));
+    let mut paragraph = NodeDraft::new(Paragraph);
+    paragraph.push_child(NodeDraft::new(Text {
         content: "a".to_owned(),
     }));
-    paragraph.children.push(Node::new(Text {
+    paragraph.push_child(NodeDraft::new(Text {
         content: "b".to_owned(),
     }));
-    root.children.push(paragraph);
-    let mut document = Document::from_legacy("ab", root);
+    root.push_child(paragraph);
+    let mut document = Document::from_draft("ab", root);
     let root = document.root();
     let paragraph = document.children(root)[0];
     let texts = document.children(paragraph).to_vec();
@@ -650,13 +626,13 @@ fn value_and_descendant_structure_edits_can_commit_with_wrap() {
 
 #[test]
 fn wide_sibling_ranges_are_wrapped_iteratively() {
-    let mut root = Node::new(Root::new(String::new()));
+    let mut root = NodeDraft::new(Root::new(String::new()));
     for index in 0..10_000 {
-        root.children.push(Node::new(Text {
+        root.push_child(NodeDraft::new(Text {
             content: index.to_string(),
         }));
     }
-    let mut document = Document::from_legacy("", root);
+    let mut document = Document::from_draft("", root);
     let root = document.root();
     let original = document.children(root).to_vec();
     let mut batch = EditBatch::new();
@@ -781,7 +757,7 @@ mod validation_tests {
             ValidationError::NotEditableText(root),
         );
 
-        let paragraph = Document::from_legacy("", Node::new(Paragraph));
+        let paragraph = Document::from_draft("", NodeDraft::new(Paragraph));
         let paragraph_id = paragraph.root();
         let mut wrong_type = EditBatch::new();
         wrong_type.replace_text(paragraph_id, 0..0, "x");

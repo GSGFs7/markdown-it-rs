@@ -3,18 +3,18 @@ use crate::document::text::{TextProjection, TextProjectionKind};
 use crate::parser::core::Root;
 use crate::parser::inline::Text;
 use crate::plugins::cmark::block::paragraph::Paragraph;
-use crate::{MarkdownIt, Node, plugins};
+use crate::{MarkdownIt, plugins};
 
 #[test]
-fn legacy_roundtrip_preserves_tree_and_payloads() {
-    let mut root = Node::new(Root::new("hello".to_owned()));
-    let mut paragraph = Node::new(Paragraph);
-    paragraph.children.push(Node::new(Text {
+fn draft_insertion_preserves_tree_and_payloads() {
+    let mut root = NodeDraft::new(Root::new("hello".to_owned()));
+    let mut paragraph = NodeDraft::new(Paragraph);
+    paragraph.push_child(NodeDraft::new(Text {
         content: "hello".to_owned(),
     }));
-    root.children.push(paragraph);
+    root.push_child(paragraph);
 
-    let document = Document::from_legacy("hello", root);
+    let document = Document::from_draft("hello", root);
     let root_id = document.root();
     let paragraph_id = document.children(root_id)[0];
     let text_id = document.children(paragraph_id)[0];
@@ -27,32 +27,21 @@ fn legacy_roundtrip_preserves_tree_and_payloads() {
         document.node(text_id).cast::<Text>().unwrap().content,
         "hello"
     );
-
-    let legacy = document.into_legacy();
-    assert!(legacy.is::<Root>());
-    assert!(legacy.children[0].is::<Paragraph>());
-    assert_eq!(
-        legacy.children[0].children[0]
-            .cast::<Text>()
-            .unwrap()
-            .content,
-        "hello"
-    );
 }
 
 #[test]
 fn structural_events_are_ordered_and_balanced() {
-    let mut root = Node::new(Root::new("hello".to_owned()));
-    let mut paragraph = Node::new(Paragraph);
-    paragraph.children.push(Node::new(Text {
+    let mut root = NodeDraft::new(Root::new("hello".to_owned()));
+    let mut paragraph = NodeDraft::new(Paragraph);
+    paragraph.push_child(NodeDraft::new(Text {
         content: "first".to_owned(),
     }));
-    paragraph.children.push(Node::new(Text {
+    paragraph.push_child(NodeDraft::new(Text {
         content: "second".to_owned(),
     }));
-    root.children.push(paragraph);
+    root.push_child(paragraph);
 
-    let document = Document::from_legacy("hello", root);
+    let document = Document::from_draft("hello", root);
     let root = document.root();
     let paragraph = document.children(root)[0];
     let children = document.children(paragraph);
@@ -80,14 +69,14 @@ fn structural_events_are_ordered_and_balanced() {
 
 #[test]
 fn structural_events_can_start_at_a_subtree_or_leaf() {
-    let mut root = Node::new(Root::new("hello".to_owned()));
-    let mut paragraph = Node::new(Paragraph);
-    paragraph.children.push(Node::new(Text {
+    let mut root = NodeDraft::new(Root::new("hello".to_owned()));
+    let mut paragraph = NodeDraft::new(Paragraph);
+    paragraph.push_child(NodeDraft::new(Text {
         content: "hello".to_owned(),
     }));
-    root.children.push(paragraph);
+    root.push_child(paragraph);
 
-    let document = Document::from_legacy("hello", root);
+    let document = Document::from_draft("hello", root);
     let paragraph = document.children(document.root())[0];
     let text = document.children(paragraph)[0];
 
@@ -187,11 +176,11 @@ fn parser_facade_preserves_rendering_and_source() {
     plugins::html::add(&mut md);
     let source = "# 雪\n\nA *small* document.\n";
 
-    let expected = md.parse(source).render();
+    let expected = md.render(source);
     let document = md.parse_document(source);
 
     assert_eq!(document.source(), source);
-    assert_eq!(document.into_legacy().render(), expected);
+    assert_eq!(md.render_document(&document), expected);
 }
 
 #[test]
@@ -228,7 +217,7 @@ fn parsed_document_events_visit_every_node_once() {
 }
 
 #[test]
-fn node_data_survives_draft_and_legacy_transfers() {
+fn node_data_survives_draft_insertion() {
     #[derive(Debug)]
     struct Payload(String);
     impl crate::NodeValue for Payload {}
@@ -262,8 +251,6 @@ fn node_data_survives_draft_and_legacy_transfers() {
 
     let document = Document::from_draft("abc", draft());
     assert_document(&document);
-    let document = Document::from_legacy("abc", document.into_legacy());
-    assert_document(&document);
-    let document = Document::from_legacy("abc", draft().into_legacy());
+    let document = Document::from_draft("abc", draft());
     assert_document(&document);
 }

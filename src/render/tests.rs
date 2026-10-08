@@ -7,7 +7,7 @@ use super::{
     DocumentWriter,
 };
 use crate::parser::inline::Text;
-use crate::{Document, MarkdownIt, Node, NodeRef, NodeValue, RenderOptions};
+use crate::{Document, MarkdownIt, NodeDraft, NodeRef, NodeValue, RenderOptions};
 
 #[derive(Debug)]
 struct UnknownContainer;
@@ -86,7 +86,7 @@ fn renders_minimal_html_directly_without_consuming_document() {
 fn cr_observes_direct_renderer_writes_without_duplicate_line_endings() {
     let mut registry = DocumentRendererRegistry::new();
     registry.add::<UnknownLeaf, _>("html", DirectWriteAndCrRenderer);
-    let document = Document::from_legacy("", Node::new(UnknownLeaf("unused")));
+    let document = Document::from_draft("", NodeDraft::new(UnknownLeaf("unused")));
 
     assert_eq!(
         registry.render(&document, "html", &RenderOptions::default()),
@@ -125,12 +125,11 @@ fn html_attrs_preserve_grouping_order_and_escaping_on_both_paths() {
 #[test]
 fn registered_paragraph_renderer_preserves_attributes() {
     let md = MarkdownIt::new();
-    let mut root = md.parse("hello");
-    root.children[0].attrs.extend([
-        ("class".into(), "one".into()),
-        ("class".into(), "two".into()),
-    ]);
-    let document = Document::from_legacy("hello", root);
+    let mut document = md.parse_document("hello");
+    let paragraph = document.children(document.root())[0];
+    let mut edits = crate::EditBatch::new();
+    edits.set_attribute(paragraph, "class", "one two");
+    edits.commit(&mut document);
 
     assert_eq!(
         md.render_document(&document),
@@ -139,7 +138,7 @@ fn registered_paragraph_renderer_preserves_attributes() {
 }
 
 #[test]
-fn commonmark_block_renderers_match_legacy_html() {
+fn commonmark_block_renderers_match_render_api() {
     let sources = [
         "# atx\n\nsetext\n------\n",
         "> quoted\n>\n> second\n",
@@ -158,7 +157,7 @@ fn commonmark_block_renderers_match_legacy_html() {
     ] {
         md.render_options.lang_prefix = Some("lang-".into());
         for source in sources {
-            let expected = md.parse(source).render();
+            let expected = md.render(source);
             let document = md.parse_document(source);
             assert_eq!(
                 md.render_document(&document),
@@ -174,22 +173,21 @@ fn commonmark_block_renderers_match_legacy_html() {
 fn block_renderers_preserve_document_transform_attributes() {
     let source = "# heading\n\n> quote\n\n3. item\n\n---\n\n    code\n\n```rs\nfenced\n```\n";
 
-    let mut legacy = MarkdownIt::empty();
-    crate::plugins::cmark::add(&mut legacy);
-    crate::plugins::sourcepos::add(&mut legacy);
-    let expected = legacy.render(source);
+    let mut parsed = MarkdownIt::empty();
+    crate::plugins::cmark::add(&mut parsed);
+    crate::plugins::sourcepos::add(&mut parsed);
+    let expected = parsed.render(source);
 
     let mut direct = MarkdownIt::empty();
     crate::plugins::cmark::add(&mut direct);
-    crate::plugins::sourcepos::add_document(&mut direct);
-    let mut document = direct.parse_document(source);
-    direct.run_document_transforms(&mut document);
+    crate::plugins::sourcepos::add(&mut direct);
+    let document = direct.parse_document(source);
 
     assert_eq!(direct.render_document(&document), expected);
 }
 
 #[test]
-fn commonmark_inline_renderers_match_legacy_html() {
+fn commonmark_inline_renderers_match_render_api() {
     let sources = [
         "plain *em **strong** text* end",
         "`<code> & value`",
@@ -208,7 +206,7 @@ fn commonmark_inline_renderers_match_legacy_html() {
             md.render_options.breaks = breaks;
 
             for source in sources {
-                let expected = md.parse(source).render();
+                let expected = md.render(source);
                 let document = md.parse_document(source);
                 assert_eq!(
                     md.render_document(&document),
@@ -225,16 +223,15 @@ fn commonmark_inline_renderers_match_legacy_html() {
 fn inline_renderers_preserve_document_transform_attributes() {
     let source = "**strong** [link](https://example.com) ![alt](image.png)  \nnext";
 
-    let mut legacy = MarkdownIt::empty();
-    crate::plugins::cmark::add(&mut legacy);
-    crate::plugins::sourcepos::add(&mut legacy);
-    let expected = legacy.render(source);
+    let mut parsed = MarkdownIt::empty();
+    crate::plugins::cmark::add(&mut parsed);
+    crate::plugins::sourcepos::add(&mut parsed);
+    let expected = parsed.render(source);
 
     let mut direct = MarkdownIt::empty();
     crate::plugins::cmark::add(&mut direct);
-    crate::plugins::sourcepos::add_document(&mut direct);
-    let mut document = direct.parse_document(source);
-    direct.run_document_transforms(&mut document);
+    crate::plugins::sourcepos::add(&mut direct);
+    let document = direct.parse_document(source);
 
     assert_eq!(direct.render_document(&document), expected);
 }
@@ -242,11 +239,11 @@ fn inline_renderers_preserve_document_transform_attributes() {
 #[test]
 fn unknown_container_transparently_renders_children() {
     let md = MarkdownIt::empty();
-    let mut root = Node::new(UnknownContainer);
-    root.children.push(Node::new(Text {
+    let mut root = NodeDraft::new(UnknownContainer);
+    root.push_child(NodeDraft::new(Text {
         content: "child".into(),
     }));
-    let document = Document::from_legacy("", root);
+    let document = Document::from_draft("", root);
 
     assert_eq!(md.render_document(&document), "child");
     assert_eq!(md.render_document_as(&document, "text"), "child");
@@ -254,7 +251,7 @@ fn unknown_container_transparently_renders_children() {
 
 #[test]
 fn custom_renderer_can_be_registered_and_overridden_per_format() {
-    let document = Document::from_legacy("", Node::new(UnknownLeaf("value")));
+    let document = Document::from_draft("", NodeDraft::new(UnknownLeaf("value")));
     let mut registry = DocumentRendererRegistry::new();
 
     assert!(!registry.add::<UnknownLeaf, _>("plain", UnknownLeafRenderer("first")));
@@ -275,7 +272,7 @@ fn custom_renderer_can_be_registered_and_overridden_per_format() {
 
 #[test]
 fn markdown_it_selects_and_isolates_renderer_formats() {
-    let document = Document::from_legacy("", Node::new(UnknownLeaf("value")));
+    let document = Document::from_draft("", NodeDraft::new(UnknownLeaf("value")));
     let mut md = MarkdownIt::empty();
     md.add_document_renderer::<UnknownLeaf, _>("html", UnknownLeafRenderer("html"));
     md.add_document_renderer::<UnknownLeaf, _>("text", UnknownLeafRenderer("text"));
@@ -291,7 +288,7 @@ fn markdown_it_selects_and_isolates_renderer_formats() {
 #[test]
 fn unknown_leaf_panics_with_format_type_and_node_id() {
     let md = MarkdownIt::empty();
-    let document = Document::from_legacy("", Node::new(UnknownLeaf("value")));
+    let document = Document::from_draft("", NodeDraft::new(UnknownLeaf("value")));
 
     let panic = catch_unwind(AssertUnwindSafe(|| {
         let _ = md.render_document(&document);
@@ -310,7 +307,7 @@ fn unknown_leaf_panics_with_format_type_and_node_id() {
 #[test]
 fn missing_format_panics_with_requested_format() {
     let md = MarkdownIt::empty();
-    let document = Document::from_legacy("", Node::new(UnknownLeaf("value")));
+    let document = Document::from_draft("", NodeDraft::new(UnknownLeaf("value")));
 
     let panic = catch_unwind(AssertUnwindSafe(|| {
         let _ = md.render_document_as(&document, "missing");
