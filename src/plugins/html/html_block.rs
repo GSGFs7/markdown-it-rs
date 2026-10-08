@@ -8,11 +8,10 @@ use regex::Regex;
 use super::utils::blocks::*;
 use super::utils::regexps::*;
 use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::block::BlockRule;
 use crate::parser::document_parser::DocumentBlockState;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 use crate::render::{DocumentNodeRenderer, DocumentRenderContext};
 
 #[derive(Debug)]
@@ -52,17 +51,10 @@ impl DocumentNodeRenderer<HtmlBlock> for HtmlBlockTextRenderer {
     }
 }
 
-impl NodeValue for HtmlBlock {
-    fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
-        fmt.cr();
-        fmt.text_raw(&self.content);
-        fmt.cr();
-    }
-}
+impl NodeValue for HtmlBlock {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HtmlBlockScanner>();
-    md.block.add_document_rule::<HtmlBlockScanner>();
     md.add_document_renderer::<HtmlBlock, _>("html", HtmlBlockDocumentRenderer);
     md.add_document_renderer::<HtmlBlock, _>("text", HtmlBlockTextRenderer);
 }
@@ -185,38 +177,6 @@ impl HtmlBlockScanner {
 impl BlockRule for HtmlBlockScanner {
     const MARKERS: &'static [char] = &['<'];
     const NAMES: &'static [&'static str] = &["html_block"];
-
-    fn check(state: &mut BlockState) -> Option<()> {
-        let sequence = Self::get_sequence(
-            state.get_line(state.line),
-            state.line_indent(state.line),
-            state.md.max_indent,
-        )?;
-        if !sequence.can_terminate_paragraph {
-            return None;
-        }
-        Some(())
-    }
-
-    fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        let sequence = Self::get_sequence(
-            state.get_line(state.line),
-            state.line_indent(state.line),
-            state.md.max_indent,
-        )?;
-
-        let start_line = state.line;
-        let next_line = Self::end_line(sequence, start_line, state.line_max, |line| {
-            (state.get_line(line), state.line_indent(line))
-        });
-
-        let (content, _) = state.get_lines(start_line, next_line, state.blk_indent, true);
-        let node = Node::new(HtmlBlock { content });
-        Some((node, next_line - state.line))
-    }
-}
-
-impl DocumentBlockRule for HtmlBlockScanner {
     fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
         let sequence = Self::get_sequence(
             state.get_line(state.line),

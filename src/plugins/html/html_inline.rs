@@ -4,20 +4,19 @@
 use super::utils::regexps::*;
 use crate::document::{NodeDraft, NodeRef};
 use crate::parser::extset::InlineRootExtSet;
+use crate::parser::inline::InlineRule;
 use crate::parser::inline::probe::{
     InlineProbeContext,
     InlineProbeEffects,
     InlineProbeKind,
     InlineProbeResult,
 };
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 use crate::render::{DocumentNodeRenderer, DocumentRenderContext};
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_migrated_rule::<HtmlInlineScanner>();
+    md.inline.add_rule::<HtmlInlineScanner>();
     md.add_document_renderer::<HtmlInline, _>("html", HtmlInlineDocumentRenderer);
     md.add_document_renderer::<HtmlInline, _>("text", HtmlInlineTextRenderer);
 }
@@ -60,11 +59,7 @@ impl DocumentNodeRenderer<HtmlInline> for HtmlInlineTextRenderer {
     }
 }
 
-impl NodeValue for HtmlInline {
-    fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
-        fmt.text_raw(&self.content);
-    }
-}
+impl NodeValue for HtmlInline {}
 
 #[doc(hidden)]
 pub struct HtmlInlineScanner;
@@ -99,26 +94,6 @@ impl InlineRule for HtmlInlineScanner {
             Some(NodeDraft::new(HtmlInline {
                 content: matched.content,
             })),
-            matched.consumed,
-        ))
-    }
-}
-
-impl LegacyInlineRule for HtmlInlineScanner {
-    const MARKER: char = '<';
-    const NAMES: &'static [&'static str] = &["html_inline"];
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let matched = state.with_inline_ext(|src, pos, pos_max, inline_ext| {
-            scan_html_inline(src, pos, pos_max, inline_ext)
-        })?;
-
-        state.link_level += matched.link_level_delta;
-
-        Some((
-            Node::new(HtmlInline {
-                content: matched.content,
-            }),
             matched.consumed,
         ))
     }
@@ -194,7 +169,7 @@ mod tests {
         let md = &mut crate::MarkdownIt::empty();
         crate::plugins::cmark::add(md);
         crate::plugins::html::add(md);
-        md.parse(input).render()
+        md.render(input)
     }
 
     #[test]

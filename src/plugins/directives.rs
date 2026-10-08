@@ -58,7 +58,7 @@
 //! directives::add(&mut md);
 //! directives::add_render(&mut md, DirectiveKind::Text, "badge", render_badge);
 //!
-//! let html = md.parse("status: :badge{label=\"Beta\"}").render();
+//! let html = md.render("status: :badge{label=\"Beta\"}");
 //! assert_eq!(
 //!     html.trim(),
 //!     r#"<p>status: <mark class="badge">Beta</mark></p>"#,
@@ -70,11 +70,11 @@ use std::fmt::Debug;
 
 use crate::common::sourcemap::SourcePos;
 use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::block::BlockRule;
 use crate::parser::document_parser::{DocumentBlockState, DocumentInlineState};
 use crate::parser::extset::{NodeExtSet, RenderExtSet};
+use crate::parser::inline::InlineRule;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::node::HtmlAttribute;
 use crate::render::{
     DocumentNodeRenderer,
@@ -85,7 +85,7 @@ use crate::render::{
     write_html_self_close,
     write_html_text,
 };
-use crate::{Document, DocumentWriter, MarkdownIt, Node, NodeValue, RenderOptions, Renderer};
+use crate::{Document, DocumentWriter, MarkdownIt, NodeValue, RenderOptions};
 
 // --- render ---
 
@@ -101,17 +101,7 @@ pub struct TextDirective {
     pub attrs: Attrs,
 }
 
-impl NodeValue for TextDirective {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        render_directive(
-            DirectiveKind::Text,
-            &self.name,
-            &self.attrs,
-            DirectiveNode(DirectiveNodeInner::Legacy(node)),
-            &mut DirectiveRenderer(DirectiveRendererInner::Legacy(fmt)),
-        );
-    }
-}
+impl NodeValue for TextDirective {}
 
 #[derive(Debug, Clone)]
 /// Block directive parsed from `::name{key=value}`.
@@ -122,17 +112,7 @@ pub struct LeafDirective {
     pub attrs: Attrs,
 }
 
-impl NodeValue for LeafDirective {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        render_directive(
-            DirectiveKind::Leaf,
-            &self.name,
-            &self.attrs,
-            DirectiveNode(DirectiveNodeInner::Legacy(node)),
-            &mut DirectiveRenderer(DirectiveRendererInner::Legacy(fmt)),
-        );
-    }
-}
+impl NodeValue for LeafDirective {}
 
 #[derive(Debug, Clone)]
 /// Block directive parsed from a fenced `:::name` container.
@@ -143,38 +123,9 @@ pub struct ContainerDirective {
     pub attrs: Attrs,
 }
 
-impl NodeValue for ContainerDirective {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        render_directive(
-            DirectiveKind::Container,
-            &self.name,
-            &self.attrs,
-            DirectiveNode(DirectiveNodeInner::Legacy(node)),
-            &mut DirectiveRenderer(DirectiveRendererInner::Legacy(fmt)),
-        );
-    }
-}
+impl NodeValue for ContainerDirective {}
 
 // --- scanner ---
-
-impl LegacyInlineRule for TextDirective {
-    const MARKER: char = ':';
-    const NAMES: &'static [&'static str] = &["text_directive"];
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let src = &state.src[state.pos..state.pos_max];
-        let preceded_by_colon = state.pos > 0 && state.src[..state.pos].ends_with(':');
-        let (name, attrs, len) = scan_text_directive(src, preceded_by_colon)?;
-
-        let mut node = Node::new(TextDirective {
-            name: name.clone(),
-            attrs,
-        });
-        attach_render(&mut node.ext, state.md, DirectiveKind::Text, &name);
-
-        Some((node, len))
-    }
-}
 
 impl InlineRule for TextDirective {
     const MARKER: char = ':';
@@ -217,25 +168,6 @@ impl BlockRule for LeafDirectiveScanner {
     const MARKERS: &'static [char] = &[':'];
     const NAMES: &'static [&'static str] = &["leaf_directive"];
 
-    fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        // it should be a codeblocks
-        if state.line_indent(state.line) >= state.md.max_indent {
-            return None;
-        }
-
-        let (name, attrs) = scan_leaf_directive(state.get_line(state.line))?;
-
-        let mut node = Node::new(LeafDirective {
-            name: name.clone(),
-            attrs,
-        });
-        attach_render(&mut node.ext, state.md, DirectiveKind::Leaf, &name);
-
-        Some((node, 1))
-    }
-}
-
-impl DocumentBlockRule for LeafDirectiveScanner {
     fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
         // it should be a codeblocks
         if state.line_indent(state.line) >= state.md.max_indent {
@@ -282,15 +214,6 @@ impl ContainerDirectiveScanner {
         }
 
         Some((marker_len, name, attrs))
-    }
-
-    fn scan(state: &mut BlockState) -> Option<(usize, String, Attrs)> {
-        // it should be code blocks
-        if state.line_indent(state.line) >= state.md.max_indent {
-            return None;
-        }
-
-        Self::scan_line(state.get_line(state.line))
     }
 
     fn scan_document(state: &mut DocumentBlockState<'_>) -> Option<(usize, String, Attrs)> {
@@ -343,64 +266,6 @@ impl BlockRule for ContainerDirectiveScanner {
     const MARKERS: &'static [char] = &[':'];
     const NAMES: &'static [&'static str] = &["container_directive"];
 
-    fn check(state: &mut BlockState) -> Option<()> {
-        Self::scan(state).map(|_| ())
-    }
-
-    fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        let (marker_len, name, attrs) = Self::scan(state)?;
-
-        let start_line = state.line;
-        let (next_line, have_end_marker) = Self::scan_end(
-            start_line,
-            state.line_max,
-            marker_len,
-            state.md.max_indent,
-            |line| {
-                (
-                    state.get_line(line),
-                    state.line_indent(line),
-                    state.is_empty(line),
-                )
-            },
-        );
-
-        // new node
-        let mut directive_node = Node::new(ContainerDirective {
-            name: name.clone(),
-            attrs,
-        });
-        attach_render(
-            &mut directive_node.ext,
-            state.md,
-            DirectiveKind::Container,
-            &name,
-        );
-
-        // replace state
-        let old_node = std::mem::replace(&mut state.node, directive_node);
-        let old_line_max = state.line_max;
-
-        // limit render behavior
-        state.line = start_line + 1;
-        state.line_max = next_line;
-
-        // recursion tokenize
-        state.md.block.tokenize_nested(state);
-
-        // recover state
-        state.line = start_line;
-        state.line_max = old_line_max;
-
-        let node = std::mem::replace(&mut state.node, old_node);
-        Some((
-            node,
-            next_line - start_line + if have_end_marker { 1 } else { 0 },
-        ))
-    }
-}
-
-impl DocumentBlockRule for ContainerDirectiveScanner {
     fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
         Self::scan_document(state).map(|_| ())
     }
@@ -477,178 +342,104 @@ pub enum DirectiveKind {
 /// Use [`DirectiveRenderer::text`] for user-provided text and
 /// [`DirectiveRenderer::text_raw`] for trusted HTML.
 ///
-/// Migrating from the old signature: use `DirectiveNode<'_>` and
-/// `DirectiveRenderer<'_, '_>`, and render children with
-/// `fmt.contents(node.children())`.
+/// Render children with `fmt.contents(node.children())`.
 pub type DirectiveRenderFn =
     fn(DirectiveKind, &str, &[(String, String)], DirectiveNode<'_>, &mut DirectiveRenderer<'_, '_>);
 
-/// Read-only view of a directive node, usable from both parsing pipelines.
-///
-/// Render children with `fmt.contents(node.children())`.
+/// Read-only view of a directive node and its owning document.
 #[derive(Clone, Copy, Debug)]
-pub struct DirectiveNode<'a>(DirectiveNodeInner<'a>);
-
-#[derive(Clone, Copy, Debug)]
-enum DirectiveNodeInner<'a> {
-    Legacy(&'a Node),
-    Document(&'a Document, NodeRef<'a>),
+pub struct DirectiveNode<'a> {
+    document: &'a Document,
+    node: NodeRef<'a>,
 }
 
 impl<'a> DirectiveNode<'a> {
     pub fn name(self) -> &'static str {
-        match self.0 {
-            DirectiveNodeInner::Legacy(node) => node.name(),
-            DirectiveNodeInner::Document(_, node) => node.name(),
-        }
+        self.node.name()
     }
-
     pub fn is<T: NodeValue>(self) -> bool {
-        self.cast::<T>().is_some()
+        self.node.is::<T>()
     }
-
     pub fn cast<T: NodeValue>(self) -> Option<&'a T> {
-        match self.0 {
-            DirectiveNodeInner::Legacy(node) => node.cast::<T>(),
-            DirectiveNodeInner::Document(_, node) => node.cast::<T>(),
-        }
+        self.node.cast::<T>()
     }
-
     pub fn attrs(self) -> &'a [HtmlAttribute] {
-        match self.0 {
-            DirectiveNodeInner::Legacy(node) => &node.attrs,
-            DirectiveNodeInner::Document(_, node) => node.attrs(),
-        }
+        self.node.attrs()
     }
-
     pub fn srcmap(self) -> Option<SourcePos> {
-        match self.0 {
-            DirectiveNodeInner::Legacy(node) => node.srcmap,
-            DirectiveNodeInner::Document(_, node) => node.srcmap(),
-        }
+        self.node.srcmap()
     }
-
     pub fn ext(self) -> &'a NodeExtSet {
-        match self.0 {
-            DirectiveNodeInner::Legacy(node) => &node.ext,
-            DirectiveNodeInner::Document(_, node) => node.ext(),
-        }
+        self.node.ext()
     }
-
     pub fn children(self) -> impl ExactSizeIterator<Item = Self> + 'a {
-        let len = match self.0 {
-            DirectiveNodeInner::Legacy(node) => node.children.len(),
-            DirectiveNodeInner::Document(_, node) => node.children().len(),
-        };
-        (0..len).map(move |index| match self.0 {
-            DirectiveNodeInner::Legacy(node) => {
-                Self(DirectiveNodeInner::Legacy(&node.children[index]))
-            }
-            DirectiveNodeInner::Document(document, node) => Self(DirectiveNodeInner::Document(
-                document,
-                document.node(node.children()[index]),
-            )),
+        self.node.children().iter().map(move |&id| Self {
+            document: self.document,
+            node: self.document.node(id),
         })
     }
 }
 
-/// HTML rendering services for directive callbacks in either pipeline.
-pub struct DirectiveRenderer<'r, 'd>(DirectiveRendererInner<'r, 'd>);
-
-enum DirectiveRendererInner<'r, 'd> {
-    Legacy(&'r mut dyn Renderer),
-    Document(&'r mut DocumentRenderContext<'d>, &'r mut DocumentWriter),
+/// HTML rendering services for directive callbacks.
+pub struct DirectiveRenderer<'r, 'd> {
+    context: &'r mut DocumentRenderContext<'d>,
+    output: &'r mut DocumentWriter,
 }
 
 impl DirectiveRenderer<'_, '_> {
-    pub fn options(&self) -> Option<&RenderOptions> {
-        match &self.0 {
-            DirectiveRendererInner::Legacy(fmt) => fmt.options(),
-            DirectiveRendererInner::Document(context, _) => Some(context.options()),
-        }
+    pub fn options(&self) -> &RenderOptions {
+        self.context.options()
     }
 
     pub fn is_xhtml(&self) -> bool {
-        self.options().is_some_and(|options| options.xhtml_out)
+        self.options().xhtml_out
     }
 
     pub fn open(&mut self, tag: &str, attrs: &[HtmlAttribute]) {
-        match &mut self.0 {
-            DirectiveRendererInner::Legacy(fmt) => fmt.open(tag, attrs),
-            DirectiveRendererInner::Document(_, output) => write_html_open(output, tag, attrs),
-        }
+        write_html_open(self.output, tag, attrs);
     }
 
     pub fn close(&mut self, tag: &str) {
-        match &mut self.0 {
-            DirectiveRendererInner::Legacy(fmt) => fmt.close(tag),
-            DirectiveRendererInner::Document(_, output) => write_html_close(output, tag),
-        }
+        write_html_close(self.output, tag);
     }
 
     pub fn self_close(&mut self, tag: &str, attrs: &[HtmlAttribute]) {
-        match &mut self.0 {
-            DirectiveRendererInner::Legacy(fmt) => fmt.self_close(tag, attrs),
-            DirectiveRendererInner::Document(context, output) => {
-                write_html_self_close(output, tag, attrs, context.options().xhtml_out);
-            }
-        }
+        write_html_self_close(self.output, tag, attrs, self.context.options().xhtml_out);
     }
 
     pub fn contents<'a>(&mut self, nodes: impl IntoIterator<Item = DirectiveNode<'a>>) {
         for node in nodes {
-            stacker::maybe_grow(64 * 1024, 1024 * 1024, || match (&mut self.0, node.0) {
-                (DirectiveRendererInner::Legacy(fmt), DirectiveNodeInner::Legacy(node)) => {
-                    fmt.contents(std::slice::from_ref(node));
-                }
-                (
-                    DirectiveRendererInner::Document(context, output),
-                    DirectiveNodeInner::Document(document, node),
-                ) => {
-                    assert!(
-                        std::ptr::eq(context.document(), document),
-                        "directive node belongs to another document"
-                    );
-                    context.render_node(node.id(), output);
-                }
-                _ => panic!("directive node belongs to another rendering pipeline"),
+            assert!(
+                std::ptr::eq(self.context.document(), node.document),
+                "directive node belongs to another document"
+            );
+            stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+                self.context.render_node(node.node.id(), self.output);
             });
         }
     }
 
     pub fn cr(&mut self) {
-        match &mut self.0 {
-            DirectiveRendererInner::Legacy(fmt) => fmt.cr(),
-            DirectiveRendererInner::Document(context, output) => context.cr(output),
-        }
+        self.context.cr(self.output);
     }
 
     pub fn softbreak(&mut self) {
-        if self.options().is_some_and(|options| options.breaks) {
+        if self.options().breaks {
             self.self_close("br", &[]);
         }
         self.cr();
     }
 
     pub fn text(&mut self, text: &str) {
-        match &mut self.0 {
-            DirectiveRendererInner::Legacy(fmt) => fmt.text(text),
-            DirectiveRendererInner::Document(_, output) => write_html_text(output, text),
-        }
+        write_html_text(self.output, text);
     }
 
     pub fn text_raw(&mut self, text: &str) {
-        match &mut self.0 {
-            DirectiveRendererInner::Legacy(fmt) => fmt.text_raw(text),
-            DirectiveRendererInner::Document(_, output) => output.write_str(text),
-        }
+        self.output.write_str(text);
     }
 
     pub fn ext(&mut self) -> &mut RenderExtSet {
-        match &mut self.0 {
-            DirectiveRendererInner::Legacy(fmt) => fmt.ext(),
-            DirectiveRendererInner::Document(context, _) => context.ext(),
-        }
+        self.context.ext()
     }
 }
 
@@ -898,8 +689,11 @@ impl DocumentNodeRenderer<TextDirective> for DirectiveDocumentRenderer {
             DirectiveKind::Text,
             &value.name,
             &value.attrs,
-            DirectiveNode(DirectiveNodeInner::Document(context.document(), node)),
-            &mut DirectiveRenderer(DirectiveRendererInner::Document(context, output)),
+            DirectiveNode {
+                document: context.document(),
+                node,
+            },
+            &mut DirectiveRenderer { context, output },
         );
     }
 }
@@ -916,8 +710,11 @@ impl DocumentNodeRenderer<LeafDirective> for DirectiveDocumentRenderer {
             DirectiveKind::Leaf,
             &value.name,
             &value.attrs,
-            DirectiveNode(DirectiveNodeInner::Document(context.document(), node)),
-            &mut DirectiveRenderer(DirectiveRendererInner::Document(context, output)),
+            DirectiveNode {
+                document: context.document(),
+                node,
+            },
+            &mut DirectiveRenderer { context, output },
         );
     }
 }
@@ -934,8 +731,11 @@ impl DocumentNodeRenderer<ContainerDirective> for DirectiveDocumentRenderer {
             DirectiveKind::Container,
             &value.name,
             &value.attrs,
-            DirectiveNode(DirectiveNodeInner::Document(context.document(), node)),
-            &mut DirectiveRenderer(DirectiveRendererInner::Document(context, output)),
+            DirectiveNode {
+                document: context.document(),
+                node,
+            },
+            &mut DirectiveRenderer { context, output },
         );
     }
 }
@@ -943,11 +743,9 @@ impl DocumentNodeRenderer<ContainerDirective> for DirectiveDocumentRenderer {
 // --- pub method ---
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_migrated_rule::<TextDirective>();
+    md.inline.add_rule::<TextDirective>();
     md.block.add_rule::<LeafDirectiveScanner>();
-    md.block.add_document_rule::<LeafDirectiveScanner>();
     md.block.add_rule::<ContainerDirectiveScanner>();
-    md.block.add_document_rule::<ContainerDirectiveScanner>();
     md.add_document_renderer::<TextDirective, _>("html", DirectiveDocumentRenderer);
     md.add_document_renderer::<LeafDirective, _>("html", DirectiveDocumentRenderer);
     md.add_document_renderer::<ContainerDirective, _>("html", DirectiveDocumentRenderer);
@@ -992,7 +790,7 @@ mod tests {
         markdown_it::plugins::cmark::add(&mut md);
         directives::add(&mut md);
 
-        md.parse(src).render().trim().to_owned()
+        md.render(src).trim().to_owned()
     }
 
     fn render_with(src: &str, configure: impl FnOnce(&mut MarkdownIt)) -> String {
@@ -1001,7 +799,7 @@ mod tests {
         directives::add(&mut md);
         configure(&mut md);
 
-        md.parse(src).render().trim().to_owned()
+        md.render(src).trim().to_owned()
     }
 
     fn attr<'a>(attrs: &'a [(String, String)], name: &str) -> &'a str {
@@ -1247,15 +1045,16 @@ body
         markdown_it::plugins::cmark::add(&mut md);
         directives::add(&mut md);
 
-        let ast = md.parse(source);
+        let ast = md.parse_document(source);
         let mut result = None;
-        ast.walk(|node, _| {
+        for event in ast.events(ast.root()) {
+            let node = event.node();
             if result.is_none()
                 && let Some(directives) = node.cast::<TextDirective>()
             {
                 result = Some(directives.attrs.clone());
             }
-        });
+        }
 
         result.expect("expected a text directive")
     }

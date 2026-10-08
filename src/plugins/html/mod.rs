@@ -13,7 +13,7 @@
 //! markdown_it::plugins::cmark::add(md);
 //! markdown_it::plugins::html::add(md);
 //!
-//! let html = md.parse("hello<br>world").render();
+//! let html = md.render("hello<br>world");
 //! assert_eq!(html.trim(), r#"<p>hello<br>world</p>"#);
 //! ```
 

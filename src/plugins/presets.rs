@@ -80,11 +80,11 @@ mod tests {
         let md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
 
         assert_eq!(
-            md.parse("~~deleted~~\n\n| a |\n| - |").render(),
+            md.render("~~deleted~~\n\n| a |\n| - |"),
             "<p><s>deleted</s></p>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n"
         );
         assert_eq!(
-            md.parse("<em>escaped</em>").render(),
+            md.render("<em>escaped</em>"),
             "<p>&lt;em&gt;escaped&lt;/em&gt;</p>\n"
         );
         assert_eq!(md.max_nesting, 100);
@@ -95,7 +95,7 @@ mod tests {
         let md = MarkdownIt::with_preset(Preset::CommonMark);
 
         assert_eq!(
-            md.parse("<em>raw</em> ~~plain~~").render(),
+            md.render("<em>raw</em> ~~plain~~"),
             "<p><em>raw</em> ~~plain~~</p>\n"
         );
         assert_eq!(md.max_nesting, 20);
@@ -107,7 +107,7 @@ mod tests {
         let md = MarkdownIt::with_preset(Preset::Zero);
 
         assert_eq!(
-            md.parse("# **plain** <em>text</em>").render(),
+            md.render("# **plain** <em>text</em>"),
             "<p># **plain** &lt;em&gt;text&lt;/em&gt;</p>\n"
         );
         assert_eq!(md.max_nesting, 20);
@@ -127,7 +127,7 @@ mod tests {
         }
 
         let md = MarkdownIt::with_preset(GfmLike);
-        let html = md.parse("- [x] done").render();
+        let html = md.render("- [x] done");
         assert!(html.contains("task-list-item-checkbox"));
     }
 
@@ -138,10 +138,7 @@ mod tests {
             extra::mark::add(md);
         });
 
-        assert_eq!(
-            md.parse("==marked==").render(),
-            "<p><mark>marked</mark></p>\n"
-        );
+        assert_eq!(md.render("==marked=="), "<p><mark>marked</mark></p>\n");
     }
 
     #[test]
