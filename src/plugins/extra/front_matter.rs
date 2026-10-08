@@ -1,6 +1,5 @@
 use crate::parser::block::BlockRule;
 use crate::parser::document_parser::DocumentBlockState;
-use crate::parser::node::NodeEmpty;
 use crate::{MarkdownIt, NodeDraft};
 
 /// Default maximum number of document lines searched for the closing delimiter.
@@ -52,7 +51,7 @@ impl BlockRule for FrontMatterScanner {
             end_line,
         });
         // root extensions only, no rendered node
-        Some((NodeDraft::new(NodeEmpty), end_line + 1))
+        Some((NodeDraft::placeholder(), end_line + 1))
     }
 }
 

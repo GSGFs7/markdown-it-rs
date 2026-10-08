@@ -93,6 +93,16 @@ impl NodeDraft {
         }
     }
 
+    /// Create a placeholder node that the block parser drops instead of emitting.
+    ///
+    /// Block rules return this to consume input without producing a node.
+    pub fn placeholder() -> Self {
+        Self {
+            children: Vec::new(),
+            data: NodeData::new(NodeEmpty),
+        }
+    }
+
     pub fn children(&self) -> &[NodeDraft] {
         &self.children
     }
