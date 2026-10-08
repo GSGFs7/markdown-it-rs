@@ -4,11 +4,10 @@
 //!
 //! <https://spec.commonmark.org/0.30/#thematic-breaks>
 use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::block::BlockRule;
 use crate::parser::document_parser::DocumentBlockState;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -38,17 +37,10 @@ impl DocumentNodeRenderer<ThematicBreak> for ThematicBreakDocumentRenderer {
     }
 }
 
-impl NodeValue for ThematicBreak {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        fmt.cr();
-        fmt.self_close("hr", &node.attrs);
-        fmt.cr();
-    }
-}
+impl NodeValue for ThematicBreak {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HrScanner>();
-    md.block.add_document_rule::<HrScanner>();
     md.add_document_renderer::<ThematicBreak, _>("html", ThematicBreakDocumentRenderer);
     md.add_document_renderer::<ThematicBreak, _>("text", PlainTextBreakDocumentRenderer);
 }
@@ -90,19 +82,6 @@ impl BlockRule for HrScanner {
     const MARKERS: &'static [char] = &['*', '-', '_'];
     const NAMES: &'static [&'static str] = &["hr"];
 
-    fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        let (marker, marker_len) = scan_thematic_break(
-            state.get_line(state.line),
-            state.line_indent(state.line),
-            state.md.max_indent,
-        )?;
-
-        let node = Node::new(ThematicBreak { marker, marker_len });
-        Some((node, 1))
-    }
-}
-
-impl DocumentBlockRule for HrScanner {
     fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
         let (marker, marker_len) = scan_thematic_break(
             state.get_line(state.line),

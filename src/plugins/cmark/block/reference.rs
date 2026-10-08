@@ -16,10 +16,10 @@ use downcast_rs::{Downcast, impl_downcast};
 use crate::common::utils::{normalize_reference, unescape_all};
 use crate::document::NodeDraft;
 use crate::generics::inline::full_link;
-use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::block::BlockRule;
 use crate::parser::document_parser::DocumentBlockState;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
+use crate::parser::node::NodeValue;
 use crate::render::EmptyDocumentRenderer;
 
 /// Storage for parsed references
@@ -28,9 +28,9 @@ use crate::render::EmptyDocumentRenderer;
 ///
 /// ```rust
 /// use markdown_it::parser::block::builtin::BlockParserRule;
-/// use markdown_it::parser::core::{CoreRule, Root};
+/// use markdown_it::parser::core::{CoreRule, DocumentCoreRule, Root};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap, CustomReferenceMap};
-/// use markdown_it::{MarkdownIt, Node};
+/// use markdown_it::{MarkdownIt};
 ///
 /// let md = &mut MarkdownIt::empty();
 /// markdown_it::plugins::cmark::add(md);
@@ -57,16 +57,17 @@ use crate::render::EmptyDocumentRenderer;
 ///
 /// struct AddCustomReferences;
 /// impl CoreRule for AddCustomReferences {
-///     fn run(root: &mut Node, _: &MarkdownIt) {
-///         let data = root.cast_mut::<Root>().unwrap();
-///         data.ext.insert(ReferenceMap::new(RefMapOverride::default()));
+///     fn document_rule() -> DocumentCoreRule {
+///         DocumentCoreRule::PrepareState(|_, _, ext| {
+///             ext.insert(ReferenceMap::new(RefMapOverride::default()));
+///         })
 ///     }
 /// }
 ///
 /// md.add_rule::<AddCustomReferences>()
 ///     .before::<BlockParserRule>();
 ///
-/// let html = md.parse("[rust]").render();
+/// let html = md.render("[rust]");
 /// assert_eq!(
 ///     html.trim(),
 ///     r#"<p><a href="https://www.rust-lang.org/" title="The Rust Language">rust</a></p>"#
@@ -76,15 +77,15 @@ use crate::render::EmptyDocumentRenderer;
 /// You can also view all references that user created by adding the following rule:
 ///
 /// ```rust
-/// use markdown_it::parser::core::{CoreRule, Root};
+/// use markdown_it::parser::core::{CoreRule, DocumentCoreRule, Root};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap};
-/// use markdown_it::{MarkdownIt, Node};
+/// use markdown_it::{MarkdownIt};
 ///
 /// let md = &mut MarkdownIt::empty();
 /// markdown_it::plugins::cmark::add(md);
 ///
-/// let ast = md.parse("[hello]: world");
-/// let root = ast.node_value.downcast_ref::<Root>().unwrap();
+/// let ast = md.parse_document("[hello]: world");
+/// let root = ast.node(ast.root()).cast::<Root>().unwrap();
 /// let refmap = root.ext.get::<ReferenceMap>()
 ///     .map(|m| m.downcast_ref::<DefaultReferenceMap>().expect("expect references to be handled by default map"));
 ///
@@ -211,7 +212,6 @@ impl ReferenceMapEntry {
 /// Add plugin that parses markdown link references
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<ReferenceScanner>();
-    md.block.add_document_rule::<ReferenceScanner>();
     md.add_document_renderer::<Definition, _>("html", EmptyDocumentRenderer);
     md.add_document_renderer::<Definition, _>("text", EmptyDocumentRenderer);
 }
@@ -222,83 +222,51 @@ pub struct Definition {
     pub destination: String,
     pub title: Option<String>,
 }
-impl NodeValue for Definition {
-    fn render(&self, _: &Node, _: &mut dyn crate::Renderer) {}
-}
+
+impl NodeValue for Definition {}
 
 #[doc(hidden)]
 pub struct ReferenceScanner;
 
-/// Line accessors shared by the legacy and direct block states.
-///
-/// TODO: Once the legacy `BlockState` parsing path is removed, remove this
-///  trait and its implementation macro, and make the shared scanning helpers
-///  accept `DocumentBlockState` directly.
-trait ReferenceBlockState {
-    fn markdown_it(&self) -> &MarkdownIt;
-    fn start_line(&self) -> Option<(usize, &str)>;
-    fn continuation_line(&mut self, line: usize) -> Option<String>;
-    fn references(&mut self) -> &mut ReferenceMap;
-}
+impl DocumentBlockState<'_> {
+    fn markdown_it(&self) -> &MarkdownIt {
+        self.md
+    }
 
-/// Both states expose the same accessors, so generate the impls from one body.
-macro_rules! impl_reference_block_state {
-    ($state:ty) => {
-        impl ReferenceBlockState for $state {
-            fn markdown_it(&self) -> &MarkdownIt {
-                self.md
-            }
+    fn start_line(&self) -> Option<(usize, &str)> {
+        if self.line_indent(self.line) >= self.md.max_indent {
+            return None;
+        }
+        Some((self.line, self.get_line(self.line)))
+    }
 
-            fn start_line(&self) -> Option<(usize, &str)> {
-                if self.line_indent(self.line) >= self.md.max_indent {
-                    return None;
-                }
-                Some((self.line, self.get_line(self.line)))
-            }
-
-            fn continuation_line(&mut self, line: usize) -> Option<String> {
-                if line >= self.line_max || self.is_empty(line) {
-                    return None;
-                }
-                let is_continuation = self.line_indent(line) >= self.md.max_indent
-                    || self.line_offsets[line].indent_nonspace < 0;
-                if !is_continuation {
-                    let old_line = self.line;
-                    self.line = line;
-                    let terminated = self.test_rules_at_line();
-                    self.line = old_line;
-                    if terminated {
-                        return None;
-                    }
-                }
-                Some(self.get_lines(line, line + 1, self.blk_indent, true).0)
-            }
-
-            fn references(&mut self) -> &mut ReferenceMap {
-                self.root_ext.get_or_insert_default::<ReferenceMap>()
+    fn continuation_line(&mut self, line: usize) -> Option<String> {
+        if line >= self.line_max || self.is_empty(line) {
+            return None;
+        }
+        let is_continuation = self.line_indent(line) >= self.md.max_indent
+            || self.line_offsets[line].indent_nonspace < 0;
+        if !is_continuation {
+            let old_line = self.line;
+            self.line = line;
+            let terminated = self.test_rules_at_line();
+            self.line = old_line;
+            if terminated {
+                return None;
             }
         }
-    };
-}
+        Some(self.get_lines(line, line + 1, self.blk_indent, true).0)
+    }
 
-impl_reference_block_state!(BlockState<'_, '_>);
-impl_reference_block_state!(DocumentBlockState<'_>);
+    fn references(&mut self) -> &mut ReferenceMap {
+        self.root_ext.get_or_insert_default::<ReferenceMap>()
+    }
+}
 
 impl BlockRule for ReferenceScanner {
     const MARKERS: &'static [char] = &['['];
     const NAMES: &'static [&'static str] = &["reference"];
 
-    fn check(_: &mut BlockState) -> Option<()> {
-        None // can't interrupt anything
-    }
-
-    fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        let (definition, lines) = scan_reference(state)?;
-        Some((Node::new(definition), lines))
-    }
-}
-
-impl DocumentBlockRule for ReferenceScanner {
     fn check(_: &mut DocumentBlockState<'_>) -> Option<()> {
         None // can't interrupt anything
     }
@@ -309,7 +277,7 @@ impl DocumentBlockRule for ReferenceScanner {
     }
 }
 
-fn scan_reference<S: ReferenceBlockState>(state: &mut S) -> Option<(Definition, usize)> {
+fn scan_reference(state: &mut DocumentBlockState<'_>) -> Option<(Definition, usize)> {
     let (start_line, first_line) = state.start_line()?;
     let mut chars = first_line.chars();
 
@@ -452,8 +420,8 @@ fn scan_reference<S: ReferenceBlockState>(state: &mut S) -> Option<(Definition, 
     ))
 }
 
-fn append_next_reference_line<S: ReferenceBlockState>(
-    state: &mut S,
+fn append_next_reference_line(
+    state: &mut DocumentBlockState<'_>,
     next_line: &mut usize,
     str: &mut String,
 ) -> bool {
@@ -465,8 +433,8 @@ fn append_next_reference_line<S: ReferenceBlockState>(
     true
 }
 
-fn skip_reference_whitespace<S: ReferenceBlockState>(
-    state: &mut S,
+fn skip_reference_whitespace(
+    state: &mut DocumentBlockState<'_>,
     next_line: &mut usize,
     str: &mut String,
     pos: &mut usize,
@@ -485,8 +453,8 @@ fn skip_reference_whitespace<S: ReferenceBlockState>(
     }
 }
 
-fn parse_reference_title<S: ReferenceBlockState>(
-    state: &mut S,
+fn parse_reference_title(
+    state: &mut DocumentBlockState<'_>,
     next_line: &mut usize,
     str: &mut String,
     start: usize,

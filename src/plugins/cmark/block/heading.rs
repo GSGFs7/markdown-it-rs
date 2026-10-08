@@ -4,12 +4,10 @@
 //!
 //! <https://spec.commonmark.org/0.30/#atx-heading>
 use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::{BlockRule, BlockState, DocumentBlockRule};
+use crate::parser::block::BlockRule;
 use crate::parser::document_parser::DocumentBlockState;
-use crate::parser::inline::InlineRoot;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -45,22 +43,10 @@ impl DocumentNodeRenderer<ATXHeading> for ATXHeadingDocumentRenderer {
     }
 }
 
-impl NodeValue for ATXHeading {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        static TAG: [&str; 6] = ["h1", "h2", "h3", "h4", "h5", "h6"];
-        debug_assert!(self.level >= 1 && self.level <= 6);
-
-        fmt.cr();
-        fmt.open(TAG[self.level as usize - 1], &node.attrs);
-        fmt.contents(&node.children);
-        fmt.close(TAG[self.level as usize - 1]);
-        fmt.cr();
-    }
-}
+impl NodeValue for ATXHeading {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HeadingScanner>();
-    md.block.add_document_rule::<HeadingScanner>();
     md.add_document_renderer::<ATXHeading, _>("html", ATXHeadingDocumentRenderer);
     md.add_document_renderer::<ATXHeading, _>("text", PlainTextBlockDocumentRenderer);
 }
@@ -124,25 +110,6 @@ impl BlockRule for HeadingScanner {
     const MARKERS: &'static [char] = &['#'];
     const NAMES: &'static [&'static str] = &["heading"];
 
-    fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-        if state.line_indent(state.line) >= state.md.max_indent {
-            return None;
-        }
-
-        let line = state.get_line(state.line);
-        let (level, text_pos, text_max) = scan_atx_heading(line)?;
-
-        let content = line[text_pos..text_max].to_owned();
-        let mapping = vec![(0, state.line_offsets[state.line].first_nonspace + text_pos)];
-
-        let mut node = Node::new(ATXHeading { level });
-        node.children
-            .push(Node::new(InlineRoot::new(content, mapping)));
-        Some((node, 1))
-    }
-}
-
-impl DocumentBlockRule for HeadingScanner {
     fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
         if state.line_indent(state.line) >= state.md.max_indent {
             return None;
