@@ -9,11 +9,10 @@ use regex::Regex;
 
 use crate::document::{NodeDraft, NodeRef};
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, TextSpecial};
+use crate::parser::inline::{InlineRule, TextSpecial};
 use crate::parser::linkfmt::LinkFormatter;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -45,19 +44,10 @@ impl DocumentNodeRenderer<Autolink> for AutolinkDocumentRenderer {
     }
 }
 
-impl NodeValue for Autolink {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        let mut attrs = node.attrs.clone();
-        attrs.push(("href".into(), self.url.clone()));
-
-        fmt.open("a", &attrs);
-        fmt.contents(&node.children);
-        fmt.close("a");
-    }
-}
+impl NodeValue for Autolink {}
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_migrated_rule::<AutolinkScanner>();
+    md.inline.add_rule::<AutolinkScanner>();
     md.add_document_renderer::<Autolink, _>("html", AutolinkDocumentRenderer);
     md.add_document_renderer::<Autolink, _>("text", TransparentDocumentRenderer);
 }
@@ -71,33 +61,6 @@ static EMAIL_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 #[doc(hidden)]
 pub struct AutolinkScanner;
-impl LegacyInlineRule for AutolinkScanner {
-    const MARKER: char = '<';
-    const NAMES: &'static [&'static str] = &["autolink"];
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let matched = scan_autolink(
-            &state.src[state.pos..state.pos_max],
-            state.md.link_formatter.as_ref(),
-        )?;
-
-        let start = state.pos;
-
-        let mut child = Node::new(TextSpecial {
-            content: matched.label.clone(),
-            markup: matched.label,
-            info: "autolink",
-        });
-        child.srcmap = state.get_map(start + matched.label_start, start + matched.label_end);
-
-        let mut container = Node::new(Autolink {
-            url: matched.destination,
-        });
-        container.children.push(child);
-
-        Some((container, matched.consumed))
-    }
-}
 
 struct AutolinkMatch {
     consumed: usize,
@@ -205,15 +168,7 @@ mod tests {
     }
 
     fn render_html(md: &MarkdownIt, src: &str) -> String {
-        let legacy = md.render(src);
-
-        let bridged = md.parse_document(src);
-        assert_eq!(legacy, md.render_document(&bridged));
-
-        let direct = md.parse_document_direct(src);
-        assert_eq!(legacy, md.render_document(&direct));
-
-        legacy
+        md.render(src)
     }
 
     #[test]
@@ -276,7 +231,7 @@ mod tests {
         use crate::parser::inline::TextSpecial;
 
         let md = parser();
-        let document = md.parse_document_direct("x <https://example.test> y");
+        let document = md.parse_document("x <https://example.test> y");
 
         let spans: Vec<_> = document
             .events(document.root())

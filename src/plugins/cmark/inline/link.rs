@@ -7,8 +7,7 @@ use crate::NodeDraft;
 use crate::document::NodeRef;
 use crate::generics::inline::full_link;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -45,37 +44,15 @@ impl DocumentNodeRenderer<Link> for LinkDocumentRenderer {
     }
 }
 
-impl NodeValue for Link {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        let mut attrs = node.attrs.clone();
-        attrs.push(("href".into(), self.url.clone()));
-
-        if let Some(title) = &self.title {
-            attrs.push(("title".into(), title.clone()));
-        }
-
-        fmt.open("a", &attrs);
-        fmt.contents(&node.children);
-        fmt.close("a");
-    }
-}
+impl NodeValue for Link {}
 
 pub fn add(md: &mut MarkdownIt) {
-    full_link::add_migrated::<false>(
-        md,
-        |href, title| {
-            Node::new(Link {
-                url: href.unwrap_or_default(),
-                title,
-            })
-        },
-        |href, title| {
-            NodeDraft::new(Link {
-                url: href.unwrap_or_default(),
-                title,
-            })
-        },
-    );
+    full_link::add::<false>(md, |href, title| {
+        NodeDraft::new(Link {
+            url: href.unwrap_or_default(),
+            title,
+        })
+    });
     md.add_document_renderer::<Link, _>("html", LinkDocumentRenderer);
     md.add_document_renderer::<Link, _>("text", TransparentDocumentRenderer);
 }

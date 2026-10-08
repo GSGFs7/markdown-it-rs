@@ -6,8 +6,7 @@
 use crate::document::{NodeDraft, NodeRef};
 use crate::generics::inline::code_pair;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -38,13 +37,7 @@ impl DocumentNodeRenderer<CodeInline> for CodeInlineDocumentRenderer {
     }
 }
 
-impl NodeValue for CodeInline {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        fmt.open("code", &node.attrs);
-        fmt.contents(&node.children);
-        fmt.close("code");
-    }
-}
+impl NodeValue for CodeInline {}
 
 pub fn add(md: &mut MarkdownIt) {
     code_pair::add_with::<'`'>(md, |len| {

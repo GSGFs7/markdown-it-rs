@@ -7,8 +7,7 @@ use crate::NodeDraft;
 use crate::document::NodeRef;
 use crate::generics::inline::emph_pair;
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -36,13 +35,7 @@ impl DocumentNodeRenderer<Em> for EmDocumentRenderer {
     }
 }
 
-impl NodeValue for Em {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        fmt.open("em", &node.attrs);
-        fmt.contents(&node.children);
-        fmt.close("em");
-    }
-}
+impl NodeValue for Em {}
 
 #[derive(Debug)]
 pub struct Strong {
@@ -74,13 +67,7 @@ fn render_inline_container(
     write_html_close(output, tag);
 }
 
-impl NodeValue for Strong {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        fmt.open("strong", &node.attrs);
-        fmt.contents(&node.children);
-        fmt.close("strong");
-    }
-}
+impl NodeValue for Strong {}
 
 pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'*', 1, true>(md, || NodeDraft::new(Em { marker: '*' }));

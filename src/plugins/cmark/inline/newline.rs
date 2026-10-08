@@ -6,11 +6,10 @@
 //!  - <https://spec.commonmark.org/0.30/#soft-line-breaks>
 use crate::document::{NodeDraft, NodeRef};
 use crate::parser::document_parser::DocumentInlineState;
+use crate::parser::inline::InlineRule;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule};
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::{Node, NodeValue};
-use crate::parser::renderer::Renderer;
+use crate::parser::node::NodeValue;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -36,12 +35,7 @@ impl DocumentNodeRenderer<Hardbreak> for HardbreakDocumentRenderer {
     }
 }
 
-impl NodeValue for Hardbreak {
-    fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
-        fmt.self_close("br", &[]);
-        fmt.cr();
-    }
-}
+impl NodeValue for Hardbreak {}
 
 #[derive(Debug)]
 pub struct Softbreak;
@@ -63,14 +57,10 @@ impl DocumentNodeRenderer<Softbreak> for SoftbreakDocumentRenderer {
     }
 }
 
-impl NodeValue for Softbreak {
-    fn render(&self, _: &Node, fmt: &mut dyn Renderer) {
-        fmt.softbreak();
-    }
-}
+impl NodeValue for Softbreak {}
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_migrated_rule::<NewlineScanner>();
+    md.inline.add_rule::<NewlineScanner>();
     md.add_document_renderer::<Hardbreak, _>("html", HardbreakDocumentRenderer);
     md.add_document_renderer::<Softbreak, _>("html", SoftbreakDocumentRenderer);
     md.add_document_renderer::<Hardbreak, _>("text", PlainTextBreakDocumentRenderer);
@@ -85,6 +75,7 @@ impl InlineRule for NewlineScanner {
     const NAMES: &'static [&'static str] = &["newline"];
 
     fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        // check rule is required because run() modifies trailing text
         if context.remaining().starts_with('\n') {
             InlineProbeResult::Match {
                 len: 1,
@@ -100,6 +91,7 @@ impl InlineRule for NewlineScanner {
         if chars.next()? != '\n' {
             return None;
         }
+        // skip leading whitespaces from next line
         let end = state.pos + 1 + chars.take_while(|ch| matches!(ch, ' ' | '\t')).count();
         let spaces = state
             .trailing_text()
@@ -108,66 +100,14 @@ impl InlineRule for NewlineScanner {
             .take_while(|&ch| ch == b' ')
             .count();
         state.pop_trailing_text(spaces);
+        // '  \n' -> hardbreak
         let node = if spaces >= 2 {
             NodeDraft::new(Hardbreak)
         } else {
             NodeDraft::new(Softbreak)
         };
-        state.pos -= spaces;
+        state.pos -= spaces; // backtrack to include tail in source maps
         Some((Some(node), end - state.pos))
-    }
-}
-
-impl LegacyInlineRule for NewlineScanner {
-    const MARKER: char = '\n';
-    const NAMES: &'static [&'static str] = &["newline"];
-
-    fn check(state: &mut InlineState) -> Option<usize> {
-        // check rule is required because run() modifies trailing text
-        let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next().unwrap() != '\n' {
-            return None;
-        }
-        Some(1)
-    }
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let mut chars = state.src[state.pos..state.pos_max].chars();
-
-        if chars.next().unwrap() != '\n' {
-            return None;
-        }
-
-        let mut pos = state.pos;
-        pos += 1;
-
-        // skip leading whitespaces from next line
-        while let Some(' ' | '\t') = chars.next() {
-            pos += 1;
-        }
-
-        // '  \n' -> hardbreak
-        let mut tail_size = 0;
-        let trailing_text = state.trailing_text_get();
-
-        for ch in trailing_text.chars().rev() {
-            if ch == ' ' {
-                tail_size += 1;
-            } else {
-                break;
-            }
-        }
-
-        state.trailing_text_pop(tail_size);
-
-        let node = if tail_size >= 2 {
-            Node::new(Hardbreak)
-        } else {
-            Node::new(Softbreak)
-        };
-
-        state.pos -= tail_size; // backtrack to include tail in source maps
-        Some((node, pos - state.pos))
     }
 }
 
@@ -183,39 +123,42 @@ mod test {
 
     #[test]
     fn renders_softbreak_as_newline_by_default() {
-        let ast = parser().parse("hello\nworld");
-        assert_eq!(ast.render(), "<p>hello\nworld</p>\n");
+        let md = parser();
+        let ast = md.parse_document("hello\nworld");
+        assert_eq!(md.render_document(&ast), "<p>hello\nworld</p>\n");
     }
 
     #[test]
     fn breaks_respects_xhtml_out() {
-        let ast = parser().parse("hello\nworld");
+        let md = parser();
+        let ast = md.parse_document("hello\nworld");
 
         assert_eq!(
-            ast.render_with(&RenderOptions {
-                breaks: true,
-                xhtml_out: true,
-                ..Default::default()
-            }),
+            md.document_renderers.render(
+                &ast,
+                "html",
+                &RenderOptions {
+                    breaks: true,
+                    xhtml_out: true,
+                    ..Default::default()
+                }
+            ),
             "<p>hello<br />\nworld</p>\n"
         );
     }
 
     #[test]
-    fn direct_parse_matches_legacy_for_breaks() {
+    fn document_breaks_match_expected_output() {
         let mut md = MarkdownIt::empty();
         plugins::cmark::block::paragraph::add(&mut md);
         plugins::cmark::inline::newline::add(&mut md);
 
-        for source in ["a  \n \tb", "a\nb", "a  \nb"] {
-            let legacy = md.render(source);
-            assert_eq!(
-                legacy,
-                md.render_document(&md.parse_document(source)),
-                "{source}"
-            );
-            let direct = md.parse_document_direct(source);
-            assert_eq!(legacy, md.render_document(&direct), "{source}");
+        for (source, expected) in [
+            ("a  \n \tb", "<p>a<br>\nb</p>\n"),
+            ("a\nb", "<p>a\nb</p>\n"),
+            ("a  \nb", "<p>a<br>\nb</p>\n"),
+        ] {
+            assert_eq!(md.render(source), expected, "{source}");
         }
     }
 }

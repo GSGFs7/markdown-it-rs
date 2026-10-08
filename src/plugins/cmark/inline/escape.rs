@@ -7,13 +7,12 @@
 use crate::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, TextSpecial};
+use crate::parser::inline::{InlineRule, TextSpecial};
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::Node;
 use crate::plugins::cmark::inline::newline::Hardbreak;
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_migrated_rule::<EscapeScanner>();
+    md.inline.add_rule::<EscapeScanner>();
 }
 
 #[derive(Clone, Copy)]
@@ -39,8 +38,11 @@ fn scan_escape(source: &str) -> Option<EscapeMatch> {
     }
     match chars.next()? {
         '\n' => Some(EscapeMatch::Hardbreak {
+            // skip leading whitespaces from next line
             len: 2 + chars.take_while(|ch| matches!(ch, ' ' | '\t')).count(),
         }),
+        // A space is not escapable. Leave both characters in the pending
+        // text so the newline rule can still see two trailing spaces.
         ' ' => None,
         ch => Some(EscapeMatch::Character { ch }),
     }
@@ -83,54 +85,6 @@ impl InlineRule for EscapeScanner {
                     len,
                 ))
             }
-        }
-    }
-}
-
-impl LegacyInlineRule for EscapeScanner {
-    const MARKER: char = '\\';
-    const NAMES: &'static [&'static str] = &["escape"];
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let mut chars = state.src[state.pos..state.pos_max].chars();
-        if chars.next().unwrap() != '\\' {
-            return None;
-        }
-
-        match chars.next() {
-            Some('\n') => {
-                // skip leading whitespaces from next line
-                let mut len = 2;
-                while let Some(' ' | '\t') = chars.next() {
-                    len += 1;
-                }
-                Some((Node::new(Hardbreak), len))
-            }
-            // A space is not escapable. Leave both characters in the pending
-            // text so the newline rule can still see two trailing spaces.
-            Some(' ') => None,
-            Some(chr) => {
-                let start = state.pos;
-                let end = state.pos + 1 + chr.len_utf8();
-
-                let mut orig_str = "\\".to_owned();
-                orig_str.push(chr);
-
-                let content_str = match chr {
-                    '\\' | '!' | '"' | '#' | '$' | '%' | '&' | '\'' | '(' | ')' | '*' | '+'
-                    | ',' | '.' | '/' | ':' | ';' | '<' | '=' | '>' | '?' | '@' | '[' | ']'
-                    | '^' | '_' | '`' | '{' | '|' | '}' | '~' | '-' => chr.into(),
-                    _ => orig_str.clone(),
-                };
-
-                let node = Node::new(TextSpecial {
-                    content: content_str,
-                    markup: orig_str,
-                    info: "escape",
-                });
-                Some((node, end - start))
-            }
-            None => None,
         }
     }
 }

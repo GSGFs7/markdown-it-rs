@@ -11,12 +11,11 @@ use crate::common::utils::{get_entity_from_str, is_valid_entity_code};
 use crate::document::NodeDraft;
 use crate::parser::document_parser::DocumentInlineState;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, InlineState, LegacyInlineRule, TextSpecial};
+use crate::parser::inline::{InlineRule, TextSpecial};
 use crate::parser::main::MarkdownIt;
-use crate::parser::node::Node;
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_migrated_rule::<EntityScanner>();
+    md.inline.add_rule::<EntityScanner>();
 }
 
 static DIGITAL_RE: LazyLock<Regex> =
@@ -104,15 +103,5 @@ impl InlineRule for EntityScanner {
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         let (entity, len) = Self::parse(&state.src[state.pos..state.pos_max])?;
         Some((Some(NodeDraft::new(entity)), len))
-    }
-}
-
-impl LegacyInlineRule for EntityScanner {
-    const MARKER: char = '&';
-    const NAMES: &'static [&'static str] = &["entity"];
-
-    fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        let (entity, len) = Self::parse(&state.src[state.pos..state.pos_max])?;
-        Some((Node::new(entity), len))
     }
 }
