@@ -2,26 +2,28 @@ use std::sync::{Arc, Mutex};
 
 use super::*;
 use crate::parser::inline::probe::{InlineProbeKind, InlineProbeResult, InlineProbeToken};
-use crate::parser::inline::{DocumentProbeFn, DocumentRuleFn, DocumentRuleFns, InlineRule};
+use crate::parser::inline::{InlineProbeFn, InlineRuleFn, InlineRuleFns, InlineRule};
 use crate::parser::linkfmt::LinkFormatter;
 
-fn probe_rule(probe: DocumentProbeFn) -> DocumentRuleFns {
-    DocumentRuleFns {
+fn probe_rule(probe: InlineProbeFn) -> InlineRuleFns {
+    InlineRuleFns {
+        type_id: std::any::TypeId::of::<()>(),
         run: panic_run,
         probe,
         marker: '\0',
     }
 }
 
-fn run_rule_with_marker(run: DocumentRuleFn, marker: char) -> DocumentRuleFns {
-    DocumentRuleFns {
+fn run_rule_with_marker(run: InlineRuleFn, marker: char) -> InlineRuleFns {
+    InlineRuleFns {
+        type_id: std::any::TypeId::of::<()>(),
         run,
         probe: panic_probe,
         marker,
     }
 }
 
-fn run_rule(run: DocumentRuleFn) -> DocumentRuleFns {
+fn run_rule(run: InlineRuleFn) -> InlineRuleFns {
     run_rule_with_marker(run, '\0')
 }
 
@@ -456,12 +458,14 @@ fn probe_no_match_falls_through_to_lower_priority_rules() {
     let ruleset = DocumentRuleSet {
         runs: vec![],
         probes: vec![
-            DocumentRuleFns {
+            InlineRuleFns {
+                type_id: std::any::TypeId::of::<()>(),
                 run: panic_run,
                 probe: |_| InlineProbeResult::NoMatch,
                 marker: 'x',
             },
-            DocumentRuleFns {
+            InlineRuleFns {
+                type_id: std::any::TypeId::of::<()>(),
                 run: panic_run,
                 probe: |_| InlineProbeResult::Match {
                     len: 1,
@@ -491,7 +495,8 @@ fn probe_dispatch_skips_non_matching_markers() {
     let md = MarkdownIt::empty();
     let ruleset = DocumentRuleSet {
         runs: vec![],
-        probes: vec![DocumentRuleFns {
+        probes: vec![InlineRuleFns {
+            type_id: std::any::TypeId::of::<()>(),
             run: panic_run,
             probe: |_| panic!("marker must filter probe dispatch"),
             marker: 'y',
@@ -682,7 +687,8 @@ fn recursive_probe_validates_ranges_and_empty_suffixes() {
     // A rule reporting no match does not poison later child sessions.
     let no_match = DocumentRuleSet {
         runs: vec![],
-        probes: vec![DocumentRuleFns {
+        probes: vec![InlineRuleFns {
+            type_id: std::any::TypeId::of::<()>(),
             run: panic_run,
             probe: |_| InlineProbeResult::NoMatch,
             marker: 'x',
@@ -769,7 +775,7 @@ fn recursive_probe_relative_ranges_keep_child_state_isolated() {
 fn recursive_probe_inherits_current_link_level_and_isolates_effects() {
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
-    let ruleset = md.inline.document_rules().unwrap();
+    let ruleset = md.inline.document_rules();
     let source = "<a><a>";
     let state = probe_state(&md, &ruleset, source);
     let mut parent = state.probe_subrange(0..source.len()).unwrap();
@@ -792,8 +798,8 @@ fn recursive_probe_child_scratch_is_private() {
     use crate::generics::inline::code_pair::CodePairScanner;
 
     let mut md = MarkdownIt::empty();
-    md.inline.add_migrated_rule::<CodePairScanner<'`'>>();
-    let ruleset = md.inline.document_rules().unwrap();
+    md.inline.add_rule::<CodePairScanner<'`'>>();
+    let ruleset = md.inline.document_rules();
     let state = probe_state(&md, &ruleset, "`x`");
     let parent = state.probe_subrange(0..3).unwrap();
 
@@ -839,7 +845,8 @@ fn recursive_probe_same_range_terminates_at_depth_limit() {
     md.max_nesting = 5;
     let ruleset = DocumentRuleSet {
         runs: vec![],
-        probes: vec![DocumentRuleFns {
+        probes: vec![InlineRuleFns {
+            type_id: std::any::TypeId::of::<()>(),
             run: panic_run,
             probe: same_range,
             marker: '#',
@@ -891,7 +898,8 @@ fn recursive_probe_long_chain_is_linear_and_stack_safe() {
     md.max_nesting = 65_536;
     let ruleset = DocumentRuleSet {
         runs: vec![],
-        probes: vec![DocumentRuleFns {
+        probes: vec![InlineRuleFns {
+            type_id: std::any::TypeId::of::<()>(),
             run: panic_run,
             probe: nested,
             marker: '^',
@@ -922,7 +930,8 @@ fn probe_dispatch_keeps_wildcard_position() {
                 len: 1,
                 kind: InlineProbeKind::Token,
             }),
-            DocumentRuleFns {
+            InlineRuleFns {
+                type_id: std::any::TypeId::of::<()>(),
                 run: panic_run,
                 probe: |_| panic!("specific rule must not run after a wildcard match"),
                 marker: 'x',
@@ -947,7 +956,7 @@ fn probe_html_effects_stay_in_the_session() {
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::block::paragraph::add(&mut md);
     crate::plugins::html::html_inline::add(&mut md);
-    let ruleset = md.inline.document_rules().unwrap();
+    let ruleset = md.inline.document_rules();
     let source = "<a title=']'>x</a>";
     let state = probe_state(&md, &ruleset, source);
     let mut context = state.probe_subrange(0..source.len()).unwrap();
@@ -1091,7 +1100,7 @@ impl LinkFormatter for RecordingFormatter {
 fn probe_newline_consumes_one_byte_and_resets_pending() {
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::newline::add(&mut md);
-    let ruleset = md.inline.document_rules().unwrap();
+    let ruleset = md.inline.document_rules();
     let state = probe_state(&md, &ruleset, "a  \n \tb");
     let mut context = state.probe_subrange(0..state.pos_max).unwrap();
 
@@ -1129,7 +1138,7 @@ fn probe_newline_consumes_one_byte_and_resets_pending() {
 fn probe_entity_uses_raw_byte_length() {
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::entity::add(&mut md);
-    let ruleset = md.inline.document_rules().unwrap();
+    let ruleset = md.inline.document_rules();
 
     for (source, len) in [
         ("&#91;", 5),
@@ -1156,7 +1165,7 @@ fn probe_entity_uses_raw_byte_length() {
 fn probe_unknown_and_truncated_entities_fall_back_to_text() {
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::entity::add(&mut md);
-    let ruleset = md.inline.document_rules().unwrap();
+    let ruleset = md.inline.document_rules();
 
     for source in ["&notanentity;", "&#x;", "&amp"] {
         let state = probe_state(&md, &ruleset, source);
@@ -1204,7 +1213,7 @@ fn probe_emphasis_defers_to_later_same_marker_rule() {
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::emphasis::add(&mut md);
     md.inline.add_rule::<LaterMarkerProbe>();
-    let ruleset = md.inline.document_rules().unwrap();
+    let ruleset = md.inline.document_rules();
 
     let state = probe_state(&md, &ruleset, "*");
     let mut context = state.probe_subrange(0..1).unwrap();
@@ -1219,7 +1228,7 @@ fn probe_emphasis_defers_to_later_same_marker_rule() {
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::emphasis::add(&mut md);
     md.inline.add_rule::<LaterUnderscoreProbe>();
-    let ruleset = md.inline.document_rules().unwrap();
+    let ruleset = md.inline.document_rules();
 
     let state = probe_state(&md, &ruleset, "_");
     let mut context = state.probe_subrange(0..1).unwrap();
@@ -1243,7 +1252,7 @@ fn probe_emphasis_defers_for_unicode_marker() {
     let mut md = MarkdownIt::empty();
     crate::generics::inline::emph_pair::add_with::<'雪', 1, true>(&mut md, node);
     md.inline.add_rule::<LaterUnicodeMarkerProbe>();
-    let ruleset = md.inline.document_rules().unwrap();
+    let ruleset = md.inline.document_rules();
 
     let state = probe_state(&md, &ruleset, "雪");
     let mut context = state.probe_subrange(0..3).unwrap();
@@ -1260,7 +1269,7 @@ fn probe_emphasis_defers_for_unicode_marker() {
 fn probe_html_comment_cache_is_private_to_each_session() {
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
-    let ruleset = md.inline.document_rules().unwrap();
+    let ruleset = md.inline.document_rules();
     let state = probe_state(&md, &ruleset, "<!-- [ -->");
 
     let mut short = state.probe_subrange(0..5).unwrap();
@@ -1298,7 +1307,8 @@ fn invalid_probe_length_with_effects_panics_and_preserves_pending() {
     let ruleset = DocumentRuleSet {
         runs: vec![],
         probes: vec![
-            DocumentRuleFns {
+            InlineRuleFns {
+                type_id: std::any::TypeId::of::<()>(),
                 run: panic_run,
                 probe: |context| {
                     if context.remaining() == "aa" {
@@ -1312,7 +1322,8 @@ fn invalid_probe_length_with_effects_panics_and_preserves_pending() {
                 },
                 marker: 'a',
             },
-            DocumentRuleFns {
+            InlineRuleFns {
+                type_id: std::any::TypeId::of::<()>(),
                 run: panic_run,
                 probe: |_| InlineProbeResult::MatchWithEffects {
                     len: 0,
@@ -1381,7 +1392,7 @@ fn probe_html_level_is_read_by_later_rules_and_inherited_from_parent() {
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
     md.inline.add_rule::<ExpectLinkLevelOne>();
-    let ruleset = md.inline.document_rules().unwrap();
+    let ruleset = md.inline.document_rules();
     let source = "<a>[";
     let state = probe_state(&md, &ruleset, source);
     let mut context = state.probe_subrange(0..source.len()).unwrap();
@@ -1413,7 +1424,7 @@ fn probe_html_level_is_read_by_later_rules_and_inherited_from_parent() {
 fn probe_html_lone_closing_tag_keeps_negative_level() {
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
-    let ruleset = md.inline.document_rules().unwrap();
+    let ruleset = md.inline.document_rules();
     let source = "</a></A>";
     let state = probe_state(&md, &ruleset, source);
     let mut context = state.probe_subrange(0..source.len()).unwrap();
@@ -1447,7 +1458,7 @@ fn probe_autolink_email_normalizes_mailto_before_validate() {
         calls: calls.clone(),
         reject: false,
     });
-    let ruleset = md.inline.document_rules().unwrap();
+    let ruleset = md.inline.document_rules();
     let source = "<foo@example.com>";
     let state = probe_state(&md, &ruleset, source);
     let mut context = state.probe_subrange(0..source.len()).unwrap();
@@ -1554,7 +1565,7 @@ fn child_link_level_override_keeps_range_and_depth_rules() {
 #[test]
 fn recursive_block_rules_switch_current_node_and_nesting_level() {
     use crate::document::NodeDraft;
-    use crate::parser::block::DocumentBlockRule;
+    use crate::parser::block::BlockRule;
     use crate::parser::core::Root;
     use crate::parser::node::NodeEmpty;
 
@@ -1566,7 +1577,7 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
     struct ObservedLevel(u32);
 
     struct WrapperScanner;
-    impl DocumentBlockRule for WrapperScanner {
+    impl BlockRule for WrapperScanner {
         fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
             if !state.get_line(state.line).starts_with("%%") {
                 return None;
@@ -1587,7 +1598,7 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
     }
 
     struct LevelProbe;
-    impl DocumentBlockRule for LevelProbe {
+    impl BlockRule for LevelProbe {
         fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
             if state.get_line(state.line) != "hello" {
                 return None;

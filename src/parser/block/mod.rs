@@ -11,14 +11,14 @@ use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 use crate::parser::document_parser::DocumentBlockState;
 
-pub(crate) type DocumentRuleFns = (
+pub(crate) type BlockRuleFns = (
     fn(&mut DocumentBlockState<'_>) -> Option<()>,
     fn(&mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)>,
 );
 
 #[derive(Debug, Default)]
 pub struct BlockParser {
-    ruler: Ruler<RuleMark, DocumentRuleFns>,
+    ruler: Ruler<RuleMark, BlockRuleFns>,
 }
 
 impl BlockParser {
@@ -26,11 +26,11 @@ impl BlockParser {
         Self::default()
     }
 
-    pub(crate) fn document_rules(&self) -> Vec<DocumentRuleFns> {
+    pub(crate) fn document_rules(&self) -> Vec<BlockRuleFns> {
         self.ruler.iter().copied().collect()
     }
 
-    pub fn add_rule<T: BlockRule>(&mut self) -> RuleBuilder<'_, DocumentRuleFns> {
+    pub fn add_rule<T: BlockRule>(&mut self) -> RuleBuilder<'_, BlockRuleFns> {
         let item = self.ruler.add(RuleMark::of::<T>(), (T::check, T::run));
         for name in T::NAMES {
             item.alias(RuleMark::named(*name));

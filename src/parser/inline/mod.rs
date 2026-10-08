@@ -16,19 +16,19 @@ pub(crate) use self::state::{DelimiterRun, scan_delimiter_run, set_delimiter_sca
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 
-pub(crate) type DocumentProbeFn = fn(&mut InlineProbeContext<'_>) -> InlineProbeResult;
-pub(crate) type DocumentRuleFn =
+pub(crate) type InlineProbeFn = fn(&mut InlineProbeContext<'_>) -> InlineProbeResult;
+pub(crate) type InlineRuleFn =
     fn(&mut crate::DocumentInlineState<'_>) -> Option<(Option<crate::NodeDraft>, usize)>;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct DocumentRuleFns {
-    pub(crate) run: DocumentRuleFn,
-    pub(crate) probe: DocumentProbeFn,
+pub(crate) struct InlineRuleFns {
+    pub(crate) run: InlineRuleFn,
+    pub(crate) probe: InlineProbeFn,
     pub(crate) marker: char,
     pub(crate) type_id: std::any::TypeId,
 }
 
-impl DocumentRuleFns {
+impl InlineRuleFns {
     /// Whether this rule can be considered for the given current character.
     #[inline]
     pub(crate) fn matches_marker(self, ch: char) -> bool {
@@ -36,8 +36,8 @@ impl DocumentRuleFns {
     }
 }
 
-fn document_rule_fns<T: InlineRule>() -> DocumentRuleFns {
-    DocumentRuleFns {
+fn inline_rule_fns<T: InlineRule>() -> InlineRuleFns {
+    InlineRuleFns {
         run: T::run,
         probe: T::probe,
         marker: T::MARKER,
@@ -48,13 +48,13 @@ fn document_rule_fns<T: InlineRule>() -> DocumentRuleFns {
 #[derive(Clone, Copy)]
 #[doc(hidden)]
 pub struct RuleEntry {
-    document: DocumentRuleFns,
+    document: InlineRuleFns,
     document_finalize: Option<DocumentFinalizeFn>,
 }
 
 pub(crate) struct DocumentRuleSet {
-    pub(crate) runs: Vec<DocumentRuleFns>,
-    pub(crate) probes: Vec<DocumentRuleFns>,
+    pub(crate) runs: Vec<InlineRuleFns>,
+    pub(crate) probes: Vec<InlineRuleFns>,
     pub(crate) finalizers: Vec<DocumentFinalizeFn>,
 }
 
@@ -98,7 +98,7 @@ impl InlineParser {
         let item = self.ruler.add(
             RuleMark::of::<T>(),
             RuleEntry {
-                document: document_rule_fns::<T>(),
+                document: inline_rule_fns::<T>(),
                 document_finalize: finalize,
             },
         );

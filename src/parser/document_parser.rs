@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::common::sourcemap::SourcePos;
 use crate::common::utils::calc_right_whitespace_with_tabstops;
 use crate::document::{Document, NodeDraft};
-use crate::parser::block::{DocumentRuleFns as BlockRuleFns, LineOffset, build_line_offsets};
+use crate::parser::block::{BlockRuleFns, LineOffset, build_line_offsets};
 use crate::parser::core::{
     DocumentCoreRule,
     DocumentFinalizeDraftFn,
