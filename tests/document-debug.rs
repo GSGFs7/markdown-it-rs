@@ -1,6 +1,6 @@
 use markdown_it::common::sourcemap::SourcePos;
 use markdown_it::parser::core::Root;
-use markdown_it::{Document, MarkdownIt, Node, NodeValue, Preset};
+use markdown_it::{Document, MarkdownIt, NodeDraft, NodeValue, Preset};
 
 #[derive(Debug)]
 struct CustomContainer;
@@ -12,19 +12,19 @@ impl NodeValue for CustomLeaf {}
 
 #[test]
 fn debug_format_records_hierarchy_identity_source_and_attributes() {
-    let mut root = Node::new(Root::new("abcdef".into()));
-    root.srcmap = Some(SourcePos::new(0, 6));
+    let mut root = NodeDraft::new(Root::new("abcdef".into()));
+    root.set_srcmap(Some(SourcePos::new(0, 6)));
 
-    let mut container = Node::new(CustomContainer);
-    container.srcmap = Some(SourcePos::new(1, 5));
-    container.attrs.push(("class".into(), "outer".into()));
+    let mut container = NodeDraft::new(CustomContainer);
+    container.set_srcmap(Some(SourcePos::new(1, 5)));
+    container.attrs_mut().push(("class".into(), "outer".into()));
 
-    let mut leaf = Node::new(CustomLeaf);
-    leaf.attrs.push(("data-value".into(), "<&>".into()));
-    container.children.push(leaf);
-    root.children.push(container);
+    let mut leaf = NodeDraft::new(CustomLeaf);
+    leaf.attrs_mut().push(("data-value".into(), "<&>".into()));
+    container.push_child(leaf);
+    root.push_child(container);
 
-    let document = Document::from_legacy("abcdef", root);
+    let document = Document::from_draft("abcdef", root);
     let output = MarkdownIt::empty().render_document_as(&document, "debug");
 
     let expected = format!(

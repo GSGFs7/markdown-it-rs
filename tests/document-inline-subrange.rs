@@ -7,13 +7,7 @@ use markdown_it::{DocumentInlineState, MarkdownIt, NodeDraft, NodeValue};
 
 #[derive(Debug)]
 struct TestContainer;
-impl NodeValue for TestContainer {
-    fn render(&self, node: &markdown_it::Node, fmt: &mut dyn markdown_it::Renderer) {
-        fmt.text("{");
-        fmt.contents(&node.children);
-        fmt.text("}");
-    }
-}
+impl NodeValue for TestContainer {}
 
 struct ContainerRule;
 impl InlineRule for ContainerRule {
@@ -53,15 +47,16 @@ fn parser() -> MarkdownIt {
     markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
     markdown_it::plugins::cmark::inline::backticks::add(&mut md);
     md.inline.add_rule::<ContainerRule>();
+    md.add_document_renderer::<TestContainer, _>("html", ContainerRenderer);
     md
 }
 
 #[test]
 fn custom_rule_parses_nested_children_without_losing_parent_text() {
     let md = parser();
-    let document = md.parse_document_direct("前{ 雪 {*x*} }尾 {}");
+    let document = md.parse_document("前{ 雪 {*x*} }尾 {}");
     assert_eq!(
-        document.into_legacy().render(),
+        md.render_document(&document),
         "<p>前{ 雪 {<em>x</em>} }尾 {}</p>\n"
     );
 }
@@ -75,11 +70,7 @@ fn delimiters_and_negative_caches_do_not_leak_between_ranges() {
         ("a{*b}c*", "<p>a{*b}c*</p>\n"),
         ("{`x} `y`", "<p>{`x} <code>y</code></p>\n"),
     ] {
-        assert_eq!(
-            md.parse_document_direct(source).into_legacy().render(),
-            expected,
-            "{source}"
-        );
+        assert_eq!(md.render(source), expected, "{source}");
     }
 }
 
@@ -87,9 +78,9 @@ fn delimiters_and_negative_caches_do_not_leak_between_ranges() {
 fn nesting_limit_stops_recursive_container_rules() {
     let mut md = parser();
     md.max_nesting = 2;
-    let document = md.parse_document_direct("{ {*x*} *y* }");
+    let document = md.parse_document("{ {*x*} *y* }");
     assert_eq!(
-        document.into_legacy().render(),
+        md.render_document(&document),
         "<p>{ {*x*} <em>y</em> }</p>\n"
     );
 }
@@ -186,7 +177,7 @@ fn nested_probe_resolves_forward_references() {
     let mut md = MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md);
     md.inline.add_rule::<ReferenceProbeRule>();
-    let document = md.parse_document_direct("{[x][id]}\n\n[id]: /url");
+    let document = md.parse_document("{[x][id]}\n\n[id]: /url");
     assert_eq!(md.render_document(&document), "<p>reference</p>\n");
 }
 
@@ -253,8 +244,8 @@ fn custom_rule_can_probe_ranges_through_public_interface() {
             "<p>0..1=text;1..2=text;2..3=text;3..4=text;4..5=text;5..6=text;</p>\n",
         ),
     ] {
-        let document = md.parse_document_direct(source);
-        assert_eq!(document.into_legacy().render(), expected, "{source}");
+        let document = md.parse_document(source);
+        assert_eq!(md.render_document(&document), expected, "{source}");
     }
 }
 
@@ -264,8 +255,8 @@ fn normal_direct_parsing_never_calls_probe() {
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
     md.inline.add_rule::<PanicProbeRule>();
 
-    let document = md.parse_document_direct("x");
-    assert_eq!(document.into_legacy().render(), "<p>X</p>\n");
+    let document = md.parse_document("x");
+    assert_eq!(md.render_document(&document), "<p>X</p>\n");
 }
 
 #[test]
@@ -275,10 +266,10 @@ fn default_probe_for_matching_marker_falls_back_to_text() {
     md.inline.add_rule::<ProbeSummaryRule>();
     md.inline.add_rule::<NoProbeRule>();
 
-    let html = md.parse_document_direct("{y}").into_legacy().render();
+    let html = md.render("{y}");
     assert_eq!(html, "<p>0..1=text;</p>\n");
 
-    let html = md.parse_document_direct("{x}").into_legacy().render();
+    let html = md.render("{x}");
     assert_eq!(html, "<p>0..1=text;</p>\n");
 }
 
@@ -303,11 +294,11 @@ fn probe_does_not_call_code_pair_factory() {
     code_pair::add_with::<'$'>(&mut md, factory);
     md.inline.add_rule::<ProbeSummaryRule>();
 
-    let html = md.parse_document_direct("{$x$}").into_legacy().render();
+    let html = md.render("{$x$}");
     assert_eq!(html, "<p>0..3=token;</p>\n");
     assert_eq!(CALLS.load(Ordering::SeqCst), 0);
 
-    md.parse_document_direct("$x$");
+    md.parse_document("$x$");
     assert_eq!(CALLS.load(Ordering::SeqCst), 1);
 }
 
@@ -320,7 +311,7 @@ fn autolink_and_html_dispatch_by_registration_order() {
         ("{<foo@example.com>}", "<p>0..17=token;</p>\n"),
         ("{<javascript:alert(1)>}", "<p>0..1=text;1..21=text;</p>\n"),
     ] {
-        let html = md.parse_document_direct(source).into_legacy().render();
+        let html = md.render(source);
         assert_eq!(html, expected, "{source}");
     }
 }
@@ -338,7 +329,7 @@ fn mixed_rules_probe_through_public_consumer() {
             "<p>0..1=text;1..2=text;2..3=text;3..4=text;4..7=token;7..8=text;8..10=token;</p>\n",
         ),
     ] {
-        let html = md.parse_document_direct(source).into_legacy().render();
+        let html = md.render(source);
         assert_eq!(html, expected, "{source}");
     }
 }
@@ -350,10 +341,7 @@ fn autolink_probe_uses_formatter_and_rejection_falls_back() {
         calls: calls.clone(),
         reject: false,
     }));
-    let html = md
-        .parse_document_direct("{<https://example.com>}")
-        .into_legacy()
-        .render();
+    let html = md.render("{<https://example.com>}");
     assert_eq!(html, "<p>0..21=token;</p>\n");
     assert_eq!(
         *calls.lock().unwrap(),
@@ -369,10 +357,7 @@ fn autolink_probe_uses_formatter_and_rejection_falls_back() {
         calls: calls.clone(),
         reject: true,
     }));
-    let html = md
-        .parse_document_direct("{<https://example.com>}")
-        .into_legacy()
-        .render();
+    let html = md.render("{<https://example.com>}");
     assert_eq!(html, "<p>0..1=text;1..21=text;</p>\n");
     assert_eq!(
         *calls.lock().unwrap(),
@@ -387,10 +372,22 @@ fn autolink_probe_uses_formatter_and_rejection_falls_back() {
         calls: calls.clone(),
         reject: false,
     }));
-    let html = md
-        .parse_document_direct("{<https://foo bar>}")
-        .into_legacy()
-        .render();
+    let html = md.render("{<https://foo bar>}");
     assert_eq!(html, "<p>0..1=text;1..17=text;</p>\n");
     assert!(calls.lock().unwrap().is_empty());
+}
+
+struct ContainerRenderer;
+impl markdown_it::DocumentNodeRenderer<TestContainer> for ContainerRenderer {
+    fn render(
+        &self,
+        node: markdown_it::NodeRef<'_>,
+        _: &TestContainer,
+        ctx: &mut markdown_it::DocumentRenderContext<'_>,
+        out: &mut markdown_it::DocumentWriter,
+    ) {
+        out.write_str("{");
+        ctx.render_children(node.id(), out);
+        out.write_str("}");
+    }
 }

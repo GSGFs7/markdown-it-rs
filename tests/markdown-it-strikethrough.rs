@@ -9,7 +9,7 @@ fn run(input: &str, output: &str) {
 
     let md = common::markdown_it_fixture_parser();
     let source = input.to_owned() + "\n";
-    let actual = md.parse(&source).render();
+    let actual = md.render(&source);
     assert_eq!(actual, expected);
 
     let document = md.parse_document(&source);

@@ -9,25 +9,26 @@ fn run_with(input: &str, output: &str, configure: impl Fn(&mut markdown_it::Mark
     markdown_it::plugins::html::add(md);
     configure(md);
     markdown_it::plugins::extra::typographer::add(md);
-    let node = md.parse(&(input.to_owned() + "\n"));
+    let node = md.parse_document(&(input.to_owned() + "\n"));
 
     // make sure we have sourcemaps for everything
-    node.walk(|node, _| assert!(node.srcmap.is_some()));
+    for event in node.events(node.root()) {
+        assert!(event.node().srcmap().is_some());
+    }
 
-    let result = node.render();
+    let result = md.render_document(&node);
     assert_eq!(result, output);
 
     let document_md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(document_md);
     markdown_it::plugins::html::add(document_md);
     configure(document_md);
-    markdown_it::plugins::extra::typographer::add_document(document_md);
-    let mut document = document_md.parse_document(&(input.to_owned() + "\n"));
-    document_md.run_document_transforms(&mut document);
-    assert_eq!(document.into_legacy().render(), output);
+    markdown_it::plugins::extra::typographer::add(document_md);
+    let document = document_md.parse_document(&(input.to_owned() + "\n"));
+    assert_eq!(document_md.render_document(&document), output);
 
     // make sure it doesn't crash without trailing \n
-    let _ = md.parse(input.trim_end());
+    let _ = md.parse_document(input.trim_end());
 }
 
 fn run(input: &str, output: &str) {

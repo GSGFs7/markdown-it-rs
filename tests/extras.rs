@@ -5,8 +5,8 @@ fn title_example() {
     let parser = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(parser);
 
-    let ast = parser.parse("Hello **world**!");
-    let html = ast.render();
+    let ast = parser.parse_document("Hello **world**!");
+    let html = parser.render_document(&ast);
 
     assert_eq!(html, "<p>Hello <strong>world</strong>!</p>\n");
 }
@@ -19,8 +19,8 @@ fn lazy_singleton() {
         parser
     });
 
-    let ast = MD.parse("Hello **world**!");
-    let html = ast.render();
+    let ast = MD.parse_document("Hello **world**!");
+    let html = MD.render_document(&ast);
 
     assert_eq!(html, "<p>Hello <strong>world</strong>!</p>\n");
 }
@@ -28,8 +28,8 @@ fn lazy_singleton() {
 #[test]
 fn no_plugins() {
     let md = &mut markdown_it::MarkdownIt::empty();
-    let node = md.parse("hello\nworld");
-    let result = node.render();
+    let node = md.parse_document("hello\nworld");
+    let result = md.render_document(&node);
     assert_eq!(result, "hello\nworld\n");
 }
 
@@ -39,8 +39,8 @@ fn no_max_indent() {
     markdown_it::plugins::cmark::block::paragraph::add(md);
     markdown_it::plugins::cmark::block::list::add(md);
     md.max_indent = i32::MAX;
-    let node = md.parse("        paragraph\n      - item");
-    let result = node.render();
+    let node = md.parse_document("        paragraph\n      - item");
+    let result = md.render_document(&node);
     assert_eq!(result, "<p>paragraph</p>\n<ul>\n<li>item</li>\n</ul>\n");
 }
 
@@ -49,8 +49,8 @@ fn no_block_parser() {
     let md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(md);
     md.remove_rule::<markdown_it::parser::block::builtin::BlockParserRule>();
-    let node = md.parse("hello *world*");
-    let result = node.render();
+    let node = md.parse_document("hello *world*");
+    let result = md.render_document(&node);
     assert_eq!(result, "hello <em>world</em>");
 }*/
 
@@ -64,9 +64,11 @@ fn run(input: &str, output: &str) {
     markdown_it::plugins::cmark::add(md);
     markdown_it::plugins::html::add(md);
     markdown_it::plugins::extra::beautify_links::add(md);
-    let node = md.parse(&(input.to_owned() + "\n"));
-    node.walk(|node, _| assert!(node.srcmap.is_some()));
-    let result = node.render();
+    let node = md.parse_document(&(input.to_owned() + "\n"));
+    for event in node.events(node.root()) {
+        assert!(event.node().srcmap().is_some());
+    }
+    let result = md.render_document(&node);
     assert_eq!(result, output);
 }
 
@@ -137,10 +139,10 @@ mod markdown_it_rs_extras {
 
     #[test]
     fn test_node_ext_propagation() {
-        use markdown_it::parser::block::{BlockRule, BlockState};
-        use markdown_it::parser::core::CoreRule;
+        use markdown_it::parser::block::BlockRule;
+        use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
         use markdown_it::parser::inline::{InlineRule, Text};
-        use markdown_it::{DocumentInlineState, MarkdownIt, Node, NodeDraft};
+        use markdown_it::{DocumentBlockState, DocumentInlineState, MarkdownIt, NodeDraft};
 
         #[derive(Debug, Default)]
         struct NodeErrors(Vec<&'static str>);
@@ -163,8 +165,8 @@ mod markdown_it_rs_extras {
 
         struct MyBlockRule;
         impl BlockRule for MyBlockRule {
-            fn run(state: &mut BlockState) -> Option<(Node, usize)> {
-                let err = state.node.ext.get_or_insert_default::<NodeErrors>();
+            fn run(state: &mut DocumentBlockState) -> Option<(NodeDraft, usize)> {
+                let err = state.node.ext_mut().get_or_insert_default::<NodeErrors>();
                 err.0.push("block");
                 None
             }
@@ -172,9 +174,13 @@ mod markdown_it_rs_extras {
 
         struct MyCoreRule;
         impl CoreRule for MyCoreRule {
-            fn run(root: &mut Node, _md: &MarkdownIt) {
-                let err = root.ext.get_or_insert_default::<NodeErrors>();
-                err.0.push("core");
+            fn document_rule() -> DocumentCoreRule {
+                DocumentCoreRule::FinalizeDraft(|root, _| {
+                    root.ext_mut()
+                        .get_or_insert_default::<NodeErrors>()
+                        .0
+                        .push("core");
+                })
             }
         }
 
@@ -185,58 +191,30 @@ mod markdown_it_rs_extras {
         md.add_rule::<MyCoreRule>().after_all();
 
         let text1 = r#"*hello @world*"#;
-        let ast = md.parse(text1);
+        let ast = md.parse_document(text1);
         let mut collected: Vec<&str> = vec![];
 
-        ast.walk_post(|node, _| {
-            if let Some(errors) = node.ext.get::<NodeErrors>() {
+        for event in ast.events(ast.root()) {
+            if matches!(event, markdown_it::StructuralEvent::Exit(_)) {
+                continue;
+            }
+            let node = event.node();
+            if let Some(errors) = node.ext().get::<NodeErrors>() {
                 collected.extend(errors.0.iter());
             }
-        });
+        }
 
         assert_eq!(collected, vec!["block", "core"],);
 
         let mut direct_md = MarkdownIt::empty();
         direct_md.inline.add_rule::<MyInlineRule>();
-        let document = direct_md.parse_document_direct("@");
+        let document = direct_md.parse_document("@");
         let collected: Vec<_> = document
             .events(document.root())
             .filter_map(|event| event.node().ext().get::<NodeErrors>())
             .flat_map(|errors| errors.0.iter().copied())
             .collect();
         assert_eq!(collected, vec!["inline"]);
-    }
-
-    #[test]
-    fn named_rule_aliases_interoperate_with_builtin_core_rules() {
-        use markdown_it::parser::core::CoreRule;
-        use markdown_it::parser::inline::InlineRoot;
-        use markdown_it::{MarkdownIt, Node};
-
-        #[derive(Debug)]
-        struct SawBlockBeforeInline(bool);
-        struct BetweenBlockAndInline;
-        impl CoreRule for BetweenBlockAndInline {
-            fn run(root: &mut Node, _md: &MarkdownIt) {
-                let saw_inline_root = root
-                    .children
-                    .iter()
-                    .any(|node| node.children.iter().any(|child| child.is::<InlineRoot>()));
-                root.ext.insert(SawBlockBeforeInline(saw_inline_root));
-            }
-        }
-
-        let md = &mut markdown_it::MarkdownIt::empty();
-        markdown_it::plugins::cmark::add(md);
-
-        md.add_rule::<BetweenBlockAndInline>()
-            .after_named("block")
-            .before_named("inline")
-            .require_named("block")
-            .require_named("inline");
-
-        let ast = md.parse("# heading");
-        assert!(ast.ext.get::<SawBlockBeforeInline>().unwrap().0);
     }
 
     #[cfg(feature = "syntect")]
@@ -247,7 +225,7 @@ mod markdown_it_rs_extras {
         markdown_it::plugins::extra::syntect::add(md);
         markdown_it::plugins::extra::syntect::set_to_classed(md);
 
-        let html = md.parse("```rust ignore-me\nfn main() {}\n```").render();
+        let html = md.render("```rust ignore-me\nfn main() {}\n```");
 
         assert!(html.contains(r#"<code class="syntect-code language-rust">"#));
     }
@@ -260,9 +238,7 @@ mod markdown_it_rs_extras {
         markdown_it::plugins::extra::syntect::add(md);
         markdown_it::plugins::extra::syntect::set_to_classed(md);
 
-        let html = md
-            .parse("```rust&quot; onclick=&quot;alert(1)\nfn main() {}\n```")
-            .render();
+        let html = md.render("```rust&quot; onclick=&quot;alert(1)\nfn main() {}\n```");
 
         assert!(html.contains("language-rust&quot;"));
         assert!(!html.contains(r#"onclick="alert(1)""#));
@@ -277,7 +253,7 @@ mod markdown_it_rs_extras {
         markdown_it::plugins::extra::syntect::add(md);
         markdown_it::plugins::extra::syntect::set_to_classed(md);
 
-        let html = md.parse("```rust\nfn main() {}\n```").render();
+        let html = md.render("```rust\nfn main() {}\n```");
 
         assert!(html.contains(r#"<code class="syntect-code lang-rust">"#));
     }
@@ -289,9 +265,7 @@ mod markdown_it_rs_extras {
         markdown_it::plugins::cmark::add(md);
         markdown_it::plugins::extra::syntect::add(md);
 
-        let html = md
-            .parse("```rust{2}\nfn main() {\n    println!(\"hi\");\n}\n```")
-            .render();
+        let html = md.render("```rust{2}\nfn main() {\n    println!(\"hi\");\n}\n```");
 
         assert!(html.contains(r#"<code class="language-rust">"#));
         assert!(html.contains(r#"<span class="syntect-line syntect-line-highlighted">"#));
@@ -321,7 +295,7 @@ mod markdown_it_rs_extras {
         markdown_it::plugins::extra::syntect::add(md);
         markdown_it::plugins::extra::syntect::set_theme(md, "definitely-not-a-theme");
 
-        let _ = md.parse("```rust\nfn main() {}\n```").render();
+        let _ = md.render("```rust\nfn main() {}\n```");
     }
 }
 

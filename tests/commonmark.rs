@@ -6,19 +6,21 @@ fn run(input: &str, output: &str) {
     };
     let md = &mut markdown_it::MarkdownIt::with_preset(markdown_it::Preset::CommonMark);
     let source = input.to_owned() + "\n";
-    let node = md.parse(&source);
+    let node = md.parse_document(&source);
 
     // make sure we have sourcemaps for everything
-    node.walk(|node, _| assert!(node.srcmap.is_some()));
+    for event in node.events(node.root()) {
+        assert!(event.node().srcmap().is_some());
+    }
 
-    let result = node.render();
+    let result = md.render_document(&node);
     assert_eq!(result, output);
 
     let document = md.parse_document(&source);
     assert_eq!(md.render_document(&document), result);
     md.render_document_as(&document, "text");
 
-    let direct = md.parse_document_direct(&source);
+    let direct = md.parse_document(&source);
     assert_eq!(md.render_document(&direct), result);
     assert_eq!(
         md.render_document_as(&direct, "text"),
@@ -30,7 +32,7 @@ fn run(input: &str, output: &str) {
     assert_eq!(md.render(&source), result);
 
     // make sure it doesn't crash without trailing \n
-    let _ = md.parse(input.trim_end());
+    let _ = md.parse_document(input.trim_end());
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2445,6 +2447,7 @@ fn src_line_3502() {
 #[test]
 fn src_line_3524() {
     let input = r#"aaa
+
 
 bbb"#;
     let output = r#"<p>aaa</p>

@@ -29,7 +29,7 @@ fn assert_within_budget(start: Instant, phase: &str, input_len: usize) {
 #[track_caller]
 fn run(src: &str) {
     let start = Instant::now();
-    let ast = MD.parse(src);
+    let ast = MD.parse_document(src);
     black_box(&ast);
     assert_within_budget(start, "parse", src.len());
 }
@@ -43,7 +43,7 @@ fn run_render(src: &str) {
 #[track_caller]
 fn run_render_with_output_limit(src: &str, output_limit: usize) {
     let start = Instant::now();
-    let output = MD.parse(src).render();
+    let output = MD.render(src);
     black_box(&output);
     assert_within_budget(start, "render", src.len());
 
@@ -259,7 +259,9 @@ mod commonmark {
 
 mod markdownit {
     // Ported from markdown-it.js
-    use super::{run, run_render, run_render_with_output_limit};
+    #[cfg(feature = "linkify")]
+    use super::run_render;
+    use super::{run, run_render_with_output_limit};
 
     #[test]
     fn table_autocompleted_cells() {

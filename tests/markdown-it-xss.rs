@@ -8,7 +8,7 @@ fn run(input: &str, output: &str) {
     };
 
     let md = common::markdown_it_fixture_parser();
-    let actual = md.parse(&(input.to_owned() + "\n")).render();
+    let actual = md.render(&(input.to_owned() + "\n"));
     assert_eq!(actual, expected);
 }
 
