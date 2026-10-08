@@ -90,63 +90,13 @@ fn main() {
     for corpus in corpus::standard() {
         let source = corpus.source();
         let document = md.parse_document(source);
-        let legacy = md.parse(source);
-
         // Warm lazy parser/renderer state before enabling the counter.
-        let expected = legacy.render();
-        assert_eq!(md.render_document(&document), expected);
-
-        let (direct, direct_stats) = measure(|| md.render_document(black_box(&document)));
-        assert_eq!(direct, expected);
-        print_row(corpus.name, "render", "arena-direct", direct_stats, &direct);
-
-        let bridge_document = md.parse_document(source);
-        let (bridge, bridge_stats) = measure(|| bridge_document.into_legacy().render());
-        assert_eq!(bridge, expected);
-        print_row(corpus.name, "render", "arena-bridge", bridge_stats, &bridge);
-
-        let (legacy_html, legacy_stats) = measure(|| legacy.render());
-        assert_eq!(legacy_html, expected);
-        print_row(
-            corpus.name,
-            "render",
-            "legacy-tree",
-            legacy_stats,
-            &legacy_html,
-        );
-
-        let (direct, direct_stats) = measure(|| {
-            let document = md.parse_document(black_box(source));
-            md.render_document(&document)
-        });
-        assert_eq!(direct, expected);
-        print_row(
-            corpus.name,
-            "end-to-end",
-            "arena-direct",
-            direct_stats,
-            &direct,
-        );
-
-        let (bridge, bridge_stats) =
-            measure(|| md.parse_document(black_box(source)).into_legacy().render());
-        assert_eq!(bridge, expected);
-        print_row(
-            corpus.name,
-            "end-to-end",
-            "arena-bridge",
-            bridge_stats,
-            &bridge,
-        );
-
-        let (legacy_html, legacy_stats) = measure(|| md.parse(black_box(source)).render());
-        assert_eq!(legacy_html, expected);
-        print_row(
-            corpus.name,
-            "end-to-end",
-            "legacy-tree",
-            legacy_stats,
-            &legacy_html,
-        );
+        let expected = md.render_document(&document);
+        let (html, stats) = measure(|| md.render_document(black_box(&document)));
+        assert_eq!(html, expected);
+        print_row(corpus.name, "render", "arena-direct", stats, &html);
+        let (html, stats) = measure(|| md.render(black_box(source)));
+        assert_eq!(html, expected);
+        print_row(corpus.name, "end-to-end", "arena-direct", stats, &html);
     }
 }

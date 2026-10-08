@@ -7,35 +7,20 @@ use markdown_it::{
     DocumentRenderContext,
     DocumentWriter,
     MarkdownIt,
-    Node,
     NodeDraft,
     NodeRef,
     NodeValue,
-    Renderer,
 };
 
 const CRAB_CLAW: &str = r#"(\/)"#;
 
 #[derive(Debug)]
-// This is a structure that represents your custom Node in AST.
+// This is a structure that represents your custom node payload in the document.
 pub struct InlineFerris;
 
+impl NodeValue for InlineFerris {}
+
 // This defines how your custom node should be rendered.
-impl NodeValue for InlineFerris {
-    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        // `node.attrs` are custom attributes added by other plugins
-        // (for example, source mapping information)
-        let mut attrs = node.attrs.clone();
-
-        // add a custom class attribute
-        attrs.push(("class".into(), "ferris-inline".into()));
-
-        fmt.open("span", &attrs);
-        fmt.text("🦀");
-        fmt.close("span");
-    }
-}
-
 struct InlineFerrisDocumentRenderer;
 
 impl DocumentNodeRenderer<InlineFerris> for InlineFerrisDocumentRenderer {

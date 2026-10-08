@@ -83,38 +83,10 @@ fn main() {
             let source = corpus.source();
 
             // Warm lazy parser state before enabling the counter.
-            let expected = md.parse(source).render();
-            assert_eq!(
-                md.render_document(&md.parse_document_direct(source)),
-                expected
-            );
-
-            let (legacy, legacy_stats) = measure(|| md.parse(black_box(source)));
-            print_row(configuration_name, corpus.name, "legacy-tree", legacy_stats);
-
-            let (bridged, bridge_stats) = measure(|| md.parse_document(black_box(source)));
-            let bridge_nodes = bridged.len();
-            assert_eq!(md.render_document(&bridged), expected);
-            print_row(
-                configuration_name,
-                corpus.name,
-                "legacy-arena-bridge",
-                bridge_stats,
-            );
-
-            let (direct, direct_stats) =
-                measure(|| md.parse_document_direct(black_box(source)));
-            let direct_nodes = direct.len();
-            assert_eq!(md.render_document(&direct), expected);
-            assert_eq!(direct_nodes, bridge_nodes);
-            print_row(
-                configuration_name,
-                corpus.name,
-                "arena-direct",
-                direct_stats,
-            );
-
-            black_box(legacy);
+            let expected = md.render(source);
+            let (document, stats) = measure(|| md.parse_document(black_box(source)));
+            assert_eq!(md.render_document(&document), expected);
+            print_row(configuration_name, corpus.name, "arena-direct", stats);
         }
     }
 }

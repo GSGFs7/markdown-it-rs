@@ -6,7 +6,7 @@ fn usage() -> ! {
     eprintln!(
         "usage: document_parse_profile \
          <configuration> <corpus> \
-         <legacy-tree|legacy-arena-bridge|arena-direct> \
+         <arena-direct> \
          [iterations]"
     );
     std::process::exit(2);
@@ -40,27 +40,12 @@ fn main() {
 
     // Keep correctness checks and lazy parser initialization outside the
     // repeated profile region.
-    let expected = md.parse(source).render();
-    let bridged = md.parse_document(source);
-    let direct = md.parse_document_direct(source);
-    assert_eq!(md.render_document(&bridged), expected);
-    assert_eq!(md.render_document(&direct), expected);
-    assert_eq!(direct.len(), bridged.len());
+    md.render(source);
 
     match path.as_str() {
-        "legacy-tree" => {
-            for _ in 0..iterations {
-                black_box(md.parse(black_box(source)));
-            }
-        }
-        "legacy-arena-bridge" => {
-            for _ in 0..iterations {
-                black_box(md.parse_document(black_box(source)));
-            }
-        }
         "arena-direct" => {
             for _ in 0..iterations {
-                black_box(md.parse_document_direct(black_box(source)));
+                black_box(md.parse_document(black_box(source)));
             }
         }
         _ => usage(),

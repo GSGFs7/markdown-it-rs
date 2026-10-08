@@ -11,7 +11,7 @@ fn parser() -> MarkdownIt {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: document_render_profile <corpus> <arena-direct|legacy-tree> [iterations]");
+    eprintln!("usage: document_render_profile <corpus> <arena-direct> [iterations]");
     std::process::exit(2);
 }
 
@@ -41,12 +41,7 @@ fn main() {
                 black_box(md.render_document(black_box(&document)));
             }
         }
-        "legacy-tree" => {
-            let root = md.parse(source);
-            for _ in 0..iterations {
-                black_box(root.render());
-            }
-        }
+
         _ => usage(),
     }
 

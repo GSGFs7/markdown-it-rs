@@ -1,14 +1,9 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use markdown_it::parser::core::CoreRule;
-use markdown_it::plugins::extra::tasklist::{self, TaskListDocumentTransform, TaskListScanner};
-use markdown_it::{Document, DocumentTransform, MarkdownIt, Node};
+use markdown_it::plugins::extra::tasklist::{self, TaskListDocumentTransform};
+use markdown_it::{Document, DocumentTransform, MarkdownIt};
 use markdown_it_benchmarks::corpus;
-
-fn transform_legacy(root: &mut Node, md: &MarkdownIt) {
-    TaskListScanner::run(root, md);
-}
 
 fn transform_registered(document: &mut Document, md: &MarkdownIt) {
     md.run_document_transforms(document);
@@ -37,7 +32,7 @@ fn benchmark(c: &mut Criterion) {
     let parser = parser();
     let transform = TaskListDocumentTransform;
     let mut document_transforms = MarkdownIt::empty();
-    tasklist::add_document(&mut document_transforms);
+    tasklist::add(&mut document_transforms);
     let standard = corpus::standard();
     let tasklist_heavy = tasklist_heavy();
 
@@ -46,25 +41,8 @@ fn benchmark(c: &mut Criterion) {
         .map(|corpus| (corpus.name, corpus.source()))
         .chain(std::iter::once(("tasklist-heavy", tasklist_heavy.as_str())))
     {
-        let mut legacy = parser.parse(source);
-        transform_legacy(&mut legacy, &parser);
-        let legacy_html = legacy.render();
-        let mut document = parser.parse_document(source);
-        transform_registered(&mut document, &document_transforms);
-        assert_eq!(legacy_html, document.into_legacy().render(), "{name}");
-
         let mut group = c.benchmark_group(format!("tasklist-transform/corpus/{name}"));
         group.throughput(Throughput::Bytes(source.len() as u64));
-        group.bench_function("legacy", |b| {
-            b.iter_batched(
-                || parser.parse(source),
-                |mut root| {
-                    transform_legacy(black_box(&mut root), black_box(&parser));
-                    black_box(root);
-                },
-                BatchSize::SmallInput,
-            )
-        });
         group.bench_function("document-registry", |b| {
             b.iter_batched(
                 || parser.parse_document(source),

@@ -10,11 +10,18 @@ fn parser() -> MarkdownIt {
 }
 
 fn document_with_attrs(md: &MarkdownIt, attrs: &[HtmlAttribute]) -> Document {
-    let mut legacy = md.parse("text");
-    legacy.children[0].attrs = attrs.to_vec();
-    let expected = legacy.render();
-    let document = Document::from_legacy("text", legacy);
-    assert_eq!(md.render_document(&document), expected);
+    let mut root = markdown_it::NodeDraft::new(markdown_it::parser::core::Root::new("text".into()));
+    let mut paragraph =
+        markdown_it::NodeDraft::new(markdown_it::plugins::cmark::block::paragraph::Paragraph);
+    paragraph.attrs_mut().extend_from_slice(attrs);
+    paragraph.push_child(markdown_it::NodeDraft::new(
+        markdown_it::parser::inline::Text {
+            content: "text".into(),
+        },
+    ));
+    root.push_child(paragraph);
+    let document = Document::from_draft("text", root);
+    md.render_document(&document);
     document
 }
 

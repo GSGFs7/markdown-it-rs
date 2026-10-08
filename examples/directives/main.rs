@@ -69,7 +69,7 @@ Advises about risks or negative outcomes of certain actions.
 :::
 "#;
 
-    let body = md.parse(input).render();
+    let body = md.render(input);
     let html = format!(
         r#"<!DOCTYPE html>
 <html lang="en">

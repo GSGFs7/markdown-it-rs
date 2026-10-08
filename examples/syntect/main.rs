@@ -85,8 +85,8 @@ fn main() {
 "#,
         markdown_it::plugins::extra::syntect::theme_css(&md_classed).unwrap_or_default(),
         highlighted_line_css,
-        md_inline.parse(input_inline).render(),
-        md_classed.parse(input_classed).render(),
+        md_inline.render(input_inline),
+        md_classed.render(input_classed),
     );
 
     let path = "examples/syntect/demo.html";

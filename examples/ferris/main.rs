@@ -1,4 +1,4 @@
-// Runs the inline plugin and the still-legacy block/core examples.
+// Runs arena-backed custom block, inline and core plugins.
 mod block_rule;
 mod core_rule;
 mod inline_rule;
@@ -11,17 +11,16 @@ fn main() {
     // add the custom inline rule
     inline_rule::add(inline_md);
 
-    let document = inline_md.parse_document_direct("(\\/) hello world (\\/)");
+    let document = inline_md.parse_document("(\\/) hello world (\\/)");
     let inline_html = inline_md.render_document(&document);
 
-    // Block/core plugins still use the legacy parser until those protocols flip.
-    let legacy_md = &mut markdown_it::MarkdownIt::empty();
-    markdown_it::plugins::cmark::add(legacy_md);
-    block_rule::add(legacy_md);
-    core_rule::add(legacy_md);
-    let legacy_html = legacy_md.parse("(\\/)-------------(\\/)").render();
+    let block_md = &mut markdown_it::MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(block_md);
+    block_rule::add(block_md);
+    core_rule::add(block_md);
+    let block_html = block_md.render("(\\/)-------------(\\/)");
 
-    let html = format!("{inline_html}{legacy_html}");
+    let html = format!("{inline_html}{block_html}");
 
     print!("{html}");
 
