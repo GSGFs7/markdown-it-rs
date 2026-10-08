@@ -86,6 +86,29 @@ fn probe_state<'a>(
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct ProbeParentSnapshot {
+    cursor: (usize, usize, u32, i32),
+    pending_text: Option<(usize, usize)>,
+    source: String,
+    mapping: Vec<(usize, usize)>,
+    inline_ext: String,
+    root_ext: String,
+    nodes: String,
+}
+
+fn probe_parent_snapshot(state: &DocumentInlineState<'_>) -> ProbeParentSnapshot {
+    ProbeParentSnapshot {
+        cursor: (state.pos, state.pos_max, state.depth, state.link_level),
+        pending_text: state.pending_text,
+        source: state.src.to_string(),
+        mapping: state.mapping.to_vec(),
+        inline_ext: format!("{:?}", state.inline_ext),
+        root_ext: format!("{:?}", state.root_ext),
+        nodes: format!("{:?}", state.nodes),
+    }
+}
+
 #[test]
 fn finishing_nodes_preserves_source_and_byte_mapping() {
     let md = MarkdownIt::empty();
@@ -614,6 +637,7 @@ fn probe_subrange_uses_relative_ranges_and_keeps_parent_state() {
         finalizers: vec![],
     };
     let state = parent_state(&md, &ruleset);
+    let before = probe_parent_snapshot(&state);
     let mut context = state.probe_subrange(0..11).unwrap();
 
     assert_eq!(context.depth(), 1);
@@ -642,6 +666,83 @@ fn probe_subrange_uses_relative_ranges_and_keeps_parent_state() {
     );
     assert_eq!(state.nodes.len(), 1);
     assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 41);
+    assert_eq!(probe_parent_snapshot(&state), before);
+}
+
+#[test]
+fn probe_matches_and_no_matches_keep_scratch_and_effects_private() {
+    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        assert_eq!(context.root_ext().unwrap().get::<u16>(), Some(&73));
+        context
+            .scratch_mut()
+            .get_or_insert_default::<FinalizerCalls>()
+            .0 += 1;
+        if context.remaining().starts_with('{') {
+            InlineProbeResult::MatchWithEffects {
+                len: 1,
+                kind: InlineProbeKind::Token,
+                effects: crate::InlineProbeEffects {
+                    link_level_delta: 1,
+                },
+            }
+        } else {
+            InlineProbeResult::NoMatch
+        }
+    }
+
+    let md = MarkdownIt::empty();
+    let ruleset = DocumentRuleSet {
+        runs: vec![run_rule(panic_run)],
+        probes: vec![probe_rule(probe)],
+        finalizers: vec![|_| panic!("probe must not run finalizers")],
+    };
+    let mut root_ext = RootExtSet::new();
+    root_ext.insert(73u16);
+    let mut state = parent_state(&md, &ruleset);
+    state.root_ext = Some(&root_ext);
+    state.nodes[0].set_srcmap(Some(SourcePos::new(10, 13)));
+    state.nodes[0]
+        .attrs_mut()
+        .push(("sentinel".into(), "unchanged".into()));
+    state.nodes[0].ext_mut().insert(17u8);
+    state.nodes[0].push_child(NodeDraft::new(Text {
+        content: "child".into(),
+    }));
+    let before = probe_parent_snapshot(&state);
+
+    // Invalid and empty ranges must leave the same populated parent untouched.
+    assert!(state.probe_subrange(3..4).is_none()); // inside 雪's UTF-8 bytes
+    assert!(state.probe_subrange(0..12).is_none());
+    assert!(state.probe_subrange(Range { start: 2, end: 1 }).is_none());
+    assert!(state.probe_subrange(0..0).unwrap().next_token().is_none());
+    assert_eq!(probe_parent_snapshot(&state), before);
+
+    for session in 0..4 {
+        let mut context = match session {
+            0 => state.probe_current(),
+            1 => state.probe_from(0),
+            _ => state.probe_subrange(0..11).unwrap(),
+        };
+        assert!(context.scratch_mut().is_empty());
+        assert_eq!(context.next_token().unwrap().kind, InlineProbeKind::Token);
+        assert_eq!(context.link_level(), 3);
+        assert_eq!(context.scratch_mut().get::<FinalizerCalls>().unwrap().0, 1);
+
+        let mut child = context
+            .probe_subrange(0..context.remaining().len())
+            .unwrap();
+        assert!(child.scratch_mut().is_empty());
+        assert_eq!(child.next_token().unwrap().kind, InlineProbeKind::Text);
+        assert_eq!(child.scratch_mut().get::<FinalizerCalls>().unwrap().0, 1);
+        assert_eq!(context.scratch_mut().get::<FinalizerCalls>().unwrap().0, 1);
+
+        while let Some(token) = context.next_token() {
+            assert_eq!(token.kind, InlineProbeKind::Text);
+        }
+        assert_eq!(context.link_level(), 3);
+        assert!(context.scratch_mut().get::<FinalizerCalls>().unwrap().0 > 1);
+        assert_eq!(probe_parent_snapshot(&state), before);
+    }
 }
 
 #[test]
@@ -1270,7 +1371,12 @@ fn probe_html_comment_cache_is_private_to_each_session() {
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
     let ruleset = md.inline.document_rules();
-    let state = probe_state(&md, &ruleset, "<!-- [ -->");
+    let mut state = probe_state(&md, &ruleset, "<!-- [ -->");
+    state.inline_ext.insert(FinalizerCalls(41));
+    state.nodes.push(NodeDraft::new(Text {
+        content: "sentinel".into(),
+    }));
+    let before = probe_parent_snapshot(&state);
 
     let mut short = state.probe_subrange(0..5).unwrap();
     while let Some(token) = short.next_token() {
@@ -1299,6 +1405,7 @@ fn probe_html_comment_cache_is_private_to_each_session() {
     while let Some(token) = short_after.next_token() {
         assert_eq!(token.kind, InlineProbeKind::Text);
     }
+    assert_eq!(probe_parent_snapshot(&state), before);
 }
 
 #[test]
@@ -1339,6 +1446,11 @@ fn invalid_probe_length_with_effects_panics_and_preserves_pending() {
     };
     let mut state = probe_state(&md, &ruleset, "aa");
     state.link_level = 2;
+    state.inline_ext.insert(FinalizerCalls(41));
+    state.nodes.push(NodeDraft::new(Text {
+        content: "sentinel".into(),
+    }));
+    let before = probe_parent_snapshot(&state);
     let mut context = state.probe_subrange(0..2).unwrap();
 
     assert_eq!(
@@ -1358,6 +1470,7 @@ fn invalid_probe_length_with_effects_panics_and_preserves_pending() {
     assert_eq!(context.trailing_text(), "a");
     assert_eq!(context.link_level(), 2);
     assert_eq!(state.link_level, 2);
+    assert_eq!(probe_parent_snapshot(&state), before);
 }
 
 #[test]
