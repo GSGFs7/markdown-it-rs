@@ -21,7 +21,7 @@ use crate::parser::render_options::RenderOptions;
 /// ```
 /// use markdown_it::{
 ///     Document, DocumentNodeRenderer, DocumentRenderContext,
-///     DocumentWriter, MarkdownIt, Node, NodeRef, NodeValue,
+///     DocumentWriter, MarkdownIt, NodeDraft, NodeRef, NodeValue,
 /// };
 ///
 /// #[derive(Debug)]
@@ -43,7 +43,7 @@ use crate::parser::render_options::RenderOptions;
 ///
 /// let mut md = MarkdownIt::empty();
 /// md.add_document_renderer::<Badge, _>("html", BadgeRenderer);
-/// let document = Document::from_legacy("", Node::new(Badge("new")));
+/// let document = Document::from_draft("", NodeDraft::new(Badge("new")));
 /// assert_eq!(md.render_document(&document), "new");
 /// ```
 pub trait DocumentNodeRenderer<T: NodeValue>: Send + Sync + 'static {
@@ -96,8 +96,11 @@ impl Hasher for TypeIdHasher {
     }
 }
 
-type FormatRenderers =
-    HashMap<TypeId, Box<dyn ErasedDocumentNodeRenderer>, BuildHasherDefault<TypeIdHasher>>;
+type FormatRenderers = HashMap<
+    TypeId,
+    std::sync::Arc<dyn ErasedDocumentNodeRenderer>,
+    BuildHasherDefault<TypeIdHasher>,
+>;
 
 struct TypedDocumentNodeRenderer<T, R> {
     renderer: R,
@@ -128,7 +131,7 @@ where
 ///
 /// Adding the same pair again replaces the previous renderer and returns
 /// `true`. This gives applications an explicit override mechanism.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct DocumentRendererRegistry {
     formats: HashMap<String, FormatRenderers>,
 }
@@ -161,7 +164,7 @@ impl DocumentRendererRegistry {
             .or_default()
             .insert(
                 TypeId::of::<T>(),
-                Box::new(TypedDocumentNodeRenderer::<T, R> {
+                std::sync::Arc::new(TypedDocumentNodeRenderer::<T, R> {
                     renderer,
                     marker: PhantomData,
                 }),
@@ -186,12 +189,23 @@ impl DocumentRendererRegistry {
         removed
     }
 
-    /// Render a document without rebuilding the legacy tree.
+    /// Render an arena-backed document.
     ///
     /// # Panics
     ///
     /// Panics if a leaf node has no renderer registered for `format`.
     pub fn render(&self, document: &Document, format: &str, options: &RenderOptions) -> String {
+        self.render_subtree(document, document.root(), format, options)
+    }
+
+    /// Render a subtree using the same format registry.
+    pub fn render_subtree(
+        &self,
+        document: &Document,
+        root: NodeId,
+        format: &str,
+        options: &RenderOptions,
+    ) -> String {
         let mut ext = RenderExtSet::new();
         let mut output = DocumentWriter::new();
         let shared = RenderShared {
@@ -201,7 +215,7 @@ impl DocumentRendererRegistry {
             options,
             scratch_nodes: RefCell::new(Vec::new()),
         };
-        render_node(&shared, &mut ext, document.root(), &mut output);
+        render_node(&shared, &mut ext, root, &mut output);
         output.finish()
     }
 }
