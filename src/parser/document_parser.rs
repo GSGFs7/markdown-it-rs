@@ -254,6 +254,7 @@ impl<'a> DocumentBlockState<'a> {
         }
     }
 
+    /// Generate tokens for input range.
     fn tokenize(&mut self) {
         stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
             let mut has_empty_lines = false;
@@ -319,14 +320,16 @@ impl<'a> DocumentBlockState<'a> {
     ///
     /// Block rules that recursively invoke the block parser must use this
     /// method so [`MarkdownIt::max_nesting`] can stop excessively deep input.
-    pub(crate) fn tokenize_nested(&mut self) {
+    pub fn tokenize_nested(&mut self) {
         let old_level = self.level;
         self.level = self.level.saturating_add(1);
         self.tokenize();
         self.level = old_level;
     }
 
-    pub(crate) fn test_rules_at_line(&mut self) -> bool {
+    /// Run every block rule's check at the current line without consuming it;
+    /// returns `true` if any rule matches.
+    pub fn test_rules_at_line(&mut self) -> bool {
         for index in 0..self.rules.len() {
             let check = self.rules[index].0;
             if check(self).is_some() {
@@ -336,7 +339,8 @@ impl<'a> DocumentBlockState<'a> {
         false
     }
 
-    pub(crate) fn is_empty(&self, line: usize) -> bool {
+    /// Whether the given line is empty.
+    pub fn is_empty(&self, line: usize) -> bool {
         self.line_offsets
             .get(line)
             .is_some_and(|offsets| offsets.first_nonspace >= offsets.line_end)
@@ -350,20 +354,29 @@ impl<'a> DocumentBlockState<'a> {
         line
     }
 
-    pub(crate) fn line_indent(&self, line: usize) -> i32 {
+    /// Return the indent of a specific line, taking blockquotes and lists into
+    /// account; it may be negative if the text is less indented than the
+    /// current list item.
+    pub fn line_indent(&self, line: usize) -> i32 {
         self.line_offsets.get(line).map_or(0, |offsets| {
             offsets.indent_nonspace - self.blk_indent as i32
         })
     }
 
-    pub(crate) fn get_line(&self, line: usize) -> &str {
+    /// Return a single line, trimming initial spaces.
+    pub fn get_line(&self, line: usize) -> &str {
         let Some(offsets) = self.line_offsets.get(line) else {
             return "";
         };
         &self.src[offsets.first_nonspace..offsets.line_end]
     }
 
-    pub(crate) fn get_lines(
+    /// Cut the range of lines `begin..end` (excluding `end`) from the source
+    /// without preceding indent.
+    ///
+    /// Returns the lines plus a mapping from the start of each result line to
+    /// the start of each source line.
+    pub fn get_lines(
         &self,
         begin: usize,
         end: usize,
