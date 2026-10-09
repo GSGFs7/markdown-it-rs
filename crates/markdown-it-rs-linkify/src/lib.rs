@@ -105,7 +105,7 @@ impl Linkify {
             })
             .collect::<Vec<_>>();
 
-        self.extend_explicit_urls_with_backticks(input, &scan_input, &finder, &mut links);
+        self.extend_explicit_url_paths(input, &scan_input, &finder, &mut links);
         self.add_protocol_relative_urls(input, &mut links);
 
         links.sort_by_key(|link| (link.start, std::cmp::Reverse(link.end)));
@@ -122,41 +122,43 @@ impl Linkify {
         links
     }
 
-    fn extend_explicit_urls_with_backticks(
+    fn extend_explicit_url_paths(
         &self,
         input: &str,
         scan_input: &str,
         finder: &LinkFinder,
         links: &mut Vec<Link>,
     ) {
-        if !input.contains('`') {
+        if !input.contains(['`', '|']) {
             return;
         }
 
+        // Scan allowed path characters without changing byte offsets.
         // compatible markdownit.js's `linkify-it`.
         //
         // "https://example.com/foo`bar`baz" -> "https://example.com/foo~bar~baz"
         // scan the replaced URL length & encode origin content.
-        let scan_input = scan_input.replace('`', "~");
+        let scan_input = scan_input.replace(['`', '|'], "~");
         for link in finder.links(&scan_input) {
             if *link.kind() != UpstreamLinkKind::Url {
                 continue;
             }
 
             let original = &input[link.start()..link.end()];
-            if !original.contains('`') || !has_supported_explicit_scheme(original) {
+            if !original.contains(['`', '|']) || !has_supported_explicit_scheme(original) {
                 continue;
             }
+            let end = link.start() + balanced_path_end(original);
 
             if let Some(existing) = links
                 .iter_mut()
                 .find(|existing| existing.start == link.start() && existing.kind == LinkKind::Url)
             {
-                existing.end = existing.end.max(link.end());
+                existing.end = end;
             } else {
                 links.push(Link {
                     start: link.start(),
-                    end: link.end(),
+                    end,
                     kind: LinkKind::Url,
                 });
             }
@@ -166,6 +168,7 @@ impl Linkify {
     fn add_protocol_relative_urls(&self, input: &str, links: &mut Vec<Link>) {
         let mut fuzzy_finder = LinkFinder::new();
         fuzzy_finder.url_must_have_scheme(false);
+        let scan_input = input.replace(['`', '|'], "~");
 
         // rust `linkify` deliberately doesn't recognize protocol-relative URLs.
         // but markdwonit.js's `linkify-it` will identify it.
@@ -181,7 +184,7 @@ impl Linkify {
             // //example.com/ ciallo
             //   ^^^^^^^^^^^^^^^^^^^--- check if this is a link
             // (it should identify "example.com/")
-            let rest = &input[start + 2..];
+            let rest = &scan_input[start + 2..];
             let Some(link) = fuzzy_finder.links(rest).next() else {
                 continue;
             };
@@ -191,11 +194,38 @@ impl Linkify {
 
             links.push(Link {
                 start,
-                end: start + 2 + link.end(),
+                end: start + balanced_path_end(&input[start..start + 2 + link.end()]),
                 kind: LinkKind::Url,
             });
         }
     }
+}
+
+fn balanced_path_end(url: &str) -> usize {
+    let authority = url.find("://").map_or(2, |index| index + 3);
+    let Some(path) = url[authority..].find(['/', '?', '#']) else {
+        return url.len();
+    };
+    let path = authority + path;
+    let mut open: [Vec<usize>; 3] = Default::default();
+    for (offset, byte) in url.as_bytes()[path..].iter().enumerate() {
+        match byte {
+            b'(' => open[0].push(path + offset),
+            b'[' => open[1].push(path + offset),
+            b'{' => open[2].push(path + offset),
+            b')' => {
+                open[0].pop();
+            }
+            b']' => {
+                open[1].pop();
+            }
+            b'}' => {
+                open[2].pop();
+            }
+            _ => {}
+        }
+    }
+    open.iter().flatten().copied().min().unwrap_or(url.len())
 }
 
 fn mask_unicode_authorities(input: &str) -> std::borrow::Cow<'_, str> {
@@ -382,6 +412,30 @@ mod tests {
         assert_eq!(
             matches("https://example.com/foo`bar`baz"),
             vec![("https://example.com/foo`bar`baz", LinkKind::Url)]
+        );
+    }
+
+    #[test]
+    fn accepts_pipes_in_url_paths() {
+        for input in [
+            "https://example.com/a|b",
+            "https://example.com/a|",
+            "https://example.com/a`b|c`d",
+            "https://例子.测试/a_(b)?x=1|é~&y=2é",
+            "//example.com/a|b",
+        ] {
+            assert_eq!(matches(input), vec![(input, LinkKind::Url)], "{input:?}");
+        }
+        assert_eq!(
+            matches("https://example.com/a|b[c"),
+            vec![("https://example.com/a|b", LinkKind::Url)]
+        );
+        assert_eq!(
+            matches("https://example.com/a|b. next@example.com"),
+            vec![
+                ("https://example.com/a|b", LinkKind::Url),
+                ("next@example.com", LinkKind::Email),
+            ]
         );
     }
 

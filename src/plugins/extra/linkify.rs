@@ -545,6 +545,18 @@ mod tests {
     }
 
     #[test]
+    fn pipes_in_url_paths_are_linkified_and_encoded() {
+        run(
+            "https://例子.测试/a_(b)?x=1|é~&y=2é[aé(",
+            "<p><a href=\"https://xn--fsqu00a.xn--0zwm56d/a_(b)?x=1%7C%C3%A9~&amp;y=2%C3%A9\">https://例子.测试/a_(b)?x=1|é~&amp;y=2é</a>[aé(</p>",
+        );
+        run(
+            "//example.com/a|b",
+            "<p><a href=\"//example.com/a%7Cb\">//example.com/a|b</a></p>",
+        );
+    }
+
+    #[test]
     fn links_inside_raw_links() {
         let input = r#"https://example.com/foo[123](456)bar"#;
         let output = r#"<p><a href="https://example.com/foo%5B123%5D(456)bar">https://example.com/foo[123](456)bar</a></p>"#;
