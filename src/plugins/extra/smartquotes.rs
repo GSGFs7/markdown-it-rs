@@ -8,8 +8,12 @@ use std::collections::HashMap;
 
 use crate::common::utils::is_punct_char;
 use crate::document::Text;
+use crate::plugins::cmark::block::heading::ATXHeading;
+use crate::plugins::cmark::block::lheading::SetextHeader;
+use crate::plugins::cmark::block::list::ListItem;
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
+use crate::plugins::extra::tables::TableCell;
 use crate::plugins::html::html_inline::HtmlInline;
 use crate::{
     Document,
@@ -101,7 +105,7 @@ fn document_edits_with<
     let projection = TextProjection::new(document_smartquotes_projection);
     let events = document
         .text_events(projection)
-        .filter_map(document_relevant_event);
+        .filter_map(|event| document_relevant_event(document, event));
     transform_events::<
         NodeId,
         _,
@@ -325,7 +329,7 @@ fn transform_events<
     }
 }
 
-fn document_relevant_event(event: TextEvent) -> Option<RelevantEvent<NodeId>> {
+fn document_relevant_event(document: &Document, event: TextEvent) -> Option<RelevantEvent<NodeId>> {
     match event {
         TextEvent::Char {
             node,
@@ -342,6 +346,14 @@ fn document_relevant_event(event: TextEvent) -> Option<RelevantEvent<NodeId>> {
         }),
         TextEvent::Boundary(TextBoundary::Space) => Some(RelevantEvent::Space),
         TextEvent::Boundary(TextBoundary::Hard) => Some(RelevantEvent::HardBoundary),
+        TextEvent::Exit { node, .. }
+            if matches!(
+                document_smartquotes_projection(document.node(node)),
+                TextProjectionKind::Boundary(TextBoundary::Hard)
+            ) =>
+        {
+            Some(RelevantEvent::HardBoundary)
+        }
         TextEvent::Enter { .. } | TextEvent::Exit { .. } => None,
     }
 }
@@ -353,8 +365,15 @@ fn document_smartquotes_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> 
     } else if let Some(html) = node.cast::<HtmlInline>() {
         // HTML, not editable (protect quotes for <a href="...">)
         TextProjectionKind::ReadOnly(&html.content)
-    } else if node.is::<Paragraph>() || node.is::<Hardbreak>() || node.is::<Softbreak>() {
-        // boundary, process stack content
+    } else if node.is::<Paragraph>()
+        || node.is::<ATXHeading>()
+        || node.is::<SetextHeader>()
+        || node.is::<TableCell>()
+        || node.is::<ListItem>()
+    {
+        // Reset quotes between blocks; tight list items have no Paragraph wrapper.
+        TextProjectionKind::Boundary(TextBoundary::Hard)
+    } else if node.is::<Hardbreak>() || node.is::<Softbreak>() {
         TextProjectionKind::Boundary(TextBoundary::Space)
     } else {
         // other rule, do nothing

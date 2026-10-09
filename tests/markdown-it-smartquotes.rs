@@ -32,6 +32,55 @@ fn run(input: &str, output: &str) {
     let _ = md.parse_document(input.trim_end());
 }
 ///////////////////////////////////////////////////////////////////////////
+#[test]
+fn quotes_do_not_pair_across_inline_blocks() {
+    for (source, expected) in [
+        ("\"one\n\ntwo\"", "<p>&quot;one</p>\n<p>two&quot;</p>"),
+        ("# \"one\n\ntwo\"", "<h1>&quot;one</h1>\n<p>two&quot;</p>"),
+        (
+            "\"one\n---\n\ntwo\"",
+            "<h2>&quot;one</h2>\n<p>two&quot;</p>",
+        ),
+        ("\"one\n\n# two\"", "<p>&quot;one</p>\n<h1>two&quot;</h1>"),
+        (
+            "- \"one\n- two\"",
+            "<ul>\n<li>&quot;one</li>\n<li>two&quot;</li>\n</ul>",
+        ),
+        (
+            "> \"one\n\ntwo\"",
+            "<blockquote>\n<p>&quot;one</p>\n</blockquote>\n<p>two&quot;</p>",
+        ),
+        (
+            "`Foo\n----\n`\n\n<a title=\"a lot\n---\nof dashes\"/>\n",
+            "<h2>`Foo</h2>\n<p>`</p>\n<h2>&lt;a title=&quot;a lot</h2>\n<p>of dashes&quot;/&gt;</p>",
+        ),
+    ] {
+        run(source, expected);
+    }
+}
+
+#[test]
+fn quotes_do_not_pair_across_table_cells() {
+    let mut md = markdown_it::MarkdownIt::new();
+    markdown_it::plugins::extra::tables::add(&mut md);
+    markdown_it::plugins::extra::smartquotes::add(&mut md);
+    assert_eq!(
+        md.render("| \"one | two\" |\n| --- | --- |"),
+        "<table>\n<thead>\n<tr>\n<th>&quot;one</th>\n<th>two&quot;</th>\n</tr>\n</thead>\n</table>\n"
+    );
+}
+
+#[test]
+fn quotes_still_pair_across_line_breaks_and_inline_markup() {
+    for (source, expected) in [
+        ("\"one\ntwo\"", "<p>“one\ntwo”</p>"),
+        ("\"one  \ntwo\"", "<p>“one<br>\ntwo”</p>"),
+        ("\"one *two* three\"", "<p>“one <em>two</em> three”</p>"),
+    ] {
+        run(source, expected);
+    }
+}
+
 // TESTGEN: fixtures/markdown-it/smartquotes.txt
 #[rustfmt::skip]
 mod fixtures_markdown_it_smartquotes_txt {
