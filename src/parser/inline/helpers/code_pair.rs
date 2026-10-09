@@ -7,13 +7,13 @@
 //! You add a custom structure by using [add_with] function, which takes following arguments:
 //!  - `MARKER` - marker character
 //!  - `md` - parser instance
-//!  - `f` - function that should return your custom [NodeDraft]
+//!  - `f` - function that should return your custom [NodeId]
 //!
 //! Here is an example of a rule turning `%foo%` into `🦀foo🦀`:
 //!
 //! ```rust
 //! use markdown_it::parser::inline::helpers::code_pair;
-//! use markdown_it::{MarkdownIt, NodeDraft, NodeValue, NodeRef, DocumentNodeRenderer, DocumentRenderContext, DocumentWriter};
+//! use markdown_it::{MarkdownIt, NodeId, NodeValue, NodeRef, DocumentNodeRenderer, DocumentRenderContext, DocumentWriter};
 //! #[derive(Debug)]
 //! struct Ferris;
 //! impl NodeValue for Ferris {}
@@ -24,7 +24,7 @@
 //!     }
 //! }
 //! let md = &mut MarkdownIt::empty();
-//! code_pair::add_with::<'%'>(md, |_| NodeDraft::new(Ferris));
+//! code_pair::add_with::<'%'>(md, |document, _| document.create_node(Ferris));
 //! md.add_document_renderer::<Ferris, _>("html", CustomRenderer);
 //! assert_eq!(md.render("hello %world%").trim(), "hello 🦀world🦀");
 //! ```
@@ -33,15 +33,15 @@
 //!
 //! 1. Literal marker character sequence can be used inside of structure if its length
 //!    doesn't match length of the opening/closing sequence (e.g. with `%` defined
-//!    as a marker, `%%foo%bar%%` gets parsed as `NodeDraft("foo%bar")`).
+//!    as a marker, `%%foo%bar%%` gets parsed as `a node containing "foo%bar"`).
 //!
 //! 2. Single space inside is trimmed to allow you to write `% %%foo %` to be parsed as
-//!    `NodeDraft("%%foo")`.
+//!    `a node containing "%%foo"`.
 //!
 //! If you define two structures with the same marker, only the first one will work.
 //!
 use crate::MarkdownIt;
-use crate::document::{NodeDraft, Text};
+use crate::document::{Document, NodeId, Text};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 
 #[derive(Debug, Default, Clone)]
@@ -50,9 +50,12 @@ struct CodePairCache<const MARKER: char> {
     max: Vec<usize>,
 }
 #[derive(Debug)]
-struct CodePairConfig<const MARKER: char>(fn(usize) -> NodeDraft);
+struct CodePairConfig<const MARKER: char>(fn(&mut Document, usize) -> NodeId);
 
-pub fn add_with<const MARKER: char>(md: &mut MarkdownIt, f: fn(length: usize) -> NodeDraft) {
+pub fn add_with<const MARKER: char>(
+    md: &mut MarkdownIt,
+    f: fn(&mut Document, length: usize) -> NodeId,
+) {
     md.ext.insert(CodePairConfig::<MARKER>(f));
 
     let builder = md.inline.add_rule::<CodePairScanner<MARKER>>();
@@ -79,7 +82,7 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
         matched.map(|matched| matched.consumed)
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let matched = scan_code_pair::<MARKER>(
             &state.src,
             state.pos,
@@ -93,12 +96,13 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
             .get::<CodePairConfig<MARKER>>()
             .unwrap()
             .0;
-        let mut node = f(matched.marker_len);
-        let mut text = NodeDraft::new(Text {
+        let node = f(state.document, matched.marker_len);
+        let text = state.document.create_node(Text {
             content: matched.content,
         });
-        text.set_srcmap(state.get_map(matched.content_start, matched.content_end));
-        node.push_child(text);
+        let srcmap = state.get_map(matched.content_start, matched.content_end);
+        state.document.node_mut(text).set_srcmap(srcmap);
+        state.document.push_child(node, text);
         Some((Some(node), matched.consumed))
     }
 }

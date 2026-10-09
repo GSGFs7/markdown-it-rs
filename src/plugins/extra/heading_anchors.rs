@@ -361,19 +361,21 @@ mod tests {
     struct AddExistingHeadingId;
     impl CoreRule for AddExistingHeadingId {
         fn document_rule() -> DocumentCoreRule {
-            DocumentCoreRule::FinalizeDraft(|root, _| {
-                let mut stack = vec![root];
+            DocumentCoreRule::FinalizeDocument(|root, _| {
+                let mut stack = vec![root.root()];
                 while let Some(node) = stack.pop() {
-                    if (node.is::<ATXHeading>() || node.is::<SetextHeader>())
-                        && node.children().iter().any(|child| {
-                            child
+                    if (root.node(node).is::<ATXHeading>() || root.node(node).is::<SetextHeader>())
+                        && root.children(node).iter().any(|&child| {
+                            root.node(child)
                                 .cast::<Text>()
                                 .is_some_and(|text| text.content == "Existing")
                         })
                     {
-                        node.attrs_mut().push(("id".into(), "generated".into()));
+                        root.node_mut(node)
+                            .attrs_mut()
+                            .push(("id".into(), "generated".into()));
                     }
-                    stack.extend(node.children_mut());
+                    stack.extend_from_slice(root.children(node));
                 }
             })
         }

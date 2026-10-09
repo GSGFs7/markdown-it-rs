@@ -7,7 +7,7 @@ use markdown_it::{
     DocumentRenderContext,
     DocumentWriter,
     MarkdownIt,
-    NodeDraft,
+    NodeId,
     NodeRef,
     NodeValue,
 };
@@ -53,13 +53,16 @@ impl InlineRule for FerrisInlineScanner {
     //  - creates a new `NodeDraft`
     //  - returns length of it
     //
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         if !state.remaining().starts_with(CRAB_CLAW) {
             return None;
         }
 
         // return new node and length of this structure
-        Some((Some(NodeDraft::new(InlineFerris)), CRAB_CLAW.len()))
+        Some((
+            Some(state.document.create_node(InlineFerris)),
+            CRAB_CLAW.len(),
+        ))
     }
 }
 

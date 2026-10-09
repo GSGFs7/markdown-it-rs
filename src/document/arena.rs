@@ -37,8 +37,10 @@ pub(super) struct Arena<T> {
     slots: Vec<Slot<T>>,
     /// first free slot
     free_head: Option<u32>,
+    /// Generation floor for slots recreated after trimming a vacant tail.
+    generation_floor: u32,
     /// number of living objects
-    pub(super) len: usize,
+    len: usize,
 }
 
 impl<T> Arena<T> {
@@ -46,6 +48,7 @@ impl<T> Arena<T> {
         Self {
             slots: Vec::new(),
             free_head: None,
+            generation_floor: 0,
             len: 0,
         }
     }
@@ -62,19 +65,56 @@ impl<T> Arena<T> {
             let slot = u32::try_from(self.slots.len()).expect("document contains too many nodes");
             // if there a no free slots, create a new
             self.slots.push(Slot {
-                generation: 0,
+                generation: self.generation_floor,
                 next_free: None,
                 value: None,
             });
             NodeId {
                 slot,
-                generation: 0,
+                generation: self.generation_floor,
             }
         };
 
         self.slots[id.slot as usize].value = Some(make_value(id));
         self.len += 1;
         id
+    }
+
+    /// Release a large vacant tail without changing any surviving node ID.
+    pub(super) fn trim_unused_tail(&mut self) {
+        // FIXME: unvalidated heuristic parameters
+        if self.len.saturating_mul(2) >= self.slots.len() {
+            return;
+        }
+
+        // Walk the vacant tail once, tracking the generation floor that keeps
+        // stale IDs invalid. Retired slots stay as tombstones.
+        let mut end = self.slots.len();
+        let mut floor = self.generation_floor;
+        while end > 0 {
+            let slot = &self.slots[end - 1];
+            if slot.value.is_some() || slot.generation == u32::MAX {
+                break;
+            }
+
+            floor = floor.max(slot.generation);
+            end -= 1;
+        }
+
+        if self.slots.len() - end < self.slots.len() / 4 {
+            return;
+        }
+
+        self.generation_floor = floor;
+        self.slots.truncate(end);
+        self.free_head = None;
+        for (index, slot) in self.slots.iter_mut().enumerate() {
+            if slot.value.is_none() && slot.generation != u32::MAX {
+                slot.next_free = self.free_head;
+                self.free_head = Some(index as u32);
+            }
+        }
+        self.slots.shrink_to_fit();
     }
 
     pub(super) fn get(&self, id: NodeId) -> Option<&T> {
@@ -115,6 +155,10 @@ impl<T> Arena<T> {
 
         Some(value)
     }
+
+    pub(super) fn len(&self) -> usize {
+        self.len
+    }
 }
 
 #[cfg(test)]
@@ -150,6 +194,7 @@ mod tests {
                 value: Some("old"),
             }],
             free_head: None,
+            generation_floor: 0,
             len: 1,
         };
 
@@ -158,6 +203,70 @@ mod tests {
 
         assert_eq!(new.slot(), 1);
         assert_eq!(arena.get(old), None);
+    }
+
+    #[test]
+    fn trimmed_slots_do_not_resurrect_stale_ids() {
+        let mut arena = Arena::new();
+        let kept = arena.insert_with(|_| "kept");
+        let removed: Vec<_> = (0..32)
+            .map(|_| arena.insert_with(|_| "temporary"))
+            .collect();
+        for &id in &removed {
+            arena.remove(id).unwrap();
+        }
+        arena.trim_unused_tail();
+        assert_eq!(arena.slots.len(), 1);
+        assert_eq!(arena.get(kept), Some(&"kept"));
+        for old in removed {
+            let new = arena.insert_with(|_| "new");
+            assert_eq!(new.slot(), old.slot());
+            assert_ne!(new.generation(), old.generation());
+            assert!(arena.get(old).is_none());
+        }
+    }
+
+    #[test]
+    fn trimming_preserves_retired_slots() {
+        let mut arena = Arena::new();
+        let ids: Vec<_> = (0..32).map(|_| arena.insert_with(|_| "value")).collect();
+        arena.slots[ids[1].slot() as usize].generation = u32::MAX;
+        arena
+            .remove(NodeId {
+                slot: ids[1].slot(),
+                generation: u32::MAX,
+            })
+            .unwrap();
+        for &id in &ids[2..] {
+            arena.remove(id).unwrap();
+        }
+        arena.trim_unused_tail();
+        assert_eq!(arena.slots.len(), 2);
+        let new = arena.insert_with(|_| "new");
+        assert_eq!(new.slot(), 2);
+        assert!(arena.get(ids[2]).is_none());
+    }
+
+    #[test]
+    fn trimming_rebuilds_free_links_inside_the_surviving_prefix() {
+        let mut arena = Arena::new();
+        let ids: Vec<_> = (0..32).map(|_| arena.insert_with(|_| "value")).collect();
+        for (index, &id) in ids.iter().enumerate() {
+            if index != 0 && index != 4 {
+                arena.remove(id).unwrap();
+            }
+        }
+        arena.trim_unused_tail();
+        assert_eq!(arena.slots.len(), 5);
+        for index in (1..4).rev() {
+            let new = arena.insert_with(|_| "new");
+            assert_eq!(new.slot(), ids[index].slot());
+            assert!(arena.get(ids[index]).is_none());
+        }
+        assert_eq!(arena.get(ids[4]), Some(&"value"));
+        let appended = arena.insert_with(|_| "appended");
+        assert_eq!(appended.slot(), 5);
+        assert!(arena.get(ids[5]).is_none());
     }
 
     #[test]

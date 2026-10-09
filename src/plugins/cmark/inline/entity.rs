@@ -9,7 +9,7 @@ use regex::Regex;
 
 use crate::MarkdownIt;
 use crate::common::utils::{get_entity_from_str, is_valid_entity_code};
-use crate::document::{NodeDraft, TextSpecial};
+use crate::document::{NodeId, TextSpecial};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 
 pub fn add(md: &mut MarkdownIt) {
@@ -95,8 +95,8 @@ impl InlineRule for EntityScanner {
         }
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (entity, len) = Self::parse(&state.src[state.pos..state.pos_max])?;
-        Some((Some(NodeDraft::new(entity)), len))
+        Some((Some(state.document.create_node(entity)), len))
     }
 }

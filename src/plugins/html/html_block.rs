@@ -8,7 +8,7 @@ use regex::Regex;
 use super::utils::blocks::*;
 use super::utils::regexps::*;
 use crate::MarkdownIt;
-use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::render::{DocumentNodeRenderer, DocumentRenderContext};
 
@@ -184,7 +184,7 @@ impl BlockRule for HtmlBlockScanner {
         sequence.can_terminate_paragraph.then_some(())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let sequence = Self::get_sequence(
             state.get_line(state.line),
             state.line_indent(state.line),
@@ -198,7 +198,7 @@ impl BlockRule for HtmlBlockScanner {
         let (content, _) = state.get_lines(start_line, next_line, state.blk_indent, true);
         // The block tokenizer assigns the source map for the consumed lines.
         Some((
-            NodeDraft::new(HtmlBlock { content }),
+            Some(state.document.create_node(HtmlBlock { content })),
             next_line - start_line,
         ))
     }

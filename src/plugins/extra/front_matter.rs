@@ -1,5 +1,5 @@
 use crate::parser::block::{BlockRule, DocumentBlockState};
-use crate::{MarkdownIt, NodeDraft};
+use crate::{MarkdownIt, NodeId};
 
 /// Default maximum number of document lines searched for the closing delimiter.
 pub const DEFAULT_MAX_LINES: usize = 256;
@@ -38,7 +38,7 @@ impl BlockRule for FrontMatterScanner {
     const MARKERS: &'static [char] = &['-', '+'];
     const NAMES: &'static [&'static str] = &["front_matter", "frontmatter"];
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (kind, end_line) = scan_front_matter(state.md, state.line, state.line_max, |line| {
             (state.get_line(line), state.line_indent(line))
         })?;
@@ -50,7 +50,7 @@ impl BlockRule for FrontMatterScanner {
             end_line,
         });
         // root extensions only, no rendered node
-        Some((NodeDraft::placeholder(), end_line + 1))
+        Some((None, end_line + 1))
     }
 }
 

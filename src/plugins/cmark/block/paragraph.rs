@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#paragraph>
 use crate::MarkdownIt;
-use crate::document::{NodeDraft, NodeValue};
+use crate::document::{NodeId, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::render::{HtmlBlockElementDocumentRenderer, PlainTextBlockDocumentRenderer};
 
@@ -22,7 +22,7 @@ impl BlockRule for ParagraphScanner {
         None // can't interrupt anything
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let start_line = state.line;
         let mut next_line = start_line;
 
@@ -55,9 +55,10 @@ impl BlockRule for ParagraphScanner {
         }
 
         let (content, mapping) = state.get_lines(start_line, next_line, state.blk_indent, false);
-        let mut paragraph = NodeDraft::new(Paragraph);
-        paragraph.push_child(state.pending_inline(content, mapping));
-        Some((paragraph, next_line - start_line))
+        let paragraph = state.document.create_node(Paragraph);
+        let pending = state.pending_inline(content, mapping);
+        state.document.push_child(paragraph, pending);
+        Some((Some(paragraph), next_line - start_line))
     }
 }
 

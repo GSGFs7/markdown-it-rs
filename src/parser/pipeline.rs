@@ -1,17 +1,17 @@
-//! Document parsing through transient drafts and arena storage.
+//! Markdown parsing directly into arena-backed documents.
 
 use std::sync::Arc;
 
 use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
 use crate::common::sourcemap::SourcePos;
-use crate::document::{Document, NodeDraft, NodeValue, Root, Text};
+use crate::document::{Document, NodeId, NodeValue, Root, Text};
 use crate::parser::block::{DocumentBlockState, build_line_offsets};
-use crate::parser::core::{DocumentCoreRule, DocumentFinalizeDraftFn, DocumentPrepareStateFn};
+use crate::parser::core::{DocumentCoreRule, DocumentFinalizeDocumentFn, DocumentPrepareStateFn};
 use crate::parser::inline::{DocumentInlineState, DocumentRuleSet};
 
-/// Inline content queued during the block pass and resolved once all
-/// reference definitions have been collected.
+/// Inline content queued during the block pass, resolved once all reference
+/// definitions have been collected.
 #[derive(Debug)]
 pub(super) struct PendingInline {
     pub(super) content: String,
@@ -20,31 +20,78 @@ pub(super) struct PendingInline {
 
 impl NodeValue for PendingInline {}
 
-/// Replace every [`PendingInline`] draft in `draft` with parsed inline nodes.
+/// Resolve deferred content in place after collecting all block definitions.
+///
+/// Pending nodes must be resolved in source order: inline footnotes allocate
+/// their numbers during this walk.
+///
+/// associated pathological test: `deferred_inline_siblings`
 fn resolve_pending_inline(
-    draft: &mut NodeDraft,
+    document: &mut Document,
     md: &MarkdownIt,
     ruleset: &DocumentRuleSet,
     root_ext: &RootExtSet,
 ) {
-    let children = std::mem::take(draft.children_mut());
-    draft.children_mut().reserve(children.len());
-    for mut child in children {
-        if let Some(pending) = child.cast_mut::<PendingInline>() {
-            let content = std::mem::take(&mut pending.content);
-            let mapping = std::mem::take(&mut pending.mapping);
-            draft.children_mut().extend(DocumentInlineState::parse(
-                content,
-                mapping,
-                md,
-                ruleset,
-                Some(root_ext),
-            ));
-        } else {
-            stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
-                resolve_pending_inline(&mut child, md, ruleset, root_ext);
+    /// A parent on the traversal stack and the replacements collected for it.
+    struct Frame {
+        parent: NodeId,
+        next_child: usize,
+        replacements: Vec<(usize, Vec<NodeId>)>,
+    }
+
+    impl Frame {
+        fn new(parent: NodeId) -> Self {
+            Self {
+                parent,
+                next_child: 0,
+                replacements: Vec::new(),
+            }
+        }
+
+        /// Replace the placeholders buffered during the walk with their
+        /// resolved nodes.
+        fn apply(self, document: &mut Document) {
+            if self.replacements.is_empty() {
+                return;
+            }
+
+            document.rewrite_children(self.parent, |document, children| {
+                let mut replacements = self.replacements.into_iter().peekable();
+                let old_children = std::mem::take(children);
+                children.reserve(old_children.len());
+
+                for (index, child) in old_children.into_iter().enumerate() {
+                    if let Some((_, nodes)) =
+                        replacements.next_if(|(position, _)| *position == index)
+                    {
+                        document.discard_node(child);
+                        children.extend(nodes);
+                    } else {
+                        children.push(child);
+                    }
+                }
             });
-            draft.push_child(child);
+        }
+    }
+
+    let mut stack = vec![Frame::new(document.root())];
+    while let Some(frame) = stack.last_mut() {
+        let index = frame.next_child;
+        let Some(&child) = document.children(frame.parent).get(index) else {
+            let frame = stack.pop().unwrap();
+            frame.apply(document);
+            continue;
+        };
+        frame.next_child = index + 1;
+
+        if let Some(inline) = document.node_mut(child).cast_mut::<PendingInline>() {
+            let content = std::mem::take(&mut inline.content);
+            let mapping = std::mem::take(&mut inline.mapping);
+            let nodes =
+                DocumentInlineState::parse(document, content, mapping, md, ruleset, Some(root_ext));
+            frame.replacements.push((index, nodes));
+        } else if !document.children(child).is_empty() {
+            stack.push(Frame::new(child));
         }
     }
 }
@@ -52,22 +99,24 @@ fn resolve_pending_inline(
 pub(crate) struct DocumentParseContext<'a> {
     source: Arc<str>,
     md: &'a MarkdownIt,
-    root: NodeDraft,
+    document: Document,
     root_ext: RootExtSet,
     inline_preparations: Vec<DocumentPrepareStateFn>,
-    draft_finalizers: Vec<DocumentFinalizeDraftFn>,
+    document_finalizers: Vec<DocumentFinalizeDocumentFn>,
 }
 
 impl<'a> DocumentParseContext<'a> {
-    pub(crate) fn new(source: Arc<str>, md: &'a MarkdownIt, mut root: NodeDraft) -> Self {
-        root.set_srcmap(Some(SourcePos::new(0, source.len())));
+    pub(crate) fn new(source: Arc<str>, md: &'a MarkdownIt, mut document: Document) -> Self {
+        document
+            .node_mut(document.root())
+            .set_srcmap(Some(SourcePos::new(0, source.len())));
         Self {
             source,
             md,
-            root,
+            document,
             root_ext: RootExtSet::new(),
             inline_preparations: Vec::new(),
-            draft_finalizers: Vec::new(),
+            document_finalizers: Vec::new(),
         }
     }
 
@@ -95,16 +144,17 @@ impl<'a> DocumentParseContext<'a> {
                         preparations.push(prepare);
                     }
                 }
-                DocumentCoreRule::FinalizeDraft(finalize) => {
+                DocumentCoreRule::FinalizeDocument(finalize) => {
                     // Finalizers must follow the inline pass.
                     supported &= seen_inline;
-                    self.draft_finalizers.push(finalize);
+                    self.document_finalizers.push(finalize);
                 }
             }
         }
+
         assert!(
             supported && seen_block && seen_inline,
-            "direct parsing requires exactly one block stage followed by exactly one inline stage, supported core rules, preparations before inlines, and draft finalizers after inlines",
+            "direct parsing requires one block stage, then one inline stage, with correctly ordered core rules",
         );
 
         let block_rules = self.md.block.document_rules();
@@ -119,16 +169,14 @@ impl<'a> DocumentParseContext<'a> {
             return self.parse_text_fallback();
         }
 
-        let mut state = DocumentBlockState::new(&self.source, self.md, block_rules, self.root);
+        let mut state = DocumentBlockState::new(&self.source, self.md, block_rules, self.document);
         state.root_ext = self.root_ext;
         state.tokenize();
-        self.root = state.node;
+        self.document = state.document;
         self.root_ext = state.root_ext;
         self.prepare_inlines();
 
-        // Inline parsing runs after the block pass so later reference
-        // definitions can resolve earlier uses.
-        resolve_pending_inline(&mut self.root, self.md, &inline_rules, &self.root_ext);
+        resolve_pending_inline(&mut self.document, self.md, &inline_rules, &self.root_ext);
         self.finish()
     }
 
@@ -139,17 +187,24 @@ impl<'a> DocumentParseContext<'a> {
     }
 
     fn finish(mut self) -> Document {
-        // Post-inline core rules may now reorder the resolved draft.
-        for finalize in self.draft_finalizers {
-            finalize(&mut self.root, &self.root_ext);
+        // Post-inline core rules may now reorder the resolved document.
+        for finalize in self.document_finalizers {
+            finalize(&mut self.document, &self.root_ext);
         }
+
         // Persist the cross-block extension set on the root payload.
-        if let Some(data) = self.root.cast_mut::<Root>() {
+        if let Some(data) = self
+            .document
+            .node_mut(self.document.root())
+            .cast_mut::<Root>()
+        {
             data.ext = self.root_ext;
         }
 
-        let mut document = Document::from_draft(self.source, self.root);
+        let mut document = self.document;
+        document.trim_unused_tail();
         self.md.run_document_transforms(&mut document);
+
         document
     }
 
@@ -161,9 +216,11 @@ impl<'a> DocumentParseContext<'a> {
 
             let mut content = self.source[line.first_nonspace..line.line_end].to_owned();
             content.push('\n');
-            let mut text = NodeDraft::new(Text { content });
-            text.set_srcmap(Some(SourcePos::new(line.first_nonspace, line.line_end + 1)));
-            self.root.push_child(text);
+            let text = self.document.create_node(Text { content });
+            self.document
+                .node_mut(text)
+                .set_srcmap(Some(SourcePos::new(line.first_nonspace, line.line_end + 1)));
+            self.document.push_child(self.document.root(), text);
         }
 
         self.finish()

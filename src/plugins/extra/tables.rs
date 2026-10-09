@@ -3,7 +3,7 @@
 //! <https://github.github.com/gfm/#tables-extension->
 use crate::MarkdownIt;
 use crate::common::sourcemap::SourcePos;
-use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::plugins::cmark::block::heading::HeadingScanner;
 use crate::plugins::cmark::block::list::ListScanner;
@@ -408,7 +408,7 @@ impl TableScanner {
 impl BlockRule for TableScanner {
     const NAMES: &'static [&'static str] = &["table", "tables"];
     fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
-        if state.node.is::<TableBody>() {
+        if state.document.node(state.node).is::<TableBody>() {
             return None;
         }
 
@@ -418,50 +418,61 @@ impl BlockRule for TableScanner {
         .map(|_| ())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (header_row, alignments) =
             Self::scan_header(state.line, state.line_max, state.md.max_indent, |line| {
                 (state.get_line(line), state.line_indent(line))
             })?;
         let table_cell_count = header_row.len();
-        let mut table_node = NodeDraft::new(Table { alignments });
+        let table_node = state.document.create_node(Table { alignments });
 
-        let mut thead_node = NodeDraft::new(TableHead);
-        thead_node.set_srcmap(state.get_map(state.line, state.line + 1));
+        let thead_node = state.document.create_node(TableHead);
+        let srcmap = state.get_map(state.line, state.line + 1);
+        state.document.node_mut(thead_node).set_srcmap(srcmap);
 
-        let mut row_node = NodeDraft::new(TableRow);
-        row_node.set_srcmap(state.get_map(state.line, state.line));
+        let row_node = state.document.create_node(TableRow);
+        let srcmap = state.get_map(state.line, state.line);
+        state.document.node_mut(row_node).set_srcmap(srcmap);
 
         fn add_cell(
-            state: &DocumentBlockState<'_>,
-            row_node: &mut NodeDraft,
+            state: &mut DocumentBlockState<'_>,
+            row_node: NodeId,
             cell: String,
             srcmap: Vec<(usize, usize)>,
         ) {
-            let mut cell_node = NodeDraft::new(TableCell);
-            let (start, _) = row_node.srcmap().unwrap().get_byte_offsets();
-            cell_node.set_srcmap(Some(SourcePos::new(
-                start + srcmap.first().unwrap().1,
-                start + srcmap.last().unwrap().1 + cell.len() - srcmap.last().unwrap().0,
-            )));
+            let cell_node = state.document.create_node(TableCell);
+            let (start, _) = state
+                .document
+                .node(row_node)
+                .srcmap()
+                .unwrap()
+                .get_byte_offsets();
+            state
+                .document
+                .node_mut(cell_node)
+                .set_srcmap(Some(SourcePos::new(
+                    start + srcmap.first().unwrap().1,
+                    start + srcmap.last().unwrap().1 + cell.len() - srcmap.last().unwrap().0,
+                )));
             if !cell.is_empty() {
                 let mapping = srcmap
                     .into_iter()
                     .map(|(dstpos, srcpos)| (dstpos, srcpos + start))
                     .collect();
-                cell_node.push_child(state.pending_inline(cell, mapping));
+                let pending = state.pending_inline(cell, mapping);
+                state.document.push_child(cell_node, pending);
             }
-            row_node.push_child(cell_node);
+            state.document.push_child(row_node, cell_node);
         }
 
         for RowContent { str: cell, srcmap } in header_row {
-            add_cell(state, &mut row_node, cell, srcmap);
+            add_cell(state, row_node, cell, srcmap);
         }
 
-        thead_node.push_child(row_node);
-        table_node.push_child(thead_node);
+        state.document.push_child(thead_node, row_node);
+        state.document.push_child(table_node, thead_node);
 
-        let tbody_node = NodeDraft::new(TableBody);
+        let tbody_node = state.document.create_node(TableBody);
         let old_node = std::mem::replace(&mut state.node, tbody_node);
 
         //
@@ -495,6 +506,7 @@ impl BlockRule for TableScanner {
             }
 
             let line = state.get_line(state.line);
+            let line_len = line.len();
 
             let mut body_row = Self::scan_row(line);
             let missing_cells = table_cell_count.saturating_sub(body_row.len());
@@ -507,33 +519,36 @@ impl BlockRule for TableScanner {
             }
             autocompleted_cells = total_autocompleted_cells;
 
-            let mut row_node = NodeDraft::new(TableRow);
-            row_node.set_srcmap(state.get_map(state.line, state.line));
+            let row_node = state.document.create_node(TableRow);
+            let srcmap = state.get_map(state.line, state.line);
+            state.document.node_mut(row_node).set_srcmap(srcmap);
+
             let mut end_of_line = RowContent {
                 str: String::new(),
-                srcmap: vec![(0, line.len())],
+                srcmap: vec![(0, line_len)],
             };
-
             for index in 0..table_cell_count {
                 let RowContent { str: cell, srcmap } =
                     body_row.get_mut(index).unwrap_or(&mut end_of_line);
-                add_cell(state, &mut row_node, cell.clone(), srcmap.clone());
+                add_cell(state, row_node, cell.clone(), srcmap.clone());
             }
 
-            state.node.push_child(row_node);
+            state.document.push_child(state.node, row_node);
             state.line += 1;
         }
 
-        let mut tbody_node = std::mem::replace(&mut state.node, old_node);
-
-        if !tbody_node.children().is_empty() {
-            tbody_node.set_srcmap(state.get_map(start_line + 2, state.line - 1));
-            table_node.push_child(tbody_node);
+        let tbody_node = std::mem::replace(&mut state.node, old_node);
+        if !state.document.node(tbody_node).children().is_empty() {
+            let srcmap = state.get_map(start_line + 2, state.line - 1);
+            state.document.node_mut(tbody_node).set_srcmap(srcmap);
+            state.document.push_child(table_node, tbody_node);
+        } else {
+            state.document.discard_node(tbody_node);
         }
 
         let line_count = state.line - start_line;
         state.line = start_line;
-        Some((table_node, line_count))
+        Some((Some(table_node), line_count))
     }
 }
 

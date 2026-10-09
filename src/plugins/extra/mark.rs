@@ -9,7 +9,7 @@ use crate::render::{
     write_html_close,
     write_html_open,
 };
-use crate::{MarkdownIt, NodeDraft, NodeValue};
+use crate::{MarkdownIt, NodeValue};
 
 #[derive(Debug)]
 pub struct Mark;
@@ -33,7 +33,7 @@ impl DocumentNodeRenderer<Mark> for MarkDocumentRenderer {
 impl NodeValue for Mark {}
 
 pub fn add(md: &mut MarkdownIt) {
-    emph_pair::add_with::<'=', 2, true>(md, || NodeDraft::new(Mark));
+    emph_pair::add_with::<'=', 2, true>(md, |document| document.create_node(Mark));
     md.add_document_renderer::<Mark, _>("html", MarkDocumentRenderer);
     md.add_document_renderer::<Mark, _>("text", TransparentDocumentRenderer);
 }

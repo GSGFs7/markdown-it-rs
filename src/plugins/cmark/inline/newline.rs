@@ -5,7 +5,7 @@
 //!  - <https://spec.commonmark.org/0.30/#hard-line-breaks>
 //!  - <https://spec.commonmark.org/0.30/#soft-line-breaks>
 use crate::MarkdownIt;
-use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
     DocumentNodeRenderer,
@@ -80,11 +80,12 @@ impl InlineRule for NewlineScanner {
         }
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();
         if chars.next()? != '\n' {
             return None;
         }
+
         // skip leading whitespaces from next line
         let end = state.pos + 1 + chars.take_while(|ch| matches!(ch, ' ' | '\t')).count();
         let spaces = state
@@ -94,11 +95,12 @@ impl InlineRule for NewlineScanner {
             .take_while(|&ch| ch == b' ')
             .count();
         state.pop_trailing_text(spaces);
+
         // '  \n' -> hardbreak
         let node = if spaces >= 2 {
-            NodeDraft::new(Hardbreak)
+            state.document.create_node(Hardbreak)
         } else {
-            NodeDraft::new(Softbreak)
+            state.document.create_node(Softbreak)
         };
         state.pos -= spaces; // backtrack to include tail in source maps
         Some((Some(node), end - state.pos))

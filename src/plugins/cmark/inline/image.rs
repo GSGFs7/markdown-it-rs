@@ -3,6 +3,7 @@
 //! `![image](<src> "title")`
 //!
 //! <https://spec.commonmark.org/0.30/#images>
+use crate::MarkdownIt;
 use crate::document::{NodeRef, NodeValue, Text, TextSpecial};
 use crate::parser::inline::helpers::full_link;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
@@ -13,7 +14,6 @@ use crate::render::{
     TransparentDocumentRenderer,
     write_html_self_close,
 };
-use crate::{MarkdownIt, NodeDraft};
 
 #[derive(Debug)]
 pub struct Image {
@@ -81,8 +81,8 @@ fn append_document_alt_node(result: &mut String, node: NodeRef<'_>) {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    full_link::add_prefix::<'!', true>(md, |href, title| {
-        NodeDraft::new(Image {
+    full_link::add_prefix::<'!', true>(md, |document, href, title| {
+        document.create_node(Image {
             url: href.unwrap_or_default(),
             title,
         })

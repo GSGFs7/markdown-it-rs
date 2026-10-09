@@ -6,7 +6,7 @@ use linkify::{LinkKind, Linkify};
 
 use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
-use crate::document::{NodeDraft, NodeRef, NodeValue, TextSpecial};
+use crate::document::{NodeId, NodeRef, NodeValue, TextSpecial};
 use crate::links::LinkFormatter;
 use crate::parser::core::{CoreRule, DocumentCoreRule};
 use crate::parser::inline::builtin::InlineParserRule;
@@ -152,11 +152,12 @@ pub struct LinkifyEmailScanner;
 impl InlineRule for LinkifyScanner {
     const MARKER: char = ':';
     const NAMES: &'static [&'static str] = &["linkify"];
+
     fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
         None
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         run_document_candidate(state, LinkifyMode::Scheme)
     }
 }
@@ -164,11 +165,12 @@ impl InlineRule for LinkifyScanner {
 impl InlineRule for LinkifyFuzzyScanner {
     const MARKER: char = '.';
     const NAMES: &'static [&'static str] = &["linkify_fuzzy"];
+
     fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
         None
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         run_document_candidate(state, LinkifyMode::Fuzzy)
     }
 }
@@ -176,11 +178,12 @@ impl InlineRule for LinkifyFuzzyScanner {
 impl InlineRule for LinkifyEmailScanner {
     const MARKER: char = '@';
     const NAMES: &'static [&'static str] = &["linkify_email"];
+
     fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
         None
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         run_document_candidate(state, LinkifyMode::Email)
     }
 }
@@ -221,12 +224,14 @@ fn scan_candidate(input: CandidateInput<'_>, mode: LinkifyMode) -> Option<Candid
     if input.link_level > 0 {
         return None;
     }
+
     let trailing = input.trailing;
     let scheme_len = if matches!(mode, LinkifyMode::Scheme) {
         Some(find_scheme_len(input.src, input.pos, trailing.len())?)
     } else {
         None
     };
+
     let start = input.source_start;
     let positions = input.positions;
     // https://example.com
@@ -296,8 +301,8 @@ fn prepare_link(
         Some(prefix) => format!("{prefix}{url}"),
         None => url.to_owned(),
     };
-    let href = formatter.normalize_link(&href_source);
 
+    let href = formatter.normalize_link(&href_source);
     formatter.validate_link(&href)?;
 
     let mut content = formatter.normalize_link_text(&href_source);
@@ -313,7 +318,7 @@ fn prepare_link(
 fn run_document_candidate(
     state: &mut DocumentInlineState<'_>,
     mode: LinkifyMode,
-) -> Option<(Option<NodeDraft>, usize)> {
+) -> Option<(Option<NodeId>, usize)> {
     let (source_start, _) = state.get_map(state.pos, state.pos_max)?.get_byte_offsets();
     let candidate = scan_candidate(
         CandidateInput {
@@ -327,21 +332,26 @@ fn run_document_candidate(
         },
         mode,
     )?;
+
     let link = prepare_link(
         state.markdown_it().link_formatter.as_ref(),
         mode,
         &state.src[candidate.start..candidate.end],
     )?;
-    let mut inner = NodeDraft::new(TextSpecial {
+
+    let inner = state.document.create_node(TextSpecial {
         content: link.content.clone(),
         markup: link.content,
         info: "autolink",
     });
-    inner.set_srcmap(state.get_map(candidate.start, candidate.end));
-    let mut node = NodeDraft::new(Linkified { url: link.href });
-    node.push_child(inner);
+    let srcmap = state.get_map(candidate.start, candidate.end);
+    state.document.node_mut(inner).set_srcmap(srcmap);
+
+    let node = state.document.create_node(Linkified { url: link.href });
+    state.document.push_child(node, inner);
     state.pop_trailing_text(candidate.rewind);
     state.pos -= candidate.rewind;
+
     Some((Some(node), candidate.len()))
 }
 

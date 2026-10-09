@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#setext-headings>
 use crate::MarkdownIt;
-use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::plugins::cmark::block::paragraph::ParagraphScanner;
 use crate::render::{
@@ -87,7 +87,7 @@ impl BlockRule for LHeadingScanner {
         None // can't interrupt any tags
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         if state.line_indent(state.line) >= state.md.max_indent {
             return None;
         }
@@ -141,12 +141,13 @@ impl BlockRule for LHeadingScanner {
 
         let (content, mapping) = state.get_lines(start_line, next_line, state.blk_indent, false);
 
-        let mut node = NodeDraft::new(SetextHeader {
+        let node = state.document.create_node(SetextHeader {
             level,
             marker: if level == 2 { '-' } else { '=' },
         });
-        node.push_child(state.pending_inline(content, mapping));
+        let pending = state.pending_inline(content, mapping);
+        state.document.push_child(node, pending);
 
-        Some((node, next_line + 1 - start_line))
+        Some((Some(node), next_line + 1 - start_line))
     }
 }

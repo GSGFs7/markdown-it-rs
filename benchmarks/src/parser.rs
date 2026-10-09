@@ -23,6 +23,10 @@ pub fn document_parse_configurations() -> Vec<ParserConfiguration> {
 
     vec![
         ParserConfiguration {
+            name: "default-preset",
+            parser: MarkdownIt::new(),
+        },
+        ParserConfiguration {
             name: "text-fallback",
             parser: empty,
         },

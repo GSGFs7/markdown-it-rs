@@ -53,7 +53,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::common::extset::RootExtSet;
 use crate::common::utils::normalize_reference;
-use crate::document::{NodeDraft, NodeRef};
+use crate::document::{Document, NodeId, NodeRef};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::parser::core::{CoreRule, DocumentCoreRule};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
@@ -126,7 +126,7 @@ impl CoreRule for FootnoteFinalizeRule {
     const NAMES: &'static [&'static str] = &["footnote_tail"];
 
     fn document_rule() -> DocumentCoreRule {
-        DocumentCoreRule::FinalizeDraft(footnote_draft_finalize)
+        DocumentCoreRule::FinalizeDocument(footnote_document_finalize)
     }
 }
 
@@ -464,7 +464,7 @@ impl BlockRule for FootnoteDefinitionScanner {
         scan_document_definition(state).map(|_| ())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (_label, normalized, content_source_offset) = scan_document_definition(state)?;
 
         state
@@ -486,7 +486,9 @@ impl BlockRule for FootnoteDefinitionScanner {
 
         let old_node = std::mem::replace(
             &mut state.node,
-            NodeDraft::new(FootnoteDefinition { normalized }),
+            state
+                .document
+                .create_node(FootnoteDefinition { normalized }),
         );
         let old_line_offset = state.line_offsets[start_line].clone();
         let old_blk_indent = state.blk_indent;
@@ -507,7 +509,7 @@ impl BlockRule for FootnoteDefinitionScanner {
         state.line_offsets[start_line] = old_line_offset;
 
         let node = std::mem::replace(&mut state.node, old_node);
-        Some((node, next_line - start_line))
+        Some((Some(node), next_line - start_line))
     }
 }
 
@@ -515,13 +517,17 @@ impl InlineRule for FootnoteReferenceScanner {
     const MARKER: char = '[';
     const NAMES: &'static [&'static str] = &["footnote_reference"];
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let env = state.root_ext?.get::<DocumentFootnoteEnv>()?;
         let mut env = env.0.lock().unwrap();
         let (_, normalized, len) = parse_reference_label(state.remaining(), &env.defined)?;
         let (number, sub_id) = allocate_reference(&mut env, &normalized);
         Some((
-            Some(NodeDraft::new(FootnoteReference { number, sub_id })),
+            Some(
+                state
+                    .document
+                    .create_node(FootnoteReference { number, sub_id }),
+            ),
             len,
         ))
     }
@@ -590,7 +596,7 @@ impl InlineRule for FootnoteInlineScanner {
     const MARKER: char = '^';
     const NAMES: &'static [&'static str] = &["footnote_inline"];
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         // something^[note]
         // ---------^^
         if !state.remaining().starts_with("^[") {
@@ -605,7 +611,7 @@ impl InlineRule for FootnoteInlineScanner {
         let scans = env.0.lock().unwrap().scans.clone();
         if scans.exhausted() {
             return Some((
-                Some(NodeDraft::new(crate::document::Text {
+                Some(state.document.create_node(crate::document::Text {
                     content: state.remaining().to_owned(),
                 })),
                 state.remaining().len(),
@@ -627,15 +633,22 @@ impl InlineRule for FootnoteInlineScanner {
         };
 
         let children = state.parse_subrange_at_current_depth(content_start..content_end)?;
-        let mut paragraph = NodeDraft::new(crate::plugins::cmark::block::paragraph::Paragraph);
-        paragraph.set_srcmap(state.get_map(state.pos + content_start, state.pos + content_end));
-        paragraph.children_mut().extend(children);
+        let paragraph = state
+            .document
+            .create_node(crate::plugins::cmark::block::paragraph::Paragraph);
+        let srcmap = state.get_map(state.pos + content_start, state.pos + content_end);
+        state.document.node_mut(paragraph).set_srcmap(srcmap);
+        state.document.attach_children(paragraph, children);
 
-        let mut definition = NodeDraft::new(FootnoteDefinition { normalized });
-        definition.push_child(paragraph);
+        let definition = state
+            .document
+            .create_node(FootnoteDefinition { normalized });
+        state.document.push_child(definition, paragraph);
 
-        let mut reference = NodeDraft::new(FootnoteReference { number, sub_id: 1 });
-        reference.push_child(definition);
+        let reference = state
+            .document
+            .create_node(FootnoteReference { number, sub_id: 1 });
+        state.document.push_child(reference, definition);
         Some((Some(reference), len))
     }
 
@@ -662,95 +675,126 @@ impl InlineRule for FootnoteInlineScanner {
     }
 }
 
-fn collect_footnote_definitions_draft(
-    nodes: &mut Vec<NodeDraft>,
-    definitions: &mut HashMap<String, Vec<NodeDraft>>,
-) {
-    enum Frame {
-        Visit(NodeDraft),
-        Finish(NodeDraft, usize),
+/// Collect definitions in postorder so nested inline footnotes remain discoverable.
+fn collect_footnote_definitions(document: &mut Document) -> HashMap<String, Vec<NodeId>> {
+    let mut definitions = HashMap::new();
+    let mut pending = vec![(document.root(), false)];
+    while let Some((id, visited)) = pending.pop() {
+        if !visited {
+            pending.push((id, true));
+            pending.extend(
+                document
+                    .children(id)
+                    .iter()
+                    .rev()
+                    .map(|&child| (child, false)),
+            );
+            continue;
+        }
+
+        collect_definitions_in(document, id, &mut definitions);
     }
-    let mut pending: Vec<_> = std::mem::take(nodes)
-        .into_iter()
-        .rev()
-        .map(Frame::Visit)
-        .collect();
-    while let Some(frame) = pending.pop() {
-        match frame {
-            Frame::Visit(mut node) => {
-                let children = std::mem::take(node.children_mut());
-                pending.push(Frame::Finish(node, nodes.len()));
-                pending.extend(children.into_iter().rev().map(Frame::Visit));
-            }
-            Frame::Finish(mut node, start) => {
-                *node.children_mut() = nodes.split_off(start);
-                if let Some(definition) = node.cast::<FootnoteDefinition>() {
-                    definitions
-                        .entry(definition.normalized.clone())
-                        .or_insert_with(|| std::mem::take(node.children_mut()));
-                } else {
-                    nodes.push(node);
+
+    definitions
+}
+
+fn collect_definitions_in(
+    document: &mut Document,
+    id: NodeId,
+    definitions: &mut HashMap<String, Vec<NodeId>>,
+) {
+    document.rewrite_children(id, |document, children| {
+        let mut retained = 0;
+        for index in 0..children.len() {
+            let child = children[index];
+            let Some(definition) = document.node(child).cast::<FootnoteDefinition>() else {
+                children[retained] = child;
+                retained += 1;
+                continue;
+            };
+
+            let normalized = definition.normalized.clone();
+            let content = document.take_children(child);
+            if let std::collections::hash_map::Entry::Vacant(entry) = definitions.entry(normalized)
+            {
+                entry.insert(content);
+            } else {
+                for node in content {
+                    document.discard_node(node);
                 }
             }
+            document.discard_node(child);
         }
-    }
+        children.truncate(retained);
+    });
 }
 
-fn add_backrefs_draft(item: &mut NodeDraft, number: usize, refs: usize) {
-    let last_child_is_paragraph = item
-        .children()
+fn add_backrefs(document: &mut Document, item: NodeId, number: usize, refs: usize) {
+    let container = document
+        .children(item)
         .last()
-        .is_some_and(|node| node.is::<crate::plugins::cmark::block::paragraph::Paragraph>());
-
-    if last_child_is_paragraph {
-        let container = &mut item.children_mut().last_mut().unwrap().children_mut();
-        for sub_id in 1..=refs {
-            container.push(NodeDraft::new(FootnoteBackref { number, sub_id }));
-        }
-    } else {
-        for sub_id in 1..=refs {
-            item.push_child(NodeDraft::new(FootnoteBackref { number, sub_id }));
-        }
+        .copied()
+        .filter(|&id| {
+            document
+                .node(id)
+                .is::<crate::plugins::cmark::block::paragraph::Paragraph>()
+        })
+        .unwrap_or(item);
+    for sub_id in 1..=refs {
+        let reference = document.create_node(FootnoteBackref { number, sub_id });
+        document.push_child(container, reference);
     }
 }
 
-/// Move referenced definitions to the footnote section, discarding unused ones.
-///
-/// Runs on the [`NodeDraft`], so moving a definition is just moving a `Vec`
-/// element — no arena surgery.
-fn footnote_draft_finalize(root: &mut NodeDraft, root_ext: &RootExtSet) {
+/// Move referenced definitions using stable arena IDs, and delete unused content.
+fn footnote_document_finalize(document: &mut Document, root_ext: &RootExtSet) {
     let Some(env) = root_ext.get::<DocumentFootnoteEnv>() else {
         return;
     };
+
     let env = env.0.lock().unwrap();
     env.scans.clear_cache();
 
-    // Remove every definition, including unused ones.
-    let mut definitions = HashMap::<String, Vec<NodeDraft>>::new();
-    collect_footnote_definitions_draft(root.children_mut(), &mut definitions);
-    // not any defs
+    let mut definitions = collect_footnote_definitions(document);
     if env.order.is_empty() || definitions.is_empty() {
+        for children in definitions.into_values() {
+            for child in children {
+                document.discard_node(child);
+            }
+        }
         return;
     }
 
-    let mut section = NodeDraft::new(FootnoteSection);
+    let section = document.create_node(FootnoteSection);
     for normalized in &env.order {
         let Some(children) = definitions.remove(normalized) else {
             continue;
         };
+
         let Some(number) = env.numbers.get(normalized).copied() else {
+            for child in children {
+                document.discard_node(child);
+            }
             continue;
         };
-        let refs = env.ref_counts.get(normalized).copied().unwrap_or(1);
 
-        let mut item = NodeDraft::new(FootnoteItem { number });
-        item.children_mut().extend(children);
-        add_backrefs_draft(&mut item, number, refs);
-        section.push_child(item);
+        let refs = env.ref_counts.get(normalized).copied().unwrap_or(1);
+        let item = document.create_node(FootnoteItem { number });
+        document.attach_children(item, children);
+        add_backrefs(document, item, number, refs);
+        document.push_child(section, item);
     }
 
-    if !section.children().is_empty() {
-        root.push_child(section);
+    for children in definitions.into_values() {
+        for child in children {
+            document.discard_node(child);
+        }
+    }
+
+    if document.children(section).is_empty() {
+        document.discard_node(section);
+    } else {
+        document.push_child(document.root(), section);
     }
 }
 

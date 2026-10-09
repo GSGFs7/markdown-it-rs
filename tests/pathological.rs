@@ -323,3 +323,28 @@ mod markdownit {
         run_render(&src);
     }
 }
+
+mod markdownit_rs {
+    use super::{Instant, MarkdownIt, assert_within_budget, black_box};
+
+    #[test]
+    fn deferred_inline_siblings() {
+        let mut md = MarkdownIt::empty();
+        markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
+        let lines = 64_000;
+        let src = "*a*\n".repeat(lines);
+
+        let start = Instant::now();
+        let document = md.parse_document(&src);
+        black_box(&document);
+        assert_within_budget(start, "parse deferred inline siblings", src.len());
+        assert_eq!(document.children(document.root()).len(), lines * 2);
+        assert_eq!(document.len(), lines * 3 + 1);
+
+        let start = Instant::now();
+        let output = md.render_document(&document);
+        black_box(&output);
+        assert_within_budget(start, "render deferred inline siblings", src.len());
+        assert_eq!(output, "<em>a</em>\n".repeat(lines));
+    }
+}

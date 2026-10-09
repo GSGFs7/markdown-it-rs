@@ -4,7 +4,7 @@
 use super::utils::regexps::*;
 use crate::MarkdownIt;
 use crate::common::extset::InlineRootExtSet;
-use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::document::{NodeRef, NodeValue};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{DocumentNodeRenderer, DocumentRenderContext};
 
@@ -80,16 +80,14 @@ impl InlineRule for HtmlInlineScanner {
         }
     }
 
-    fn run(
-        state: &mut crate::DocumentInlineState<'_>,
-    ) -> Option<(Option<crate::NodeDraft>, usize)> {
+    fn run(state: &mut crate::DocumentInlineState<'_>) -> Option<(Option<crate::NodeId>, usize)> {
         let matched =
             scan_html_inline(&state.src, state.pos, state.pos_max, &mut state.inline_ext)?;
 
         state.link_level += matched.link_level_delta;
 
         Some((
-            Some(NodeDraft::new(HtmlInline {
+            Some(state.document.create_node(HtmlInline {
                 content: matched.content,
             })),
             matched.consumed,

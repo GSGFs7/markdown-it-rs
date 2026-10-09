@@ -7,7 +7,7 @@ use super::DocumentRuleSet;
 use crate::MarkdownIt;
 use crate::common::extset::{InlineRootExtSet, RootExtSet};
 use crate::common::sourcemap::SourcePos;
-use crate::document::{NodeDraft, Text};
+use crate::document::{Document, NodeId, Text};
 
 // TODO: adjust API visibility
 pub struct DocumentInlineState<'a> {
@@ -21,7 +21,7 @@ pub struct DocumentInlineState<'a> {
     pub(crate) pos_max: usize,
 
     /// Link to parser instance.
-    md: &'a MarkdownIt,
+    pub(crate) md: &'a MarkdownIt,
 
     /// For each line, it holds offset of the start of the line in original
     /// markdown source and offset of the start of the line in `src`.
@@ -41,7 +41,10 @@ pub struct DocumentInlineState<'a> {
     pub(crate) ruleset: &'a DocumentRuleSet,
 
     /// Nodes accumulated for the current inline container; rules append to it.
-    nodes: Vec<NodeDraft>,
+    nodes: Vec<NodeId>,
+
+    /// Arena shared by nested inline sessions.
+    pub document: &'a mut Document,
 
     pending_text: Option<(usize, usize)>,
 }
@@ -57,21 +60,22 @@ impl<'a> DocumentInlineState<'a> {
         self.md
     }
 
-    pub(crate) fn nodes(&self) -> &[NodeDraft] {
+    pub(crate) fn nodes(&self) -> &[NodeId] {
         &self.nodes
     }
 
-    pub(crate) fn nodes_mut(&mut self) -> &mut Vec<NodeDraft> {
+    pub(crate) fn nodes_mut(&mut self) -> &mut Vec<NodeId> {
         &mut self.nodes
     }
 
     pub(in crate::parser) fn parse(
+        document: &'a mut Document,
         src: String,
         mapping: Vec<(usize, usize)>,
         md: &'a MarkdownIt,
         ruleset: &'a DocumentRuleSet,
         root_ext: Option<&'a RootExtSet>,
-    ) -> Vec<NodeDraft> {
+    ) -> Vec<NodeId> {
         let mut state = Self {
             pos: 0,
             pos_max: src.len(),
@@ -84,6 +88,7 @@ impl<'a> DocumentInlineState<'a> {
             link_level: 0,
             ruleset,
             nodes: Vec::new(),
+            document,
             pending_text: None,
         };
         state.trim();
@@ -95,9 +100,10 @@ impl<'a> DocumentInlineState<'a> {
     ///
     /// Preserves whitespace and original source coordinates. Returns `None` for
     /// reversed, out-of-bounds, or non-UTF-8-boundary ranges. An empty valid range
-    /// returns an empty vector. Parent state is unchanged. At the nesting limit,
+    /// returns an empty vector. Parent cursor and scratch are unchanged; children
+    /// are allocated in the shared arena. At the nesting limit,
     /// the child range is emitted as literal text without running rules.
-    pub fn parse_subrange(&self, range: Range<usize>) -> Option<Vec<NodeDraft>> {
+    pub fn parse_subrange(&mut self, range: Range<usize>) -> Option<Vec<NodeId>> {
         self.parse_subrange_with_link_level(range, self.link_level)
     }
 
@@ -106,27 +112,27 @@ impl<'a> DocumentInlineState<'a> {
     /// This overrides only the child's link level. Source mapping, nesting
     /// limits, whitespace preservation and scratch isolation are unchanged.
     pub(crate) fn parse_subrange_with_link_level(
-        &self,
+        &mut self,
         range: Range<usize>,
         link_level: i32,
-    ) -> Option<Vec<NodeDraft>> {
+    ) -> Option<Vec<NodeId>> {
         self.parse_subrange_at_depth(range, link_level, self.depth.saturating_add(1))
     }
 
     /// Parse an isolated range without consuming an extra nesting level.
     pub(crate) fn parse_subrange_at_current_depth(
-        &self,
+        &mut self,
         range: Range<usize>,
-    ) -> Option<Vec<NodeDraft>> {
+    ) -> Option<Vec<NodeId>> {
         self.parse_subrange_at_depth(range, self.link_level, self.depth)
     }
 
     fn parse_subrange_at_depth(
-        &self,
+        &mut self,
         range: Range<usize>,
         link_level: i32,
         depth: u32,
-    ) -> Option<Vec<NodeDraft>> {
+    ) -> Option<Vec<NodeId>> {
         let mut child = self.child_state(range, depth, link_level)?;
 
         stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
@@ -170,9 +176,10 @@ impl<'a> DocumentInlineState<'a> {
 
             if let Some((node, len)) = matched {
                 self.pos += len;
-                if let Some(mut node) = node {
+                if let Some(node) = node {
                     self.flush_text();
-                    node.set_srcmap(self.get_map(self.pos - len, self.pos));
+                    let srcmap = self.get_map(self.pos - len, self.pos);
+                    self.document.node_mut(node).set_srcmap(srcmap);
                     self.nodes.push(node);
                 }
             } else {
@@ -239,7 +246,7 @@ impl<'a> DocumentInlineState<'a> {
 
     /// Create a child state over `range` with fresh scratch, nodes and pending text.
     pub(crate) fn child_state(
-        &self,
+        &mut self,
         range: Range<usize>,
         depth: u32,
         link_level: i32,
@@ -264,6 +271,7 @@ impl<'a> DocumentInlineState<'a> {
             link_level,
             ruleset: self.ruleset,
             nodes: Vec::new(),
+            document: &mut *self.document,
             pending_text: None,
         })
     }
@@ -299,14 +307,15 @@ impl<'a> DocumentInlineState<'a> {
         let Some((start, end)) = self.pending_text.take() else {
             return;
         };
-        let mut text = NodeDraft::new(Text {
+        let text = self.document.create_node(Text {
             content: self.src[start..end].to_owned(),
         });
-        text.set_srcmap(self.get_map(start, end));
+        let srcmap = self.get_map(start, end);
+        self.document.node_mut(text).set_srcmap(srcmap);
         self.nodes.push(text);
     }
 
-    fn finish(mut self) -> Vec<NodeDraft> {
+    fn finish(mut self) -> Vec<NodeId> {
         if self.nodes.is_empty() {
             if let Some((start, end)) = self.pending_text.take() {
                 let srcmap = self.get_map(start, end);
@@ -317,8 +326,8 @@ impl<'a> DocumentInlineState<'a> {
                     content.drain(..start);
                 }
 
-                let mut text = NodeDraft::new(Text { content });
-                text.set_srcmap(srcmap);
+                let text = self.document.create_node(Text { content });
+                self.document.node_mut(text).set_srcmap(srcmap);
                 self.nodes.push(text);
             }
         } else {

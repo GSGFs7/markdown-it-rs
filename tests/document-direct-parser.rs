@@ -87,6 +87,18 @@ fn relocated_payload_paths() -> [(String, &'static str); 3] {
 }
 
 fn normalize_legacy_debug_tree(debug: String) -> String {
+    // Direct parsing allocates in rule execution order and reuses temporary slots.
+    // Compare hierarchy, types, source maps and attributes against the frozen
+    // baseline, while canonicalizing only storage-dependent IDs to preorder.
+    let ids = regex::Regex::new(r"id=NodeId\(\d+:\d+\)").unwrap();
+    let mut preorder = 0;
+    let debug = ids
+        .replace_all(&debug, |_: &regex::Captures<'_>| {
+            let id = format!("id=NodeId({preorder}:0)");
+            preorder += 1;
+            id
+        })
+        .into_owned();
     relocated_payload_paths()
         .into_iter()
         .fold(debug, |debug, (current, legacy)| {
@@ -271,7 +283,7 @@ fn direct_text_fallback_matches_snapshots() {
 fn consume_only_block_rule_preserves_surrounding_nodes_and_source_maps() {
     use markdown_it::common::sourcemap::SourcePos;
     use markdown_it::parser::block::BlockRule;
-    use markdown_it::{DocumentBlockState, NodeDraft};
+    use markdown_it::{DocumentBlockState, NodeId};
 
     struct ConsumeLine;
     impl BlockRule for ConsumeLine {
@@ -279,9 +291,9 @@ fn consume_only_block_rule_preserves_surrounding_nodes_and_source_maps() {
             (state.get_line(state.line) == "%%").then_some(())
         }
 
-        fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+        fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
             Self::check(state)?;
-            Some((NodeDraft::placeholder(), 1))
+            Some((None, 1))
         }
     }
 
@@ -481,7 +493,7 @@ fn direct_parser_checks_core_configuration_before_parsing() {
     assert_direct_configuration_panics(
         &md,
         "",
-        "direct parsing requires exactly one block stage followed by exactly one inline stage",
+        "direct parsing requires one block stage, then one inline stage, with correctly ordered core rules",
     );
 }
 
@@ -505,7 +517,7 @@ fn direct_parser_rejects_invalid_core_stages_before_callbacks() {
     struct EarlyFinalizer;
     impl CoreRule for EarlyFinalizer {
         fn document_rule() -> DocumentCoreRule {
-            DocumentCoreRule::FinalizeDraft(|_, _| {
+            DocumentCoreRule::FinalizeDocument(|_, _| {
                 panic!("invalid configuration must be rejected before finalizing");
             })
         }
@@ -549,7 +561,7 @@ fn direct_parser_rejects_invalid_core_stages_before_callbacks() {
                 assert_direct_configuration_panics(
                     &md,
                     source,
-                    "direct parsing requires exactly one block stage followed by exactly one inline stage, supported core rules, preparations before inlines, and draft finalizers after inlines",
+                    "direct parsing requires one block stage, then one inline stage, with correctly ordered core rules",
                 );
             }
         }
@@ -983,6 +995,55 @@ fn deferred_inline_fallback_preserves_sibling_order() {
     markdown_it::plugins::cmark::inline::newline::add(&mut md);
     let source = format!("{}\n[id]: /url", "before *em* [id] after\n".repeat(512));
     assert_document_valid(&md, &source);
+}
+
+#[test]
+fn deferred_inline_fallback_handles_empty_and_multiple_replacements() {
+    use markdown_it::parser::inline::InlineRule;
+    use markdown_it::{DocumentInlineState, NodeId};
+
+    struct ConsumeLine;
+    impl InlineRule for ConsumeLine {
+        const MARKER: char = '@';
+
+        fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+            state
+                .remaining()
+                .starts_with('@')
+                .then(|| (None, state.remaining().len()))
+        }
+    }
+
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
+    md.inline.add_rule::<ConsumeLine>();
+    let document = assert_document_structure(&md, "@\n*a* b\n@\n*c* d\n@");
+    assert_eq!(
+        md.render_document(&document),
+        "<em>a</em> b\n<em>c</em> d\n"
+    );
+}
+
+#[test]
+fn deferred_inline_fallback_numbers_footnotes_across_nested_blocks_in_source_order() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::block::blockquote::add(&mut md);
+    markdown_it::plugins::cmark::inline::link::add(&mut md);
+    markdown_it::plugins::extra::footnote::add(&mut md);
+    let document = assert_document_structure(&md, "^[first]\n\n> ^[second]\n\n^[third]");
+    let html = md.render_document(&document);
+    for pattern in [r#"id="fnref(\d+)""#, r#"id="fn(\d+)""#] {
+        let numbers: Vec<_> = regex::Regex::new(pattern)
+            .unwrap()
+            .captures_iter(&html)
+            .map(|capture| capture[1].parse::<usize>().unwrap())
+            .collect();
+        assert_eq!(numbers, [1, 2, 3]);
+    }
+    assert!(
+        md.render_document_as(&document, "text")
+            .ends_with("first\nsecond\nthird\n")
+    );
 }
 
 #[test]
@@ -1572,7 +1633,11 @@ fn direct_linkify_configuration_and_source_maps() {
     md.add_rule::<LinkifyPrescan>()
         .after::<markdown_it::parser::inline::builtin::InlineParserRule>();
     for source in ["", "https://example.com"] {
-        assert_direct_configuration_panics(&md, source, "supported core rules");
+        assert_direct_configuration_panics(
+            &md,
+            source,
+            "direct parsing requires one block stage, then one inline stage, with correctly ordered core rules",
+        );
     }
 }
 
@@ -1901,12 +1966,13 @@ fn direct_draft_finalizers_run_in_order_on_all_parse_paths() {
     struct Finalize<const SECOND: bool>;
     impl<const SECOND: bool> CoreRule for Finalize<SECOND> {
         fn document_rule() -> DocumentCoreRule {
-            DocumentCoreRule::FinalizeDraft(|root, _| {
-                assert_eq!(root.attrs().len(), usize::from(SECOND));
+            DocumentCoreRule::FinalizeDocument(|root, _| {
+                assert_eq!(root.node(root.root()).attrs().len(), usize::from(SECOND));
                 if SECOND {
-                    assert_eq!(root.attrs()[0].1, "false");
+                    assert_eq!(root.node(root.root()).attrs()[0].1, "false");
                 }
-                root.attrs_mut()
+                root.node_mut(root.root())
+                    .attrs_mut()
                     .push(("finalizer".into(), SECOND.to_string()));
             })
         }

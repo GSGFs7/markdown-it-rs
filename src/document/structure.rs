@@ -9,6 +9,18 @@ pub(crate) enum SiblingPosition {
 }
 
 impl Document {
+    /// Delete a detached subtree, invalidating all of its IDs.
+    pub fn discard_node(&mut self, node: NodeId) {
+        assert_ne!(node, self.root, "cannot discard the document root");
+        assert!(self.node(node).parent.is_none(), "node must be detached");
+
+        if self.children(node).is_empty() {
+            self.arena.remove(node).expect("detached node must exist");
+        } else {
+            self.delete_subtrees(&[node]);
+        }
+    }
+
     pub(crate) fn remove_subtrees(&mut self, roots: &[NodeId]) {
         if let [root] = roots {
             // single root optimization

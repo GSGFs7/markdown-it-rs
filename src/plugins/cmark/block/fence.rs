@@ -5,7 +5,7 @@
 //! <https://spec.commonmark.org/0.30/#code-fence>
 use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
-use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::render::{
     DocumentNodeRenderer,
@@ -140,7 +140,7 @@ impl BlockRule for FenceScanner {
         .map(|_| ())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (marker, len, params) = {
             let line = state.get_line(state.line);
             let (marker, len, params) =
@@ -215,7 +215,7 @@ impl BlockRule for FenceScanner {
             .cloned()
             .unwrap_or_default()
             .0;
-        let node = NodeDraft::new(CodeFence {
+        let node = state.document.create_node(CodeFence {
             info: params,
             marker,
             marker_len: len,
@@ -223,7 +223,7 @@ impl BlockRule for FenceScanner {
             lang_prefix,
         });
         Some((
-            node,
+            Some(node),
             next_line - state.line + if have_end_marker { 1 } else { 0 },
         ))
     }

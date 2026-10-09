@@ -1,34 +1,50 @@
-use crate::document::NodeDraft;
+use crate::document::NodeId;
 use crate::parser::inline::DocumentInlineState;
 
 pub type DocumentFinalizeFn = for<'a> fn(&mut crate::parser::inline::DocumentInlineState<'a>);
 
-/// An arena-backed inline parser rule.
+/// An inline-level syntax rule.
+///
+/// Implement this trait to add a new inline construct (emphasis, code span,
+/// link, ...) to an [`InlineParser`](crate::parser::inline::InlineParser).
+/// Register it with
+/// [`InlineParser::add_rule`](crate::parser::inline::InlineParser::add_rule)
+/// (or `add_rule_with_finalize`), then use the returned [`RuleBuilder`] to
+/// position it relative to the built-in rules.
+///
+/// Implement [`run`](InlineRule::run) to match the construct and add nodes to
+/// the document. Override [`check`](InlineRule::check) only if the default does
+/// not fit.
 pub trait InlineRule: 'static {
-    /// First character that can activate this rule.
+    /// Character that may begin this construct.
     ///
-    /// Use `'\0'` for a wildcard rule that must be considered at every input
-    /// position. A non-wildcard rule is only called when the current character
-    /// matches this marker.
+    /// Use `'\0'` to be considered at every input position. Otherwise the rule
+    /// is only considered when the current character matches.
     const MARKER: char;
+    /// Extra names identifying this rule, so it can be referenced by name when
+    /// ordering rules, e.g. `after_named("emphasis")`.
     const NAMES: &'static [&'static str] = &[];
 
-    /// Check the current position and return its consumed UTF-8 byte length.
+    /// Probes the current position while scanning text, returning the number of
+    /// bytes this construct consumes when it starts here.
     ///
-    /// Must not advance the cursor or modify accumulated nodes; the parser
-    /// validates this in debug builds. The default calls `run` and discards its
-    /// draft, so override it when `run` has side effects or when matching
-    /// conditions differ.
+    /// The default reuses [`run`](InlineRule::run) and discards its node, which
+    /// is fine for simple matches; override it when `run` has side effects or
+    /// when matching conditions differ.
     fn check(state: &mut DocumentInlineState<'_>) -> Option<usize> {
-        Self::run(state).map(|(_, len)| len)
+        let (node, len) = Self::run(state)?;
+        if let Some(node) = node {
+            state.document.discard_node(node);
+        }
+        Some(len)
     }
 
-    /// Inspect the current position and return a draft plus consumed byte length.
+    /// Tries to match this construct at the current position.
     ///
-    /// The parser advances the state and assigns the draft's source map. Returning
-    /// `None` declines the match; a successful match may omit a draft when it only
-    /// updates parser state.
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)>;
+    /// Returns the node to insert (if any) and the number of UTF-8 bytes
+    /// consumed. Return `Some((None, n))` to consume `n` bytes without adding a
+    /// node, or `None` if the construct does not match.
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)>;
 }
 
 crate::parser::rule::rule_builder!(InlineRule);

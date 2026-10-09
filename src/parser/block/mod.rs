@@ -8,13 +8,13 @@ pub use lines::*;
 pub use rule::*;
 pub use state::DocumentBlockState;
 
-use crate::NodeDraft;
+use crate::NodeId;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 
 pub(crate) type BlockRuleFns = (
     fn(&mut DocumentBlockState<'_>) -> Option<()>,
-    fn(&mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)>,
+    fn(&mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)>,
 );
 
 #[derive(Debug, Default)]

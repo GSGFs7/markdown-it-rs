@@ -51,6 +51,7 @@ struct InlineCheckSnapshot {
     pos_max: usize,
     depth: u32,
     nodes: String,
+    arena_len: usize,
 }
 
 impl InlineCheckSnapshot {
@@ -59,7 +60,12 @@ impl InlineCheckSnapshot {
             pos: state.pos,
             pos_max: state.pos_max,
             depth: state.depth,
-            nodes: format!("{:?}", state.nodes()),
+            nodes: state
+                .nodes()
+                .iter()
+                .map(|&id| format!("{:?}", state.document.events(id).collect::<Vec<_>>()))
+                .collect(),
+            arena_len: state.document.len(),
         }
     }
 }
@@ -69,6 +75,7 @@ struct BlockCheckSnapshot {
     cursor: (usize, usize, usize, Option<u32>, u32, bool),
     current_line: Option<(usize, usize, usize, i32)>,
     node_name: &'static str,
+    arena_len: usize,
     child_count: usize,
     attrs: crate::HtmlAttributes,
     extension_count: usize,
@@ -94,11 +101,12 @@ impl BlockCheckSnapshot {
                     line.indent_nonspace,
                 )
             }),
-            node_name: state.node.name(),
-            child_count: state.node.children().len(),
-            attrs: state.node.attrs().clone(),
-            extension_count: state.node.ext().len(),
-            srcmap: state.node.srcmap(),
+            node_name: state.document.node(state.node).name(),
+            arena_len: state.document.len(),
+            child_count: state.document.node(state.node).children().len(),
+            attrs: state.document.node(state.node).attrs().clone(),
+            extension_count: state.document.node(state.node).ext().len(),
+            srcmap: state.document.node(state.node).srcmap(),
         }
     }
 }
@@ -106,14 +114,15 @@ impl BlockCheckSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MarkdownIt, NodeDraft, Root, Text};
+    use crate::{MarkdownIt, Root, Text};
 
     #[test]
     #[should_panic(expected = "check modified cursor or accumulated nodes")]
     fn inline_check_rejects_cursor_mutation_even_on_no_match() {
+        let mut document = crate::Document::new("", crate::Root::new(""));
         let md = MarkdownIt::empty();
         let ruleset = md.inline.document_rules();
-        let mut state = DocumentInlineState::new("xy", 0, 2, &md, &ruleset, 0, 0);
+        let mut state = DocumentInlineState::new(&mut document, "xy", 0, 2, &md, &ruleset, 0, 0);
         check_inline(&mut state, 0, |state| {
             state.pos += 1;
             None
@@ -123,14 +132,54 @@ mod tests {
     #[test]
     #[should_panic(expected = "check modified cursor or accumulated nodes")]
     fn inline_check_rejects_node_mutation() {
+        let mut document = crate::Document::new("", crate::Root::new(""));
         let md = MarkdownIt::empty();
         let ruleset = md.inline.document_rules();
-        let mut state = DocumentInlineState::new("x", 0, 1, &md, &ruleset, 0, 0);
+        let mut state = DocumentInlineState::new(&mut document, "x", 0, 1, &md, &ruleset, 0, 0);
         check_inline(&mut state, 0, |state| {
-            state.nodes_mut().push(NodeDraft::new(Text {
+            let node = state.document.create_node(Text {
                 content: "bad".into(),
-            }));
+            });
+            state.nodes_mut().push(node);
             Some(1)
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "check modified cursor or accumulated nodes")]
+    fn inline_check_rejects_detached_allocation_on_no_match() {
+        let mut document = crate::Document::new("", Root::new(""));
+        let md = MarkdownIt::empty();
+        let ruleset = md.inline.document_rules();
+        let mut state = DocumentInlineState::new(&mut document, "x", 0, 1, &md, &ruleset, 0, 0);
+        check_inline(&mut state, 0, |state| {
+            state.document.create_node(Text {
+                content: "leaked".into(),
+            });
+            None
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "check modified cursor or accumulated nodes")]
+    fn inline_check_rejects_payload_mutation_through_id() {
+        let mut document = crate::Document::new("", Root::new(""));
+        let md = MarkdownIt::empty();
+        let ruleset = md.inline.document_rules();
+        let mut state = DocumentInlineState::new(&mut document, "x", 0, 1, &md, &ruleset, 0, 0);
+        let text = state.document.create_node(Text {
+            content: "kept".into(),
+        });
+        state.nodes_mut().push(text);
+        check_inline(&mut state, 0, |state| {
+            let text = state.nodes()[0];
+            state
+                .document
+                .node_mut(text)
+                .cast_mut::<Text>()
+                .unwrap()
+                .content = "changed".into();
+            None
         });
     }
 
@@ -139,8 +188,12 @@ mod tests {
     fn block_check_rejects_state_mutation_even_on_no_match() {
         let md = MarkdownIt::empty();
         let source = "hello";
-        let mut state =
-            DocumentBlockState::new(source, &md, vec![], NodeDraft::new(Root::new(source)));
+        let mut state = DocumentBlockState::new(
+            source,
+            &md,
+            vec![],
+            crate::Document::new(source, Root::new(source)),
+        );
         check_block(&mut state, 0, |state| {
             state.blk_indent += 1;
             None

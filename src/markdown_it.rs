@@ -8,7 +8,7 @@ use crate::document::transform::{
     DocumentTransformRegistry,
     TransformRuleBuilder,
 };
-use crate::document::{Document, NodeDraft, NodeValue, Root, Text, TextSpecial};
+use crate::document::{Document, NodeValue, Root, Text, TextSpecial};
 use crate::links::{LinkFormatter, MDLinkFormatter};
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::*;
@@ -124,9 +124,12 @@ impl MarkdownIt {
     /// Panics if core-rule stages are missing, repeated, or out of order.
     pub fn parse_document(&self, src: &str) -> Document {
         let source: Arc<str> = Arc::from(src);
-        let mut root = NodeDraft::new(Root::new(Arc::clone(&source)));
-        root.ext_mut().insert(self.render_options.clone());
-        DocumentParseContext::new(source, self, root).parse()
+        let mut document = Document::new(Arc::clone(&source), Root::new(Arc::clone(&source)));
+        document
+            .node_mut(document.root())
+            .ext_mut()
+            .insert(self.render_options.clone());
+        DocumentParseContext::new(source, self, document).parse()
     }
 
     pub(super) fn document_core_rules(&self) -> impl Iterator<Item = DocumentCoreRule> + '_ {

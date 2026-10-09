@@ -15,8 +15,9 @@ use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 
 pub(crate) type InlineCheckFn = fn(&mut DocumentInlineState<'_>) -> Option<usize>;
+// TODO: some nested some??
 pub(crate) type InlineRuleFn =
-    fn(&mut crate::DocumentInlineState<'_>) -> Option<(Option<crate::NodeDraft>, usize)>;
+    fn(&mut crate::DocumentInlineState<'_>) -> Option<(Option<crate::NodeId>, usize)>;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct InlineRuleFns {
@@ -111,7 +112,7 @@ impl InlineParser {
         RuleBuilder::new(self.add_rule_entry::<T>(None))
     }
 
-    /// Register a rule and a callback that resolves its deferred drafts.
+    /// Register a rule and a callback that finalizes its arena nodes.
     /// Shared callbacks execute once, in rule order.
     pub fn add_rule_with_finalize<T: InlineRule>(
         &mut self,

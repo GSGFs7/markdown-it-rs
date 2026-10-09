@@ -5,7 +5,7 @@
 //! <https://spec.commonmark.org/0.30/#block-quotes>
 use crate::MarkdownIt;
 use crate::common::utils::find_indent_of;
-use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::plugins::cmark::block::reference::Definition;
 use crate::render::{
@@ -91,7 +91,7 @@ impl BlockRule for BlockquoteScanner {
         .then_some(())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         <Self as BlockRule>::check(state)?;
 
         let mut old_line_offsets = Vec::new();
@@ -202,7 +202,7 @@ impl BlockRule for BlockquoteScanner {
         let old_indent = state.blk_indent;
         state.blk_indent = 0;
 
-        let old_node = std::mem::replace(&mut state.node, NodeDraft::new(Blockquote));
+        let old_node = std::mem::replace(&mut state.node, state.document.create_node(Blockquote));
         let old_line_max = state.line_max;
         state.line = start_line;
         state.line_max = next_line;
@@ -219,6 +219,6 @@ impl BlockRule for BlockquoteScanner {
         state.blk_indent = old_indent;
 
         let node = std::mem::replace(&mut state.node, old_node);
-        Some((node, next_line - start_line))
+        Some((Some(node), next_line - start_line))
     }
 }

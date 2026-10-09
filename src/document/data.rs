@@ -53,11 +53,6 @@ impl NodeData {
         }
     }
 
-    pub(super) fn replace<T: NodeValue>(&mut self, value: T) {
-        self.node_type = TypeKey::of::<T>();
-        self.node_value = Box::new(value);
-    }
-
     pub(super) fn replace_value(&mut self, replacement: Self) {
         self.node_type = replacement.node_type;
         self.node_value = replacement.node_value;

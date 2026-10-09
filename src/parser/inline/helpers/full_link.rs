@@ -11,13 +11,13 @@
 //!  - `PREFIX` - marker character before label (`!` in case of images)
 //!  - `ENABLE_NESTED` - allow nested links inside
 //!  - `md` - parser instance
-//!  - `f` - function that should return your custom [NodeDraft] given href and title
+//!  - `f` - function that should return your custom [NodeId] given href and title
 //!
 use std::collections::HashMap;
 
 use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
-use crate::document::NodeDraft;
+use crate::document::{Document, NodeId};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::plugins::cmark::block::reference::ReferenceMap;
 
@@ -29,12 +29,14 @@ struct InlineLinkTarget {
 }
 
 #[derive(Debug)]
-struct DocumentLinkCfg<const PREFIX: char>(fn(Option<String>, Option<String>) -> NodeDraft);
+struct DocumentLinkCfg<const PREFIX: char>(
+    fn(&mut Document, Option<String>, Option<String>) -> NodeId,
+);
 
-/// Register a link rule with a draft factory.
+/// Register a link rule with an arena node factory.
 pub fn add<const ENABLE_NESTED: bool>(
     md: &mut MarkdownIt,
-    factory: fn(Option<String>, Option<String>) -> NodeDraft,
+    factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
 ) {
     md.ext.insert(DocumentLinkCfg::<'\0'>(factory));
     md.inline.add_rule::<LinkScanner<ENABLE_NESTED>>();
@@ -43,10 +45,10 @@ pub fn add<const ENABLE_NESTED: bool>(
     }
 }
 
-/// Register a prefixed link rule with a draft factory.
+/// Register a prefixed link rule with an arena node factory.
 pub fn add_prefix<const PREFIX: char, const ENABLE_NESTED: bool>(
     md: &mut MarkdownIt,
-    factory: fn(Option<String>, Option<String>) -> NodeDraft,
+    factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
 ) {
     md.ext.insert(DocumentLinkCfg::<PREFIX>(factory));
     let builder = md
@@ -71,12 +73,12 @@ impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
         document_link_check(context, ENABLE_NESTED, 0)
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let factory = state
             .markdown_it()
             .ext
             .get::<DocumentLinkCfg<'\0'>>()
-            .expect("direct link rule requires a draft factory")
+            .expect("direct link rule requires an arena node factory")
             .0;
         document_link_run(state, ENABLE_NESTED, 0, factory)
     }
@@ -99,7 +101,7 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
         document_link_check(context, ENABLE_NESTED, PREFIX.len_utf8())
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         if !state.remaining().starts_with(PREFIX) {
             return None;
         }
@@ -108,7 +110,7 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
             .markdown_it()
             .ext
             .get::<DocumentLinkCfg<PREFIX>>()
-            .expect("direct prefix rule requires a draft factory")
+            .expect("direct prefix rule requires an arena node factory")
             .0;
         document_link_run(state, ENABLE_NESTED, PREFIX.len_utf8(), factory)
     }
@@ -123,7 +125,7 @@ impl InlineRule for LinkScannerEnd {
     const MARKER: char = ']';
     const NAMES: &'static [&'static str] = &["link_end"];
 
-    fn run(_state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(_state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         None
     }
 }
@@ -404,7 +406,7 @@ fn resolve_reference_link(
 }
 
 fn scan_link_candidate(
-    context: &crate::parser::inline::DocumentInlineState<'_>,
+    context: &mut crate::parser::inline::DocumentInlineState<'_>,
     pos: usize,
     enable_nested: bool,
     references: Option<&ReferenceMap>,
@@ -430,6 +432,7 @@ fn scan_link_candidate(
             enable_nested,
         )?;
 
+    let source = context.remaining();
     if let Some(target) =
         parse_inline_link_target(context.markdown_it(), source, label_end + 1, source.len())
     {
@@ -457,11 +460,12 @@ fn scan_link_candidate(
         None
     };
 
+    let source = context.remaining();
     resolve_reference_link(source, label_start, label_end, reference_end, references?)
 }
 
 fn document_link_check(
-    context: &crate::parser::inline::DocumentInlineState<'_>,
+    context: &mut crate::parser::inline::DocumentInlineState<'_>,
     enable_nested: bool,
     offset: usize,
 ) -> Option<usize> {
@@ -476,8 +480,8 @@ fn document_link_run(
     state: &mut DocumentInlineState<'_>,
     enable_nested: bool,
     offset: usize,
-    factory: fn(Option<String>, Option<String>) -> NodeDraft,
-) -> Option<(Option<NodeDraft>, usize)> {
+    factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
+) -> Option<(Option<NodeId>, usize)> {
     if !has_possible_link_label_close(state, offset) {
         return None;
     }
@@ -488,7 +492,7 @@ fn document_link_run(
     let candidate = scan_link_candidate(state, offset, enable_nested, references)?;
     // We found the end of the link and know for a fact it's a valid link;
     // all that's left to do is to parse the label contents as inline children.
-    let mut node = factory(candidate.href, candidate.title);
+    let node = factory(state.document, candidate.href, candidate.title);
     let child_link_level = state
         .link_level
         .checked_add(1)
@@ -497,7 +501,8 @@ fn document_link_run(
         candidate.label_start..candidate.label_end,
         child_link_level,
     )?;
-    node.children_mut().extend(children);
+    state.document.attach_children(node, children);
+
     Some((Some(node), candidate.end))
 }
 
@@ -724,7 +729,7 @@ mod check_label_tests {
     use crate::document::Text;
     use crate::parser::inline::InlineRule;
     use crate::plugins::cmark::inline::link::Link;
-    use crate::{DocumentInlineState, MarkdownIt, NodeDraft};
+    use crate::{DocumentInlineState, MarkdownIt, NodeId};
 
     // Register both brackets so the built-in text classifier stops at them.
     struct Bracket<const C: char>;
@@ -733,7 +738,7 @@ mod check_label_tests {
         fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
             None
         }
-        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
             panic!("the consumer must consume the complete test input")
         }
     }
@@ -741,12 +746,13 @@ mod check_label_tests {
     struct Consumer<const NESTED: bool>;
     impl<const NESTED: bool> InlineRule for Consumer<NESTED> {
         const MARKER: char = '@';
-        fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
             if !state.remaining().starts_with("@[") {
                 return None;
             }
             let len = state.remaining().len();
-            let parent = state
+            let expected_source = state.remaining()[1..].to_owned();
+            let mut parent = state
                 .child_state(1..len, state.depth.saturating_add(1), state.link_level)
                 .unwrap();
             let result = parent
@@ -756,14 +762,14 @@ mod check_label_tests {
                     parent.link_level,
                 )
                 .and_then(|child| scan_link_label(child, NESTED));
-            assert_eq!(parent.remaining(), &state.remaining()[1..]);
+            assert_eq!(parent.remaining(), expected_source);
             assert_eq!(parent.trailing_text(), "");
             assert_eq!(parent.link_level, 0);
             let content = match result {
                 Some(end) => format!("end={end}"),
                 None => "none".to_owned(),
             };
-            Some((Some(NodeDraft::new(Text { content })), len))
+            Some((Some(state.document.create_node(Text { content })), len))
         }
     }
 
@@ -820,7 +826,7 @@ mod check_label_tests {
     struct DefaultCheck;
     impl InlineRule for DefaultCheck {
         const MARKER: char = '?';
-        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
             None
         }
     }
@@ -831,7 +837,7 @@ mod check_label_tests {
         fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
             panic!("terminal bracket must be checked before dispatch")
         }
-        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
             panic!("consumer owns input")
         }
     }
@@ -856,7 +862,7 @@ mod check_label_tests {
                 None
             }
         }
-        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
             panic!("consumer owns input")
         }
     }
@@ -880,6 +886,7 @@ mod check_label_tests {
 
     #[test]
     fn registered_link_and_image_check_respect_remaining_depth() {
+        let mut document = crate::Document::new("", crate::Root::new(""));
         let mut md = MarkdownIt::empty();
         crate::plugins::cmark::inline::link::add(&mut md);
         crate::plugins::cmark::inline::image::add(&mut md);
@@ -888,8 +895,16 @@ mod check_label_tests {
 
         for source in ["[雪](/url)", "[](/url)", "![雪](/img)", "![](/img)"] {
             for depth in [1, 2] {
-                let mut context =
-                    DocumentInlineState::new(source, 0, source.len(), &md, &rules, depth, 0);
+                let mut context = DocumentInlineState::new(
+                    &mut document,
+                    source,
+                    0,
+                    source.len(),
+                    &md,
+                    &rules,
+                    depth,
+                    0,
+                );
                 let result = if source.starts_with('!') {
                     <LinkPrefixScanner<'!', true> as InlineRule>::check(&mut context)
                 } else {
@@ -907,8 +922,8 @@ mod check_label_tests {
     fn utf8_parser<const PREFIX: char>() -> MarkdownIt {
         let mut md = MarkdownIt::empty();
         crate::plugins::cmark::add(&mut md);
-        super::add_prefix::<PREFIX, true>(&mut md, |href, title| {
-            NodeDraft::new(Link {
+        super::add_prefix::<PREFIX, true>(&mut md, |document, href, title| {
+            document.create_node(Link {
                 url: href.unwrap_or_default(),
                 title,
             })
@@ -951,6 +966,7 @@ mod check_label_tests {
 
     #[test]
     fn candidate_combines_label_target_and_reference() {
+        let mut document = crate::Document::new("", crate::Root::new(""));
         let md = parser::<false>();
         let ruleset = md.inline.document_rules();
         let mut references = ReferenceMap::default();
@@ -965,8 +981,18 @@ mod check_label_tests {
             ("[x][", "/shortcut", None, 3),
             ("[x](/unfinished", "/shortcut", None, 3),
         ] {
-            let context = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
-            let result = scan_link_candidate(&context, 0, false, Some(&references)).expect(source);
+            let mut context = DocumentInlineState::new(
+                &mut document,
+                source,
+                0,
+                source.len(),
+                &md,
+                &ruleset,
+                0,
+                0,
+            );
+            let result =
+                scan_link_candidate(&mut context, 0, false, Some(&references)).expect(source);
             assert_eq!((result.label_start, result.label_end), (1, 2));
             assert_eq!(result.href.as_deref(), Some(href), "{source}");
             assert_eq!(result.title.as_deref(), title, "{source}");
@@ -977,37 +1003,65 @@ mod check_label_tests {
         }
 
         for source in ["[x][missing]", "[missing]", "[unclosed"] {
-            let context = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
-            assert!(scan_link_candidate(&context, 0, false, Some(&references)).is_none());
+            let mut context = DocumentInlineState::new(
+                &mut document,
+                source,
+                0,
+                source.len(),
+                &md,
+                &ruleset,
+                0,
+                0,
+            );
+            assert!(scan_link_candidate(&mut context, 0, false, Some(&references)).is_none());
         }
     }
 
     #[test]
     fn candidate_offsets_are_relative_to_current_window() {
+        let mut document = crate::Document::new("", crate::Root::new(""));
         let md = parser::<false>();
         let ruleset = md.inline.document_rules();
         let source = "前雪[x](/url)";
-        let context =
-            DocumentInlineState::new(source, "前".len(), source.len(), &md, &ruleset, 0, 0);
-        let result = scan_link_candidate(&context, "雪".len(), false, None).unwrap();
+        let mut context = DocumentInlineState::new(
+            &mut document,
+            source,
+            "前".len(),
+            source.len(),
+            &md,
+            &ruleset,
+            0,
+            0,
+        );
+        let result = scan_link_candidate(&mut context, "雪".len(), false, None).unwrap();
         assert_eq!(
             (result.label_start, result.label_end, result.end),
             (4, 5, 12)
         );
         assert_eq!(result.href.as_deref(), Some("/url"));
         assert_eq!(context.remaining(), "雪[x](/url)");
-        assert!(scan_link_candidate(&context, 1, false, None).is_none());
+        assert!(scan_link_candidate(&mut context, 1, false, None).is_none());
     }
 
     #[test]
     fn candidate_combines_opaque_labels_with_target() {
+        let mut document = crate::Document::new("", crate::Root::new(""));
         let md = parser::<false>();
         let ruleset = md.inline.document_rules();
         for label in LABELS {
             let source = format!("[{label}](/url)");
-            let context = DocumentInlineState::new(&source, 0, source.len(), &md, &ruleset, 0, 0);
-            let result =
-                scan_link_candidate(&context, 0, false, None).unwrap_or_else(|| panic!("{source}"));
+            let mut context = DocumentInlineState::new(
+                &mut document,
+                &source,
+                0,
+                source.len(),
+                &md,
+                &ruleset,
+                0,
+                0,
+            );
+            let result = scan_link_candidate(&mut context, 0, false, None)
+                .unwrap_or_else(|| panic!("{source}"));
             // `]` bytes inside opaque spans must not shorten the label.
             assert_eq!(
                 (result.label_start, result.label_end),
@@ -1022,20 +1076,31 @@ mod check_label_tests {
 
     #[test]
     fn candidate_requires_reference_map_and_label_window() {
+        let mut document = crate::Document::new("", crate::Root::new(""));
         let md = parser::<false>();
         let ruleset = md.inline.document_rules();
 
         // Inline targets parse without references, shortcut references do not.
         let source = "[x](/url)";
-        let context = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
-        let result = scan_link_candidate(&context, 0, false, None).expect(source);
+        let mut context =
+            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, &ruleset, 0, 0);
+        let result = scan_link_candidate(&mut context, 0, false, None).expect(source);
         assert_eq!(result.href.as_deref(), Some("/url"));
         assert_eq!(result.end, source.len());
 
         for source in ["[x]", "[x][ref]"] {
-            let context = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+            let mut context = DocumentInlineState::new(
+                &mut document,
+                source,
+                0,
+                source.len(),
+                &md,
+                &ruleset,
+                0,
+                0,
+            );
             assert!(
-                scan_link_candidate(&context, 0, false, None).is_none(),
+                scan_link_candidate(&mut context, 0, false, None).is_none(),
                 "{source}"
             );
         }
@@ -1046,10 +1111,11 @@ mod check_label_tests {
         md.max_nesting = 2;
         let ruleset = md.inline.document_rules();
         let source = "[x](/url)";
-        let root = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
-        assert!(scan_link_candidate(&root, 0, false, None).is_some());
+        let mut root =
+            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, &ruleset, 0, 0);
+        assert!(scan_link_candidate(&mut root, 0, false, None).is_some());
 
-        let nested = root
+        let mut nested = root
             .child_state(
                 0..source.len(),
                 root.depth.saturating_add(1),
@@ -1068,11 +1134,12 @@ mod check_label_tests {
                 .depth,
             2
         );
-        assert!(scan_link_candidate(&nested, 0, false, None).is_none());
+        assert!(scan_link_candidate(&mut nested, 0, false, None).is_none());
     }
 
     #[test]
     fn candidate_respects_window_edges_and_parent_cursor() {
+        let mut document = crate::Document::new("", crate::Root::new(""));
         let md = parser::<false>();
         let ruleset = md.inline.document_rules();
 
@@ -1080,23 +1147,33 @@ mod check_label_tests {
         // parenthesis; bytes after `remaining()` must stay invisible.
         let source = "[x](/url)tail";
         let close = source.find(')').unwrap();
-        let truncated = DocumentInlineState::new(source, 0, close, &md, &ruleset, 0, 0);
+        let mut truncated =
+            DocumentInlineState::new(&mut document, source, 0, close, &md, &ruleset, 0, 0);
         assert_eq!(truncated.remaining(), "[x](/url");
-        assert!(scan_link_candidate(&truncated, 0, false, None).is_none());
+        assert!(scan_link_candidate(&mut truncated, 0, false, None).is_none());
 
         // Including the closing parenthesis makes the same window parse.
-        let complete = DocumentInlineState::new(source, 0, close + 1, &md, &ruleset, 0, 0);
-        let result = scan_link_candidate(&complete, 0, false, None).unwrap();
+        let mut complete =
+            DocumentInlineState::new(&mut document, source, 0, close + 1, &md, &ruleset, 0, 0);
+        let result = scan_link_candidate(&mut complete, 0, false, None).unwrap();
         assert_eq!(result.end, close + 1);
 
         // After the parent cursor advances, results stay relative to
         // `remaining()`, not to the start of the session.
         let source = "前雪[x](/url)";
-        let mut context =
-            DocumentInlineState::new(source, "前".len(), source.len(), &md, &ruleset, 0, 0);
+        let mut context = DocumentInlineState::new(
+            &mut document,
+            source,
+            "前".len(),
+            source.len(),
+            &md,
+            &ruleset,
+            0,
+            0,
+        );
         context.skip_token().unwrap();
         assert_eq!(context.remaining(), "[x](/url)");
-        let result = scan_link_candidate(&context, 0, false, None).unwrap();
+        let result = scan_link_candidate(&mut context, 0, false, None).unwrap();
         assert_eq!(
             (result.label_start, result.label_end, result.end),
             (1, 2, 9)
@@ -1107,11 +1184,15 @@ mod check_label_tests {
 
     #[test]
     fn registered_link_check_does_not_require_running_the_factory() {
+        let mut document = crate::Document::new("", crate::Root::new(""));
         let mut md = MarkdownIt::empty();
-        add::<false>(&mut md, |_, _| panic!("check must not call draft factory"));
+        add::<false>(&mut md, |_, _, _| {
+            panic!("check must not call arena node factory")
+        });
         let ruleset = md.inline.document_rules();
         let source = "[x](/url)";
-        let mut context = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+        let mut context =
+            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, &ruleset, 0, 0);
         let token = context.skip_token().unwrap();
         assert_eq!(token, source.len());
         assert_eq!(context.link_level, 0);
@@ -1120,11 +1201,15 @@ mod check_label_tests {
 
     #[test]
     fn registered_prefix_check_does_not_require_running_the_factory() {
+        let mut document = crate::Document::new("", crate::Root::new(""));
         let mut md = MarkdownIt::empty();
-        add_prefix::<'雪', true>(&mut md, |_, _| panic!("check must not call draft factory"));
+        add_prefix::<'雪', true>(&mut md, |_, _, _| {
+            panic!("check must not call arena node factory")
+        });
         let ruleset = md.inline.document_rules();
         let source = "雪[x](/url)";
-        let mut context = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+        let mut context =
+            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, &ruleset, 0, 0);
         let token = context.skip_token().unwrap();
         assert_eq!(token, source.len());
         assert_eq!(context.link_level, 0);
@@ -1137,8 +1222,8 @@ mod check_label_tests {
             let mut md = MarkdownIt::empty();
             crate::plugins::cmark::block::paragraph::add(&mut md);
             crate::plugins::cmark::inline::link::add(&mut md);
-            add_prefix::<PREFIX, true>(&mut md, |href, title| {
-                NodeDraft::new(Link {
+            add_prefix::<PREFIX, true>(&mut md, |document, href, title| {
+                document.create_node(Link {
                     url: href.unwrap_or_default(),
                     title,
                 })

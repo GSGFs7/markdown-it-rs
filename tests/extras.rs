@@ -142,7 +142,7 @@ mod markdown_it_rs_extras {
         use markdown_it::parser::block::BlockRule;
         use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
         use markdown_it::parser::inline::InlineRule;
-        use markdown_it::{DocumentBlockState, DocumentInlineState, MarkdownIt, NodeDraft, Text};
+        use markdown_it::{DocumentBlockState, DocumentInlineState, MarkdownIt, NodeId, Text};
 
         #[derive(Debug, Default)]
         struct NodeErrors(Vec<&'static str>);
@@ -150,14 +150,18 @@ mod markdown_it_rs_extras {
         impl InlineRule for MyInlineRule {
             const MARKER: char = '@';
 
-            fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+            fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
                 if !state.remaining().starts_with('@') {
                     return None;
                 }
-                let mut node = NodeDraft::new(Text {
+                let node = state.document.create_node(Text {
                     content: "@".into(),
                 });
-                let err = node.ext_mut().get_or_insert_default::<NodeErrors>();
+                let err = state
+                    .document
+                    .node_mut(node)
+                    .ext_mut()
+                    .get_or_insert_default::<NodeErrors>();
                 err.0.push("inline");
                 Some((Some(node), 1))
             }
@@ -165,8 +169,12 @@ mod markdown_it_rs_extras {
 
         struct MyBlockRule;
         impl BlockRule for MyBlockRule {
-            fn run(state: &mut DocumentBlockState) -> Option<(NodeDraft, usize)> {
-                let err = state.node.ext_mut().get_or_insert_default::<NodeErrors>();
+            fn run(state: &mut DocumentBlockState) -> Option<(Option<NodeId>, usize)> {
+                let err = state
+                    .document
+                    .node_mut(state.node)
+                    .ext_mut()
+                    .get_or_insert_default::<NodeErrors>();
                 err.0.push("block");
                 None
             }
@@ -175,8 +183,9 @@ mod markdown_it_rs_extras {
         struct MyCoreRule;
         impl CoreRule for MyCoreRule {
             fn document_rule() -> DocumentCoreRule {
-                DocumentCoreRule::FinalizeDraft(|root, _| {
-                    root.ext_mut()
+                DocumentCoreRule::FinalizeDocument(|root, _| {
+                    root.node_mut(root.root())
+                        .ext_mut()
                         .get_or_insert_default::<NodeErrors>()
                         .0
                         .push("core");

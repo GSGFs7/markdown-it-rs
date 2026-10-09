@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::MarkdownIt;
-use crate::document::{NodeDraft, NodeRef, NodeValue, TextSpecial};
+use crate::document::{NodeRef, NodeValue, TextSpecial};
 use crate::links::LinkFormatter;
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
@@ -82,9 +82,7 @@ impl InlineRule for AutolinkScanner {
         }
     }
 
-    fn run(
-        state: &mut crate::DocumentInlineState<'_>,
-    ) -> Option<(Option<crate::NodeDraft>, usize)> {
+    fn run(state: &mut crate::DocumentInlineState<'_>) -> Option<(Option<crate::NodeId>, usize)> {
         let matched = scan_autolink(
             state.remaining(),
             state.markdown_it().link_formatter.as_ref(),
@@ -92,17 +90,18 @@ impl InlineRule for AutolinkScanner {
 
         let start = state.pos;
 
-        let mut child = NodeDraft::new(TextSpecial {
+        let child = state.document.create_node(TextSpecial {
             content: matched.label.clone(),
             markup: matched.label,
             info: "autolink",
         });
-        child.set_srcmap(state.get_map(start + matched.label_start, start + matched.label_end));
+        let srcmap = state.get_map(start + matched.label_start, start + matched.label_end);
+        state.document.node_mut(child).set_srcmap(srcmap);
 
-        let mut container = NodeDraft::new(Autolink {
+        let container = state.document.create_node(Autolink {
             url: matched.destination,
         });
-        container.push_child(child);
+        state.document.push_child(container, child);
 
         Some((Some(container), matched.consumed))
     }

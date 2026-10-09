@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#thematic-breaks>
 use crate::MarkdownIt;
-use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::render::{
     DocumentNodeRenderer,
@@ -80,14 +80,16 @@ impl BlockRule for HrScanner {
     const MARKERS: &'static [char] = &['*', '-', '_'];
     const NAMES: &'static [&'static str] = &["hr"];
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (marker, marker_len) = scan_thematic_break(
             state.get_line(state.line),
             state.line_indent(state.line),
             state.md.max_indent,
         )?;
 
-        let node = NodeDraft::new(ThematicBreak { marker, marker_len });
-        Some((node, 1))
+        let node = state
+            .document
+            .create_node(ThematicBreak { marker, marker_len });
+        Some((Some(node), 1))
     }
 }

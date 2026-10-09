@@ -70,7 +70,7 @@ use std::fmt::Debug;
 
 use crate::common::extset::{NodeExtSet, RenderExtSet};
 use crate::common::sourcemap::SourcePos;
-use crate::document::{HtmlAttribute, NodeDraft, NodeRef};
+use crate::document::{HtmlAttribute, NodeId, NodeRef};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
@@ -133,17 +133,17 @@ impl InlineRule for TextDirective {
         scan_text_directive(context.remaining(), preceded_by_colon).map(|(_, _, len)| len)
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let preceded_by_colon = state.pos > 0 && state.src[..state.pos].ends_with(':');
         let (name, attrs, len) = scan_text_directive(state.remaining(), preceded_by_colon)?;
 
-        let mut node = NodeDraft::new(TextDirective {
+        let node = state.document.create_node(TextDirective {
             name: name.clone(),
             attrs,
         });
         attach_render(
-            node.ext_mut(),
-            state.markdown_it(),
+            state.document.node_mut(node).ext_mut(),
+            state.md,
             DirectiveKind::Text,
             &name,
         );
@@ -158,7 +158,7 @@ impl BlockRule for LeafDirectiveScanner {
     const MARKERS: &'static [char] = &[':'];
     const NAMES: &'static [&'static str] = &["leaf_directive"];
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         // it should be a codeblocks
         if state.line_indent(state.line) >= state.md.max_indent {
             return None;
@@ -166,13 +166,18 @@ impl BlockRule for LeafDirectiveScanner {
 
         let (name, attrs) = scan_leaf_directive(state.get_line(state.line))?;
 
-        let mut node = NodeDraft::new(LeafDirective {
+        let node = state.document.create_node(LeafDirective {
             name: name.clone(),
             attrs,
         });
-        attach_render(node.ext_mut(), state.md, DirectiveKind::Leaf, &name);
+        attach_render(
+            state.document.node_mut(node).ext_mut(),
+            state.md,
+            DirectiveKind::Leaf,
+            &name,
+        );
 
-        Some((node, 1))
+        Some((Some(node), 1))
     }
 }
 
@@ -260,7 +265,7 @@ impl BlockRule for ContainerDirectiveScanner {
         Self::scan_document(state).map(|_| ())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (marker_len, name, attrs) = Self::scan_document(state)?;
 
         let start_line = state.line;
@@ -279,12 +284,12 @@ impl BlockRule for ContainerDirectiveScanner {
         );
 
         // new node
-        let mut directive_node = NodeDraft::new(ContainerDirective {
+        let directive_node = state.document.create_node(ContainerDirective {
             name: name.clone(),
             attrs,
         });
         attach_render(
-            directive_node.ext_mut(),
+            state.document.node_mut(directive_node).ext_mut(),
             state.md,
             DirectiveKind::Container,
             &name,
@@ -307,7 +312,7 @@ impl BlockRule for ContainerDirectiveScanner {
 
         let node = std::mem::replace(&mut state.node, old_node);
         Some((
-            node,
+            Some(node),
             next_line - start_line + if have_end_marker { 1 } else { 0 },
         ))
     }

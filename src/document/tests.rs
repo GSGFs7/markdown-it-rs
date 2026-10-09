@@ -253,3 +253,54 @@ fn node_data_survives_draft_insertion() {
     let document = Document::from_draft("abc", draft());
     assert_document(&document);
 }
+
+#[test]
+fn arena_builder_moves_ids_and_metadata_without_recreating_nodes() {
+    let mut document = Document::new("hello", Root::new("hello"));
+    let left = document.create_node(Paragraph);
+    let right = document.create_node(Paragraph);
+    let text = document.create_node(Text {
+        content: "hello".into(),
+    });
+    let map = crate::common::sourcemap::SourcePos::new(0, 5);
+    document.node_mut(text).set_srcmap(Some(map));
+    document
+        .node_mut(text)
+        .attrs_mut()
+        .push(("class".into(), "kept".into()));
+    document.push_child(left, text);
+    document.push_child(document.root(), left);
+    document.push_child(document.root(), right);
+
+    let children = document.take_children(left);
+    assert_eq!(document.parent(text), None);
+    document.attach_children(right, children);
+    assert_eq!(document.children(right), &[text]);
+    assert_eq!(document.parent(text), Some(right));
+    assert_eq!(document.node(text).srcmap(), Some(map));
+    assert_eq!(document.node(text).attrs()[0].1, "kept");
+
+    let removed = document.take_children(document.root());
+    document.discard_node(removed[0]);
+    document.discard_node(removed[1]);
+    assert_eq!(document.len(), 1);
+    assert!(document.get_node(left).is_none());
+    assert!(document.get_node(right).is_none());
+    assert!(document.get_node(text).is_none());
+}
+
+#[test]
+fn arena_builder_rejects_cycles_before_modifying_links() {
+    let mut document = Document::new("", Root::new(""));
+    let outer = document.create_node(Paragraph);
+    let inner = document.create_node(Paragraph);
+    document.push_child(outer, inner);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        document.push_child(inner, outer);
+    }));
+    assert!(result.is_err());
+    assert_eq!(document.parent(outer), None);
+    assert_eq!(document.parent(inner), Some(outer));
+    assert!(document.children(inner).is_empty());
+}

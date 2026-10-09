@@ -4,7 +4,7 @@ use super::NodeId;
 use super::data::NodeData;
 use crate::common::extset::NodeExtSet;
 use crate::common::sourcemap::SourcePos;
-use crate::document::{ConsumeOnly, HtmlAttributes, NodeEmpty, NodeValue};
+use crate::document::{HtmlAttributes, NodeEmpty, NodeValue};
 
 /// Borrowed view of a node produced by a structural traversal.
 pub type NodeRef<'a> = &'a DocumentNode;
@@ -35,7 +35,7 @@ impl DocumentNode {
         self.data.srcmap
     }
 
-    pub(crate) fn set_srcmap(&mut self, srcmap: Option<SourcePos>) {
+    pub fn set_srcmap(&mut self, srcmap: Option<SourcePos>) {
         self.data.srcmap = srcmap;
     }
 
@@ -43,20 +43,20 @@ impl DocumentNode {
         &self.data.ext
     }
 
+    pub fn ext_mut(&mut self) -> &mut NodeExtSet {
+        &mut self.data.ext
+    }
+
     pub fn attrs(&self) -> &HtmlAttributes {
         &self.data.attrs
     }
 
-    pub(crate) fn attrs_mut(&mut self) -> &mut HtmlAttributes {
+    pub fn attrs_mut(&mut self) -> &mut HtmlAttributes {
         &mut self.data.attrs
     }
 
     pub fn name(&self) -> &'static str {
         self.data.name()
-    }
-
-    pub(crate) fn type_id(&self) -> TypeId {
-        self.data.type_id()
     }
 
     pub fn is<T: NodeValue>(&self) -> bool {
@@ -67,8 +67,16 @@ impl DocumentNode {
         self.data.cast::<T>()
     }
 
-    pub(crate) fn cast_mut<T: NodeValue>(&mut self) -> Option<&mut T> {
+    pub fn cast_mut<T: NodeValue>(&mut self) -> Option<&mut T> {
         self.data.cast_mut::<T>()
+    }
+
+    pub(crate) fn type_id(&self) -> TypeId {
+        self.data.type_id()
+    }
+
+    pub(crate) fn replace_value<T: NodeValue>(&mut self, value: T) {
+        self.data.replace_value(NodeData::new(value));
     }
 }
 
@@ -91,13 +99,6 @@ impl NodeDraft {
             children: Vec::new(),
             data: NodeData::new(value),
         }
-    }
-
-    /// Create a placeholder node that the block parser drops instead of emitting.
-    ///
-    /// Block rules return this to consume input without producing a node.
-    pub fn placeholder() -> Self {
-        Self::new(ConsumeOnly)
     }
 
     pub fn children(&self) -> &[NodeDraft] {
@@ -157,10 +158,6 @@ impl NodeDraft {
         let children = std::mem::take(&mut self.children);
         let data = std::mem::replace(&mut self.data, NodeData::new(NodeEmpty));
         (children, data)
-    }
-
-    pub(crate) fn replace<T: NodeValue>(&mut self, value: T) {
-        self.data.replace::<T>(value);
     }
 }
 

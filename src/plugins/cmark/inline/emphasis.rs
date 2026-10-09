@@ -3,6 +3,7 @@
 //! looks like `*this*` or `__that__`
 //!
 //! <https://spec.commonmark.org/0.30/#emphasis-and-strong-emphasis>
+use crate::MarkdownIt;
 use crate::document::{NodeRef, NodeValue};
 use crate::parser::inline::helpers::emph_pair;
 use crate::render::{
@@ -12,7 +13,6 @@ use crate::render::{
     write_html_close,
     write_html_open,
 };
-use crate::{MarkdownIt, NodeDraft};
 
 #[derive(Debug)]
 pub struct Em {
@@ -68,10 +68,14 @@ fn render_inline_container(
 impl NodeValue for Strong {}
 
 pub fn add(md: &mut MarkdownIt) {
-    emph_pair::add_with::<'*', 1, true>(md, || NodeDraft::new(Em { marker: '*' }));
-    emph_pair::add_with::<'_', 1, false>(md, || NodeDraft::new(Em { marker: '_' }));
-    emph_pair::add_with::<'*', 2, true>(md, || NodeDraft::new(Strong { marker: '*' }));
-    emph_pair::add_with::<'_', 2, false>(md, || NodeDraft::new(Strong { marker: '_' }));
+    emph_pair::add_with::<'*', 1, true>(md, |document| document.create_node(Em { marker: '*' }));
+    emph_pair::add_with::<'_', 1, false>(md, |document| document.create_node(Em { marker: '_' }));
+    emph_pair::add_with::<'*', 2, true>(md, |document| {
+        document.create_node(Strong { marker: '*' })
+    });
+    emph_pair::add_with::<'_', 2, false>(md, |document| {
+        document.create_node(Strong { marker: '_' })
+    });
     md.add_document_renderer::<Em, _>("html", EmDocumentRenderer);
     md.add_document_renderer::<Strong, _>("html", StrongDocumentRenderer);
     md.add_document_renderer::<Em, _>("text", TransparentDocumentRenderer);

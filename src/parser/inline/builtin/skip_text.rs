@@ -4,7 +4,7 @@
 use regex::{self, Regex};
 
 use crate::MarkdownIt;
-use crate::document::NodeDraft;
+use crate::document::NodeId;
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 
 pub fn add(md: &mut MarkdownIt) {
@@ -63,7 +63,7 @@ impl InlineRule for TextScanner {
     const MARKER: char = '\0';
     const NAMES: &'static [&'static str] = &["text"];
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let len = state
             .markdown_it()
             .inline

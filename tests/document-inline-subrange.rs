@@ -1,5 +1,5 @@
 use markdown_it::parser::inline::InlineRule;
-use markdown_it::{DocumentInlineState, MarkdownIt, NodeDraft, NodeValue};
+use markdown_it::{DocumentInlineState, MarkdownIt, NodeId, NodeValue};
 
 #[derive(Debug)]
 struct TestContainer;
@@ -9,7 +9,7 @@ struct ContainerRule;
 impl InlineRule for ContainerRule {
     const MARKER: char = '{';
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let source = state.remaining();
         if !source.starts_with('{') {
             return None;
@@ -31,8 +31,11 @@ impl InlineRule for ContainerRule {
             }
         }
         let close = close?;
-        let mut node = NodeDraft::new(TestContainer);
-        *node.children_mut() = state.parse_subrange(1..close)?;
+        let node = state.document.create_node(TestContainer);
+        let children = state.parse_subrange(1..close)?;
+        for child in children {
+            state.document.push_child(node, child);
+        }
         Some((Some(node), close + 1))
     }
 }

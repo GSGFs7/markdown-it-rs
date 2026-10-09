@@ -1,17 +1,17 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use markdown_it::parser::inline::InlineRule;
-use markdown_it::{DocumentInlineState, MarkdownIt, NodeDraft, Text};
+use markdown_it::{DocumentInlineState, MarkdownIt, NodeId, Text};
 
 // A plugin only implementing run must still be opaque inside a link label.
 struct RunOnly;
 impl InlineRule for RunOnly {
     const MARKER: char = '%';
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         state.remaining().starts_with("%]%").then(|| {
             (
-                Some(NodeDraft::new(Text {
+                Some(state.document.create_node(Text {
                     content: "opaque".into(),
                 })),
                 3,
@@ -41,11 +41,11 @@ impl InlineRule for ExplicitCheck {
         state.remaining().starts_with("%]%").then_some(3)
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let len = Self::check(state)?;
         RUNS.fetch_add(1, Ordering::SeqCst);
         Some((
-            Some(NodeDraft::new(Text {
+            Some(state.document.create_node(Text {
                 content: "opaque".into(),
             })),
             len,
@@ -74,9 +74,9 @@ impl InlineRule for PanicCheck {
         panic!("normal parsing must not call check")
     }
 
-    fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         Some((
-            Some(NodeDraft::new(Text {
+            Some(state.document.create_node(Text {
                 content: "X".into(),
             })),
             1,

@@ -5,7 +5,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#backslash-escapes>
 use crate::MarkdownIt;
-use crate::document::{NodeDraft, TextSpecial};
+use crate::document::{NodeId, TextSpecial};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::plugins::cmark::inline::newline::Hardbreak;
 
@@ -56,11 +56,13 @@ impl InlineRule for EscapeScanner {
         scan_escape(context.remaining()).map(|matched| matched.len())
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let matched = scan_escape(state.remaining())?;
         let len = matched.len();
         match matched {
-            EscapeMatch::Hardbreak { .. } => Some((Some(NodeDraft::new(Hardbreak)), len)),
+            EscapeMatch::Hardbreak { .. } => {
+                Some((Some(state.document.create_node(Hardbreak)), len))
+            }
             EscapeMatch::Character { ch } => {
                 let markup = format!("\\{ch}");
                 let content = if ch.is_ascii_punctuation() {
@@ -69,7 +71,7 @@ impl InlineRule for EscapeScanner {
                     markup.clone()
                 };
                 Some((
-                    Some(NodeDraft::new(TextSpecial {
+                    Some(state.document.create_node(TextSpecial {
                         content,
                         markup,
                         info: "escape",

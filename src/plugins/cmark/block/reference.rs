@@ -15,7 +15,7 @@ use downcast_rs::{Downcast, impl_downcast};
 
 use crate::MarkdownIt;
 use crate::common::utils::{normalize_reference, unescape_all};
-use crate::document::{NodeDraft, NodeValue};
+use crate::document::{NodeId, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::parser::inline::helpers::full_link;
 use crate::render::EmptyDocumentRenderer;
@@ -271,9 +271,9 @@ impl BlockRule for ReferenceScanner {
         None // can't interrupt anything
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (definition, lines) = scan_reference(state)?;
-        Some((NodeDraft::new(definition), lines))
+        Some((Some(state.document.create_node(definition)), lines))
     }
 }
 

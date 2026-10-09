@@ -18,13 +18,13 @@
 //!    (for example, note the difference between `foo*bar*baz` and `foo_bar_baz`
 //!    in CommonMark - first one is an emphasis, second one isn't)
 //!  - `md` - parser instance
-//!  - `f` - function that should return your custom [NodeDraft]
+//!  - `f` - function that should return your custom [NodeId]
 //!
 //! Here is an example of implementing superscript in your custom code:
 //!
 //! ```rust
 //! use markdown_it::parser::inline::helpers::emph_pair;
-//! use markdown_it::{MarkdownIt, NodeDraft, NodeValue, NodeRef, DocumentNodeRenderer, DocumentRenderContext, DocumentWriter};
+//! use markdown_it::{MarkdownIt, NodeId, NodeValue, NodeRef, DocumentNodeRenderer, DocumentRenderContext, DocumentWriter};
 //! #[derive(Debug)]
 //! struct Superscript;
 //! impl NodeValue for Superscript {}
@@ -35,7 +35,7 @@
 //!     }
 //! }
 //! let md = &mut MarkdownIt::empty();
-//! emph_pair::add_with::<'^', 1, true>(md, || NodeDraft::new(Superscript));
+//! emph_pair::add_with::<'^', 1, true>(md, |document| document.create_node(Superscript));
 //! md.add_document_renderer::<Superscript, _>("html", CustomRenderer);
 //! assert_eq!(md.render("e^iπ^+1=0").trim(), "e<sup>iπ</sup>+1=0");
 //! ```
@@ -47,13 +47,15 @@ use std::cmp::min;
 
 use crate::MarkdownIt;
 use crate::common::sourcemap::SourcePos;
-use crate::document::{NodeDraft, NodeValue, Text};
+use crate::document::{Document, NodeId, NodeValue, Text};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
+
+type NodeIdFn = fn(&mut Document) -> NodeId;
 
 #[derive(Debug, Default)]
 struct PairConfig<const MARKER: char> {
     inserted: bool,
-    fns: [Option<fn() -> NodeDraft>; 3],
+    fns: [Option<NodeIdFn>; 3],
 }
 
 #[derive(Debug, Default)]
@@ -85,7 +87,7 @@ impl NodeValue for EmphMarker {}
 
 pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool>(
     md: &mut MarkdownIt,
-    f: fn() -> NodeDraft,
+    f: fn(&mut Document) -> NodeId,
 ) {
     let pair_config = md.ext.get_or_insert_default::<PairConfig<MARKER>>();
     pair_config.fns[LENGTH as usize - 1] = Some(f);
@@ -118,7 +120,7 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
         None
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         if state.remaining().chars().next()? != MARKER {
             return None;
         }
@@ -134,18 +136,24 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
 
         state.flush_text();
 
-        let mut closer = NodeDraft::new(EmphMarker {
+        let mut closer = state.document.create_node(EmphMarker {
             marker: MARKER,
             length: scanned.length,
             remaining: scanned.length,
             open: scanned.can_open,
             close: scanned.can_close,
         });
-        closer.set_srcmap(state.get_map(state.pos, state.pos + scanned_bytes));
+        let srcmap = state.get_map(state.pos, state.pos + scanned_bytes);
+        state.document.node_mut(closer).set_srcmap(srcmap);
 
         closer = scan_and_match_document::<MARKER>(state, closer);
 
-        let map = closer.srcmap().unwrap().get_byte_offsets();
+        let map = state
+            .document
+            .node(closer)
+            .srcmap()
+            .unwrap()
+            .get_byte_offsets();
         // backtrack to keep correct source maps
         state.pos += scanned_bytes;
         let token_len = map.1 - map.0;
@@ -159,13 +167,18 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
 /// try to find opener(s). If any are found, move stuff to nested emph node.
 fn scan_and_match_document<const MARKER: char>(
     state: &mut DocumentInlineState,
-    mut closer_token: NodeDraft,
-) -> NodeDraft {
+    closer_token: NodeId,
+) -> NodeId {
     if state.nodes().is_empty() {
         return closer_token;
     } // must have at least opener and closer
 
-    let mut closer = closer_token.cast_mut::<EmphMarker>().unwrap().clone();
+    let mut closer = state
+        .document
+        .node(closer_token)
+        .cast::<EmphMarker>()
+        .unwrap()
+        .clone();
     if !closer.close {
         return closer_token;
     }
@@ -185,7 +198,7 @@ fn scan_and_match_document<const MARKER: char>(
     while idx > min_opener_idx {
         idx -= 1;
 
-        let Some(opener) = state.nodes()[idx].cast::<EmphMarker>() else {
+        let Some(opener) = state.document.node(state.nodes()[idx]).cast::<EmphMarker>() else {
             continue;
         };
 
@@ -222,31 +235,42 @@ fn scan_and_match_document<const MARKER: char>(
                 closer.remaining -= marker_len;
                 opener.remaining -= marker_len;
 
-                let mut new_token = marker_fn();
-                *new_token.children_mut() = state.nodes_mut().split_off(idx + 1);
+                let new_token = marker_fn(state.document);
+                let children = state.nodes_mut().split_off(idx + 1);
+                state.document.attach_children(new_token, children);
 
                 // cut marker_len chars from start, i.e. "12345" -> "345"
                 let mut end_map_pos = 0;
-                if let Some(map) = closer_token.srcmap() {
+                if let Some(map) = state.document.node(closer_token).srcmap() {
                     let (start, end) = map.get_byte_offsets();
-                    closer_token.set_srcmap(Some(SourcePos::new(start + mark_bytes, end)));
+                    state
+                        .document
+                        .node_mut(closer_token)
+                        .set_srcmap(Some(SourcePos::new(start + mark_bytes, end)));
                     end_map_pos = start + mark_bytes;
                 }
 
                 // cut marker_len chars from end, i.e. "12345" -> "123"
                 let mut start_map_pos = 0;
-                let opener_token = state.nodes_mut().last_mut().unwrap();
-                if let Some(map) = opener_token.srcmap() {
+                let opener_token = *state.nodes().last().unwrap();
+                if let Some(map) = state.document.node(opener_token).srcmap() {
                     let (start, end) = map.get_byte_offsets();
-                    opener_token.set_srcmap(Some(SourcePos::new(start, end - mark_bytes)));
+                    state
+                        .document
+                        .node_mut(opener_token)
+                        .set_srcmap(Some(SourcePos::new(start, end - mark_bytes)));
                     start_map_pos = end - mark_bytes;
                 }
 
-                new_token.set_srcmap(Some(SourcePos::new(start_map_pos, end_map_pos)));
+                state
+                    .document
+                    .node_mut(new_token)
+                    .set_srcmap(Some(SourcePos::new(start_map_pos, end_map_pos)));
 
                 // remove empty node as a small optimization so we can do less work later
                 if opener.remaining == 0 {
-                    state.nodes_mut().pop();
+                    let removed = state.nodes_mut().pop().unwrap();
+                    state.document.discard_node(removed);
                 }
 
                 new_min_opener_idx = 0;
@@ -255,7 +279,8 @@ fn scan_and_match_document<const MARKER: char>(
         }
 
         if opener.remaining > 0 {
-            state.nodes_mut()[idx].replace(opener);
+            let id = state.nodes()[idx];
+            state.document.node_mut(id).replace_value(opener);
         } // otherwise node was already deleted
 
         if closer.remaining == 0 {
@@ -279,9 +304,10 @@ fn scan_and_match_document<const MARKER: char>(
 
     // remove empty node as a small optimization so we can do less work later
     if closer.remaining > 0 {
-        closer_token.replace(closer);
+        state.document.node_mut(closer_token).replace_value(closer);
         closer_token
     } else {
+        state.document.discard_node(closer_token);
         state.nodes_mut().pop().unwrap()
     }
 }
@@ -314,62 +340,69 @@ fn is_odd_match(opener: &EmphMarker, closer: &EmphMarker) -> bool {
 /// leaves them as text (needed to merge with adjacent text) or turns them
 /// into opening/closing elements (which messes up the source maps inside).
 ///
-fn fragments_join_draft_children(nodes: &mut Vec<NodeDraft>) {
-    // replace all unmatched emph markers with text tokens
-    for token in nodes.iter_mut() {
-        if let Some(data) = token.cast::<EmphMarker>() {
+fn fragments_join_children(document: &mut Document, nodes: &mut Vec<NodeId>) {
+    for &id in nodes.iter() {
+        if let Some(data) = document.node(id).cast::<EmphMarker>() {
             let content = data.marker.to_string().repeat(data.remaining);
-            token.replace(Text { content });
+            document.node_mut(id).replace_value(Text { content });
         }
     }
-
-    for idx in 1..nodes.len() {
-        let (tokens1, tokens2) = nodes.split_at_mut(idx);
-
-        let token1 = tokens1.last_mut().unwrap();
-        let Some(t1_data) = token1.cast_mut::<Text>() else {
+    let mut write = 0;
+    for read in 0..nodes.len() {
+        let id = nodes[read];
+        if document
+            .node(id)
+            .cast::<Text>()
+            .is_some_and(|text| text.content.is_empty())
+        {
+            document.discard_node(id);
             continue;
-        };
-
-        let token2 = tokens2.first_mut().unwrap();
-        let Some(t2_data) = token2.cast_mut::<Text>() else {
-            continue;
-        };
-
-        let t2_content = std::mem::take(&mut t2_data.content);
-        t1_data.content += &t2_content;
-
-        if let Some(map1) = token1.srcmap() {
-            if let Some(map2) = token2.srcmap() {
-                token1.set_srcmap(Some(SourcePos::new(
-                    map1.get_byte_offsets().0,
-                    map2.get_byte_offsets().1,
+        }
+        if write > 0
+            && document.node(nodes[write - 1]).is::<Text>()
+            && document.node(id).is::<Text>()
+        {
+            let previous = nodes[write - 1];
+            let content =
+                std::mem::take(&mut document.node_mut(id).cast_mut::<Text>().unwrap().content);
+            document
+                .node_mut(previous)
+                .cast_mut::<Text>()
+                .unwrap()
+                .content += &content;
+            if let (Some(first), Some(last)) =
+                (document.node(previous).srcmap(), document.node(id).srcmap())
+            {
+                document.node_mut(previous).set_srcmap(Some(SourcePos::new(
+                    first.get_byte_offsets().0,
+                    last.get_byte_offsets().1,
                 )));
             }
-        }
-
-        nodes.swap(idx - 1, idx);
-    }
-
-    nodes.retain(|token| {
-        if let Some(data) = token.cast::<Text>() {
-            !data.content.is_empty()
+            document.discard_node(id);
         } else {
-            true
+            nodes[write] = id;
+            write += 1;
         }
-    });
-}
-
-fn fragments_join_drafts(nodes: &mut Vec<NodeDraft>) {
-    let mut pending = vec![nodes];
-    while let Some(nodes) = pending.pop() {
-        fragments_join_draft_children(nodes);
-        pending.extend(nodes.iter_mut().map(NodeDraft::children_mut));
     }
+    nodes.truncate(write);
 }
 
 fn finalize_emphasis_document(state: &mut DocumentInlineState<'_>) {
-    fragments_join_drafts(state.nodes_mut());
+    let mut nodes = std::mem::take(state.nodes_mut());
+    fragments_join_children(state.document, &mut nodes);
+    let mut pending = nodes.clone();
+    while let Some(parent) = pending.pop() {
+        if state.document.children(parent).is_empty() {
+            continue;
+        }
+        state
+            .document
+            .rewrite_children(parent, |document, children| {
+                fragments_join_children(document, children);
+                pending.extend_from_slice(children);
+            });
+    }
+    *state.nodes_mut() = nodes;
 }
 
 #[cfg(test)]
@@ -472,7 +505,7 @@ mod tests {
         crate::plugins::cmark::block::paragraph::add(&mut md);
 
         md.add_document_renderer::<CustomEmphasis, _>("html", CustomRenderer);
-        add_with::<'🦀', 1, true>(&mut md, || NodeDraft::new(CustomEmphasis));
+        add_with::<'🦀', 1, true>(&mut md, |document| document.create_node(CustomEmphasis));
 
         let root = md.parse_document("a 🦀雪🦀 b");
 
@@ -489,7 +522,7 @@ mod tests {
         crate::plugins::cmark::block::paragraph::add(&mut md);
 
         md.add_document_renderer::<CustomEmphasis, _>("html", CustomRenderer);
-        add_with::<'🦀', 2, true>(&mut md, || NodeDraft::new(CustomEmphasis));
+        add_with::<'🦀', 2, true>(&mut md, |document| document.create_node(CustomEmphasis));
 
         let root = md.parse_document("🦀🦀雪🦀🦀");
 

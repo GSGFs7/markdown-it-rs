@@ -3,6 +3,7 @@
 //! `![link](<to> "stuff")`
 //!
 //! <https://spec.commonmark.org/0.30/#links>
+use crate::MarkdownIt;
 use crate::document::{NodeRef, NodeValue};
 use crate::parser::inline::helpers::full_link;
 use crate::render::{
@@ -12,7 +13,6 @@ use crate::render::{
     write_html_close,
     write_html_open,
 };
-use crate::{MarkdownIt, NodeDraft};
 
 #[derive(Debug)]
 pub struct Link {
@@ -45,8 +45,8 @@ impl DocumentNodeRenderer<Link> for LinkDocumentRenderer {
 impl NodeValue for Link {}
 
 pub fn add(md: &mut MarkdownIt) {
-    full_link::add::<false>(md, |href, title| {
-        NodeDraft::new(Link {
+    full_link::add::<false>(md, |document, href, title| {
+        document.create_node(Link {
             url: href.unwrap_or_default(),
             title,
         })

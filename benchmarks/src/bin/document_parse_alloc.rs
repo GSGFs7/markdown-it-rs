@@ -133,7 +133,7 @@ struct AllocationStats {
 
 fn print_row(configuration: &str, suite: &str, corpus: &str, stats: AllocationStats) {
     println!(
-        "| {configuration} | {suite} | {corpus} | draft-to-arena | {} | {} | {} | {} | {} |",
+        "| {configuration} | {suite} | {corpus} | arena-direct | {} | {} | {} | {} | {} |",
         stats.allocations,
         stats.reallocations,
         stats.requested_bytes,

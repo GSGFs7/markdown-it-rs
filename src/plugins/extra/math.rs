@@ -1,6 +1,6 @@
 // reference to exist CodeFence & CodeSpan rule in the code base
 
-use crate::document::{NodeDraft, NodeRef};
+use crate::document::{NodeId, NodeRef};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
@@ -57,7 +57,7 @@ impl BlockRule for MathBlockScanner {
         )
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         <Self as BlockRule>::check(state)?;
         let (end, consumed) = scan_math_block(state.line, state.line_max, |line| {
             (state.get_line(line), state.line_indent(line))
@@ -65,9 +65,9 @@ impl BlockRule for MathBlockScanner {
         let indent = state.line_offsets[state.line].indent_nonspace;
         let (content, _) = state.get_lines(state.line + 1, end, indent as usize, false);
         Some((
-            NodeDraft::new(MathBlock {
+            Some(state.document.create_node(MathBlock {
                 content: content.trim().to_owned(),
-            }),
+            })),
             consumed,
         ))
     }
@@ -112,10 +112,10 @@ impl InlineRule for MathInlineScanner {
         scan_math_inline(context.remaining()).map(|(_, len)| len)
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
+    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (content, consumed) = scan_math_inline(state.remaining())?;
         Some((
-            Some(NodeDraft::new(MathInline {
+            Some(state.document.create_node(MathInline {
                 content: content.to_owned(),
             })),
             consumed,

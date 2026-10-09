@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#indented-code-block>
 use crate::MarkdownIt;
-use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::render::{
     DocumentNodeRenderer,
@@ -76,7 +76,7 @@ impl BlockRule for CodeScanner {
         None
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         if state.line_indent(state.line) < CODE_INDENT {
             return None;
         }
@@ -107,8 +107,8 @@ impl BlockRule for CodeScanner {
         );
         content += "\n";
 
-        let node = NodeDraft::new(CodeBlock { content });
+        let node = state.document.create_node(CodeBlock { content });
 
-        Some((node, last - state.line))
+        Some((Some(node), last - state.line))
     }
 }

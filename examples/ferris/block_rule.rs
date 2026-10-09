@@ -1,7 +1,7 @@
 // Replaces `(\/)-------(\/)` with a nice picture.
 
 use markdown_it::parser::block::BlockRule;
-use markdown_it::{DocumentBlockState, MarkdownIt, NodeDraft, NodeValue};
+use markdown_it::{DocumentBlockState, MarkdownIt, NodeId, NodeValue};
 
 const CRAB_CLAW: &str = r#"(\/)"#;
 const CRAB_URL: &str = "https://upload.wikimedia.org/wikipedia/commons/0/0f/Original_Ferris.svg";
@@ -23,13 +23,15 @@ impl BlockRule for FerrisBlockScanner {
     // custom structure appears there.
     //
     // If custom structure is found, it:
-    //  - creates a new `NodeDraft`
+    //  - allocates a new node in `state.document`
     //  - returns the node and the number of lines it occupies
+    //
+    // Return `Some((None, lines))` to consume input without emitting a node.
     //
     // The default `check` calls `run` and discards the node. Do not modify the
     // cursor or existing nodes from this implementation.
     //
-    fn run(state: &mut DocumentBlockState) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState) -> Option<(Option<NodeId>, usize)> {
         // get contents of a line number `state.line` and check it
         let line = state.get_line(state.line).trim();
         if !line.starts_with(CRAB_CLAW) {
@@ -51,7 +53,7 @@ impl BlockRule for FerrisBlockScanner {
         }
 
         // return new node and number of lines it occupies
-        Some((NodeDraft::new(BlockFerris), 1))
+        Some((Some(state.document.create_node(BlockFerris)), 1))
     }
 }
 

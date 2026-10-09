@@ -8,7 +8,7 @@
 //!  - <https://spec.commonmark.org/0.30/#list-items>
 use crate::MarkdownIt;
 use crate::common::utils::find_indent_of;
-use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::document::{Document, NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::plugins::cmark::block::hr::HrScanner;
 use crate::plugins::cmark::block::paragraph::Paragraph;
@@ -169,18 +169,22 @@ impl ListScanner {
         }
     }
 
-    fn mark_tight_paragraphs_document(nodes: &mut Vec<NodeDraft>) {
-        let mut idx = 0;
-        while idx < nodes.len() {
-            if nodes[idx].is::<Paragraph>() {
-                let children = std::mem::take(nodes[idx].children_mut());
-                let len = children.len();
-                nodes.splice(idx..idx + 1, children);
-                idx += len;
-            } else {
-                idx += 1;
+    fn mark_tight_paragraphs_document(document: &mut Document, item: NodeId) {
+        document.rewrite_children(item, |document, nodes| {
+            let mut index = 0;
+            while index < nodes.len() {
+                let node = nodes[index];
+                if document.node(node).is::<Paragraph>() {
+                    let children = document.take_children(node);
+                    let count = children.len();
+                    nodes.splice(index..index + 1, children);
+                    document.discard_node(node);
+                    index += count;
+                } else {
+                    index += 1;
+                }
             }
-        }
+        });
     }
 }
 
@@ -290,23 +294,25 @@ impl BlockRule for ListScanner {
     const NAMES: &'static [&'static str] = &["list"];
 
     fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
-        if state.node.is::<BulletList>() || state.node.is::<OrderedList>() {
+        if state.document.node(state.node).is::<BulletList>()
+            || state.document.node(state.node).is::<OrderedList>()
+        {
             return None;
         }
 
         find_document_marker(state, true).map(|_| ())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (mut pos_after_marker, marker_value, marker_char) = find_document_marker(state, false)?;
 
         let new_node = if let Some(int) = marker_value {
-            NodeDraft::new(OrderedList {
+            state.document.create_node(OrderedList {
                 start: int,
                 marker: marker_char,
             })
         } else {
-            NodeDraft::new(BulletList {
+            state.document.create_node(BulletList {
                 marker: marker_char,
             })
         };
@@ -350,7 +356,7 @@ impl BlockRule for ListScanner {
             let indent = initial + indent_after_marker;
 
             // Run subparser & write tokens
-            let old_node = std::mem::replace(&mut state.node, NodeDraft::new(ListItem));
+            let old_node = std::mem::replace(&mut state.node, state.document.create_node(ListItem));
 
             // change current state, then restore it after parser subcall
             let old_tight = state.tight;
@@ -402,9 +408,10 @@ impl BlockRule for ListScanner {
             state.tight = old_tight;
 
             let end_line = state.line;
-            let mut node = std::mem::replace(&mut state.node, old_node);
-            node.set_srcmap(state.get_map(next_line, end_line - 1));
-            state.node.push_child(node);
+            let node = std::mem::replace(&mut state.node, old_node);
+            let srcmap = state.get_map(next_line, end_line - 1);
+            state.document.node_mut(node).set_srcmap(srcmap);
+            state.document.push_child(state.node, node);
             next_line = state.line;
 
             if next_line >= state.line_max {
@@ -456,16 +463,17 @@ impl BlockRule for ListScanner {
 
         // mark paragraphs tight if needed
         if tight {
-            for child in state.node.children_mut().iter_mut() {
-                debug_assert!(child.is::<ListItem>());
-                Self::mark_tight_paragraphs_document(child.children_mut());
+            let items = state.document.children(state.node).to_vec();
+            for child in items {
+                debug_assert!(state.document.node(child).is::<ListItem>());
+                Self::mark_tight_paragraphs_document(&mut state.document, child);
             }
         }
 
         // Finalize list
         state.line = start_line;
         let node = std::mem::replace(&mut state.node, old_node);
-        Some((node, next_line - state.line))
+        Some((Some(node), next_line - state.line))
     }
 }
 

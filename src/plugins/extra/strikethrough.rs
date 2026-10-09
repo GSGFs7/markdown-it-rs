@@ -1,4 +1,5 @@
 //! Strikethrough syntax (like `~~this~~`)
+use crate::MarkdownIt;
 use crate::document::{NodeRef, NodeValue};
 use crate::parser::inline::helpers::emph_pair;
 use crate::render::{
@@ -8,7 +9,6 @@ use crate::render::{
     write_html_close,
     write_html_open,
 };
-use crate::{MarkdownIt, NodeDraft};
 
 #[derive(Debug)]
 pub struct Strikethrough {
@@ -34,7 +34,9 @@ impl DocumentNodeRenderer<Strikethrough> for StrikethroughDocumentRenderer {
 impl NodeValue for Strikethrough {}
 
 pub fn add(md: &mut MarkdownIt) {
-    emph_pair::add_with::<'~', 2, true>(md, || NodeDraft::new(Strikethrough { marker: '~' }));
+    emph_pair::add_with::<'~', 2, true>(md, |document| {
+        document.create_node(Strikethrough { marker: '~' })
+    });
     md.add_document_renderer::<Strikethrough, _>("html", StrikethroughDocumentRenderer);
     md.add_document_renderer::<Strikethrough, _>("text", TransparentDocumentRenderer);
 }

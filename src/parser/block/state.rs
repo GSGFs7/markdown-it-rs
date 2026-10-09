@@ -5,10 +5,10 @@ use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
 use crate::common::sourcemap::SourcePos;
 use crate::common::utils::calc_right_whitespace_with_tabstops;
-use crate::document::{ConsumeOnly, NodeDraft};
+use crate::document::{Document, NodeId};
 use crate::parser::pipeline::PendingInline;
 
-/// State passed to block rules while building the block draft tree.
+/// State passed to block rules while building block nodes directly.
 pub struct DocumentBlockState<'a> {
     /// Markdown source.
     pub src: &'a str,
@@ -29,7 +29,10 @@ pub struct DocumentBlockState<'a> {
     pub blk_indent: usize,
 
     /// Current node, block rules add children to it.
-    pub node: NodeDraft,
+    pub node: NodeId,
+
+    /// Arena receiving parsed nodes.
+    pub document: Document,
 
     /// Whether there are no empty lines between paragraphs.
     pub tight: bool,
@@ -51,7 +54,7 @@ impl<'a> DocumentBlockState<'a> {
         src: &'a str,
         md: &'a MarkdownIt,
         rules: Vec<BlockRuleFns>,
-        node: NodeDraft,
+        document: Document,
     ) -> Self {
         let line_offsets = build_line_offsets(src);
         let line_max = line_offsets.len();
@@ -62,7 +65,8 @@ impl<'a> DocumentBlockState<'a> {
             line: 0,
             line_max,
             blk_indent: 0,
-            node,
+            node: document.root(),
+            document,
             tight: false,
             list_indent: None,
             level: 0,
@@ -102,11 +106,12 @@ impl<'a> DocumentBlockState<'a> {
                     }
                 }
 
-                if let Some((mut node, len)) = matched {
+                if let Some((node, len)) = matched {
                     self.line += len;
-                    if !node.is::<ConsumeOnly>() {
-                        node.set_srcmap(self.get_map(self.line - len, self.line - 1));
-                        self.node.push_child(node);
+                    if let Some(node) = node {
+                        let srcmap = self.get_map(self.line - len, self.line - 1);
+                        self.document.node_mut(node).set_srcmap(srcmap);
+                        self.document.push_child(self.node, node);
                     }
                 } else {
                     let start = self.line_offsets[self.line].first_nonspace;
@@ -114,7 +119,7 @@ impl<'a> DocumentBlockState<'a> {
                     content.push('\n');
                     let mapping = vec![(0, start)];
                     let pending = self.pending_inline(content, mapping);
-                    self.node.push_child(pending);
+                    self.document.push_child(self.node, pending);
                     self.line += 1;
                 }
 
@@ -229,8 +234,8 @@ impl<'a> DocumentBlockState<'a> {
     }
 
     /// Create a placeholder node for inline content parsed after the block pass.
-    pub fn pending_inline(&self, source: String, mapping: Vec<(usize, usize)>) -> NodeDraft {
-        NodeDraft::new(PendingInline {
+    pub fn pending_inline(&mut self, source: String, mapping: Vec<(usize, usize)>) -> NodeId {
+        self.document.create_node(PendingInline {
             content: source,
             mapping,
         })

@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#atx-heading>
 use crate::MarkdownIt;
-use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::render::{
     DocumentNodeRenderer,
@@ -108,7 +108,7 @@ impl BlockRule for HeadingScanner {
     const MARKERS: &'static [char] = &['#'];
     const NAMES: &'static [&'static str] = &["heading"];
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
+    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         if state.line_indent(state.line) >= state.md.max_indent {
             return None;
         }
@@ -119,8 +119,10 @@ impl BlockRule for HeadingScanner {
         let content = line[text_pos..text_max].to_owned();
         let mapping = vec![(0, state.line_offsets[state.line].first_nonspace + text_pos)];
 
-        let mut node = NodeDraft::new(ATXHeading { level });
-        node.push_child(state.pending_inline(content, mapping));
-        Some((node, 1))
+        let node = state.document.create_node(ATXHeading { level });
+        let pending = state.pending_inline(content, mapping);
+        state.document.push_child(node, pending);
+
+        Some((Some(node), 1))
     }
 }
