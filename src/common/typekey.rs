@@ -3,6 +3,37 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+/// Lightweight hashing for maps whose keys are program-defined TypeIds.
+/// Do not use for arbitrary input-controlled keys.
+#[derive(Default)]
+pub(crate) struct TypeIdHasher(u64);
+
+impl Hasher for TypeIdHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        // Fallback for a future TypeId Hash implementation that does not use
+        // one of the integer-specific Hasher methods.
+        let mut hash = self.0 ^ 0xcbf2_9ce4_8422_2325;
+        for &byte in bytes {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        self.0 = hash;
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = self.0.rotate_left(5) ^ value;
+    }
+
+    fn write_u128(&mut self, value: u128) {
+        self.write_u64(value as u64);
+        self.write_u64((value >> 64) as u64);
+    }
+}
+
 #[readonly::make]
 #[derive(Clone, Copy)]
 /// [std::any::TypeId] and [std::any::type_name] fused into one struct.

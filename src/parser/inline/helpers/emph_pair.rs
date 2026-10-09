@@ -217,17 +217,16 @@ fn scan_and_match_document<const MARKER: char>(
 
         let mut opener = opener.clone();
         if opener.open && opener.marker == closer.marker && !is_odd_match(&opener, &closer) {
+            // Cache matching functions to avoid repeated lookups.
+            let fns = state
+                .markdown_it()
+                .ext
+                .get::<PairConfig<MARKER>>()
+                .unwrap()
+                .fns;
             while closer.remaining > 0 && opener.remaining > 0 {
                 let max_marker_len = min(3, min(opener.remaining, closer.remaining));
                 let mut matched_rule = None;
-                // PairConfig lives on the parser (not in the per-root ext set):
-                // `inline_ext` only holds state scoped to this inline run.
-                let fns = state
-                    .markdown_it()
-                    .ext
-                    .get::<PairConfig<MARKER>>()
-                    .unwrap()
-                    .fns;
                 for marker_len in (1..=max_marker_len).rev() {
                     if let Some(f) = fns[marker_len - 1] {
                         matched_rule = Some((marker_len, f));

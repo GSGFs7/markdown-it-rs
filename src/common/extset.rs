@@ -20,7 +20,11 @@ macro_rules! extension_set {
     ($(#[$meta:meta])* $name: ident) => {
         $(#[$meta])*
         #[derive(Debug, Default)]
-        pub struct $name(::std::collections::HashMap<crate::common::TypeKey, Box<dyn Extension>>);
+        pub struct $name(::std::collections::HashMap<
+            crate::common::TypeKey,
+            Box<dyn Extension>,
+            ::std::hash::BuildHasherDefault<crate::common::typekey::TypeIdHasher>,
+        >);
 
         impl $name {
             #[must_use]
