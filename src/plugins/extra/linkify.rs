@@ -667,6 +667,14 @@ mailto:test@example.com"#;
     }
 
     #[test]
+    fn email_tlds_can_contain_digits() {
+        run(
+            "<foo+special@Bar.b9\n[bz-barar0.com>\n",
+            "<p>&lt;<a href=\"mailto:foo+special@Bar.b9\">foo+special@Bar.b9</a>\n[bz-barar0.com&gt;</p>",
+        );
+    }
+
+    #[test]
     fn typorgapher_should_not_break_href() {
         let input = r#"http://example.com/(c)"#;
         let output = r#"<p><a href="http://example.com/(c)">http://example.com/(c)</a></p>"#;

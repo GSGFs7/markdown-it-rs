@@ -4,6 +4,8 @@
 //! input. Markdown parsing, URL normalization, validation, and rendering stay
 //! in the `markdown-it-rs` crate.
 
+// TODO: complete rewrite this
+
 use linkify_upstream::{LinkFinder, LinkKind as UpstreamLinkKind};
 use unicode_general_category::{GeneralCategory, get_general_category};
 
@@ -88,15 +90,11 @@ impl Linkify {
                     return None;
                 }
 
-                let mut start = link.start();
-                if kind == LinkKind::Email
-                    && start >= "mailto:".len()
-                    && input
-                        .get(start - "mailto:".len()..start)
-                        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("mailto:"))
-                {
-                    start -= "mailto:".len();
-                }
+                let start = if kind == LinkKind::Email {
+                    email_start(input, link.start())
+                } else {
+                    link.start()
+                };
                 Some(Link {
                     start,
                     end: link.end(),
@@ -107,6 +105,7 @@ impl Linkify {
 
         self.extend_explicit_url_paths(input, &scan_input, &finder, &mut links);
         self.add_protocol_relative_urls(input, &mut links);
+        self.add_emails_with_numeric_tlds(input, &mut links);
 
         links.sort_by_key(|link| (link.start, std::cmp::Reverse(link.end)));
         links.dedup_by(|a, b| a.start == b.start && a.end == b.end && a.kind == b.kind);
@@ -198,6 +197,60 @@ impl Linkify {
                 kind: LinkKind::Url,
             });
         }
+    }
+
+    fn add_emails_with_numeric_tlds(&self, input: &str, links: &mut Vec<Link>) {
+        let mut masked = None;
+        for (at, _) in input.match_indices('@') {
+            let rest = &input[at + 1..];
+            let end = rest
+                .find(|ch: char| !ch.is_alphanumeric() && !matches!(ch, '.' | '-'))
+                .unwrap_or(rest.len());
+            let domain = rest[..end].trim_end_matches('.');
+            let Some(dot) = domain.rfind('.') else {
+                continue;
+            };
+
+            let tld = &domain[dot + 1..];
+            if tld.len() < 2 || domain.ends_with('-') || !tld.bytes().any(|b| b.is_ascii_digit()) {
+                continue;
+            }
+
+            // Mask digits for upstream validation, keeping original byte ranges.
+            let bytes = masked.get_or_insert_with(|| input.as_bytes().to_vec());
+            for (offset, byte) in tld.bytes().enumerate() {
+                if byte.is_ascii_digit() {
+                    bytes[at + 1 + dot + 1 + offset] = b'a';
+                }
+            }
+        }
+
+        let Some(masked) = masked else {
+            return;
+        };
+
+        let scan_input = String::from_utf8(masked).unwrap();
+        let mut finder = LinkFinder::new();
+        finder.kinds(&[UpstreamLinkKind::Email]);
+        for link in finder.links(&scan_input) {
+            links.push(Link {
+                start: email_start(input, link.start()),
+                end: link.end(),
+                kind: LinkKind::Email,
+            });
+        }
+    }
+}
+
+fn email_start(input: &str, start: usize) -> usize {
+    if start >= "mailto:".len()
+        && input
+            .get(start - "mailto:".len()..start)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("mailto:"))
+    {
+        start - "mailto:".len()
+    } else {
+        start
     }
 }
 
@@ -371,6 +424,32 @@ mod tests {
                 ("example.org", LinkKind::Url),
                 ("test@example.com", LinkKind::Email),
             ]
+        );
+    }
+
+    #[test]
+    fn accepts_digits_in_email_tlds() {
+        for input in [
+            "foo+special@Bar.b9",
+            "a@bar.9b",
+            "a@bar.12",
+            "mailto:foo@Bar.b9",
+        ] {
+            assert_eq!(matches(input), vec![(input, LinkKind::Email)], "{input:?}");
+        }
+        assert_eq!(
+            matches("前文 foo@Bar.b9. next@example.com"),
+            vec![
+                ("foo@Bar.b9", LinkKind::Email),
+                ("next@example.com", LinkKind::Email)
+            ]
+        );
+        for input in ["a@bar.b9-", "a@bar.b9_x"] {
+            assert!(matches(input).is_empty(), "{input:?}");
+        }
+        assert_eq!(
+            matches("https://example.com/a@Bar.b9"),
+            vec![("https://example.com/a@Bar.b9", LinkKind::Url)]
         );
     }
 
