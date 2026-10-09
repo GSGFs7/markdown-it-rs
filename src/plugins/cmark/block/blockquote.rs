@@ -32,29 +32,52 @@ impl DocumentNodeRenderer<Blockquote> for BlockquoteDocumentRenderer {
         context.cr(output);
         write_html_open(output, "blockquote", node.attrs());
 
-        // > [foo]: bar
-        // [foo]
-        //
-        // The Definition node must stay inside the blockquote so links can
-        // reference it, but it is invisible. XHTML still needs its newline.
-        let mut only_invisible_definitions = !node.children().is_empty();
-        for &child in node.children() {
-            if !context.document().node(child).is::<Definition>() {
-                only_invisible_definitions = false;
-                break;
-            }
+        // Definitions render nothing; empty quotes need no inner newline.
+        let has_visible_children = node
+            .children()
+            .iter()
+            .any(|&child| !context.document().node(child).is::<Definition>());
+        if has_visible_children {
+            context.cr(output);
         }
-
-        if !only_invisible_definitions || context.options().xhtml_out {
+        context.render_children(node.id(), output);
+        if has_visible_children {
             context.cr(output);
-            context.render_children(node.id(), output);
-            context.cr(output);
-        } else {
-            context.render_children(node.id(), output);
         }
 
         write_html_close(output, "blockquote");
         context.cr(output);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn empty_blockquotes_have_no_inner_newline() {
+        for preset in [crate::Preset::MarkdownItDefault, crate::Preset::CommonMark] {
+            let mut md = crate::MarkdownIt::with_preset(preset);
+            for xhtml_out in [false, true] {
+                md.render_options.xhtml_out = xhtml_out;
+                for source in [">", ">\n> \n>", "> [foo]: /url"] {
+                    assert_eq!(md.render(source), "<blockquote></blockquote>\n");
+                }
+                assert_eq!(
+                    md.render("[foo]\n\n> [foo]: /url\n"),
+                    "<p><a href=\"/url\">foo</a></p>\n<blockquote></blockquote>\n"
+                );
+                assert_eq!(
+                    md.render("> >"),
+                    "<blockquote>\n<blockquote></blockquote>\n</blockquote>\n"
+                );
+                assert_eq!(
+                    md.render("> text"),
+                    "<blockquote>\n<p>text</p>\n</blockquote>\n"
+                );
+                md.max_nesting = 1;
+                assert_eq!(md.render("> text"), "<blockquote></blockquote>\n");
+                md.max_nesting = 100;
+            }
+        }
     }
 }
 

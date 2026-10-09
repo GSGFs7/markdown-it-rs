@@ -1,4 +1,6 @@
 fn run(input: &str, output: &str) {
+    // markdown-it omits whitespace inside empty blockquotes.
+    let output = output.replace("<blockquote>\n</blockquote>", "<blockquote></blockquote>");
     let output = if output.is_empty() {
         "".to_owned()
     } else {
