@@ -206,7 +206,9 @@ impl BlockRule for FenceScanner {
 
         // If a fence has heading spaces, they should be removed from its inner block
         let indent = state.line_offsets[state.line].indent_nonspace;
-        let (content, _) = state.get_lines(state.line + 1, next_line, indent as usize, true);
+        let keep_last_lf = state.line_offsets[next_line - 1].line_end < state.src.len();
+        let (content, _) =
+            state.get_lines(state.line + 1, next_line, indent as usize, keep_last_lf);
 
         let lang_prefix = state
             .md
@@ -226,5 +228,32 @@ impl BlockRule for FenceScanner {
             Some(node),
             next_line - state.line + if have_end_marker { 1 } else { 0 },
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn unclosed_fences_preserve_source_final_line_break() {
+        let md = crate::MarkdownIt::new();
+        for (source, expected) in [
+            ("```\ntext", "<pre><code>text</code></pre>\n"),
+            ("```\ntext\n", "<pre><code>text\n</code></pre>\n"),
+            ("~~~\ntext", "<pre><code>text</code></pre>\n"),
+            ("```\ntext\n```", "<pre><code>text\n</code></pre>\n"),
+            ("```", "<pre><code></code></pre>\n"),
+            ("```\n", "<pre><code></code></pre>\n"),
+            ("```\r\ntext\r\n", "<pre><code>text\n</code></pre>\n"),
+            (
+                "> ```\n> text",
+                "<blockquote>\n<pre><code>text</code></pre>\n</blockquote>\n",
+            ),
+            (
+                "- ```\n  text",
+                "<ul>\n<li>\n<pre><code>text</code></pre>\n</li>\n</ul>\n",
+            ),
+        ] {
+            assert_eq!(md.render(source), expected, "{source:?}");
+        }
     }
 }

@@ -1357,9 +1357,7 @@ fn direct_code_fences_match_snapshots() {
         "~~~\nfoo\n~~~",
         "```rust\nlet x = 1;\n```",
         "  ```\n  foo\n  ```",
-        "```\nfoo",
         "````\n```\n````",
-        "```\nfoo\n~~~~",
         "```foo`bar```",
         "~~~ foo\nbar\n~~~",
         "a\n```\nb\n```",
@@ -1367,6 +1365,15 @@ fn direct_code_fences_match_snapshots() {
         "```\nfoo\n\nbar\n```",
     ] {
         assert_document_valid(&md, source);
+    }
+
+    // Unclosed fences preserve EOF instead of the legacy added newline.
+    for (source, expected) in [
+        ("```\nfoo", "<pre><code>foo</code></pre>\n"),
+        ("```\nfoo\n~~~~", "<pre><code>foo\n~~~~</code></pre>\n"),
+    ] {
+        let document = assert_document_structure(&md, source);
+        assert_eq!(md.render_document(&document), expected);
     }
 
     let document = md.parse_document("```rust\nlet x = 1;\n```");
