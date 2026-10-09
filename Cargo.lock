@@ -786,6 +786,8 @@ dependencies = [
  "memchr",
  "readonly",
  "regex",
+ "serde",
+ "serde_json",
  "stacker",
  "syntect",
  "two-face",

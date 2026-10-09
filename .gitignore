@@ -1,8 +1,9 @@
-.codex
-.vscode
-.idea
+/.vscode
+/.idea
 /target
 /benchmarks/target
 /tests/fixtures/node_modules
+/tests/differential/node_modules
+/tests/differential/failures
 /tests/*.rs.old
 /todos

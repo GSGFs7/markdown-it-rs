@@ -1,0 +1,13 @@
+{
+  "name": "markdown-it-rs-differential-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node run.mjs",
+    "test:tool": "node --test generator.test.mjs"
+  },
+  "dependencies": {
+    "markdown-it": "15.0.2",
+    "markdown-it-testgen": "0.1.6"
+  }
+}

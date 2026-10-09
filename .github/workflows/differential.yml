@@ -1,0 +1,83 @@
+name: JS compatibility
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 21 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: differential-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  differential:
+    name: Differential (config ${{ matrix.config }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [0, 1, 2, 3, 4, 5]
+    env:
+      CARGO_NET_RETRY: '3'
+      CONFIG: ${{ matrix.config }}
+      EVENT_NAME: ${{ github.event_name }}
+      RUN_NUMBER: ${{ github.run_number }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tests/differential/package-lock.json
+
+      - name: Install pinned JS dependencies
+        run: npm ci --prefix tests/differential --ignore-scripts
+
+      - name: Test mutation generator
+        id: tool
+        run: npm run test:tool --prefix tests/differential
+
+      - name: Build Rust adapter
+        id: build
+        run: cargo build -p markdown-it-rs --example differential --locked
+
+      - name: Compare fixture inputs
+        run: >-
+          node tests/differential/run.mjs --no-build --fixtures
+          --config "$CONFIG" --iterations 0
+
+      # Run mutations even when a fixture already exposed a difference.
+      - name: Compare seeded mutations
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.tool.outcome == 'success' }}
+        run: |
+          seed=1
+          iterations=1000
+          if [[ "$EVENT_NAME" == schedule ]]; then
+            seed=$((RUN_NUMBER % 4294967296))
+            iterations=10000
+          fi
+          echo "config=$CONFIG seed=$seed iterations=$iterations"
+          node tests/differential/run.mjs --no-build --fixtures --random-only \
+            --config "$CONFIG" --seed "$seed" --iterations "$iterations"
+
+      - name: Upload replayable failures
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: differential-failures-config-${{ matrix.config }}
+          path: tests/differential/failures/*.json
+          if-no-files-found: ignore
+          retention-days: 14
