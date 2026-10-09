@@ -35,6 +35,34 @@ fn run(input: &str, output: &str) {
     run_with(input, output, |_| {});
 }
 
+#[test]
+fn typographer_preserves_code_spans_and_image_alt_text() {
+    for (source, expected) in [
+        (
+            "before... `<strong>...</strong>` after...",
+            "<p>before… <code>&lt;strong&gt;...&lt;/strong&gt;</code> after…</p>",
+        ),
+        (
+            "`(c) (r) (tm) +- -- --- ???? !!!! ,,,,` (c) (r) (tm)",
+            "<p><code>(c) (r) (tm) +- -- --- ???? !!!! ,,,,</code> © ® ™</p>",
+        ),
+        (
+            "``a ` ...`` and `b...` ...",
+            "<p><code>a ` ...</code> and <code>b...</code> …</p>",
+        ),
+        (
+            "[*label...* `code...`](/url)",
+            "<p><a href=\"/url\"><em>label…</em> <code>code...</code></a></p>",
+        ),
+        (
+            "![text... `code...`](/img) after...",
+            "<p><img src=\"/img\" alt=\"text... code...\"> after…</p>",
+        ),
+    ] {
+        run(source, expected);
+    }
+}
+
 #[cfg(feature = "linkify")]
 #[test]
 fn typographer_does_not_touch_text_in_linkified_urls() {

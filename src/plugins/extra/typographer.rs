@@ -37,6 +37,8 @@ use crate::MarkdownIt;
 use crate::document::edit::EditBatch;
 use crate::document::transform::DocumentTransform;
 use crate::document::{Document, StructuralEvent, Text};
+use crate::plugins::cmark::inline::backticks::CodeInline;
+use crate::plugins::cmark::inline::image::Image;
 
 static REPLACEMENTS: LazyLock<Box<[(Regex, &'static str)]>> = LazyLock::new(|| {
     Box::new([
@@ -89,11 +91,24 @@ impl DocumentTransform for TypographerDocumentTransform {
 
     fn run(&self, document: &Document) -> EditBatch {
         let mut edits = EditBatch::new();
+        let mut protected_depth = 0;
         for event in document.events(document.root()) {
             let node = match event {
+                StructuralEvent::Enter(node) if node.is::<CodeInline>() || node.is::<Image>() => {
+                    protected_depth += 1;
+                    continue;
+                }
+                StructuralEvent::Exit(node) if node.is::<CodeInline>() || node.is::<Image>() => {
+                    protected_depth -= 1;
+                    continue;
+                }
                 StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => node,
                 StructuralEvent::Exit(_) => continue,
             };
+
+            if protected_depth > 0 {
+                continue;
+            }
             let Some(text) = node.cast::<Text>() else {
                 continue;
             };
