@@ -5,15 +5,15 @@ use markdown_it::plugins::extra::smartquotes;
 use markdown_it::{Document, MarkdownIt, NodeDraft};
 
 fn synthetic(count: usize, split: bool) -> Document {
-    let mut root = NodeDraft::new(markdown_it::parser::core::Root::new(String::new()));
+    let mut root = NodeDraft::new(markdown_it::Root::new(String::new()));
     if split {
         for _ in 0..count {
-            root.push_child(NodeDraft::new(markdown_it::parser::inline::Text {
+            root.push_child(NodeDraft::new(markdown_it::Text {
                 content: "\"word\" ".into(),
             }));
         }
     } else {
-        root.push_child(NodeDraft::new(markdown_it::parser::inline::Text {
+        root.push_child(NodeDraft::new(markdown_it::Text {
             content: "\"word\" ".repeat(count),
         }));
     }

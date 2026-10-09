@@ -4,11 +4,10 @@
 //! of the line.
 //!
 //! <https://spec.commonmark.org/0.30/#backslash-escapes>
-use crate::document::NodeDraft;
-use crate::parser::document_parser::DocumentInlineState;
+use crate::MarkdownIt;
+use crate::document::{NodeDraft, TextSpecial};
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, TextSpecial};
-use crate::parser::main::MarkdownIt;
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::plugins::cmark::inline::newline::Hardbreak;
 
 pub fn add(md: &mut MarkdownIt) {

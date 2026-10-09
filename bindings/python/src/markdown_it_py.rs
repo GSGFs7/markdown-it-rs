@@ -1,8 +1,7 @@
 use std::cell::RefCell;
 
-use markdown_it::MarkdownIt;
-use markdown_it::parser::core::Root;
 use markdown_it::plugins::extra::front_matter::FrontMatter;
+use markdown_it::{MarkdownIt, Root};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyTuple};

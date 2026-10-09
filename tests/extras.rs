@@ -141,8 +141,8 @@ mod markdown_it_rs_extras {
     fn test_node_ext_propagation() {
         use markdown_it::parser::block::BlockRule;
         use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
-        use markdown_it::parser::inline::{InlineRule, Text};
-        use markdown_it::{DocumentBlockState, DocumentInlineState, MarkdownIt, NodeDraft};
+        use markdown_it::parser::inline::InlineRule;
+        use markdown_it::{DocumentBlockState, DocumentInlineState, MarkdownIt, NodeDraft, Text};
 
         #[derive(Debug, Default)]
         struct NodeErrors(Vec<&'static str>);

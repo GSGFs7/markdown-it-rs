@@ -12,7 +12,7 @@
 //! Here is an example of a rule turning `%foo%` into `🦀foo🦀`:
 //!
 //! ```rust
-//! use markdown_it::generics::inline::code_pair;
+//! use markdown_it::parser::inline::helpers::code_pair;
 //! use markdown_it::{MarkdownIt, NodeDraft, NodeValue, NodeRef, DocumentNodeRenderer, DocumentRenderContext, DocumentWriter};
 //! #[derive(Debug)]
 //! struct Ferris;
@@ -40,11 +40,10 @@
 //!
 //! If you define two structures with the same marker, only the first one will work.
 //!
-use crate::document::NodeDraft;
-use crate::parser::document_parser::DocumentInlineState;
+use crate::MarkdownIt;
+use crate::document::{NodeDraft, Text};
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, Text};
-use crate::parser::main::MarkdownIt;
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 
 #[derive(Debug, Default, Clone)]
 struct CodePairCache<const MARKER: char> {
@@ -127,7 +126,7 @@ fn scan_code_pair<const MARKER: char>(
     start: usize,
     end: usize,
     follows_marker: bool,
-    inline_ext: &mut crate::parser::extset::InlineRootExtSet,
+    inline_ext: &mut crate::common::extset::InlineRootExtSet,
 ) -> Option<CodePairMatch> {
     let bounds = scan_code_pair_bounds::<MARKER>(src, start, end, follows_marker, inline_ext)?;
 
@@ -154,7 +153,7 @@ fn scan_code_pair_bounds<const MARKER: char>(
     start: usize,
     end: usize,
     follows_marker: bool,
-    inline_ext: &mut crate::parser::extset::InlineRootExtSet,
+    inline_ext: &mut crate::common::extset::InlineRootExtSet,
 ) -> Option<CodePairBounds> {
     let marker_width = MARKER.len_utf8();
     if !src[start..end].starts_with(MARKER) || follows_marker {
@@ -210,7 +209,7 @@ fn scan_code_pair_bounds<const MARKER: char>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::extset::InlineRootExtSet;
+    use crate::common::extset::InlineRootExtSet;
 
     #[test]
     fn bounds_scan_unicode_markers_without_building_content() {
@@ -252,7 +251,7 @@ mod tests {
 #[cfg(test)]
 mod adapter_tests {
     use super::*;
-    use crate::parser::extset::InlineRootExtSet;
+    use crate::common::extset::InlineRootExtSet;
 
     #[test]
     fn adapter_keeps_trimmed_source_map_boundaries() {

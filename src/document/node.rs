@@ -2,9 +2,9 @@ use std::any::TypeId;
 
 use super::NodeId;
 use super::data::NodeData;
+use crate::common::extset::NodeExtSet;
 use crate::common::sourcemap::SourcePos;
-use crate::parser::extset::NodeExtSet;
-use crate::parser::node::{ConsumeOnly, HtmlAttributes, NodeEmpty, NodeValue};
+use crate::document::{ConsumeOnly, HtmlAttributes, NodeEmpty, NodeValue};
 
 /// Borrowed view of a node produced by a structural traversal.
 pub type NodeRef<'a> = &'a DocumentNode;

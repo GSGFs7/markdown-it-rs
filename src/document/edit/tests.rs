@@ -1,5 +1,5 @@
 use super::*;
-use crate::parser::core::Root;
+use crate::document::Root;
 use crate::plugins::cmark::block::paragraph::Paragraph;
 
 fn document(texts: &[&str]) -> Document {

@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
+use markdown_it::links::LinkFormatter;
+use markdown_it::parser::inline::InlineRule;
 use markdown_it::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use markdown_it::parser::inline::{InlineRule, Text};
-use markdown_it::parser::linkfmt::LinkFormatter;
-use markdown_it::{DocumentInlineState, MarkdownIt, NodeDraft, NodeValue};
+use markdown_it::{DocumentInlineState, MarkdownIt, NodeDraft, NodeValue, Text};
 
 #[derive(Debug)]
 struct TestContainer;
@@ -277,7 +277,7 @@ fn default_probe_for_matching_marker_falls_back_to_text() {
 fn probe_does_not_call_code_pair_factory() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use markdown_it::generics::inline::code_pair;
+    use markdown_it::parser::inline::helpers::code_pair;
 
     static CALLS: AtomicUsize = AtomicUsize::new(0);
 

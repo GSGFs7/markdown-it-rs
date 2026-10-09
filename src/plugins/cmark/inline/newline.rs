@@ -4,12 +4,10 @@
 //!
 //!  - <https://spec.commonmark.org/0.30/#hard-line-breaks>
 //!  - <https://spec.commonmark.org/0.30/#soft-line-breaks>
-use crate::document::{NodeDraft, NodeRef};
-use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::inline::InlineRule;
+use crate::MarkdownIt;
+use crate::document::{NodeDraft, NodeRef, NodeValue};
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,

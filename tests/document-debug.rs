@@ -1,6 +1,5 @@
 use markdown_it::common::sourcemap::SourcePos;
-use markdown_it::parser::core::Root;
-use markdown_it::{Document, MarkdownIt, NodeDraft, NodeValue, Preset};
+use markdown_it::{Document, MarkdownIt, NodeDraft, NodeValue, Preset, Root};
 
 #[derive(Debug)]
 struct CustomContainer;
@@ -45,7 +44,7 @@ fn debug_format_covers_standard_presets_without_syntax_registrations() {
         let document = md.parse_document("# heading *em*\n");
         let output = md.render_document_as(&document, "debug");
 
-        assert!(output.contains("type=markdown_it::parser::core::root::Root"));
+        assert!(output.contains(&format!("type={}", std::any::type_name::<Root>())));
         assert!(output.contains("type=markdown_it::plugins::cmark::block::heading::ATXHeading"));
         assert!(output.contains("type=markdown_it::plugins::cmark::inline::emphasis::Em"));
         assert!(output.lines().all(|line| line.contains(" id=NodeId(")));

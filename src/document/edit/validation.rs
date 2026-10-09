@@ -3,8 +3,7 @@ use std::ops::Range;
 
 use super::{EditBatch, ReplaceText, attribute_groups, text_groups};
 use crate::DocumentNode;
-use crate::document::{Document, NodeId};
-use crate::parser::inline::Text;
+use crate::document::{Document, NodeId, Text};
 
 /// A validation failure that leaves the document unchanged.
 #[derive(Clone, Debug, Eq, PartialEq)]

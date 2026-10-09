@@ -1,6 +1,6 @@
 use crate::document::NodeDraft;
-use crate::parser::core::rule_builder;
-use crate::parser::document_parser::DocumentBlockState;
+use crate::parser::block::DocumentBlockState;
+use crate::parser::rule::rule_builder;
 
 /// A block syntax rule operating on document drafts.
 pub trait BlockRule: 'static {

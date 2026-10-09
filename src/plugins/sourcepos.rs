@@ -7,11 +7,11 @@
 //! let html = md.render("# hello");
 //! assert_eq!(html.trim(), r#"<h1 data-sourcepos="1:1-1:7">hello</h1>"#);
 //! ```
+use crate::MarkdownIt;
 use crate::common::sourcemap::{SourcePos, SourceWithLineStarts};
 use crate::document::edit::EditBatch;
 use crate::document::transform::DocumentTransform;
 use crate::document::{Document, StructuralEvent};
-use crate::parser::main::MarkdownIt;
 
 pub fn add(md: &mut MarkdownIt) {
     md.add_document_transform::<SourcePosDocumentTransform>();

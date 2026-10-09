@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
 use crate::NodeValue;
-use crate::parser::extset::RootExtSet;
+use crate::common::extset::RootExtSet;
 
 #[derive(Debug)]
 /// Root node of the AST.
 pub struct Root {
-    /// Original source shared with the parsed document.
     pub content: Arc<str>,
     pub ext: RootExtSet,
 }

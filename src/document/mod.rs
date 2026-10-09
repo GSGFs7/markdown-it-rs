@@ -5,9 +5,11 @@ mod data;
 pub mod edit;
 mod events;
 mod node;
+mod root;
 mod structure;
 pub mod text;
 pub mod transform;
+mod value;
 
 use std::sync::Arc;
 
@@ -15,7 +17,11 @@ use self::arena::Arena;
 pub use self::arena::NodeId;
 pub use self::events::{StructuralEvent, StructuralEvents};
 pub use self::node::{DocumentNode, NodeDraft, NodeRef};
+pub use self::root::Root;
 pub(crate) use self::structure::SiblingPosition;
+pub use self::text::{Text, TextSpecial};
+pub(crate) use self::value::{ConsumeOnly, NodeEmpty};
+pub use self::value::{HtmlAttribute, HtmlAttributes, NodeValue};
 
 /// Arena-backed representation of one parsed Markdown document.
 ///

@@ -1,7 +1,6 @@
 use super::*;
 use crate::document::text::{TextProjection, TextProjectionKind};
-use crate::parser::core::Root;
-use crate::parser::inline::Text;
+use crate::document::{Root, Text};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::{MarkdownIt, plugins};
 

@@ -1,8 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::*;
-use crate::parser::core::Root;
-use crate::parser::inline::Text;
+use crate::document::{Root, Text};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;

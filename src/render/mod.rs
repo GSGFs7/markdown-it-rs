@@ -1,5 +1,7 @@
 //! Format-specific rendering for arena-backed documents.
 
+mod options;
+
 use std::any::TypeId;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -7,12 +9,20 @@ use std::fmt;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::marker::PhantomData;
 
+pub use options::RenderOptions;
+
+use crate::common::extset::RenderExtSet;
 use crate::common::utils::escape_html;
-use crate::document::{Document, DocumentNode, NodeId, NodeRef, StructuralEvent};
-use crate::parser::core::Root;
-use crate::parser::extset::RenderExtSet;
-use crate::parser::node::{HtmlAttribute, NodeValue};
-use crate::parser::render_options::RenderOptions;
+use crate::document::{
+    Document,
+    DocumentNode,
+    HtmlAttribute,
+    NodeId,
+    NodeRef,
+    NodeValue,
+    Root,
+    StructuralEvent,
+};
 
 // --- protocol ---
 
@@ -490,11 +500,11 @@ pub(crate) struct DebugTreeDocumentRenderer;
 
 impl DocumentNodeRenderer<Root> for DebugTreeDocumentRenderer {
     // in "# heading *em*" it like:
-    // container type=markdown_it::parser::core::root::Root id=NodeId(0:0) srcmap=0..14 attrs=[]
+    // container type=markdown_it::document::root::Root id=NodeId(0:0) srcmap=0..14 attrs=[]
     //   container type=markdown_it::plugins::cmark::block::heading::ATXHeading id=NodeId(1:0) srcmap=0..14 attrs=[]
-    //     leaf type=markdown_it::parser::inline::builtin::skip_text::Text id=NodeId(2:0) srcmap=2..10 attrs=[]
+    //     leaf type=markdown_it::document::text::Text id=NodeId(2:0) srcmap=2..10 attrs=[]
     //       container type=markdown_it::plugins::cmark::inline::emphasis::Em id=NodeId(3:0) srcmap=10..14 attrs=[]
-    //         leaf type=markdown_it::parser::inline::builtin::skip_text::Text id=NodeId(11..13)
+    //         leaf type=markdown_it::document::text::Text id=NodeId(11..13)
     fn render(
         &self,
         node: &DocumentNode,

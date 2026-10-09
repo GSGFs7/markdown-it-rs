@@ -33,11 +33,10 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use crate::MarkdownIt;
 use crate::document::edit::EditBatch;
 use crate::document::transform::DocumentTransform;
-use crate::document::{Document, StructuralEvent};
-use crate::parser::inline::Text;
-use crate::parser::main::MarkdownIt;
+use crate::document::{Document, StructuralEvent, Text};
 
 static REPLACEMENTS: LazyLock<Box<[(Regex, &'static str)]>> = LazyLock::new(|| {
     Box::new([

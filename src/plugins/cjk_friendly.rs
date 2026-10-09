@@ -23,9 +23,9 @@
 
 use unicode_general_category::{GeneralCategory, get_general_category};
 
+use crate::MarkdownIt;
 use crate::common::utils::is_punct_char;
-use crate::parser::inline::{DelimiterRun, set_delimiter_scanner};
-use crate::parser::main::MarkdownIt;
+use crate::parser::inline::helpers::delimiters::{DelimiterRun, set_delimiter_scanner};
 
 /// Enable CJK-friendly emphasis delimiter handling.
 pub fn add(md: &mut MarkdownIt) {

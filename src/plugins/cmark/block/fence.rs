@@ -3,12 +3,10 @@
 //! ` ```lang ` or `~~~lang`
 //!
 //! <https://spec.commonmark.org/0.30/#code-fence>
+use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
-use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::BlockRule;
-use crate::parser::document_parser::DocumentBlockState;
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
+use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,

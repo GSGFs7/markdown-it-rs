@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 
-use markdown_it::parser::inline::Text;
 use markdown_it::{
     Document,
     DocumentRendererRegistry,
@@ -8,6 +7,7 @@ use markdown_it::{
     NodeDraft,
     NodeId,
     RenderOptions,
+    Text,
 };
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;

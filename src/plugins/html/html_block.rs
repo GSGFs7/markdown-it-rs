@@ -7,11 +7,9 @@ use regex::Regex;
 
 use super::utils::blocks::*;
 use super::utils::regexps::*;
-use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::BlockRule;
-use crate::parser::document_parser::DocumentBlockState;
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
+use crate::MarkdownIt;
+use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::render::{DocumentNodeRenderer, DocumentRenderContext};
 
 #[derive(Debug)]

@@ -3,10 +3,9 @@
 //! `` `looks like this` ``
 //!
 //! <https://spec.commonmark.org/0.30/#code-span>
-use crate::document::{NodeDraft, NodeRef};
-use crate::generics::inline::code_pair;
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
+use crate::MarkdownIt;
+use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::parser::inline::helpers::code_pair;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,

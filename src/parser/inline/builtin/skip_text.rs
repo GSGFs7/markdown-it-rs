@@ -3,42 +3,10 @@
 //!
 use regex::{self, Regex};
 
+use crate::MarkdownIt;
 use crate::document::NodeDraft;
-use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::inline::InlineRule;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
-
-#[derive(Debug)]
-/// Plain text AST node.
-pub struct Text {
-    pub content: String,
-}
-
-impl AsRef<str> for Text {
-    fn as_ref(&self) -> &str {
-        &self.content
-    }
-}
-
-impl NodeValue for Text {}
-
-#[derive(Debug)]
-/// Escaped text AST node (backslash escapes and entities).
-pub struct TextSpecial {
-    pub content: String,
-    pub markup: String,
-    pub info: &'static str,
-}
-
-impl AsRef<str> for TextSpecial {
-    fn as_ref(&self) -> &str {
-        &self.content
-    }
-}
-
-impl NodeValue for TextSpecial {}
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<TextScanner>().before_all();
@@ -91,8 +59,6 @@ impl TextScannerImpl {
 /// <http://spec.commonmark.org/0.15/#ascii-punctuation-character>
 ///
 pub struct TextScanner;
-
-impl TextScanner {}
 
 impl InlineRule for TextScanner {
     const MARKER: char = '\0';

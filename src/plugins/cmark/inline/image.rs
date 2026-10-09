@@ -3,12 +3,8 @@
 //! `![image](<src> "title")`
 //!
 //! <https://spec.commonmark.org/0.30/#images>
-use crate::NodeDraft;
-use crate::document::NodeRef;
-use crate::generics::inline::full_link;
-use crate::parser::inline::{Text, TextSpecial};
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
+use crate::document::{NodeRef, NodeValue, Text, TextSpecial};
+use crate::parser::inline::helpers::full_link;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
 use crate::render::{
@@ -17,6 +13,7 @@ use crate::render::{
     TransparentDocumentRenderer,
     write_html_self_close,
 };
+use crate::{MarkdownIt, NodeDraft};
 
 #[derive(Debug)]
 pub struct Image {

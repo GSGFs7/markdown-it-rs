@@ -23,7 +23,7 @@
 //! Here is an example of implementing superscript in your custom code:
 //!
 //! ```rust
-//! use markdown_it::generics::inline::emph_pair;
+//! use markdown_it::parser::inline::helpers::emph_pair;
 //! use markdown_it::{MarkdownIt, NodeDraft, NodeValue, NodeRef, DocumentNodeRenderer, DocumentRenderContext, DocumentWriter};
 //! #[derive(Debug)]
 //! struct Superscript;
@@ -45,13 +45,11 @@
 //!
 use std::cmp::min;
 
+use crate::MarkdownIt;
 use crate::common::sourcemap::SourcePos;
-use crate::document::NodeDraft;
-use crate::parser::document_parser::DocumentInlineState;
+use crate::document::{NodeDraft, NodeValue, Text};
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeResult};
-use crate::parser::inline::{InlineRule, Text};
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 
 #[derive(Debug, Default)]
 struct PairConfig<const MARKER: char> {
@@ -126,7 +124,13 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
             return None;
         }
 
-        let scanned = state.scan_delims(state.pos, CAN_SPLIT_WORD);
+        let scanned = super::delimiters::scan_delimiter_run(
+            state.markdown_it(),
+            &state.src,
+            state.pos,
+            state.pos_max,
+            CAN_SPLIT_WORD,
+        );
         let scanned_bytes = scanned.byte_length();
 
         state.flush_text();

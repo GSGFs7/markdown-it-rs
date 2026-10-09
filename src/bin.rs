@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 
 use clap::{Arg, ArgAction, Command};
-use markdown_it::parser::inline::{Text, TextSpecial};
+use markdown_it::document::{Text, TextSpecial};
 
 #[cfg(not(tarpaulin_include))]
 fn main() {

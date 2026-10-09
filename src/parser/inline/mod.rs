@@ -1,6 +1,7 @@
 //! Inline syntax rules and probe sessions.
 #[doc(hidden)]
 pub mod builtin;
+pub mod helpers;
 pub mod probe;
 mod rule;
 mod state;
@@ -9,10 +10,9 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use self::builtin::skip_text::TextScannerImpl;
-pub use self::builtin::skip_text::{Text, TextSpecial};
 pub use self::probe::*;
 pub use self::rule::*;
-pub(crate) use self::state::{DelimiterRun, scan_delimiter_run, set_delimiter_scanner};
+pub use self::state::DocumentInlineState;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 

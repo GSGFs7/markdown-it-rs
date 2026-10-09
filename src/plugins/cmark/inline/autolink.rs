@@ -7,12 +7,11 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::document::{NodeDraft, NodeRef};
+use crate::MarkdownIt;
+use crate::document::{NodeDraft, NodeRef, NodeValue, TextSpecial};
+use crate::links::LinkFormatter;
+use crate::parser::inline::InlineRule;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, TextSpecial};
-use crate::parser::linkfmt::LinkFormatter;
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -228,7 +227,7 @@ mod tests {
     #[test]
     fn direct_autolink_source_maps() {
         use crate::StructuralEvent;
-        use crate::parser::inline::TextSpecial;
+        use crate::document::TextSpecial;
 
         let md = parser();
         let document = md.parse_document("x <https://example.test> y");

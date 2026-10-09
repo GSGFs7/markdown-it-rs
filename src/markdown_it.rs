@@ -1,19 +1,19 @@
+use std::sync::Arc;
+
 use crate::common::RuleMark;
+use crate::common::extset::MarkdownItExtSet;
 use crate::common::ruler::Ruler;
-use crate::document::Document;
 use crate::document::transform::{
     DocumentTransform,
     DocumentTransformRegistry,
     TransformRuleBuilder,
 };
+use crate::document::{Document, NodeDraft, NodeValue, Root, Text, TextSpecial};
+use crate::links::{LinkFormatter, MDLinkFormatter};
 use crate::parser::block::{self, BlockParser};
-use crate::parser::core::{Root, *};
-use crate::parser::document_parser::DocumentParseContext;
-use crate::parser::extset::MarkdownItExtSet;
-use crate::parser::inline::{self, InlineParser, Text, TextSpecial};
-use crate::parser::linkfmt::{LinkFormatter, MDLinkFormatter};
-use crate::parser::node::NodeValue;
-use crate::parser::render_options::RenderOptions;
+use crate::parser::core::*;
+use crate::parser::inline::{self, InlineParser};
+use crate::parser::pipeline::DocumentParseContext;
 use crate::plugins::presets::{Preset, PresetConfig};
 use crate::render::{
     DebugTreeDocumentRenderer,
@@ -21,6 +21,7 @@ use crate::render::{
     DocumentRendererRegistry,
     HtmlTextDocumentRenderer,
     PlainTextDocumentRenderer,
+    RenderOptions,
     TransparentDocumentRenderer,
 };
 
@@ -122,7 +123,10 @@ impl MarkdownIt {
     ///
     /// Panics if core-rule stages are missing, repeated, or out of order.
     pub fn parse_document(&self, src: &str) -> Document {
-        DocumentParseContext::new(src, self).parse()
+        let source: Arc<str> = Arc::from(src);
+        let mut root = NodeDraft::new(Root::new(Arc::clone(&source)));
+        root.ext_mut().insert(self.render_options.clone());
+        DocumentParseContext::new(source, self, root).parse()
     }
 
     pub(super) fn document_core_rules(&self) -> impl Iterator<Item = DocumentCoreRule> + '_ {

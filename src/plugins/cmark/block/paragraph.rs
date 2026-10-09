@@ -3,11 +3,9 @@
 //! This is the default rule if nothing else matches.
 //!
 //! <https://spec.commonmark.org/0.30/#paragraph>
-use crate::document::NodeDraft;
-use crate::parser::block::BlockRule;
-use crate::parser::document_parser::DocumentBlockState;
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
+use crate::MarkdownIt;
+use crate::document::{NodeDraft, NodeValue};
+use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::render::{HtmlBlockElementDocumentRenderer, PlainTextBlockDocumentRenderer};
 
 pub fn add(md: &mut MarkdownIt) {

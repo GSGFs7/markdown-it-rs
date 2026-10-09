@@ -1,9 +1,9 @@
 use std::any::TypeId;
 
 use crate::common::TypeKey;
+use crate::common::extset::NodeExtSet;
 use crate::common::sourcemap::SourcePos;
-use crate::parser::extset::NodeExtSet;
-use crate::parser::node::{HtmlAttributes, NodeValue};
+use crate::document::{HtmlAttributes, NodeValue};
 
 #[derive(Debug)]
 pub(super) struct NodeData {

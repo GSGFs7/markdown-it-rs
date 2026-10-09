@@ -1,9 +1,39 @@
-//! Lazy, read-only text projections over arena-backed documents.
+//! Text payloads and lazy, read-only text projections over documents.
 
 use std::iter::FusedIterator;
 use std::str::CharIndices;
 
-use crate::document::{Document, NodeId, NodeRef};
+use crate::document::{Document, NodeId, NodeRef, NodeValue};
+
+#[derive(Debug)]
+/// Plain text AST node.
+pub struct Text {
+    pub content: String,
+}
+
+impl AsRef<str> for Text {
+    fn as_ref(&self) -> &str {
+        &self.content
+    }
+}
+
+impl NodeValue for Text {}
+
+#[derive(Debug)]
+/// Escaped text AST node (backslash escapes and entities).
+pub struct TextSpecial {
+    pub content: String,
+    pub markup: String,
+    pub info: &'static str,
+}
+
+impl AsRef<str> for TextSpecial {
+    fn as_ref(&self) -> &str {
+        &self.content
+    }
+}
+
+impl NodeValue for TextSpecial {}
 
 /// A semantic boundary between projected text regions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

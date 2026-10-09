@@ -1,9 +1,8 @@
 use crate::document::NodeDraft;
-use crate::parser::document_parser::DocumentInlineState;
+use crate::parser::inline::DocumentInlineState;
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeResult};
 
-pub type DocumentFinalizeFn =
-    for<'a> fn(&mut crate::parser::document_parser::DocumentInlineState<'a>);
+pub type DocumentFinalizeFn = for<'a> fn(&mut crate::parser::inline::DocumentInlineState<'a>);
 
 /// An arena-backed inline parser rule.
 pub trait InlineRule: 'static {
@@ -33,4 +32,4 @@ pub trait InlineRule: 'static {
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)>;
 }
 
-crate::parser::core::rule_builder!(InlineRule);
+crate::parser::rule::rule_builder!(InlineRule);

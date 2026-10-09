@@ -13,13 +13,11 @@ use std::fmt::Debug;
 use derive_more::{Deref, DerefMut};
 use downcast_rs::{Downcast, impl_downcast};
 
+use crate::MarkdownIt;
 use crate::common::utils::{normalize_reference, unescape_all};
-use crate::document::NodeDraft;
-use crate::generics::inline::full_link;
-use crate::parser::block::BlockRule;
-use crate::parser::document_parser::DocumentBlockState;
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
+use crate::document::{NodeDraft, NodeValue};
+use crate::parser::block::{BlockRule, DocumentBlockState};
+use crate::parser::inline::helpers::full_link;
 use crate::render::EmptyDocumentRenderer;
 
 /// Storage for parsed references
@@ -28,7 +26,8 @@ use crate::render::EmptyDocumentRenderer;
 ///
 /// ```rust
 /// use markdown_it::parser::block::builtin::BlockParserRule;
-/// use markdown_it::parser::core::{CoreRule, DocumentCoreRule, Root};
+/// use markdown_it::Root;
+/// use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap, CustomReferenceMap};
 /// use markdown_it::{MarkdownIt};
 ///
@@ -77,7 +76,8 @@ use crate::render::EmptyDocumentRenderer;
 /// You can also view all references that user created by adding the following rule:
 ///
 /// ```rust
-/// use markdown_it::parser::core::{CoreRule, DocumentCoreRule, Root};
+/// use markdown_it::Root;
+/// use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap};
 /// use markdown_it::{MarkdownIt};
 ///

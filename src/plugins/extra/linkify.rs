@@ -4,15 +4,13 @@ use std::cmp::Ordering;
 
 use linkify::{LinkKind, Linkify};
 
-use crate::document::{NodeDraft, NodeRef};
+use crate::MarkdownIt;
+use crate::common::extset::RootExtSet;
+use crate::document::{NodeDraft, NodeRef, NodeValue, TextSpecial};
+use crate::links::LinkFormatter;
 use crate::parser::core::{CoreRule, DocumentCoreRule};
-use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::extset::RootExtSet;
 use crate::parser::inline::builtin::InlineParserRule;
-use crate::parser::inline::{InlineRule, TextSpecial};
-use crate::parser::linkfmt::LinkFormatter;
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -379,8 +377,8 @@ mod tests {
             LinkifyScanner,
             LinkifyState,
         };
+        use crate::document::Root;
         use crate::parser::block::builtin::BlockParserRule;
-        use crate::parser::core::Root;
         use crate::parser::inline::builtin::InlineParserRule;
         for before_blocks in [false, true] {
             let mut md = crate::MarkdownIt::empty();

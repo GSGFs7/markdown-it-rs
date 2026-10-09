@@ -15,12 +15,11 @@
 //!
 use std::collections::HashMap;
 
+use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
 use crate::document::NodeDraft;
-use crate::parser::document_parser::DocumentInlineState;
-use crate::parser::inline::InlineRule;
 use crate::parser::inline::probe::{InlineProbeKind, InlineProbeResult};
-use crate::parser::main::MarkdownIt;
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::plugins::cmark::block::reference::ReferenceMap;
 
 #[derive(Debug)]
@@ -724,12 +723,12 @@ mod tests {
 #[cfg(test)]
 mod probe_label_tests {
     use super::*;
+    use crate::document::Text;
     use crate::parser::inline::{
         InlineProbeContext,
         InlineProbeKind,
         InlineProbeResult,
         InlineRule,
-        Text,
     };
     use crate::plugins::cmark::inline::link::Link;
     use crate::{DocumentInlineState, MarkdownIt, NodeDraft};
@@ -1176,7 +1175,7 @@ mod probe_label_tests {
                         .events(document.root())
                         .filter_map(|event| {
                             let node = event.node();
-                            node.cast::<crate::parser::inline::Text>()
+                            node.cast::<crate::document::Text>()
                                 .filter(|text| text.content == "雪")
                                 .map(|_| node.srcmap().unwrap().get_byte_offsets())
                         })

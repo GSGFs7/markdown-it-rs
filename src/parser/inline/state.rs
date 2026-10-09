@@ -1,135 +1,326 @@
-// Inline parser state
-//
+//! Inline parsing state, source mapping, and nested parse sessions.
+
+use std::borrow::Cow;
+use std::ops::Range;
+
+use super::DocumentRuleSet;
+use super::probe::InlineProbeContext;
 use crate::MarkdownIt;
-use crate::common::utils::is_punct_char;
+use crate::common::extset::{InlineRootExtSet, RootExtSet};
+use crate::common::sourcemap::SourcePos;
+use crate::document::{NodeDraft, Text};
 
-#[derive(Debug, Clone, Copy)]
-/// Information about emphasis delimiter run returned from [crate::DocumentInlineState::scan_delims].
-pub struct DelimiterRun {
-    /// Starting marker character.
-    pub marker: char,
+pub struct DocumentInlineState<'a> {
+    /// Markdown source.
+    pub(crate) src: Cow<'a, str>,
 
-    /// Boolean flag that determines if this delimiter could open an emphasis.
-    pub can_open: bool,
+    /// Current byte offset in `src`, it must respect char boundaries.
+    pub(crate) pos: usize,
 
-    /// Boolean flag that determines if this delimiter could open an emphasis.
-    pub can_close: bool,
+    /// Maximum allowed byte offset in `src`, it must respect char boundaries.
+    pub(crate) pos_max: usize,
 
-    /// Total length of scanned delimiters.
-    pub length: usize,
+    /// Link to parser instance.
+    md: &'a MarkdownIt,
+
+    /// For each line, it holds offset of the start of the line in original
+    /// markdown source and offset of the start of the line in `src`.
+    mapping: Cow<'a, [(usize, usize)]>,
+
+    /// Counter used to prevent recursion by image and link rules.
+    depth: u32,
+
+    pub(crate) inline_ext: InlineRootExtSet,
+
+    pub(crate) root_ext: Option<&'a RootExtSet>,
+
+    /// Counter used to disable inline linkifier execution
+    /// inside raw html and markdown links.
+    pub(crate) link_level: i32,
+
+    pub(crate) ruleset: &'a DocumentRuleSet,
+
+    /// Nodes accumulated for the current inline container; rules append to it.
+    nodes: Vec<NodeDraft>,
+
+    pending_text: Option<(usize, usize)>,
 }
 
-impl DelimiterRun {
-    pub(crate) fn byte_length(&self) -> usize {
-        self.length * self.marker.len_utf8()
+impl<'a> DocumentInlineState<'a> {
+    /// The unconsumed inline source visible to the current rule.
+    pub fn remaining(&self) -> &str {
+        &self.src[self.pos..self.pos_max]
     }
-}
 
-type DelimiterScanner =
-    fn(src: &str, start: usize, pos_max: usize, can_split_word: bool) -> DelimiterRun;
+    /// Parser instance that owns this inline rule.
+    pub fn markdown_it(&self) -> &MarkdownIt {
+        self.md
+    }
 
-#[derive(Debug)]
-struct DelimiterScannerConfig(DelimiterScanner);
+    pub(crate) fn nodes(&self) -> &[NodeDraft] {
+        &self.nodes
+    }
 
-fn scan_delims_default(
-    src: &str,
-    start: usize,
-    pos_max: usize,
-    can_split_word: bool,
-) -> DelimiterRun {
-    let mut left_flanking = true;
-    let mut right_flanking = true;
+    pub(crate) fn nodes_mut(&mut self) -> &mut Vec<NodeDraft> {
+        &mut self.nodes
+    }
 
-    let last_char = if start > 0 {
-        src[..start].chars().next_back().unwrap()
-    } else {
-        // treat beginning of the line as a whitespace
-        ' '
-    };
+    pub(in crate::parser) fn parse(
+        src: String,
+        mapping: Vec<(usize, usize)>,
+        md: &'a MarkdownIt,
+        ruleset: &'a DocumentRuleSet,
+        root_ext: Option<&'a RootExtSet>,
+    ) -> Vec<NodeDraft> {
+        let mut state = Self {
+            pos: 0,
+            pos_max: src.len(),
+            src: Cow::Owned(src),
+            md,
+            mapping: Cow::Owned(mapping),
+            depth: 0,
+            inline_ext: InlineRootExtSet::new(),
+            root_ext,
+            link_level: 0,
+            ruleset,
+            nodes: Vec::new(),
+            pending_text: None,
+        };
+        state.trim();
+        state.tokenize();
+        state.finish()
+    }
 
-    let mut chars = src[start..pos_max].chars();
-    let marker = chars.next().unwrap();
-    let next_char;
-    let mut count = 1;
+    /// Parse a byte range relative to `remaining()` as independent children.
+    ///
+    /// Preserves whitespace and original source coordinates. Returns `None` for
+    /// reversed, out-of-bounds, or non-UTF-8-boundary ranges. An empty valid range
+    /// returns an empty vector. Parent state is unchanged. At the nesting limit,
+    /// the child range is emitted as literal text without running rules.
+    pub fn parse_subrange(&self, range: Range<usize>) -> Option<Vec<NodeDraft>> {
+        self.parse_subrange_with_link_level(range, self.link_level)
+    }
 
-    loop {
-        match chars.next() {
-            None => {
-                next_char = ' ';
-                break;
+    /// Parse an isolated child range with an explicit initial link level.
+    ///
+    /// This overrides only the child's link level. Source mapping, nesting
+    /// limits, whitespace preservation and scratch isolation are unchanged.
+    pub(crate) fn parse_subrange_with_link_level(
+        &self,
+        range: Range<usize>,
+        link_level: i32,
+    ) -> Option<Vec<NodeDraft>> {
+        self.parse_subrange_at_depth(range, link_level, self.depth.saturating_add(1))
+    }
+
+    /// Parse an isolated range without consuming an extra nesting level.
+    pub(crate) fn parse_subrange_at_current_depth(
+        &self,
+        range: Range<usize>,
+    ) -> Option<Vec<NodeDraft>> {
+        self.parse_subrange_at_depth(range, self.link_level, self.depth)
+    }
+
+    fn parse_subrange_at_depth(
+        &self,
+        range: Range<usize>,
+        link_level: i32,
+        depth: u32,
+    ) -> Option<Vec<NodeDraft>> {
+        self.remaining().get(range.clone())?;
+
+        let start = self.pos + range.start;
+        let end = self.pos + range.end;
+        let mut child = DocumentInlineState {
+            src: Cow::Borrowed(self.src.as_ref()),
+            pos: start,
+            pos_max: end,
+            md: self.md,
+            mapping: Cow::Borrowed(self.mapping.as_ref()),
+            depth,
+            inline_ext: InlineRootExtSet::new(),
+            root_ext: self.root_ext,
+            link_level,
+            ruleset: self.ruleset,
+            nodes: Vec::new(),
+            pending_text: None,
+        };
+
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+            child.tokenize();
+            child.finish_nodes();
+        });
+        Some(child.nodes)
+    }
+
+    fn trim(&mut self) {
+        let mut bytes = self.src.as_bytes().iter();
+        while let Some(b' ' | b'\t') = bytes.next_back() {
+            self.pos_max -= 1;
+        }
+        while let Some(b' ' | b'\t') = bytes.next() {
+            self.pos += 1;
+        }
+    }
+
+    fn tokenize(&mut self) {
+        if self.depth >= self.md.max_nesting {
+            if self.pos < self.pos_max {
+                self.push_text(self.pos, self.pos_max);
+                self.pos = self.pos_max;
             }
-            Some(x) => {
-                if x != marker {
-                    // treat end of the line as a whitespace
-                    next_char = x;
+            return;
+        }
+
+        while self.pos < self.pos_max {
+            let marker = self.src[self.pos..self.pos_max].chars().next().unwrap();
+            let mut matched = None;
+            for rule in &self.ruleset.runs {
+                if !rule.matches_marker(marker) {
+                    continue;
+                }
+                if let Some(result) = (rule.run)(self) {
+                    matched = Some(result);
                     break;
                 }
             }
-        }
-        count += 1;
-    }
 
-    let is_last_punct_char = last_char.is_ascii_punctuation() || is_punct_char(last_char);
-    let is_next_punct_char = next_char.is_ascii_punctuation() || is_punct_char(next_char);
-
-    let is_last_whitespace = last_char.is_whitespace();
-    let is_next_whitespace = next_char.is_whitespace();
-
-    #[allow(clippy::collapsible_if)]
-    if is_next_whitespace {
-        left_flanking = false;
-    } else if is_next_punct_char {
-        if !(is_last_whitespace || is_last_punct_char) {
-            left_flanking = false;
+            if let Some((node, len)) = matched {
+                self.pos += len;
+                if let Some(mut node) = node {
+                    self.flush_text();
+                    node.set_srcmap(self.get_map(self.pos - len, self.pos));
+                    self.nodes.push(node);
+                }
+            } else {
+                let ch = self.src[self.pos..self.pos_max].chars().next().unwrap();
+                let len = ch.len_utf8();
+                self.push_text(self.pos, self.pos + len);
+                self.pos += len;
+            }
         }
     }
 
-    #[allow(clippy::collapsible_if)]
-    if is_last_whitespace {
-        right_flanking = false;
-    } else if is_last_punct_char {
-        if !(is_next_whitespace || is_next_punct_char) {
-            right_flanking = false;
-        }
+    /// Inspect the current position without entering a child parse level.
+    pub(crate) fn probe_current(&self) -> InlineProbeContext<'_> {
+        self.probe_at_depth(0..self.remaining().len(), self.depth)
     }
 
-    let (can_open, can_close) = if !can_split_word {
-        (
-            left_flanking && (!right_flanking || is_last_punct_char),
-            right_flanking && (!left_flanking || is_next_punct_char),
+    /// Probe a later offset from the current position at the current depth.
+    pub(crate) fn probe_from(&self, offset: usize) -> InlineProbeContext<'_> {
+        self.probe_at_depth(offset..self.remaining().len(), self.depth)
+    }
+
+    fn probe_at_depth(&self, range: Range<usize>, depth: u32) -> InlineProbeContext<'_> {
+        InlineProbeContext::new(
+            self.src.as_ref(),
+            self.pos + range.start,
+            self.pos + range.end,
+            self.md,
+            self.ruleset,
+            depth,
+            self.link_level,
         )
-    } else {
-        (left_flanking, right_flanking)
-    };
+        .with_root_ext(self.root_ext)
+    }
 
-    DelimiterRun {
-        marker,
-        can_open,
-        can_close,
-        length: count,
+    /// Start an independent probe session for `range` relative to
+    /// [`Self::remaining`].
+    ///
+    /// The returned context owns its cursor and scratch storage; the parent
+    /// state is left untouched, including pending text and inline extensions.
+    /// Ranges that are reversed, out of bounds, or not on UTF-8 boundaries
+    /// return `None`. Classification happens through
+    /// [`InlineProbeContext::next_token`]; rules without a probe are skipped
+    /// and unclaimed characters become text.
+    pub fn probe_subrange(&self, range: Range<usize>) -> Option<InlineProbeContext<'_>> {
+        self.remaining().get(range.clone())?;
+        Some(self.probe_at_depth(range, self.depth.saturating_add(1)))
+    }
+
+    pub(crate) fn trailing_text(&self) -> &str {
+        self.pending_text
+            .map_or("", |(start, end)| &self.src[start..end])
+    }
+
+    pub(crate) fn pop_trailing_text(&mut self, count: usize) {
+        if count == 0 {
+            return;
+        }
+        let (start, end) = self.pending_text.expect("trailing text must exist");
+        assert!(count <= end - start && self.src.is_char_boundary(end - count));
+        self.pending_text = (start < end - count).then_some((start, end - count));
+    }
+
+    pub(crate) fn push_text(&mut self, start: usize, end: usize) {
+        match self.pending_text {
+            Some((pending_start, pending_end)) if pending_end == start => {
+                self.pending_text = Some((pending_start, end));
+            }
+            Some(_) => {
+                self.flush_text();
+                self.pending_text = Some((start, end));
+            }
+            None => self.pending_text = Some((start, end)),
+        }
+    }
+
+    pub(crate) fn flush_text(&mut self) {
+        let Some((start, end)) = self.pending_text.take() else {
+            return;
+        };
+        let mut text = NodeDraft::new(Text {
+            content: self.src[start..end].to_owned(),
+        });
+        text.set_srcmap(self.get_map(start, end));
+        self.nodes.push(text);
+    }
+
+    fn finish(mut self) -> Vec<NodeDraft> {
+        if self.nodes.is_empty() {
+            if let Some((start, end)) = self.pending_text.take() {
+                let srcmap = self.get_map(start, end);
+                let mut content = self.src.into_owned();
+                content.truncate(end);
+
+                if start != 0 {
+                    content.drain(..start);
+                }
+
+                let mut text = NodeDraft::new(Text { content });
+                text.set_srcmap(srcmap);
+                self.nodes.push(text);
+            }
+        } else {
+            self.finish_nodes();
+        }
+        self.nodes
+    }
+
+    fn finish_nodes(&mut self) {
+        let needs_finalization = !self.nodes().is_empty();
+        self.flush_text();
+
+        if needs_finalization {
+            for index in 0..self.ruleset.finalizers.len() {
+                let finalize = self.ruleset.finalizers[index];
+                finalize(self);
+            }
+        }
+    }
+
+    fn source_pos(&self, pos: usize) -> usize {
+        let line = match self.mapping.binary_search_by(|entry| entry.0.cmp(&pos)) {
+            Ok(index) => index,
+            Err(index) => index - 1,
+        };
+        self.mapping[line].1 + (pos - self.mapping[line].0)
+    }
+
+    pub(crate) fn get_map(&self, start: usize, end: usize) -> Option<SourcePos> {
+        Some(SourcePos::new(self.source_pos(start), self.source_pos(end)))
     }
 }
 
-pub(crate) fn scan_delimiter_run(
-    md: &MarkdownIt,
-    src: &str,
-    start: usize,
-    pos_max: usize,
-    can_split_word: bool,
-) -> DelimiterRun {
-    debug_assert!(start < pos_max);
-    debug_assert!(src.is_char_boundary(start));
-    debug_assert!(src.is_char_boundary(pos_max));
-
-    if let Some(config) = md.ext.get::<DelimiterScannerConfig>() {
-        return config.0(src, start, pos_max, can_split_word);
-    }
-
-    scan_delims_default(src, start, pos_max, can_split_word)
-}
-
-/// custom delimiter scanner
-/// provider for `cjk_friendly` plugin. will not be made public for the time being.
-pub(crate) fn set_delimiter_scanner(md: &mut MarkdownIt, scanner: DelimiterScanner) {
-    md.ext.insert(DelimiterScannerConfig(scanner));
-}
+#[cfg(test)]
+mod tests;

@@ -1,6 +1,6 @@
+use markdown_it::parser::inline::InlineRule;
 use markdown_it::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use markdown_it::parser::inline::{InlineRule, Text};
-use markdown_it::{DocumentInlineState, MarkdownIt, NodeDraft};
+use markdown_it::{DocumentInlineState, MarkdownIt, NodeDraft, Text};
 
 struct Nested;
 impl InlineRule for Nested {

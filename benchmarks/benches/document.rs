@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use markdown_it::parser::inline::Text;
+use markdown_it::Text;
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use markdown_it::plugins::html::html_inline::HtmlInline;

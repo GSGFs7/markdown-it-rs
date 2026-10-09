@@ -7,8 +7,7 @@
 use std::collections::HashMap;
 
 use crate::common::utils::is_punct_char;
-use crate::parser::inline::Text;
-use crate::parser::main::MarkdownIt;
+use crate::document::Text;
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
@@ -16,6 +15,7 @@ use crate::{
     Document,
     DocumentTransform,
     EditBatch,
+    MarkdownIt,
     NodeId,
     NodeRef,
     TextBoundary,

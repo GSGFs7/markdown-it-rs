@@ -13,7 +13,8 @@
 pub mod common;
 pub mod document;
 pub mod examples;
-pub mod generics;
+pub mod links;
+mod markdown_it;
 pub mod parser;
 pub mod plugins;
 pub mod render;
@@ -31,13 +32,21 @@ pub use document::transform::{DocumentTransform, DocumentTransformRegistry, Tran
 pub use document::{
     Document,
     DocumentNode,
+    HtmlAttribute,
+    HtmlAttributes,
     NodeDraft,
     NodeId,
     NodeRef,
+    NodeValue,
+    Root,
     StructuralEvent,
     StructuralEvents,
+    Text,
+    TextSpecial,
 };
-pub use parser::document_parser::{DocumentBlockState, DocumentInlineState};
+pub use markdown_it::MarkdownIt;
+pub use parser::block::DocumentBlockState;
+pub use parser::inline::DocumentInlineState;
 pub use parser::inline::probe::{
     InlineProbeContext,
     InlineProbeEffects,
@@ -45,13 +54,11 @@ pub use parser::inline::probe::{
     InlineProbeResult,
     InlineProbeToken,
 };
-pub use parser::main::MarkdownIt;
-pub use parser::node::{HtmlAttribute, HtmlAttributes, NodeValue};
-pub use parser::render_options::RenderOptions;
 pub use plugins::presets::{Preset, PresetConfig};
 pub use render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     DocumentRendererRegistry,
     DocumentWriter,
+    RenderOptions,
 };

@@ -4,9 +4,7 @@ use std::ops::Range;
 
 use crate::common::sourcemap::SourcePos;
 use crate::document::data::NodeData;
-use crate::document::{Document, NodeDraft, NodeId, SiblingPosition};
-use crate::parser::inline::Text;
-use crate::parser::node::NodeValue;
+use crate::document::{Document, NodeDraft, NodeId, NodeValue, SiblingPosition, Text};
 
 #[derive(Clone, Debug)]
 enum TextReplacement {

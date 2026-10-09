@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::*;
-use crate::parser::inline::Text;
+use crate::document::Text;
 use crate::{MarkdownIt, StructuralEvent};
 
 fn append_step(document: &Document, step: &str) -> EditBatch {

@@ -1,12 +1,10 @@
 //! GFM tables
 //!
 //! <https://github.github.com/gfm/#tables-extension->
+use crate::MarkdownIt;
 use crate::common::sourcemap::SourcePos;
-use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::BlockRule;
-use crate::parser::document_parser::DocumentBlockState;
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
+use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::plugins::cmark::block::heading::HeadingScanner;
 use crate::plugins::cmark::block::list::ListScanner;
 use crate::render::{

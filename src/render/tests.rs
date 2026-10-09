@@ -6,7 +6,7 @@ use super::{
     DocumentRendererRegistry,
     DocumentWriter,
 };
-use crate::parser::inline::Text;
+use crate::document::Text;
 use crate::{Document, MarkdownIt, NodeDraft, NodeRef, NodeValue, RenderOptions};
 
 #[derive(Debug)]

@@ -68,14 +68,12 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
+use crate::common::extset::{NodeExtSet, RenderExtSet};
 use crate::common::sourcemap::SourcePos;
-use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::BlockRule;
-use crate::parser::document_parser::{DocumentBlockState, DocumentInlineState};
-use crate::parser::extset::{NodeExtSet, RenderExtSet};
-use crate::parser::inline::InlineRule;
+use crate::document::{HtmlAttribute, NodeDraft, NodeRef};
+use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::node::HtmlAttribute;
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,

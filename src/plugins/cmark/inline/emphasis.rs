@@ -3,11 +3,8 @@
 //! looks like `*this*` or `__that__`
 //!
 //! <https://spec.commonmark.org/0.30/#emphasis-and-strong-emphasis>
-use crate::NodeDraft;
-use crate::document::NodeRef;
-use crate::generics::inline::emph_pair;
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
+use crate::document::{NodeRef, NodeValue};
+use crate::parser::inline::helpers::emph_pair;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -15,6 +12,7 @@ use crate::render::{
     write_html_close,
     write_html_open,
 };
+use crate::{MarkdownIt, NodeDraft};
 
 #[derive(Debug)]
 pub struct Em {

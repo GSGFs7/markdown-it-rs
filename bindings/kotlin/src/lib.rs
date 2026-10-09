@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use markdown_it::MarkdownIt;
-use markdown_it::parser::core::Root;
 use markdown_it::plugins::extra::front_matter::{
     FrontMatter as RustFrontMatter,
     FrontMatterKind as RustFrontMatterKind,
 };
+use markdown_it::{MarkdownIt, Root};
 
 uniffi::setup_scaffolding!();
 

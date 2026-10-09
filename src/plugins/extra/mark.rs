@@ -1,7 +1,7 @@
 //! Highlight syntax (like `==this==`)
 
 use crate::document::NodeRef;
-use crate::generics::inline::emph_pair;
+use crate::parser::inline::helpers::emph_pair;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,

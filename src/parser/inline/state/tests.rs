@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
 use super::*;
+use crate::links::LinkFormatter;
 use crate::parser::inline::probe::{InlineProbeKind, InlineProbeResult, InlineProbeToken};
 use crate::parser::inline::{InlineProbeFn, InlineRule, InlineRuleFn, InlineRuleFns};
-use crate::parser::linkfmt::LinkFormatter;
 
 fn probe_rule(probe: InlineProbeFn) -> InlineRuleFns {
     InlineRuleFns {
@@ -896,7 +896,7 @@ fn recursive_probe_inherits_current_link_level_and_isolates_effects() {
 
 #[test]
 fn recursive_probe_child_scratch_is_private() {
-    use crate::generics::inline::code_pair::CodePairScanner;
+    use crate::parser::inline::helpers::code_pair::CodePairScanner;
 
     let mut md = MarkdownIt::empty();
     md.inline.add_rule::<CodePairScanner<'`'>>();
@@ -1351,7 +1351,7 @@ fn probe_emphasis_defers_for_unicode_marker() {
     }
 
     let mut md = MarkdownIt::empty();
-    crate::generics::inline::emph_pair::add_with::<'雪', 1, true>(&mut md, node);
+    crate::parser::inline::helpers::emph_pair::add_with::<'雪', 1, true>(&mut md, node);
     md.inline.add_rule::<LaterUnicodeMarkerProbe>();
     let ruleset = md.inline.document_rules();
 
@@ -1673,81 +1673,4 @@ fn child_link_level_override_keeps_range_and_depth_rules() {
     let children = state.parse_subrange_with_link_level(0..11, 3).unwrap();
     assert_eq!(children[0].cast::<Text>().unwrap().content, "{ 雪\n次 }");
     assert_eq!(state.link_level, 2);
-}
-
-#[test]
-fn recursive_block_rules_switch_current_node_and_nesting_level() {
-    use crate::document::NodeDraft;
-    use crate::parser::block::BlockRule;
-    use crate::parser::core::Root;
-
-    #[derive(Debug)]
-    struct Wrapper;
-    impl crate::parser::node::NodeValue for Wrapper {}
-
-    #[derive(Debug, PartialEq, Eq)]
-    struct ObservedLevel(u32);
-
-    struct WrapperScanner;
-    impl BlockRule for WrapperScanner {
-        fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
-            if !state.get_line(state.line).starts_with("%%") {
-                return None;
-            }
-
-            let start = state.line;
-            let old_node = std::mem::replace(&mut state.node, NodeDraft::new(Wrapper));
-            let old_line_max = state.line_max;
-            state.line = start + 1;
-            state.line_max = (start + 2).min(old_line_max);
-            state.tokenize_nested();
-            let end = state.line;
-            state.line = start;
-            state.line_max = old_line_max;
-            let node = std::mem::replace(&mut state.node, old_node);
-            Some((node, end - start))
-        }
-    }
-
-    struct LevelProbe;
-    impl BlockRule for LevelProbe {
-        fn run(state: &mut DocumentBlockState<'_>) -> Option<(NodeDraft, usize)> {
-            if state.get_line(state.line) != "hello" {
-                return None;
-            }
-            state.root_ext.insert(ObservedLevel(state.level));
-            Some((NodeDraft::placeholder(), 1))
-        }
-    }
-
-    let md = MarkdownIt::empty();
-    let source = "%%\nhello";
-    let mut state = DocumentBlockState::new(
-        source,
-        &md,
-        vec![
-            (
-                WrapperScanner::check as fn(&mut DocumentBlockState<'_>) -> Option<()>,
-                WrapperScanner::run,
-            ),
-            (
-                LevelProbe::check as fn(&mut DocumentBlockState<'_>) -> Option<()>,
-                LevelProbe::run,
-            ),
-        ],
-        NodeDraft::new(Root::new(source.to_owned())),
-    );
-    state.tokenize();
-
-    let DocumentBlockState {
-        node: root,
-        root_ext,
-        ..
-    } = state;
-    let wrapper = &root.children()[0];
-    assert!(wrapper.is::<Wrapper>());
-    assert!(wrapper.children().is_empty());
-
-    assert!(root.is::<Root>());
-    assert_eq!(root_ext.get::<ObservedLevel>(), Some(&ObservedLevel(1)));
 }

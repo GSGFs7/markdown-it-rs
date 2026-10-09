@@ -2,8 +2,9 @@
 //!
 //! <https://spec.commonmark.org/0.30/#raw-html>
 use super::utils::regexps::*;
-use crate::document::{NodeDraft, NodeRef};
-use crate::parser::extset::InlineRootExtSet;
+use crate::MarkdownIt;
+use crate::common::extset::InlineRootExtSet;
+use crate::document::{NodeDraft, NodeRef, NodeValue};
 use crate::parser::inline::InlineRule;
 use crate::parser::inline::probe::{
     InlineProbeContext,
@@ -11,8 +12,6 @@ use crate::parser::inline::probe::{
     InlineProbeKind,
     InlineProbeResult,
 };
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
 use crate::render::{DocumentNodeRenderer, DocumentRenderContext};
 
 pub fn add(md: &mut MarkdownIt) {

@@ -14,8 +14,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::document::edit::EditBatch;
 use crate::document::transform::DocumentTransform;
-use crate::document::{Document, NodeRef};
-use crate::parser::inline::{Text, TextSpecial};
+use crate::document::{Document, NodeRef, Text, TextSpecial};
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
 use crate::plugins::cmark::inline::newline::Softbreak;

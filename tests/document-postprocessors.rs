@@ -1,7 +1,5 @@
-use markdown_it::parser::core::Root;
-use markdown_it::parser::inline::Text;
 use markdown_it::plugins::{cmark, extra, sourcepos};
-use markdown_it::{Document, MarkdownIt, NodeDraft, StructuralEvent};
+use markdown_it::{Document, MarkdownIt, NodeDraft, Root, StructuralEvent, Text};
 
 #[test]
 fn typographer_precedes_custom_smartquotes_in_reverse_registration_order() {

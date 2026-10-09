@@ -1,10 +1,9 @@
 // reference to exist CodeFence & CodeSpan rule in the code base
 
 use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::BlockRule;
-use crate::parser::document_parser::{DocumentBlockState, DocumentInlineState};
-use crate::parser::inline::InlineRule;
+use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,

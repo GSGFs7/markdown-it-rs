@@ -1,7 +1,7 @@
 use std::ops::Range;
 
-use crate::parser::extset::{InlineRootExtSet, RootExtSet};
-use crate::parser::main::MarkdownIt;
+use crate::MarkdownIt;
+use crate::common::extset::{InlineRootExtSet, RootExtSet};
 
 /// How a probed span is classified.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

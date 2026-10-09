@@ -7,12 +7,11 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use crate::MarkdownIt;
 use crate::common::utils::{get_entity_from_str, is_valid_entity_code};
-use crate::document::NodeDraft;
-use crate::parser::document_parser::DocumentInlineState;
+use crate::document::{NodeDraft, TextSpecial};
 use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
-use crate::parser::inline::{InlineRule, TextSpecial};
-use crate::parser::main::MarkdownIt;
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<EntityScanner>();

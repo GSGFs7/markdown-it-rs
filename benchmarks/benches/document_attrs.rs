@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use markdown_it::{Document, HtmlAttribute, MarkdownIt};
 
 fn parser() -> MarkdownIt {
@@ -10,15 +10,13 @@ fn parser() -> MarkdownIt {
 }
 
 fn document_with_attrs(md: &MarkdownIt, attrs: &[HtmlAttribute]) -> Document {
-    let mut root = markdown_it::NodeDraft::new(markdown_it::parser::core::Root::new("text".into()));
+    let mut root = markdown_it::NodeDraft::new(markdown_it::Root::new("text"));
     let mut paragraph =
         markdown_it::NodeDraft::new(markdown_it::plugins::cmark::block::paragraph::Paragraph);
     paragraph.attrs_mut().extend_from_slice(attrs);
-    paragraph.push_child(markdown_it::NodeDraft::new(
-        markdown_it::parser::inline::Text {
-            content: "text".into(),
-        },
-    ));
+    paragraph.push_child(markdown_it::NodeDraft::new(markdown_it::Text {
+        content: "text".into(),
+    }));
     root.push_child(paragraph);
     let document = Document::from_draft("text", root);
     md.render_document(&document);

@@ -6,12 +6,10 @@
 //!
 //!  - <https://spec.commonmark.org/0.30/#lists>
 //!  - <https://spec.commonmark.org/0.30/#list-items>
+use crate::MarkdownIt;
 use crate::common::utils::find_indent_of;
-use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::BlockRule;
-use crate::parser::document_parser::DocumentBlockState;
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::NodeValue;
+use crate::document::{NodeDraft, NodeRef, NodeValue};
+use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::plugins::cmark::block::hr::HrScanner;
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::render::{

@@ -1,5 +1,4 @@
-use crate::parser::block::BlockRule;
-use crate::parser::document_parser::DocumentBlockState;
+use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::{MarkdownIt, NodeDraft};
 
 /// Default maximum number of document lines searched for the closing delimiter.
@@ -100,7 +99,7 @@ mod tests {
 
     #[test]
     fn front_matter_extracts_yaml_and_does_not_render() {
-        use markdown_it::parser::core::Root;
+        use markdown_it::Root;
         use markdown_it::plugins::extra::front_matter::{FrontMatter, FrontMatterKind};
 
         let md = &mut markdown_it::MarkdownIt::empty();
@@ -120,7 +119,7 @@ mod tests {
 
     #[test]
     fn front_matter_extracts_toml() {
-        use markdown_it::parser::core::Root;
+        use markdown_it::Root;
         use markdown_it::plugins::extra::front_matter::{FrontMatter, FrontMatterKind};
 
         let md = &mut markdown_it::MarkdownIt::empty();
@@ -138,7 +137,7 @@ mod tests {
 
     #[test]
     fn front_matter_can_be_parsed_by_user_callback() {
-        use markdown_it::parser::core::Root;
+        use markdown_it::Root;
         use markdown_it::plugins::extra::front_matter::{FrontMatter, FrontMatterKind};
 
         #[derive(Debug, PartialEq, Eq)]
@@ -176,7 +175,7 @@ mod tests {
 
     #[test]
     fn front_matter_respects_max_line_limit() {
-        use markdown_it::parser::core::Root;
+        use markdown_it::Root;
         use markdown_it::plugins::extra::front_matter::FrontMatter;
 
         let md = &mut markdown_it::MarkdownIt::empty();

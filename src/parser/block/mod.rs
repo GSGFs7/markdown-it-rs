@@ -1,15 +1,16 @@
 //! Block rule chain
 #[doc(hidden)]
 pub mod builtin;
+mod lines;
 mod rule;
 mod state;
+pub use lines::*;
 pub use rule::*;
-pub use state::*;
+pub use state::DocumentBlockState;
 
 use crate::NodeDraft;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
-use crate::parser::document_parser::DocumentBlockState;
 
 pub(crate) type BlockRuleFns = (
     fn(&mut DocumentBlockState<'_>) -> Option<()>,

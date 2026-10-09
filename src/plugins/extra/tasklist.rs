@@ -1,12 +1,18 @@
 //! Task list syntax, like `- [ ] todo` and `- [x] done`.
 
+use crate::MarkdownIt;
 use crate::common::sourcemap::SourcePos;
 use crate::document::edit::EditBatch;
 use crate::document::transform::DocumentTransform;
-use crate::document::{Document, NodeDraft, NodeId, StructuralEvent};
-use crate::parser::inline::Text;
-use crate::parser::main::MarkdownIt;
-use crate::parser::node::{HtmlAttributes, NodeValue};
+use crate::document::{
+    Document,
+    HtmlAttributes,
+    NodeDraft,
+    NodeId,
+    NodeValue,
+    StructuralEvent,
+    Text,
+};
 use crate::plugins::cmark::block::list::{BulletList, ListItem, OrderedList};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 

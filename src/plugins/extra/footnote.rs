@@ -51,13 +51,18 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
+use crate::common::extset::RootExtSet;
 use crate::common::utils::normalize_reference;
 use crate::document::{NodeDraft, NodeRef};
-use crate::parser::block::BlockRule;
+use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::parser::core::{CoreRule, DocumentCoreRule};
-use crate::parser::document_parser::{DocumentBlockState, DocumentInlineState};
-use crate::parser::extset::RootExtSet;
-use crate::parser::inline::{InlineProbeContext, InlineProbeKind, InlineProbeResult, InlineRule};
+use crate::parser::inline::{
+    DocumentInlineState,
+    InlineProbeContext,
+    InlineProbeKind,
+    InlineProbeResult,
+    InlineRule,
+};
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -613,7 +618,7 @@ impl InlineRule for FootnoteInlineScanner {
         let scans = env.0.lock().unwrap().scans.clone();
         if scans.exhausted() {
             return Some((
-                Some(NodeDraft::new(crate::parser::inline::Text {
+                Some(NodeDraft::new(crate::document::Text {
                     content: state.remaining().to_owned(),
                 })),
                 state.remaining().len(),
@@ -950,7 +955,7 @@ mod tests {
                 assert_eq!(md.render_document(&direct), format!("<p>{source}</p>\n"));
                 let root = direct.node(direct.root());
                 let env = root
-                    .cast::<crate::parser::core::Root>()
+                    .cast::<crate::document::Root>()
                     .unwrap()
                     .ext
                     .get::<DocumentFootnoteEnv>()

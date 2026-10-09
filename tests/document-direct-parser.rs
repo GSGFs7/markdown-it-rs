@@ -1,5 +1,4 @@
-use markdown_it::parser::core::Root;
-use markdown_it::{MarkdownIt, StructuralEvent};
+use markdown_it::{MarkdownIt, Root, StructuralEvent};
 
 // KaTeX uses unordered attribute/style maps; normalize only their ordering.
 fn normalize_math_html(html: &str) -> String {
@@ -53,9 +52,81 @@ fn snapshot_outputs(md: &MarkdownIt, document: &markdown_it::Document) -> [Strin
     [
         normalize_math_html(&md.render_document(document)),
         md.render_document_as(document, "text"),
-        md.render_document_as(document, "debug"),
+        normalize_legacy_debug_tree(md.render_document_as(document, "debug")),
         format!("{metadata:?}"),
     ]
+}
+
+/// Payload types whose modules moved after `fixtures/document-parser-snapshots.rs`
+/// was captured from the legacy parser.
+///
+/// That fixture is a frozen pre-migration baseline, so its debug-tree hashes
+/// embed the original Rust type paths. Rewrite the current `type_name`
+/// spellings back to those baseline spellings before fingerprinting; this is
+/// the only intentional path rewrite in these snapshot tests.
+///
+/// Keep both sides in sync through this function: a relocated payload uses
+/// whatever path `type_name` currently reports, so only the legacy column needs
+/// to stay fixed. `relocated_payload_paths_are_rewritten_in_debug_trees` guards
+/// against duplicate or no-op mappings.
+fn relocated_payload_paths() -> [(String, &'static str); 3] {
+    [
+        (
+            std::any::type_name::<Root>().to_owned(),
+            "markdown_it::parser::core::root::Root",
+        ),
+        (
+            std::any::type_name::<markdown_it::TextSpecial>().to_owned(),
+            "markdown_it::parser::inline::builtin::skip_text::TextSpecial",
+        ),
+        (
+            std::any::type_name::<markdown_it::Text>().to_owned(),
+            "markdown_it::parser::inline::builtin::skip_text::Text",
+        ),
+    ]
+}
+
+fn normalize_legacy_debug_tree(debug: String) -> String {
+    relocated_payload_paths()
+        .into_iter()
+        .fold(debug, |debug, (current, legacy)| {
+            assert_ne!(
+                current, legacy,
+                "relocated payload already uses its legacy path; drop the mapping"
+            );
+            debug.replace(&current, legacy)
+        })
+}
+
+#[test]
+fn relocated_payload_paths_are_rewritten_in_debug_trees() {
+    let paths = relocated_payload_paths();
+    let mut seen_current = std::collections::HashSet::new();
+    let mut seen_legacy = std::collections::HashSet::new();
+    for (current, legacy) in &paths {
+        assert!(
+            seen_current.insert(current.clone()),
+            "duplicate current payload path: {current}"
+        );
+        assert!(
+            seen_legacy.insert(*legacy),
+            "duplicate legacy path: {legacy}"
+        );
+    }
+
+    let debug = paths
+        .iter()
+        .map(|(current, _)| current.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let normalized = normalize_legacy_debug_tree(debug);
+    for (current, legacy) in paths {
+        assert!(
+            !normalized.contains(&current),
+            "unrewritten path: {current}"
+        );
+        assert!(normalized.contains(legacy), "missing legacy path: {legacy}");
+    }
 }
 fn assert_document_structure(md: &MarkdownIt, source: &str) -> markdown_it::Document {
     let document = md.parse_document(source);
@@ -598,7 +669,7 @@ fn direct_code_spans_preserve_output_structure_and_source_maps() {
         }
         let node = event.node();
         if node.is::<markdown_it::plugins::cmark::inline::backticks::CodeInline>()
-            || node.is::<markdown_it::parser::inline::Text>()
+            || node.is::<markdown_it::Text>()
         {
             Some((node.name(), node.srcmap().unwrap().get_byte_offsets()))
         } else {
@@ -621,7 +692,7 @@ fn direct_zero_nesting_matches_expected_output() {
 
 #[test]
 fn trailing_space_removal_maps_inline_offsets_once() {
-    use markdown_it::parser::inline::Text;
+    use markdown_it::Text;
     let mut md = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
     markdown_it::plugins::cmark::inline::newline::add(&mut md);
@@ -769,7 +840,7 @@ fn direct_emphasis_uses_cjk_delimiter_override() {
 
 #[test]
 fn direct_nested_emphasis_preserves_source_maps() {
-    use markdown_it::parser::inline::Text;
+    use markdown_it::Text;
     use markdown_it::plugins::cmark::inline::emphasis::{Em, Strong};
 
     let mut md = MarkdownIt::empty();
@@ -1532,9 +1603,9 @@ fn direct_linkify_prescan_runs_before_document_postprocessors() {
 
 #[test]
 fn direct_core_preparations_share_rule_order_and_lifetime() {
+    use markdown_it::common::extset::RootExtSet;
     use markdown_it::parser::block::builtin::BlockParserRule;
     use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
-    use markdown_it::parser::extset::RootExtSet;
     use markdown_it::parser::inline::builtin::InlineParserRule;
     use markdown_it::plugins::cmark::block::reference::ReferenceMap;
 
@@ -1774,9 +1845,8 @@ fn direct_directives_custom_renderers_match_expected_output() {
 #[test]
 fn direct_directive_callbacks_render_current_document_children() {
     use markdown_it::document::edit::EditBatch;
-    use markdown_it::parser::inline::Text;
     use markdown_it::plugins::directives::{self, DirectiveKind, DirectiveNode, DirectiveRenderer};
-    use markdown_it::{DocumentNodeRenderer, DocumentRenderContext, DocumentWriter, NodeRef};
+    use markdown_it::{DocumentNodeRenderer, DocumentRenderContext, DocumentWriter, NodeRef, Text};
 
     fn panel(
         _: DirectiveKind,
