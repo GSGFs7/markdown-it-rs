@@ -14,6 +14,11 @@ markdown-it-v6 = { package = "markdown-it", version = "0.6" }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 
 [[bench]]
+name = "html_escape"
+path = "benches/html_escape.rs"
+harness = false
+
+[[bench]]
 name = "throughput"
 path = "benches/throughput.rs"
 harness = false

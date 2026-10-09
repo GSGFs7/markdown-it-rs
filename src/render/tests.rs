@@ -95,6 +95,32 @@ fn cr_observes_direct_renderer_writes_without_duplicate_line_endings() {
 }
 
 #[test]
+fn escaped_writes_match_legacy_encoding_across_fast_path_boundary() {
+    for len in [0, 1, 31, 32, 33, 64, 1024] {
+        let plain = "a".repeat(len);
+        for marker in ['&', '<', '>', '"', '\'', '/', '\0', '雪', '🦀'] {
+            for pos in [0, len / 2, len] {
+                let mut input = plain.clone();
+                input.insert(pos, marker);
+                let mut output = DocumentWriter::new();
+                output.write_str("prefix:");
+                output.write_escaped_html(&input);
+                output.write_escaped_html("&\"");
+                output.write_str(":suffix");
+                assert_eq!(
+                    output.finish(),
+                    format!(
+                        "prefix:{}&amp;&quot;:suffix",
+                        crate::common::utils::escape_html(&input),
+                    ),
+                    "escaping differs for {input:?}",
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn html_attrs_preserve_grouping_order_and_escaping_on_both_paths() {
     let small = vec![
         ("class".into(), "first".into()),

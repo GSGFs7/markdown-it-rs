@@ -248,6 +248,19 @@ impl DocumentWriter {
         self.output.push(value);
     }
 
+    /// Avoid scalar entity detection for long text that needs no escaping.
+    #[inline]
+    pub(crate) fn write_escaped_html(&mut self, value: &str) {
+        if value.len() >= 32
+            && memchr::memchr3(b'&', b'<', b'>', value.as_bytes()).is_none()
+            && memchr::memchr(b'"', value.as_bytes()).is_none()
+        {
+            self.output.push_str(value);
+        } else {
+            self.output.push_str(&escape_html(value));
+        }
+    }
+
     /// Append formatted output.
     ///
     /// # Panics
@@ -413,7 +426,7 @@ where
         _: &mut DocumentRenderContext<'_>,
         output: &mut DocumentWriter,
     ) {
-        output.write_str(&escape_html(value.as_ref()));
+        output.write_escaped_html(value.as_ref());
     }
 }
 
@@ -630,7 +643,7 @@ pub(crate) fn write_html_self_close(
 }
 
 pub(crate) fn write_html_text(output: &mut DocumentWriter, value: &str) {
-    output.write_str(&escape_html(value));
+    output.write_escaped_html(value);
 }
 
 #[cfg(test)]
