@@ -12,6 +12,8 @@ use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
 use crate::plugins::cmark::block::list::ListItem;
 use crate::plugins::cmark::block::paragraph::Paragraph;
+use crate::plugins::cmark::inline::backticks::CodeInline;
+use crate::plugins::cmark::inline::image::Image;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::extra::tables::TableCell;
 use crate::plugins::html::html_inline::HtmlInline;
@@ -103,9 +105,31 @@ fn document_edits_with<
 ) -> EditBatch {
     let mut edits = EditBatch::new();
     let projection = TextProjection::new(document_smartquotes_projection);
-    let events = document
-        .text_events(projection)
-        .filter_map(|event| document_relevant_event(document, event));
+    let mut protected_depth = 0;
+    let events = document.text_events(projection).filter_map(|event| {
+        match event {
+            TextEvent::Enter { node, .. } | TextEvent::Exit { node, .. }
+                if document.node(node).is::<CodeInline>() || document.node(node).is::<Image>() =>
+            {
+                if matches!(event, TextEvent::Enter { .. }) {
+                    protected_depth += 1;
+                } else {
+                    protected_depth -= 1;
+                }
+                return None;
+            }
+            _ => {}
+        }
+
+        let mut event = document_relevant_event(document, event)?;
+        // Code and alt text provide context but cannot be edited.
+        if protected_depth > 0
+            && let RelevantEvent::Char { writable, .. } = &mut event
+        {
+            *writable = false;
+        }
+        Some(event)
+    });
     transform_events::<
         NodeId,
         _,

@@ -33,6 +33,35 @@ fn run(input: &str, output: &str) {
 }
 ///////////////////////////////////////////////////////////////////////////
 #[test]
+fn smartquotes_preserves_code_and_image_alt_text() {
+    for (source, expected) in [
+        (
+            "`<a href=\"bar\">` \"outside\"",
+            "<p><code>&lt;a href=&quot;bar&quot;&gt;</code> “outside”</p>",
+        ),
+        (
+            "`\"code\" can't users'`",
+            "<p><code>&quot;code&quot; can't users'</code></p>",
+        ),
+        (
+            "\"one `\"inner\"` two\"",
+            "<p>“one <code>&quot;inner&quot;</code> two”</p>",
+        ),
+        ("`word`'tail'", "<p><code>word</code>’tail’</p>"),
+        (
+            "![\"alt\" can't](/img) \"outside\"",
+            "<p><img src=\"/img\" alt=\"&quot;alt&quot; can't\"> “outside”</p>",
+        ),
+        (
+            "\"one ![alt](/img) two\"",
+            "<p>“one <img src=\"/img\" alt=\"alt\"> two”</p>",
+        ),
+    ] {
+        run(source, expected);
+    }
+}
+
+#[test]
 fn quotes_do_not_pair_across_inline_blocks() {
     for (source, expected) in [
         ("\"one\n\ntwo\"", "<p>&quot;one</p>\n<p>two&quot;</p>"),
