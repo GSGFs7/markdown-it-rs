@@ -530,11 +530,9 @@ impl<T: NodeValue> DocumentNodeRenderer<T> for HtmlBlockElementDocumentRenderer 
         output: &mut DocumentWriter,
     ) {
         context.cr(output);
-        write!(output, "<{}", self.0);
-        write_html_attrs(output, node.attrs());
-        output.write_char('>');
+        write_html_open(output, self.0, node.attrs());
         context.render_children(node.id(), output);
-        write!(output, "</{}>", self.0);
+        write_html_close(output, self.0);
         context.cr(output);
     }
 }
@@ -581,7 +579,9 @@ fn write_html_attr_group<'a>(
     values: impl Iterator<Item = &'a str>,
 ) {
     if name == "class" || name == "style" {
-        write!(output, " {}=\"", escape_html(name));
+        output.write_char(' ');
+        output.write_str(&escape_html(name));
+        output.write_str("=\"");
         let separator = if name == "class" { ' ' } else { ';' };
         for (index, value) in values.enumerate() {
             if index != 0 {
@@ -592,19 +592,26 @@ fn write_html_attr_group<'a>(
         output.write_char('"');
     } else {
         for value in values {
-            write!(output, " {}=\"{}\"", escape_html(name), escape_html(value));
+            output.write_char(' ');
+            output.write_str(&escape_html(name));
+            output.write_str("=\"");
+            output.write_str(&escape_html(value));
+            output.write_char('"');
         }
     }
 }
 
 pub(crate) fn write_html_open(output: &mut DocumentWriter, tag: &str, attrs: &[HtmlAttribute]) {
-    write!(output, "<{tag}");
+    output.write_char('<');
+    output.write_str(tag);
     write_html_attrs(output, attrs);
     output.write_char('>');
 }
 
 pub(crate) fn write_html_close(output: &mut DocumentWriter, tag: &str) {
-    write!(output, "</{tag}>");
+    output.write_str("</");
+    output.write_str(tag);
+    output.write_char('>');
 }
 
 pub(crate) fn write_html_self_close(
@@ -613,7 +620,8 @@ pub(crate) fn write_html_self_close(
     attrs: &[HtmlAttribute],
     xhtml: bool,
 ) {
-    write!(output, "<{tag}");
+    output.write_char('<');
+    output.write_str(tag);
     write_html_attrs(output, attrs);
     if xhtml {
         output.write_str(" /");
