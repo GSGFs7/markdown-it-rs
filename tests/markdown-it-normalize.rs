@@ -2,6 +2,15 @@
 
 mod common;
 
+#[test]
+fn bracketed_hosts_encode_inner_brackets() {
+    let md = markdown_it::MarkdownIt::with_preset(markdown_it::Preset::CommonMark);
+    assert_eq!(
+        md.render("[foo](//[::ffff9[[~:192.92.0.2.1]/)\n"),
+        "<p><a href=\"//[::ffff9%5B%5B~:192.92.0.2.1]/\">foo</a></p>\n"
+    );
+}
+
 fn run(input: &str, output: &str) {
     let expected = if output.is_empty() {
         String::new()

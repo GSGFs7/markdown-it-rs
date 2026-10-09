@@ -146,6 +146,21 @@ mod tests {
     }
 
     #[test]
+    fn encodes_inner_brackets_in_bracketed_hosts() {
+        for (source, expected) in [
+            (
+                "//[::ffff9[[~:192.92.0.2.1]/",
+                "//[::ffff9%5B%5B~:192.92.0.2.1]/",
+            ),
+            ("https://[::1[extra]]/", "https://[::1%5Bextra%5D]/"),
+            ("https://[::1]extra]/", "https://[::1%5Dextra]/"),
+            ("https://[::1]:8080/path", "https://[::1]:8080/path"),
+        ] {
+            assert_eq!(format_url_for_computers(source), expected, "{source}");
+        }
+    }
+
+    #[test]
     fn normalizes_mailto_domain() {
         assert_eq!(
             format_url_for_computers("mailto:user@クロ.com"),

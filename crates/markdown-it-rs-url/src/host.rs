@@ -1,14 +1,19 @@
 use std::borrow::Cow;
 
+use crate::percent::encode_url;
+
 // punycode, "クロ.com" -> "xn--pckwg.com"
 pub(crate) fn normalize_host(host: &str) -> Option<Cow<'_, str>> {
     if host.is_empty() {
         return Some(Cow::Borrowed(""));
     }
 
-    // protect IPv6, such as: [::1]
+    // Preserve outer IPv6 brackets; encode the hostname inside them.
     if is_ipv6_host(host) {
-        return Some(Cow::Borrowed(host));
+        return Some(match encode_url(&host[1..host.len() - 1]) {
+            Cow::Borrowed(_) => Cow::Borrowed(host),
+            Cow::Owned(inner) => Cow::Owned(format!("[{inner}]")),
+        });
     }
 
     // Punycode conversion in markdown-it leaves ASCII labels unchanged,
