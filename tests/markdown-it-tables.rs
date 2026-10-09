@@ -1,3 +1,20 @@
+#[test]
+fn table_headers_require_a_pipe() {
+    for (source, expected) in [
+        (
+            "&é\n:------:\nbar | baz",
+            "<p>&amp;é\n:------:\nbar | baz</p>",
+        ),
+        ("foo\n|---\nbar", "<p>foo\n|—\nbar</p>"),
+    ] {
+        run(source, expected);
+    }
+    run(
+        "| abc  |\n:-: |\r\r&é\r:------:\nbar | baz\n",
+        "<table>\n<thead>\n<tr>\n<th style=\"text-align:center\">abc</th>\n</tr>\n</thead>\n</table>\n<p>&amp;é\n:------:\nbar | baz</p>",
+    );
+}
+
 fn run(input: &str, output: &str) {
     let output = if output.is_empty() {
         "".to_owned()

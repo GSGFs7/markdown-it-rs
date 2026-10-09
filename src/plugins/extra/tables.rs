@@ -388,8 +388,13 @@ impl TableScanner {
             return None;
         }
 
+        let header = get_line(line).0;
+        if !header.contains('|') {
+            return None;
+        }
+
         let alignments = Self::scan_alignment_row(get_line(next_line).0)?;
-        let header_row = Self::scan_row(get_line(line).0);
+        let header_row = Self::scan_row(header);
 
         // header row must match the delimiter row in the number of cells
         if header_row.len() != alignments.len() {
@@ -632,8 +637,12 @@ mod tests {
         let html = md.render("|foo\n---\nbar");
         assert_eq!(html.trim(), "|foo\n---\nbar");
         let html = md.render("foo\n|---\nbar");
-        assert!(html.trim().starts_with("<table"));
+        assert_eq!(html.trim(), "foo\n|---\nbar");
         let html = md.render("foo\n:---\nbar");
+        assert_eq!(html.trim(), "foo\n:---\nbar");
+        let html = md.render("|foo\n|---\nbar");
+        assert!(html.trim().starts_with("<table"));
+        let html = md.render("|foo\n:---\nbar");
         assert!(html.trim().starts_with("<table"));
     }
 
