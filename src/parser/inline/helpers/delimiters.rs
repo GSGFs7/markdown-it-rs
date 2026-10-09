@@ -69,8 +69,11 @@ fn scan_delims_default(
         count += 1;
     }
 
-    let is_last_punct_char = last_char.is_ascii_punctuation() || is_punct_char(last_char);
-    let is_next_punct_char = next_char.is_ascii_punctuation() || is_punct_char(next_char);
+    // Classify NUL as U+FFFD without changing source offsets.
+    let is_last_punct_char =
+        last_char == '\0' || last_char.is_ascii_punctuation() || is_punct_char(last_char);
+    let is_next_punct_char =
+        next_char == '\0' || next_char.is_ascii_punctuation() || is_punct_char(next_char);
 
     let is_last_whitespace = last_char.is_whitespace();
     let is_next_whitespace = next_char.is_whitespace();

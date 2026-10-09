@@ -1,5 +1,45 @@
 mod common;
 
+#[test]
+fn emphasis_classifies_nul_as_the_replacement_character() {
+    for (source, expected) in [
+        (
+            "_foo _bar_ <_\0\\\\😀",
+            "<p><em>foo <em>bar</em> &lt;</em>�\\😀</p>",
+        ),
+        ("_a_\0", "<p><em>a</em>�</p>"),
+        ("\0_a_", "<p>�<em>a</em></p>"),
+        ("_a\0_", "<p><em>a�</em></p>"),
+        ("*a*\0", "<p><em>a</em>�</p>"),
+        ("a_\0b_", "<p>a_�b_</p>"),
+        ("a_\0_b", "<p>a_�_b</p>"),
+        ("_a_\u{0001}", "<p>_a_\u{0001}</p>"),
+    ] {
+        run(source, expected);
+    }
+}
+
+#[test]
+fn emphasis_next_to_nul_keeps_original_source_offsets() {
+    let md = markdown_it::MarkdownIt::new();
+    let source = "雪 \0_a_";
+    let document = md.parse_document(source);
+    assert_eq!(document.source(), source);
+    let start = source.find('_').unwrap();
+    let emphasis = document
+        .events(document.root())
+        .find_map(|event| {
+            let node = event.node();
+            node.is::<markdown_it::plugins::cmark::inline::emphasis::Em>()
+                .then_some(node)
+        })
+        .unwrap();
+    assert_eq!(
+        emphasis.srcmap().unwrap().get_byte_offsets(),
+        (start, source.len())
+    );
+}
+
 fn run(input: &str, output: &str) {
     let expected = if output.is_empty() {
         String::new()
