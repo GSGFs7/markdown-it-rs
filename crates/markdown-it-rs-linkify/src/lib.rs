@@ -70,9 +70,10 @@ impl Linkify {
     pub fn links_with_fuzzy(&self, input: &str, fuzzy_links: bool) -> Vec<Link> {
         let mut finder = LinkFinder::new();
         finder.url_must_have_scheme(!fuzzy_links);
+        let scan_input = mask_unicode_authorities(input);
 
         let mut links = finder
-            .links(input)
+            .links(&scan_input)
             .filter_map(|link| {
                 let kind = match *link.kind() {
                     UpstreamLinkKind::Url => LinkKind::Url,
@@ -104,7 +105,7 @@ impl Linkify {
             })
             .collect::<Vec<_>>();
 
-        self.extend_explicit_urls_with_backticks(input, &finder, &mut links);
+        self.extend_explicit_urls_with_backticks(input, &scan_input, &finder, &mut links);
         self.add_protocol_relative_urls(input, &mut links);
 
         links.sort_by_key(|link| (link.start, std::cmp::Reverse(link.end)));
@@ -124,6 +125,7 @@ impl Linkify {
     fn extend_explicit_urls_with_backticks(
         &self,
         input: &str,
+        scan_input: &str,
         finder: &LinkFinder,
         links: &mut Vec<Link>,
     ) {
@@ -135,7 +137,7 @@ impl Linkify {
         //
         // "https://example.com/foo`bar`baz" -> "https://example.com/foo~bar~baz"
         // scan the replaced URL length & encode origin content.
-        let scan_input = input.replace('`', "~");
+        let scan_input = scan_input.replace('`', "~");
         for link in finder.links(&scan_input) {
             if *link.kind() != UpstreamLinkKind::Url {
                 continue;
@@ -194,6 +196,68 @@ impl Linkify {
             });
         }
     }
+}
+
+fn mask_unicode_authorities(input: &str) -> std::borrow::Cow<'_, str> {
+    let mut masked = None;
+    for (separator, _) in input.match_indices("://") {
+        let start = input[..separator]
+            .rfind(|c: char| !c.is_ascii_alphanumeric() && !matches!(c, '+' | '-' | '.'))
+            .map_or(0, |index| {
+                index + input[index..].chars().next().unwrap().len_utf8()
+            });
+        if !has_supported_explicit_scheme(&input[start..]) {
+            continue;
+        }
+
+        let authority = input[separator + 3..]
+            .split(|ch: char| {
+                ch.is_whitespace() || matches!(ch, '/' | '?' | '#' | '<' | '>' | '"' | '\'' | '`')
+            })
+            .next()
+            .unwrap();
+        // Keep credentials under upstream's existing validation. A hostname
+        // ending in a hyphen must not turn into a partial Unicode URL match.
+        let hostname = authority
+            .split(':')
+            .next()
+            .unwrap()
+            .trim_end_matches(['.', ',', ';', ')', ']', '}', '!']);
+        if authority.contains('@') || hostname.ends_with('-') {
+            continue;
+        }
+
+        for (offset, ch) in input[separator + 3..].char_indices() {
+            if ch.is_whitespace() || matches!(ch, '/' | '?' | '#' | '<' | '>' | '"' | '\'' | '`') {
+                break;
+            }
+            if !ch.is_ascii()
+                && matches!(
+                    get_general_category(ch),
+                    GeneralCategory::UppercaseLetter
+                        | GeneralCategory::LowercaseLetter
+                        | GeneralCategory::TitlecaseLetter
+                        | GeneralCategory::ModifierLetter
+                        | GeneralCategory::OtherLetter
+                        | GeneralCategory::NonspacingMark
+                        | GeneralCategory::SpacingMark
+                        | GeneralCategory::EnclosingMark
+                )
+            {
+                // Upstream requires an ASCII TLD even when IRI parsing is on.
+                // Use one ASCII letter per UTF-8 byte so every returned range
+                // still indexes the original source. URL normalization happens
+                // later, using the original Unicode hostname.
+                let bytes = masked.get_or_insert_with(|| input.as_bytes().to_vec());
+                let position = separator + 3 + offset;
+                bytes[position..position + ch.len_utf8()].fill(b'a');
+            }
+        }
+    }
+    masked.map_or_else(
+        || std::borrow::Cow::Borrowed(input),
+        |bytes| std::borrow::Cow::Owned(String::from_utf8(bytes).unwrap()),
+    )
 }
 
 fn is_protocol_relative_boundary(input: &str, start: usize) -> bool {
@@ -319,6 +383,29 @@ mod tests {
             matches("https://example.com/foo`bar`baz"),
             vec![("https://example.com/foo`bar`baz", LinkKind::Url)]
         );
+    }
+
+    #[test]
+    fn finds_unicode_tlds_with_original_byte_ranges() {
+        let input = "前文 https://例子.测试/a_(b)?x=1&y=2 后文 https://example.com";
+        assert_eq!(
+            matches(input),
+            vec![
+                ("https://例子.测试/a_(b)?x=1&y=2", LinkKind::Url),
+                ("https://example.com", LinkKind::Url),
+            ]
+        );
+        for input in [
+            "http://例子.测试",
+            "HTTPS://例子.测试:8080/路径",
+            "ftp://例子.测试/file",
+            "https://例子.测试/foo`bar`baz",
+        ] {
+            assert_eq!(matches(input), vec![(input, LinkKind::Url)], "{input:?}");
+        }
+        assert!(matches("custom://例子.测试").is_empty());
+        assert!(matches("https://例子.测试-").is_empty());
+        assert!(matches("(https://例子.测试-)").is_empty());
     }
 
     #[test]

@@ -537,6 +537,14 @@ mod tests {
     }
 
     #[test]
+    fn unicode_tlds_are_linkified_and_normalized() {
+        run(
+            "https://例子.测试/a_(b)?x=1&y=2",
+            "<p><a href=\"https://xn--fsqu00a.xn--0zwm56d/a_(b)?x=1&amp;y=2\">https://例子.测试/a_(b)?x=1&amp;y=2</a></p>",
+        );
+    }
+
+    #[test]
     fn links_inside_raw_links() {
         let input = r#"https://example.com/foo[123](456)bar"#;
         let output = r#"<p><a href="https://example.com/foo%5B123%5D(456)bar">https://example.com/foo[123](456)bar</a></p>"#;
