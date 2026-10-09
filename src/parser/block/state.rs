@@ -149,7 +149,14 @@ impl<'a> DocumentBlockState<'a> {
     pub fn test_rules_at_line(&mut self) -> bool {
         for index in 0..self.rules.len() {
             let check = self.rules[index].0;
-            if check(self).is_some() {
+
+            // debug checks
+            #[cfg(debug_assertions)]
+            let matched = crate::parser::validation::check_block(self, index, check);
+
+            #[cfg(not(debug_assertions))]
+            let matched = check(self);
+            if matched.is_some() {
                 return true;
             }
         }

@@ -18,7 +18,6 @@ use std::collections::HashMap;
 use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
 use crate::document::NodeDraft;
-use crate::parser::inline::probe::{InlineProbeKind, InlineProbeResult};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::plugins::cmark::block::reference::ReferenceMap;
 
@@ -68,8 +67,8 @@ impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
     const MARKER: char = '[';
     const NAMES: &'static [&'static str] = &["link"];
 
-    fn probe(context: &mut crate::InlineProbeContext<'_>) -> InlineProbeResult {
-        document_link_probe(context, ENABLE_NESTED, 0)
+    fn check(context: &mut crate::DocumentInlineState<'_>) -> Option<usize> {
+        document_link_check(context, ENABLE_NESTED, 0)
     }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
@@ -92,12 +91,12 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
     const MARKER: char = PREFIX;
     const NAMES: &'static [&'static str] = &["link_prefix"];
 
-    fn probe(context: &mut crate::InlineProbeContext<'_>) -> InlineProbeResult {
+    fn check(context: &mut crate::DocumentInlineState<'_>) -> Option<usize> {
         if !context.remaining().starts_with(PREFIX) {
-            return InlineProbeResult::NoMatch;
+            return None;
         }
 
-        document_link_probe(context, ENABLE_NESTED, PREFIX.len_utf8())
+        document_link_check(context, ENABLE_NESTED, PREFIX.len_utf8())
     }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
@@ -129,15 +128,15 @@ impl InlineRule for LinkScannerEnd {
     }
 }
 
-// Scan a link label using independent probe sessions.
+// Scan a link label with independent check sessions.
 //
 // This function assumes that the first character ("[") already matches;
 // it returns the byte length of the label including the closing "]".
-fn probe_link_label(
-    mut context: crate::parser::inline::InlineProbeContext<'_>,
+fn scan_link_label(
+    mut context: crate::parser::inline::DocumentInlineState<'_>,
     enable_nested: bool,
 ) -> Option<usize> {
-    if context.depth() >= context.markdown_it().max_nesting {
+    if context.depth >= context.markdown_it().max_nesting {
         return None;
     }
 
@@ -152,7 +151,7 @@ fn probe_link_label(
             }
         }
 
-        context.next_token()?;
+        context.skip_token()?;
 
         let consumed = before - context.remaining().len();
         if ch == '[' {
@@ -404,8 +403,8 @@ fn resolve_reference_link(
     })
 }
 
-fn probe_link_candidate(
-    context: &crate::parser::inline::InlineProbeContext<'_>,
+fn scan_link_candidate(
+    context: &crate::parser::inline::DocumentInlineState<'_>,
     pos: usize,
     enable_nested: bool,
     references: Option<&ReferenceMap>,
@@ -423,10 +422,11 @@ fn probe_link_candidate(
         return None;
     }
 
+    let child_depth = context.depth.checked_add(1)?;
     let label_start = pos + 1;
     let label_end = label_start
-        + probe_link_label(
-            context.probe_subrange(label_start..source.len())?,
+        + scan_link_label(
+            context.child_state(label_start..source.len(), child_depth, context.link_level)?,
             enable_nested,
         )?;
 
@@ -446,8 +446,12 @@ fn probe_link_candidate(
     let reference_end = if source[suffix_start..].starts_with('[') {
         let reference_start = suffix_start + 1;
         context
-            .probe_subrange(reference_start..source.len())
-            .and_then(|child| probe_link_label(child, false))
+            .child_state(
+                reference_start..source.len(),
+                child_depth,
+                context.link_level,
+            )
+            .and_then(|child| scan_link_label(child, false))
             .map(|close| reference_start + close)
     } else {
         None
@@ -456,18 +460,15 @@ fn probe_link_candidate(
     resolve_reference_link(source, label_start, label_end, reference_end, references?)
 }
 
-fn document_link_probe(
-    context: &crate::parser::inline::InlineProbeContext<'_>,
+fn document_link_check(
+    context: &crate::parser::inline::DocumentInlineState<'_>,
     enable_nested: bool,
     offset: usize,
-) -> InlineProbeResult {
-    let references = context.root_ext().and_then(|ext| ext.get::<ReferenceMap>());
-    match probe_link_candidate(context, offset, enable_nested, references) {
-        Some(candidate) => InlineProbeResult::Match {
-            len: candidate.end,
-            kind: InlineProbeKind::Token,
-        },
-        None => InlineProbeResult::NoMatch,
+) -> Option<usize> {
+    let references = context.root_ext.and_then(|ext| ext.get::<ReferenceMap>());
+    match scan_link_candidate(context, offset, enable_nested, references) {
+        Some(candidate) => Some(candidate.end),
+        None => None,
     }
 }
 
@@ -483,11 +484,8 @@ fn document_link_run(
 
     // Parses [link](<to> "stuff") and other link forms (inline target or
     // reference), then parses the label as inline children.
-    let candidate = {
-        let context = state.probe_current();
-        let references = context.root_ext().and_then(|ext| ext.get::<ReferenceMap>());
-        probe_link_candidate(&context, offset, enable_nested, references)?
-    };
+    let references = state.root_ext.and_then(|ext| ext.get::<ReferenceMap>());
+    let candidate = scan_link_candidate(state, offset, enable_nested, references)?;
     // We found the end of the link and know for a fact it's a valid link;
     // all that's left to do is to parse the label contents as inline children.
     let mut node = factory(candidate.href, candidate.title);
@@ -511,7 +509,7 @@ struct LastLinkLabelClose {
     has_target: bool,
 }
 
-/// Index label ends directly, bypassing probe sessions for plain input.
+/// Index label ends directly, bypassing check sessions for plain input.
 ///
 /// Returns `None` when the source contains syntax the index pass cannot
 /// handle; label ends must then be scanned normally.
@@ -521,7 +519,7 @@ fn plain_label_closes(
     rules: &crate::parser::inline::DocumentRuleSet,
 ) -> Option<HashMap<usize, usize>> {
     let source = &source[..end];
-    if !is_plain_label_source(source) || !has_only_supported_probes(source, rules) {
+    if !is_plain_label_source(source) || !has_only_supported_checks(source, rules) {
         return None;
     }
     Some(index_bracket_closes(source))
@@ -548,9 +546,9 @@ fn is_plain_label_source(source: &str) -> bool {
     })
 }
 
-/// Whether every probe rule triggered by this source is handled by the index pass.
-fn has_only_supported_probes(source: &str, rules: &crate::parser::inline::DocumentRuleSet) -> bool {
-    rules.probes.iter().all(|rule| {
+/// Whether every check rule triggered by this source is handled by the index pass.
+fn has_only_supported_checks(source: &str, rules: &crate::parser::inline::DocumentRuleSet) -> bool {
+    rules.checks.iter().all(|rule| {
         !source.chars().any(|ch| rule.matches_marker(ch)) || is_index_supported(rule.type_id)
     })
 }
@@ -721,15 +719,10 @@ mod tests {
 }
 
 #[cfg(test)]
-mod probe_label_tests {
+mod check_label_tests {
     use super::*;
     use crate::document::Text;
-    use crate::parser::inline::{
-        InlineProbeContext,
-        InlineProbeKind,
-        InlineProbeResult,
-        InlineRule,
-    };
+    use crate::parser::inline::InlineRule;
     use crate::plugins::cmark::inline::link::Link;
     use crate::{DocumentInlineState, MarkdownIt, NodeDraft};
 
@@ -737,8 +730,8 @@ mod probe_label_tests {
     struct Bracket<const C: char>;
     impl<const C: char> InlineRule for Bracket<C> {
         const MARKER: char = C;
-        fn probe(_: &mut InlineProbeContext<'_>) -> InlineProbeResult {
-            InlineProbeResult::NoMatch
+        fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+            None
         }
         fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
             panic!("the consumer must consume the complete test input")
@@ -753,13 +746,19 @@ mod probe_label_tests {
                 return None;
             }
             let len = state.remaining().len();
-            let parent = state.probe_subrange(1..len).unwrap();
+            let parent = state
+                .child_state(1..len, state.depth.saturating_add(1), state.link_level)
+                .unwrap();
             let result = parent
-                .probe_subrange(1..parent.remaining().len())
-                .and_then(|child| probe_link_label(child, NESTED));
+                .child_state(
+                    1..parent.remaining().len(),
+                    parent.depth.saturating_add(1),
+                    parent.link_level,
+                )
+                .and_then(|child| scan_link_label(child, NESTED));
             assert_eq!(parent.remaining(), &state.remaining()[1..]);
             assert_eq!(parent.trailing_text(), "");
-            assert_eq!(parent.link_level(), 0);
+            assert_eq!(parent.link_level, 0);
             let content = match result {
                 Some(end) => format!("end={end}"),
                 None => "none".to_owned(),
@@ -818,18 +817,18 @@ mod probe_label_tests {
         assert_eq!(render(&md, "@[abc"), "<p>none</p>\n");
     }
 
-    struct DefaultProbe;
-    impl InlineRule for DefaultProbe {
+    struct DefaultCheck;
+    impl InlineRule for DefaultCheck {
         const MARKER: char = '?';
         fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
-            panic!("probe must not call run")
+            None
         }
     }
 
     struct Closing;
     impl InlineRule for Closing {
         const MARKER: char = ']';
-        fn probe(_: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
             panic!("terminal bracket must be checked before dispatch")
         }
         fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
@@ -841,7 +840,7 @@ mod probe_label_tests {
     fn terminal_close_precedes_dispatch_and_does_not_scan_suffix() {
         let mut md = parser::<false>();
         md.inline.add_rule::<Closing>();
-        md.inline.add_rule::<DefaultProbe>();
+        md.inline.add_rule::<DefaultCheck>();
         assert_eq!(render(&md, "@[x]?"), "<p>end=1</p>\n");
         assert_eq!(render(&md, "@[?]"), "<p>end=1</p>\n");
     }
@@ -849,15 +848,12 @@ mod probe_label_tests {
     struct BracketToken;
     impl InlineRule for BracketToken {
         const MARKER: char = '[';
-        fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+        fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
             if context.remaining().starts_with("[x]") {
                 // Legacy uses consumed length, even if a custom rule calls it Text.
-                InlineProbeResult::Match {
-                    len: 3,
-                    kind: InlineProbeKind::Text,
-                }
+                Some(3)
             } else {
-                InlineProbeResult::NoMatch
+                None
             }
         }
         fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
@@ -883,7 +879,7 @@ mod probe_label_tests {
     }
 
     #[test]
-    fn registered_link_and_image_probe_respect_remaining_depth() {
+    fn registered_link_and_image_check_respect_remaining_depth() {
         let mut md = MarkdownIt::empty();
         crate::plugins::cmark::inline::link::add(&mut md);
         crate::plugins::cmark::inline::image::add(&mut md);
@@ -893,24 +889,17 @@ mod probe_label_tests {
         for source in ["[雪](/url)", "[](/url)", "![雪](/img)", "![](/img)"] {
             for depth in [1, 2] {
                 let mut context =
-                    InlineProbeContext::new(source, 0, source.len(), &md, &rules, depth, 0);
+                    DocumentInlineState::new(source, 0, source.len(), &md, &rules, depth, 0);
                 let result = if source.starts_with('!') {
-                    <LinkPrefixScanner<'!', true> as InlineRule>::probe(&mut context)
+                    <LinkPrefixScanner<'!', true> as InlineRule>::check(&mut context)
                 } else {
-                    <LinkScanner<false> as InlineRule>::probe(&mut context)
+                    <LinkScanner<false> as InlineRule>::check(&mut context)
                 };
-                let expected = if depth == 1 {
-                    InlineProbeResult::Match {
-                        len: source.len(),
-                        kind: InlineProbeKind::Token,
-                    }
-                } else {
-                    InlineProbeResult::NoMatch
-                };
+                let expected = if depth == 1 { Some(source.len()) } else { None };
                 assert_eq!(result, expected, "depth={depth}, source={source:?}");
                 assert_eq!(context.remaining(), source);
-                assert_eq!(context.depth(), depth);
-                assert_eq!(context.link_level(), 0);
+                assert_eq!(context.depth, depth);
+                assert_eq!(context.link_level, 0);
             }
         }
     }
@@ -976,20 +965,20 @@ mod probe_label_tests {
             ("[x][", "/shortcut", None, 3),
             ("[x](/unfinished", "/shortcut", None, 3),
         ] {
-            let context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
-            let result = probe_link_candidate(&context, 0, false, Some(&references)).expect(source);
+            let context = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+            let result = scan_link_candidate(&context, 0, false, Some(&references)).expect(source);
             assert_eq!((result.label_start, result.label_end), (1, 2));
             assert_eq!(result.href.as_deref(), Some(href), "{source}");
             assert_eq!(result.title.as_deref(), title, "{source}");
             assert_eq!(result.end, end, "{source}");
             assert_eq!(context.remaining(), source);
             assert_eq!(context.trailing_text(), "");
-            assert_eq!(context.link_level(), 0);
+            assert_eq!(context.link_level, 0);
         }
 
         for source in ["[x][missing]", "[missing]", "[unclosed"] {
-            let context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
-            assert!(probe_link_candidate(&context, 0, false, Some(&references)).is_none());
+            let context = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+            assert!(scan_link_candidate(&context, 0, false, Some(&references)).is_none());
         }
     }
 
@@ -999,15 +988,15 @@ mod probe_label_tests {
         let ruleset = md.inline.document_rules();
         let source = "前雪[x](/url)";
         let context =
-            InlineProbeContext::new(source, "前".len(), source.len(), &md, &ruleset, 0, 0);
-        let result = probe_link_candidate(&context, "雪".len(), false, None).unwrap();
+            DocumentInlineState::new(source, "前".len(), source.len(), &md, &ruleset, 0, 0);
+        let result = scan_link_candidate(&context, "雪".len(), false, None).unwrap();
         assert_eq!(
             (result.label_start, result.label_end, result.end),
             (4, 5, 12)
         );
         assert_eq!(result.href.as_deref(), Some("/url"));
         assert_eq!(context.remaining(), "雪[x](/url)");
-        assert!(probe_link_candidate(&context, 1, false, None).is_none());
+        assert!(scan_link_candidate(&context, 1, false, None).is_none());
     }
 
     #[test]
@@ -1016,9 +1005,9 @@ mod probe_label_tests {
         let ruleset = md.inline.document_rules();
         for label in LABELS {
             let source = format!("[{label}](/url)");
-            let context = InlineProbeContext::new(&source, 0, source.len(), &md, &ruleset, 0, 0);
-            let result = probe_link_candidate(&context, 0, false, None)
-                .unwrap_or_else(|| panic!("{source}"));
+            let context = DocumentInlineState::new(&source, 0, source.len(), &md, &ruleset, 0, 0);
+            let result =
+                scan_link_candidate(&context, 0, false, None).unwrap_or_else(|| panic!("{source}"));
             // `]` bytes inside opaque spans must not shorten the label.
             assert_eq!(
                 (result.label_start, result.label_end),
@@ -1038,15 +1027,15 @@ mod probe_label_tests {
 
         // Inline targets parse without references, shortcut references do not.
         let source = "[x](/url)";
-        let context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
-        let result = probe_link_candidate(&context, 0, false, None).expect(source);
+        let context = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+        let result = scan_link_candidate(&context, 0, false, None).expect(source);
         assert_eq!(result.href.as_deref(), Some("/url"));
         assert_eq!(result.end, source.len());
 
         for source in ["[x]", "[x][ref]"] {
-            let context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+            let context = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
             assert!(
-                probe_link_candidate(&context, 0, false, None).is_none(),
+                scan_link_candidate(&context, 0, false, None).is_none(),
                 "{source}"
             );
         }
@@ -1057,13 +1046,29 @@ mod probe_label_tests {
         md.max_nesting = 2;
         let ruleset = md.inline.document_rules();
         let source = "[x](/url)";
-        let root = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
-        assert!(probe_link_candidate(&root, 0, false, None).is_some());
+        let root = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+        assert!(scan_link_candidate(&root, 0, false, None).is_some());
 
-        let nested = root.probe_subrange(0..source.len()).unwrap();
-        assert_eq!(nested.depth(), 1);
-        assert!(nested.probe_subrange(1..source.len()).is_none());
-        assert!(probe_link_candidate(&nested, 0, false, None).is_none());
+        let nested = root
+            .child_state(
+                0..source.len(),
+                root.depth.saturating_add(1),
+                root.link_level,
+            )
+            .unwrap();
+        assert_eq!(nested.depth, 1);
+        assert_eq!(
+            nested
+                .child_state(
+                    1..source.len(),
+                    nested.depth.saturating_add(1),
+                    nested.link_level
+                )
+                .unwrap()
+                .depth,
+            2
+        );
+        assert!(scan_link_candidate(&nested, 0, false, None).is_none());
     }
 
     #[test]
@@ -1075,23 +1080,23 @@ mod probe_label_tests {
         // parenthesis; bytes after `remaining()` must stay invisible.
         let source = "[x](/url)tail";
         let close = source.find(')').unwrap();
-        let truncated = InlineProbeContext::new(source, 0, close, &md, &ruleset, 0, 0);
+        let truncated = DocumentInlineState::new(source, 0, close, &md, &ruleset, 0, 0);
         assert_eq!(truncated.remaining(), "[x](/url");
-        assert!(probe_link_candidate(&truncated, 0, false, None).is_none());
+        assert!(scan_link_candidate(&truncated, 0, false, None).is_none());
 
         // Including the closing parenthesis makes the same window parse.
-        let complete = InlineProbeContext::new(source, 0, close + 1, &md, &ruleset, 0, 0);
-        let result = probe_link_candidate(&complete, 0, false, None).unwrap();
+        let complete = DocumentInlineState::new(source, 0, close + 1, &md, &ruleset, 0, 0);
+        let result = scan_link_candidate(&complete, 0, false, None).unwrap();
         assert_eq!(result.end, close + 1);
 
         // After the parent cursor advances, results stay relative to
         // `remaining()`, not to the start of the session.
         let source = "前雪[x](/url)";
         let mut context =
-            InlineProbeContext::new(source, "前".len(), source.len(), &md, &ruleset, 0, 0);
-        context.next_token().unwrap();
+            DocumentInlineState::new(source, "前".len(), source.len(), &md, &ruleset, 0, 0);
+        context.skip_token().unwrap();
         assert_eq!(context.remaining(), "[x](/url)");
-        let result = probe_link_candidate(&context, 0, false, None).unwrap();
+        let result = scan_link_candidate(&context, 0, false, None).unwrap();
         assert_eq!(
             (result.label_start, result.label_end, result.end),
             (1, 2, 9)
@@ -1101,31 +1106,29 @@ mod probe_label_tests {
     }
 
     #[test]
-    fn registered_link_probe_does_not_require_running_the_factory() {
+    fn registered_link_check_does_not_require_running_the_factory() {
         let mut md = MarkdownIt::empty();
-        add::<false>(&mut md, |_, _| panic!("probe must not call draft factory"));
+        add::<false>(&mut md, |_, _| panic!("check must not call draft factory"));
         let ruleset = md.inline.document_rules();
         let source = "[x](/url)";
-        let mut context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
-        let token = context.next_token().unwrap();
-        assert_eq!(token.range, 0..source.len());
-        assert_eq!(token.kind, InlineProbeKind::Token);
-        assert_eq!(context.link_level(), 0);
-        assert!(context.next_token().is_none());
+        let mut context = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+        let token = context.skip_token().unwrap();
+        assert_eq!(token, source.len());
+        assert_eq!(context.link_level, 0);
+        assert!(context.skip_token().is_none());
     }
 
     #[test]
-    fn registered_prefix_probe_does_not_require_running_the_factory() {
+    fn registered_prefix_check_does_not_require_running_the_factory() {
         let mut md = MarkdownIt::empty();
-        add_prefix::<'雪', true>(&mut md, |_, _| panic!("probe must not call draft factory"));
+        add_prefix::<'雪', true>(&mut md, |_, _| panic!("check must not call draft factory"));
         let ruleset = md.inline.document_rules();
         let source = "雪[x](/url)";
-        let mut context = InlineProbeContext::new(source, 0, source.len(), &md, &ruleset, 0, 0);
-        let token = context.next_token().unwrap();
-        assert_eq!(token.range, 0..source.len());
-        assert_eq!(token.kind, InlineProbeKind::Token);
-        assert_eq!(context.link_level(), 0);
-        assert!(context.next_token().is_none());
+        let mut context = DocumentInlineState::new(source, 0, source.len(), &md, &ruleset, 0, 0);
+        let token = context.skip_token().unwrap();
+        assert_eq!(token, source.len());
+        assert_eq!(context.link_level, 0);
+        assert!(context.skip_token().is_none());
     }
 
     #[test]

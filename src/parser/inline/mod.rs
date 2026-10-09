@@ -1,8 +1,7 @@
-//! Inline syntax rules and probe sessions.
+//! Inline syntax rules and check sessions.
 #[doc(hidden)]
 pub mod builtin;
 pub mod helpers;
-pub mod probe;
 mod rule;
 mod state;
 
@@ -10,20 +9,19 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use self::builtin::skip_text::TextScannerImpl;
-pub use self::probe::*;
 pub use self::rule::*;
 pub use self::state::DocumentInlineState;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 
-pub(crate) type InlineProbeFn = fn(&mut InlineProbeContext<'_>) -> InlineProbeResult;
+pub(crate) type InlineCheckFn = fn(&mut DocumentInlineState<'_>) -> Option<usize>;
 pub(crate) type InlineRuleFn =
     fn(&mut crate::DocumentInlineState<'_>) -> Option<(Option<crate::NodeDraft>, usize)>;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct InlineRuleFns {
     pub(crate) run: InlineRuleFn,
-    pub(crate) probe: InlineProbeFn,
+    pub(crate) check: InlineCheckFn,
     pub(crate) marker: char,
     pub(crate) type_id: std::any::TypeId,
 }
@@ -39,7 +37,7 @@ impl InlineRuleFns {
 fn inline_rule_fns<T: InlineRule>() -> InlineRuleFns {
     InlineRuleFns {
         run: T::run,
-        probe: T::probe,
+        check: T::check,
         marker: T::MARKER,
         type_id: std::any::TypeId::of::<T>(),
     }
@@ -54,7 +52,7 @@ pub struct RuleEntry {
 
 pub(crate) struct DocumentRuleSet {
     pub(crate) runs: Vec<InlineRuleFns>,
-    pub(crate) probes: Vec<InlineRuleFns>,
+    pub(crate) checks: Vec<InlineRuleFns>,
     pub(crate) finalizers: Vec<DocumentFinalizeFn>,
 }
 
@@ -75,7 +73,7 @@ impl InlineParser {
         let entries: Vec<_> = self.ruler.iter().map(|entry| entry.document).collect();
         DocumentRuleSet {
             runs: entries.clone(),
-            probes: entries,
+            checks: entries,
             finalizers: self.document_finalizers(),
         }
     }

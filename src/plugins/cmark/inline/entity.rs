@@ -10,7 +10,6 @@ use regex::Regex;
 use crate::MarkdownIt;
 use crate::common::utils::{get_entity_from_str, is_valid_entity_code};
 use crate::document::{NodeDraft, TextSpecial};
-use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 
 pub fn add(md: &mut MarkdownIt) {
@@ -89,13 +88,10 @@ impl InlineRule for EntityScanner {
     const MARKER: char = '&';
     const NAMES: &'static [&'static str] = &["entity"];
 
-    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
         match scan_entity(context.remaining()) {
-            Some(matched) => InlineProbeResult::Match {
-                len: matched.len,
-                kind: InlineProbeKind::Token,
-            },
-            None => InlineProbeResult::NoMatch,
+            Some(matched) => Some(matched.len),
+            None => None,
         }
     }
 

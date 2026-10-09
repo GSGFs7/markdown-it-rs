@@ -47,13 +47,6 @@ pub use document::{
 pub use markdown_it::MarkdownIt;
 pub use parser::block::DocumentBlockState;
 pub use parser::inline::DocumentInlineState;
-pub use parser::inline::probe::{
-    InlineProbeContext,
-    InlineProbeEffects,
-    InlineProbeKind,
-    InlineProbeResult,
-    InlineProbeToken,
-};
 pub use plugins::presets::{Preset, PresetConfig};
 pub use render::{
     DocumentNodeRenderer,

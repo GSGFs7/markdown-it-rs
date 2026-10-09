@@ -72,7 +72,6 @@ use crate::common::extset::{NodeExtSet, RenderExtSet};
 use crate::common::sourcemap::SourcePos;
 use crate::document::{HtmlAttribute, NodeDraft, NodeRef};
 use crate::parser::block::{BlockRule, DocumentBlockState};
-use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
     DocumentNodeRenderer,
@@ -129,16 +128,9 @@ impl InlineRule for TextDirective {
     const MARKER: char = ':';
     const NAMES: &'static [&'static str] = &["text_directive"];
 
-    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
-        let (source, pos, _) = context.source_window();
-        let preceded_by_colon = pos > 0 && source[..pos].ends_with(':');
-        match scan_text_directive(context.remaining(), preceded_by_colon) {
-            Some((_, _, len)) => InlineProbeResult::Match {
-                len,
-                kind: InlineProbeKind::Token,
-            },
-            None => InlineProbeResult::NoMatch,
-        }
+    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+        let preceded_by_colon = context.pos > 0 && context.src[..context.pos].ends_with(':');
+        scan_text_directive(context.remaining(), preceded_by_colon).map(|(_, _, len)| len)
     }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {

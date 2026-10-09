@@ -6,7 +6,6 @@
 //!  - <https://spec.commonmark.org/0.30/#soft-line-breaks>
 use crate::MarkdownIt;
 use crate::document::{NodeDraft, NodeRef, NodeValue};
-use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
     DocumentNodeRenderer,
@@ -72,15 +71,12 @@ impl InlineRule for NewlineScanner {
     const MARKER: char = '\n';
     const NAMES: &'static [&'static str] = &["newline"];
 
-    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
         // check rule is required because run() modifies trailing text
         if context.remaining().starts_with('\n') {
-            InlineProbeResult::Match {
-                len: 1,
-                kind: InlineProbeKind::Token,
-            }
+            Some(1)
         } else {
-            InlineProbeResult::NoMatch
+            None
         }
     }
 

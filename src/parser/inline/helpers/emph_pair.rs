@@ -48,7 +48,6 @@ use std::cmp::min;
 use crate::MarkdownIt;
 use crate::common::sourcemap::SourcePos;
 use crate::document::{NodeDraft, NodeValue, Text};
-use crate::parser::inline::probe::{InlineProbeContext, InlineProbeResult};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 
 #[derive(Debug, Default)]
@@ -115,8 +114,8 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
     const MARKER: char = MARKER;
     const NAMES: &'static [&'static str] = &["emph_pair"];
 
-    fn probe(_context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
-        InlineProbeResult::NoMatch
+    fn check(_context: &mut DocumentInlineState<'_>) -> Option<usize> {
+        None
     }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {

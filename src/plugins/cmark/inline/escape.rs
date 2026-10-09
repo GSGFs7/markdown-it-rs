@@ -6,7 +6,6 @@
 //! <https://spec.commonmark.org/0.30/#backslash-escapes>
 use crate::MarkdownIt;
 use crate::document::{NodeDraft, TextSpecial};
-use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::plugins::cmark::inline::newline::Hardbreak;
 
@@ -53,14 +52,8 @@ impl InlineRule for EscapeScanner {
     const MARKER: char = '\\';
     const NAMES: &'static [&'static str] = &["escape"];
 
-    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
-        match scan_escape(context.remaining()) {
-            Some(matched) => InlineProbeResult::Match {
-                len: matched.len(),
-                kind: InlineProbeKind::Token,
-            },
-            None => InlineProbeResult::NoMatch,
-        }
+    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+        scan_escape(context.remaining()).map(|matched| matched.len())
     }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {

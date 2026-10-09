@@ -4,12 +4,12 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use super::DocumentRuleSet;
-use super::probe::InlineProbeContext;
 use crate::MarkdownIt;
 use crate::common::extset::{InlineRootExtSet, RootExtSet};
 use crate::common::sourcemap::SourcePos;
 use crate::document::{NodeDraft, Text};
 
+// TODO: adjust API visibility
 pub struct DocumentInlineState<'a> {
     /// Markdown source.
     pub(crate) src: Cow<'a, str>,
@@ -28,7 +28,7 @@ pub struct DocumentInlineState<'a> {
     mapping: Cow<'a, [(usize, usize)]>,
 
     /// Counter used to prevent recursion by image and link rules.
-    depth: u32,
+    pub(crate) depth: u32,
 
     pub(crate) inline_ext: InlineRootExtSet,
 
@@ -127,24 +127,7 @@ impl<'a> DocumentInlineState<'a> {
         link_level: i32,
         depth: u32,
     ) -> Option<Vec<NodeDraft>> {
-        self.remaining().get(range.clone())?;
-
-        let start = self.pos + range.start;
-        let end = self.pos + range.end;
-        let mut child = DocumentInlineState {
-            src: Cow::Borrowed(self.src.as_ref()),
-            pos: start,
-            pos_max: end,
-            md: self.md,
-            mapping: Cow::Borrowed(self.mapping.as_ref()),
-            depth,
-            inline_ext: InlineRootExtSet::new(),
-            root_ext: self.root_ext,
-            link_level,
-            ruleset: self.ruleset,
-            nodes: Vec::new(),
-            pending_text: None,
-        };
+        let mut child = self.child_state(range, depth, link_level)?;
 
         stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
             child.tokenize();
@@ -201,41 +184,88 @@ impl<'a> DocumentInlineState<'a> {
         }
     }
 
-    /// Inspect the current position without entering a child parse level.
-    pub(crate) fn probe_current(&self) -> InlineProbeContext<'_> {
-        self.probe_at_depth(0..self.remaining().len(), self.depth)
+    /// Advance over one checked span without emitting nodes, for boundary scans.
+    pub(crate) fn skip_token(&mut self) -> Option<usize> {
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || self.skip_token_inner())
     }
 
-    /// Probe a later offset from the current position at the current depth.
-    pub(crate) fn probe_from(&self, offset: usize) -> InlineProbeContext<'_> {
-        self.probe_at_depth(offset..self.remaining().len(), self.depth)
+    fn skip_token_inner(&mut self) -> Option<usize> {
+        if self.pos == self.pos_max {
+            return None;
+        }
+
+        if self.depth >= self.md.max_nesting {
+            let len = self.pos_max - self.pos;
+            self.pending_text = Some((self.pos, self.pos_max));
+            self.pos += len;
+            return Some(len);
+        }
+
+        let marker = self.remaining().chars().next().unwrap();
+        for rule_index in 0..self.ruleset.checks.len() {
+            let entry = self.ruleset.checks[rule_index];
+            if !entry.matches_marker(marker) {
+                continue;
+            }
+
+            #[cfg(debug_assertions)]
+            let matched = crate::parser::validation::check_inline(self, rule_index, entry.check);
+
+            #[cfg(not(debug_assertions))]
+            let matched = (entry.check)(self);
+            if let Some(len) = matched {
+                // Extend the pending text when the match is contiguous;
+                // otherwise start an opaque token.
+                if self
+                    .pending_text
+                    .is_none_or(|(_, end)| end != self.pos + len)
+                {
+                    self.pending_text = None;
+                }
+                self.pos += len;
+                return Some(len);
+            }
+        }
+
+        let len = marker.len_utf8();
+        self.pending_text = Some((
+            self.pending_text.map_or(self.pos, |(start, _)| start),
+            self.pos + len,
+        ));
+        self.pos += len;
+
+        Some(len)
     }
 
-    fn probe_at_depth(&self, range: Range<usize>, depth: u32) -> InlineProbeContext<'_> {
-        InlineProbeContext::new(
-            self.src.as_ref(),
-            self.pos + range.start,
-            self.pos + range.end,
-            self.md,
-            self.ruleset,
-            depth,
-            self.link_level,
-        )
-        .with_root_ext(self.root_ext)
-    }
-
-    /// Start an independent probe session for `range` relative to
-    /// [`Self::remaining`].
-    ///
-    /// The returned context owns its cursor and scratch storage; the parent
-    /// state is left untouched, including pending text and inline extensions.
-    /// Ranges that are reversed, out of bounds, or not on UTF-8 boundaries
-    /// return `None`. Classification happens through
-    /// [`InlineProbeContext::next_token`]; rules without a probe are skipped
-    /// and unclaimed characters become text.
-    pub fn probe_subrange(&self, range: Range<usize>) -> Option<InlineProbeContext<'_>> {
+    /// Create a child state over `range` with fresh scratch, nodes and pending text.
+    pub(crate) fn child_state(
+        &self,
+        range: Range<usize>,
+        depth: u32,
+        link_level: i32,
+    ) -> Option<DocumentInlineState<'_>> {
         self.remaining().get(range.clone())?;
-        Some(self.probe_at_depth(range, self.depth.saturating_add(1)))
+
+        let start = self.pos + range.start;
+        let end = self.pos + range.end;
+
+        #[cfg(debug_assertions)]
+        crate::parser::validation::inline_range(self.src.as_ref(), start, end);
+
+        Some(DocumentInlineState {
+            src: Cow::Borrowed(self.src.as_ref()),
+            pos: start,
+            pos_max: end,
+            md: self.md,
+            mapping: Cow::Borrowed(self.mapping.as_ref()),
+            depth,
+            inline_ext: InlineRootExtSet::new(),
+            root_ext: self.root_ext,
+            link_level,
+            ruleset: self.ruleset,
+            nodes: Vec::new(),
+            pending_text: None,
+        })
     }
 
     pub(crate) fn trailing_text(&self) -> &str {

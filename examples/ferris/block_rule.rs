@@ -24,11 +24,10 @@ impl BlockRule for FerrisBlockScanner {
     //
     // If custom structure is found, it:
     //  - creates a new `NodeDraft`
-    //  - increments `state.line` to a position after this node
-    //  - returns true
+    //  - returns the node and the number of lines it occupies
     //
-    // In "silent mode" (when `silent=true`) you aren't allowed to
-    // create any nodes, should only increment `state.line`.
+    // The default `check` calls `run` and discards the node. Do not modify the
+    // cursor or existing nodes from this implementation.
     //
     fn run(state: &mut DocumentBlockState) -> Option<(NodeDraft, usize)> {
         // get contents of a line number `state.line` and check it

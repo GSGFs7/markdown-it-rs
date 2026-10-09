@@ -1,6 +1,5 @@
 use crate::document::NodeDraft;
 use crate::parser::inline::DocumentInlineState;
-use crate::parser::inline::probe::{InlineProbeContext, InlineProbeResult};
 
 pub type DocumentFinalizeFn = for<'a> fn(&mut crate::parser::inline::DocumentInlineState<'a>);
 
@@ -14,14 +13,14 @@ pub trait InlineRule: 'static {
     const MARKER: char;
     const NAMES: &'static [&'static str] = &[];
 
-    /// Classify the current position during an independent probe.
+    /// Check the current position and return its consumed UTF-8 byte length.
     ///
-    /// `NoMatch` tries lower-priority rules, then character fallback. It does
-    /// not imply that `run` would reject this position. Rules whose spans must
-    /// remain opaque during boundary scanning should implement this method.
-    /// Do not advance the cursor or mutate shared state.
-    fn probe(_context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
-        InlineProbeResult::NoMatch
+    /// Must not advance the cursor or modify accumulated nodes; the parser
+    /// validates this in debug builds. The default calls `run` and discards its
+    /// draft, so override it when `run` has side effects or when matching
+    /// conditions differ.
+    fn check(state: &mut DocumentInlineState<'_>) -> Option<usize> {
+        Self::run(state).map(|(_, len)| len)
     }
 
     /// Inspect the current position and return a draft plus consumed byte length.

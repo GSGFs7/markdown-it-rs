@@ -10,6 +10,11 @@ pub trait BlockRule: 'static {
     const MARKERS: &'static [char] = &[];
     const NAMES: &'static [&'static str] = &[];
 
+    /// Check whether this line interrupts the current block continuation.
+    ///
+    /// Must not modify parser state; the parser validates this in debug builds.
+    /// The default calls `run` and discards its draft, so override it when `run`
+    /// has side effects or a match cannot interrupt a paragraph.
     fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
         Self::run(state).map(|_| ())
     }

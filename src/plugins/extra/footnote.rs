@@ -56,13 +56,7 @@ use crate::common::utils::normalize_reference;
 use crate::document::{NodeDraft, NodeRef};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::parser::core::{CoreRule, DocumentCoreRule};
-use crate::parser::inline::{
-    DocumentInlineState,
-    InlineProbeContext,
-    InlineProbeKind,
-    InlineProbeResult,
-    InlineRule,
-};
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -253,7 +247,7 @@ impl FootnoteScans {
             if let Some(end) = state.ends.get(&key) {
                 return Ok(*end);
             }
-            // Charge rejected probes too: other rules may retry after our limit.
+            // Rejected checks count too: other rules may retry after the limit.
             if state.steps >= source.len().saturating_mul(Self::STEPS_PER_BYTE) {
                 return Ok(None);
             }
@@ -532,48 +526,37 @@ impl InlineRule for FootnoteReferenceScanner {
         ))
     }
 
-    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
-        let Some(env) = context
-            .root_ext()
-            .and_then(|root| root.get::<DocumentFootnoteEnv>())
-        else {
-            return InlineProbeResult::NoMatch;
-        };
+    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+        let env = context.root_ext?.get::<DocumentFootnoteEnv>()?;
         let env = env.0.lock().unwrap();
-        match parse_reference_label(context.remaining(), &env.defined) {
-            Some((_, _, len)) => InlineProbeResult::Match {
-                len,
-                kind: InlineProbeKind::Token,
-            },
-            None => InlineProbeResult::NoMatch,
-        }
+        parse_reference_label(context.remaining(), &env.defined).map(|(_, _, len)| len)
     }
 }
 
-/// Find the matching `]` for an inline footnote starting at the probe cursor;
-/// returns the closing bracket's offset from the content start.
-fn probe_inline_footnote_end(mut context: InlineProbeContext<'_>) -> Option<usize> {
+/// Find the matching `]` for an inline footnote, returning its offset from
+/// the content start.
+fn scan_inline_footnote_end(mut context: DocumentInlineState<'_>) -> Option<usize> {
     let scans = context
-        .root_ext()?
+        .root_ext?
         .get::<DocumentFootnoteEnv>()?
         .0
         .lock()
         .unwrap()
         .scans
         .clone();
-    let (source, start, end) = context.source_window();
+    let (source, start, end) = (&context.src, context.pos, context.pos_max);
     match scans.begin(
         source,
-        (start, end, context.depth(), context.link_level()),
+        (start, end, context.depth, context.link_level),
         context.markdown_it().max_nesting,
     ) {
         Ok(end) => end,
-        Err(guard) => guard.finish(scan_probed_footnote_end(&mut context, &scans)),
+        Err(guard) => guard.finish(scan_footnote_end(&mut context, &scans)),
     }
 }
 
-fn scan_probed_footnote_end(
-    context: &mut InlineProbeContext<'_>,
+fn scan_footnote_end(
+    context: &mut DocumentInlineState<'_>,
     scans: &FootnoteScans,
 ) -> Option<usize> {
     let initial_len = context.remaining().len();
@@ -592,7 +575,7 @@ fn scan_probed_footnote_end(
         }
 
         // skip entire token, such as "[text](url)"
-        context.next_token()?;
+        context.skip_token()?;
 
         let consumed = before - context.remaining().len();
         // A bare `[` opens a nested bracket; tokenized brackets are opaque.
@@ -613,7 +596,11 @@ impl InlineRule for FootnoteInlineScanner {
         if !state.remaining().starts_with("^[") {
             return None;
         }
-        let scanned = probe_inline_footnote_end(state.probe_from(2));
+        let scanned = scan_inline_footnote_end(state.child_state(
+            2..state.remaining().len(),
+            state.depth,
+            state.link_level,
+        )?);
         let env = state.root_ext?.get::<DocumentFootnoteEnv>()?;
         let scans = env.0.lock().unwrap().scans.clone();
         if scans.exhausted() {
@@ -652,27 +639,25 @@ impl InlineRule for FootnoteInlineScanner {
         Some((Some(reference), len))
     }
 
-    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
         if !context.remaining().starts_with("^[") {
-            return InlineProbeResult::NoMatch;
+            return None;
         }
-        let scanned = probe_inline_footnote_end(context.probe_from(2));
+        let scanned = scan_inline_footnote_end(context.child_state(
+            2..context.remaining().len(),
+            context.depth,
+            context.link_level,
+        )?);
         let exhausted = context
-            .root_ext()
+            .root_ext
             .and_then(|root| root.get::<DocumentFootnoteEnv>())
             .is_some_and(|env| env.0.lock().unwrap().scans.exhausted());
         if exhausted {
-            return InlineProbeResult::Match {
-                len: context.remaining().len(),
-                kind: InlineProbeKind::Text,
-            };
+            return Some(context.remaining().len());
         }
         match scanned {
-            Some(end_offset) if end_offset > 0 => InlineProbeResult::Match {
-                len: end_offset + 3,
-                kind: InlineProbeKind::Token,
-            },
-            _ => InlineProbeResult::NoMatch,
+            Some(end_offset) if end_offset > 0 => Some(end_offset + 3),
+            _ => None,
         }
     }
 }

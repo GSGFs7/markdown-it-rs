@@ -148,11 +148,14 @@ pub struct LinkifyFuzzyScanner;
 #[doc(hidden)]
 pub struct LinkifyEmailScanner;
 
-// Legacy `check` deliberately declines these mutating rules. Keep the default
-// NoMatch probe so label boundary scans do not consume or rewind linkify spans.
+// Boundary scans must not consume or rewind linkify spans.
 impl InlineRule for LinkifyScanner {
     const MARKER: char = ':';
     const NAMES: &'static [&'static str] = &["linkify"];
+    fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+        None
+    }
+
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         run_document_candidate(state, LinkifyMode::Scheme)
     }
@@ -161,6 +164,10 @@ impl InlineRule for LinkifyScanner {
 impl InlineRule for LinkifyFuzzyScanner {
     const MARKER: char = '.';
     const NAMES: &'static [&'static str] = &["linkify_fuzzy"];
+    fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+        None
+    }
+
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         run_document_candidate(state, LinkifyMode::Fuzzy)
     }
@@ -169,6 +176,10 @@ impl InlineRule for LinkifyFuzzyScanner {
 impl InlineRule for LinkifyEmailScanner {
     const MARKER: char = '@';
     const NAMES: &'static [&'static str] = &["linkify_email"];
+    fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+        None
+    }
+
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {
         run_document_candidate(state, LinkifyMode::Email)
     }

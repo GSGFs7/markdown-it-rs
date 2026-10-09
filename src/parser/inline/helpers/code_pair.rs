@@ -42,7 +42,6 @@
 //!
 use crate::MarkdownIt;
 use crate::document::{NodeDraft, Text};
-use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 
 #[derive(Debug, Default, Clone)]
@@ -68,18 +67,16 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
     const MARKER: char = MARKER;
     const NAMES: &'static [&'static str] = &["code_pair"];
 
-    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
         let follows_marker = context.trailing_text().ends_with(MARKER);
-        let matched = context.with_scratch(|src, start, end, scratch| {
-            scan_code_pair_bounds::<MARKER>(src, start, end, follows_marker, scratch)
-        });
-        match matched {
-            Some(matched) => InlineProbeResult::Match {
-                len: matched.consumed,
-                kind: InlineProbeKind::Token,
-            },
-            None => InlineProbeResult::NoMatch,
-        }
+        let matched = scan_code_pair_bounds::<MARKER>(
+            &context.src,
+            context.pos,
+            context.pos_max,
+            follows_marker,
+            &mut context.inline_ext,
+        );
+        matched.map(|matched| matched.consumed)
     }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {

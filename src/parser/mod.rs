@@ -10,3 +10,6 @@ pub mod inline;
 
 pub(crate) mod pipeline;
 mod rule;
+
+#[cfg(debug_assertions)]
+mod validation;

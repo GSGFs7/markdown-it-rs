@@ -10,8 +10,7 @@ use regex::Regex;
 use crate::MarkdownIt;
 use crate::document::{NodeDraft, NodeRef, NodeValue, TextSpecial};
 use crate::links::LinkFormatter;
-use crate::parser::inline::InlineRule;
-use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -73,16 +72,13 @@ impl InlineRule for AutolinkScanner {
     const MARKER: char = '<';
     const NAMES: &'static [&'static str] = &["autolink"];
 
-    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
+    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
         match scan_autolink(
             context.remaining(),
             context.markdown_it().link_formatter.as_ref(),
         ) {
-            Some(matched) => InlineProbeResult::Match {
-                len: matched.consumed,
-                kind: InlineProbeKind::Token,
-            },
-            None => InlineProbeResult::NoMatch,
+            Some(matched) => Some(matched.consumed),
+            None => None,
         }
     }
 

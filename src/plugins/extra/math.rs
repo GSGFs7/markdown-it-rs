@@ -2,7 +2,6 @@
 
 use crate::document::{NodeDraft, NodeRef};
 use crate::parser::block::{BlockRule, DocumentBlockState};
-use crate::parser::inline::probe::{InlineProbeContext, InlineProbeKind, InlineProbeResult};
 use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{
     DocumentNodeRenderer,
@@ -109,14 +108,8 @@ impl InlineRule for MathInlineScanner {
     const MARKER: char = '$';
     const NAMES: &'static [&'static str] = &["math_inline"];
 
-    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
-        match scan_math_inline(context.remaining()) {
-            Some((_, len)) => InlineProbeResult::Match {
-                len,
-                kind: InlineProbeKind::Token,
-            },
-            None => InlineProbeResult::NoMatch,
-        }
+    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+        scan_math_inline(context.remaining()).map(|(_, len)| len)
     }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeDraft>, usize)> {

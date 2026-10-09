@@ -5,13 +5,7 @@ use super::utils::regexps::*;
 use crate::MarkdownIt;
 use crate::common::extset::InlineRootExtSet;
 use crate::document::{NodeDraft, NodeRef, NodeValue};
-use crate::parser::inline::InlineRule;
-use crate::parser::inline::probe::{
-    InlineProbeContext,
-    InlineProbeEffects,
-    InlineProbeKind,
-    InlineProbeResult,
-};
+use crate::parser::inline::{DocumentInlineState, InlineRule};
 use crate::render::{DocumentNodeRenderer, DocumentRenderContext};
 
 pub fn add(md: &mut MarkdownIt) {
@@ -67,17 +61,22 @@ impl InlineRule for HtmlInlineScanner {
     const MARKER: char = '<';
     const NAMES: &'static [&'static str] = &["html_inline"];
 
-    fn probe(context: &mut InlineProbeContext<'_>) -> InlineProbeResult {
-        let matched = context.with_scratch(scan_html_inline);
+    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+        let matched = scan_html_inline(
+            &context.src,
+            context.pos,
+            context.pos_max,
+            &mut context.inline_ext,
+        );
         match matched {
-            Some(matched) => InlineProbeResult::MatchWithEffects {
-                len: matched.consumed,
-                kind: InlineProbeKind::Token,
-                effects: InlineProbeEffects {
-                    link_level_delta: matched.link_level_delta,
-                },
-            },
-            None => InlineProbeResult::NoMatch,
+            Some(matched) => {
+                context.link_level = context
+                    .link_level
+                    .checked_add(matched.link_level_delta)
+                    .expect("check link level overflow");
+                Some(matched.consumed)
+            }
+            None => None,
         }
     }
 
