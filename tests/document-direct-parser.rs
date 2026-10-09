@@ -1,4 +1,5 @@
 use markdown_it::{MarkdownIt, Root, StructuralEvent};
+use markdown_it::plugins::html::html_block::HtmlBlock;
 
 // KaTeX uses unordered attribute/style maps; normalize only their ordering.
 fn normalize_math_html(html: &str) -> String {
@@ -41,7 +42,27 @@ fn snapshot_config(md: &MarkdownIt, config: &str) -> String {
     )
 }
 
-fn snapshot_outputs(md: &MarkdownIt, document: &markdown_it::Document) -> [String; 4] {
+fn snapshot_outputs(md: &MarkdownIt, document: &mut markdown_it::Document) -> [String; 4] {
+    // The frozen legacy parser added a newline to HTML blocks at EOF.
+    // Restore that payload only for baseline comparison; the HTML block unit
+    // tests independently verify the corrected source-preserving output.
+    let html_without_newline: Vec<_> = document
+        .events(document.root())
+        .filter_map(|event| {
+            let node = event.node();
+            node.cast::<HtmlBlock>()
+                .filter(|value| !value.content.ends_with('\n'))
+                .map(|_| node.id())
+        })
+        .collect();
+    for id in &html_without_newline {
+        document
+            .node_mut(*id)
+            .cast_mut::<HtmlBlock>()
+            .unwrap()
+            .content
+            .push('\n');
+    }
     let metadata = document
         .node(document.root())
         .cast::<Root>()
@@ -49,12 +70,21 @@ fn snapshot_outputs(md: &MarkdownIt, document: &markdown_it::Document) -> [Strin
         .ext
         .get::<markdown_it::plugins::extra::front_matter::FrontMatter>()
         .map(|value| (value.kind, &value.raw, value.start_line, value.end_line));
-    [
+    let outputs = [
         normalize_math_html(&md.render_document(document)),
         md.render_document_as(document, "text"),
         normalize_legacy_debug_tree(md.render_document_as(document, "debug")),
         format!("{metadata:?}"),
-    ]
+    ];
+    for id in html_without_newline {
+        document
+            .node_mut(id)
+            .cast_mut::<HtmlBlock>()
+            .unwrap()
+            .content
+            .pop();
+    }
+    outputs
 }
 
 /// Payload types whose modules moved after `fixtures/document-parser-snapshots.rs`
@@ -196,7 +226,7 @@ fn assert_document_valid_with_config(
     source: &str,
     config: &str,
 ) -> markdown_it::Document {
-    let document = assert_document_structure(md, source);
+    let mut document = assert_document_structure(md, source);
     let snapshots: &[Snapshot] = include!("fixtures/document-parser-snapshots.rs");
     let thread = std::thread::current();
     let test = thread.name().unwrap();
@@ -217,7 +247,7 @@ fn assert_document_valid_with_config(
     let hashes = [expected.4.0, expected.4.1, expected.4.2, expected.4.3];
     for ((format, actual), expected_hash) in ["HTML", "text", "debug", "front matter"]
         .into_iter()
-        .zip(snapshot_outputs(md, &document))
+        .zip(snapshot_outputs(md, &mut document))
         .zip(hashes)
     {
         assert_eq!(

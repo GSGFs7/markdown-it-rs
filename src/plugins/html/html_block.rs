@@ -29,7 +29,6 @@ impl DocumentNodeRenderer<HtmlBlock> for HtmlBlockDocumentRenderer {
     ) {
         context.cr(output);
         output.write_str(&value.content);
-        context.cr(output);
     }
 }
 
@@ -195,11 +194,43 @@ impl BlockRule for HtmlBlockScanner {
             (state.get_line(line), state.line_indent(line))
         });
 
-        let (content, _) = state.get_lines(start_line, next_line, state.blk_indent, true);
+        // Preserve a final line break only when it exists in the source.
+        let keep_last_lf = state.line_offsets[next_line - 1].line_end < state.src.len();
+        let (content, _) = state.get_lines(start_line, next_line, state.blk_indent, keep_last_lf);
         // The block tokenizer assigns the source map for the consumed lines.
         Some((
             Some(state.document.create_node(HtmlBlock { content })),
             next_line - start_line,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn preserves_html_block_final_line_break() {
+        let mut md = crate::MarkdownIt::empty();
+        crate::plugins::cmark::add(&mut md);
+        crate::plugins::html::add(&mut md);
+
+        for source in [
+            "<div>",
+            "<div>\n",
+            "<script>\ntext\n</script>",
+            "<script>\ntext\n</script>\n",
+            "<!-- comment -->",
+            "<!-- comment -->\n",
+            "<?instruction?>",
+            "<!DOCTYPE html>",
+            "<![CDATA[text]]>",
+            "<custom>",
+        ] {
+            assert_eq!(md.render(source), source, "source={source:?}");
+        }
+        assert_eq!(
+            md.render("<div>\n\n*text*\n</div>"),
+            "<div>\n<p><em>text</em></p>\n</div>"
+        );
+        assert_eq!(md.render("<div>\r\n"), "<div>\n");
     }
 }
