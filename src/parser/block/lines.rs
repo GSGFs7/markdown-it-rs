@@ -74,10 +74,17 @@ pub(crate) fn build_line_offsets(src: &str) -> Vec<LineOffset> {
         }
     }
 
-    // A final line break terminates the preceding line; it does not create an
-    // additional empty line in the block parser's line cache. Empty input is
-    // represented by one empty line for compatibility with the block parser.
-    if line_start < bytes.len() || result.is_empty() {
+    // A final line break ends the preceding line without adding an empty one;
+    // empty input still gets one line for the block parser.
+    if line_start < bytes.len() {
+        let offset = build_line_offset(bytes, line_start, bytes.len());
+
+        // A trailing whitespace-only segment is indentation of a line that
+        // never starts, so it is dropped. A whitespace-only input keeps one line.
+        if offset.first_nonspace < offset.line_end || result.is_empty() {
+            result.push(offset);
+        }
+    } else if result.is_empty() {
         result.push(build_line_offset(bytes, line_start, bytes.len()));
     }
 
@@ -150,6 +157,26 @@ mod tests {
         assert_eq!(
             compact(&build_line_offsets("\n\n")),
             vec![(0, 0, 0, 0), (1, 1, 1, 0)]
+        );
+    }
+
+    #[test]
+    fn drops_trailing_whitespace_only_segment() {
+        assert_eq!(
+            compact(&build_line_offsets("<style\n  ")),
+            vec![(0, 6, 0, 0)]
+        );
+        assert_eq!(
+            compact(&build_line_offsets("a\n\t")),
+            vec![(0, 1, 0, 0)]
+        );
+        // Whitespace-only tail after content is dropped; alone it keeps one line.
+        assert_eq!(compact(&build_line_offsets("   ")), vec![(0, 3, 3, 3)]);
+        assert_eq!(compact(&build_line_offsets("  \n  ")), vec![(0, 2, 2, 2)]);
+        // Interior whitespace-only lines are preserved.
+        assert_eq!(
+            compact(&build_line_offsets("a\n  \nb")),
+            vec![(0, 1, 0, 0), (2, 4, 4, 2), (5, 6, 5, 0)]
         );
     }
 
