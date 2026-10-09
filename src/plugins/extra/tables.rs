@@ -313,21 +313,19 @@ impl TableScanner {
     fn scan_alignment_row(line: &str) -> Option<Vec<ColumnAlignment>> {
         // quick check second line, only allow :-| and spaces
         // (this is for performance only)
-        let mut has_delimiter = false;
         for ch in line.chars() {
             match ch {
-                '|' | ':' => has_delimiter = true,
-                '-' | ' ' | '\t' => (),
+                '|' | ':' | '-' | ' ' | '\t' => (),
                 _ => return None,
             }
         }
-        if !has_delimiter {
+        if line.len() < 2 {
             return None;
         }
 
         // if first character is '-', then second character must not be a space
         // (due to parsing ambiguity with list)
-        if line.starts_with("- ") {
+        if line.starts_with("- ") || line.starts_with("-\t") {
             return None;
         }
 
@@ -629,13 +627,13 @@ mod tests {
     }
 
     #[test]
-    fn require_pipe_or_colon_in_align_row() {
+    fn require_pipe_in_header_row() {
         let md = &mut crate::MarkdownIt::empty();
         crate::plugins::extra::tables::add(md);
         let html = md.render("foo\n---\nbar");
         assert_eq!(html.trim(), "foo\n---\nbar");
         let html = md.render("|foo\n---\nbar");
-        assert_eq!(html.trim(), "|foo\n---\nbar");
+        assert!(html.trim().starts_with("<table"));
         let html = md.render("foo\n|---\nbar");
         assert_eq!(html.trim(), "foo\n|---\nbar");
         let html = md.render("foo\n:---\nbar");
