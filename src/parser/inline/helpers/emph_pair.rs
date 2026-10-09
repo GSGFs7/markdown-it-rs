@@ -134,6 +134,19 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
         );
         let scanned_bytes = scanned.byte_length();
 
+        // With no opener, keep non-opening runs as pending text to avoid temporary nodes.
+        // Preserve node indices, foreign finalizer inputs, and newline whitespace handling.
+        if state.nodes().is_empty()
+            && !MARKER.is_whitespace()
+            && !scanned.can_open
+            && state.ruleset.finalizers.len() == 1
+            && state.ruleset.finalizers[0] as usize
+                == finalize_emphasis_document as *const () as usize
+        {
+            state.push_text(state.pos, state.pos + scanned_bytes);
+            return Some((None, scanned_bytes));
+        }
+
         state.flush_text();
 
         let mut closer = state.document.create_node(EmphMarker {
@@ -441,6 +454,95 @@ fn finalize_emphasis_document(state: &mut DocumentInlineState<'_>) {
 mod tests {
     use super::*;
     use crate::Preset;
+
+    #[test]
+    fn literal_closers_stay_text_before_later_emphasis() {
+        let md = MarkdownIt::with_preset(Preset::CommonMark);
+        let source = "a_ ".repeat(10_000) + "**雪**";
+        let document = md.parse_document(&source);
+        let paragraph = document.children(document.root())[0];
+        let children = document.children(paragraph);
+        assert_eq!(children.len(), 2);
+        assert_eq!(
+            document.node(children[0]).cast::<Text>().unwrap().content,
+            "a_ ".repeat(10_000)
+        );
+        assert_eq!(
+            document
+                .node(children[0])
+                .srcmap()
+                .unwrap()
+                .get_byte_offsets(),
+            (0, 30_000)
+        );
+        assert_eq!(
+            document
+                .node(children[1])
+                .srcmap()
+                .unwrap()
+                .get_byte_offsets(),
+            (30_000, source.len())
+        );
+        assert_eq!(
+            md.render_document(&document),
+            "<p>".to_owned() + &"a_ ".repeat(10_000) + "<strong>雪</strong></p>\n"
+        );
+    }
+
+    #[test]
+    fn literal_marker_runs_preserve_inline_boundaries() {
+        for (source, expected) in [
+            ("a_ *b*", "<p>a_ <em>b</em></p>\n"),
+            ("_a_b_", "<p><em>a_b</em></p>\n"),
+            ("a_b", "<p>a_b</p>\n"),
+            ("a_ &amp; b_", "<p>a_ &amp; b_</p>\n"),
+            ("a_ \\_ b_", "<p>a_ _ b_</p>\n"),
+            ("a_  \nb_", "<p>a_<br />\nb_</p>\n"),
+            ("a_ `b_` c_", "<p>a_ <code>b_</code> c_</p>\n"),
+            (
+                "[a_ **雪**](url)",
+                "<p><a href=\"url\">a_ <strong>雪</strong></a></p>\n",
+            ),
+            ("*a_ b*", "<p><em>a_ b</em></p>\n"),
+            ("*__[b_a_)___>_", "<p>*<strong>[b_a_)</strong>_&gt;_</p>\n"),
+            (
+                "_`__a*_[a_雪*雪*",
+                "<p><em>`__a*</em>[a_雪<em>雪</em></p>\n",
+            ),
+        ] {
+            run(source, expected);
+        }
+    }
+
+    #[test]
+    fn foreign_finalizer_can_still_observe_unmatched_markers() {
+        struct Observer;
+        impl InlineRule for Observer {
+            const MARKER: char = '\0';
+            fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+                None
+            }
+        }
+        fn observe(state: &mut DocumentInlineState<'_>) {
+            let count = state
+                .nodes()
+                .iter()
+                .filter(|&&id| state.document.node(id).is::<EmphMarker>())
+                .count();
+            let root = state.document.root();
+            state.document.node_mut(root).ext_mut().insert(count);
+        }
+        let mut md = MarkdownIt::with_preset(Preset::CommonMark);
+        md.inline
+            .add_rule_with_finalize::<Observer>(observe)
+            .before_named("emphasis");
+        let document = md.parse_document("a_ b_");
+        assert_eq!(
+            document.node(document.root()).ext().get::<usize>(),
+            Some(&2)
+        );
+        assert_eq!(md.render_document(&document), "<p>a_ b_</p>\n");
+    }
 
     #[test]
     fn joining_markers_preserves_first_node_metadata_and_source_maps() {
