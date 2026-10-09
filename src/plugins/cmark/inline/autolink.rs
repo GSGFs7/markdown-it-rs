@@ -3,6 +3,7 @@
 //! `<https://example.org>`
 //!
 //! <https://spec.commonmark.org/0.30/#autolinks>
+use std::borrow::Cow;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -127,17 +128,22 @@ fn scan_autolink(src: &str, formatter: &dyn LinkFormatter) -> Option<AutolinkMat
 
     let label_end = closing?;
     let raw = &src[1..label_end];
+    let normalized = if raw.contains('\0') {
+        Cow::Owned(raw.replace('\0', "\u{FFFD}"))
+    } else {
+        Cow::Borrowed(raw)
+    };
 
-    let is_uri = AUTOLINK_RE.is_match(raw);
-    let is_email = EMAIL_RE.is_match(raw);
+    let is_uri = AUTOLINK_RE.is_match(&normalized);
+    let is_email = EMAIL_RE.is_match(&normalized);
     if !is_uri && !is_email {
         return None;
     }
 
     let destination = if is_uri {
-        formatter.normalize_link(raw)
+        formatter.normalize_link(&normalized)
     } else {
-        formatter.normalize_link(&format!("mailto:{raw}"))
+        formatter.normalize_link(&format!("mailto:{normalized}"))
     };
     formatter.validate_link(&destination)?;
 
@@ -146,7 +152,7 @@ fn scan_autolink(src: &str, formatter: &dyn LinkFormatter) -> Option<AutolinkMat
         label_start: 1,
         label_end,
         destination,
-        label: formatter.normalize_link_text(raw),
+        label: formatter.normalize_link_text(&normalized),
     })
 }
 
@@ -217,6 +223,54 @@ mod tests {
         for (src, expected) in cases {
             assert_eq!(render_html(&md, src).trim(), *expected, "for {src:?}");
         }
+    }
+
+    #[test]
+    fn replaces_nul_before_matching_autolinks() {
+        let md = parser();
+        for (source, expected) in [
+            (
+                "<javascriript:ale:)b\00>)>",
+                "<p><a href=\"javascriript:ale:)b%EF%BF%BD0\">javascriript:ale:)b�0</a>)&gt;</p>\n",
+            ),
+            (
+                "<https://example.com/a\0b>",
+                "<p><a href=\"https://example.com/a%EF%BF%BDb\">https://example.com/a�b</a></p>\n",
+            ),
+            (
+                "<javascript:ale\0rt(1)>",
+                "<p>&lt;javascript:ale�rt(1)&gt;</p>\n",
+            ),
+            ("<a\0b@example.com>", "<p>&lt;a�b@example.com&gt;</p>\n"),
+            (
+                "<https://example.com/\0 x>",
+                "<p>&lt;https://example.com/� x&gt;</p>\n",
+            ),
+        ] {
+            assert_eq!(md.render(source), expected, "{source:?}");
+        }
+    }
+
+    #[test]
+    fn nul_autolink_source_maps_use_original_byte_offsets() {
+        let md = parser();
+        let source = "雪 <ab:é\0x> 尾";
+        let document = md.parse_document(source);
+        assert_eq!(document.source(), source);
+        let start = source.find('<').unwrap();
+        let end = source.find('>').unwrap();
+        let mut found = false;
+        for event in document.events(document.root()) {
+            let node = event.node();
+            if node.is::<super::Autolink>() {
+                found = true;
+                assert_eq!(node.srcmap().unwrap().get_byte_offsets(), (start, end + 1));
+            } else if let Some(text) = node.cast::<crate::TextSpecial>() {
+                assert_eq!(text.content, "ab:é�x");
+                assert_eq!(node.srcmap().unwrap().get_byte_offsets(), (start + 1, end));
+            }
+        }
+        assert!(found);
     }
 
     #[test]
