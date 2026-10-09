@@ -80,7 +80,7 @@ impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
             .get::<DocumentLinkCfg<'\0'>>()
             .expect("direct link rule requires an arena node factory")
             .0;
-        document_link_run(state, ENABLE_NESTED, 0, factory)
+        document_link_run(state, ENABLE_NESTED, 0, false, factory)
     }
 }
 
@@ -112,7 +112,13 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
             .get::<DocumentLinkCfg<PREFIX>>()
             .expect("direct prefix rule requires an arena node factory")
             .0;
-        document_link_run(state, ENABLE_NESTED, PREFIX.len_utf8(), factory)
+        document_link_run(
+            state,
+            ENABLE_NESTED,
+            PREFIX.len_utf8(),
+            PREFIX == '!',
+            factory,
+        )
     }
 }
 
@@ -480,6 +486,7 @@ fn document_link_run(
     state: &mut DocumentInlineState<'_>,
     enable_nested: bool,
     offset: usize,
+    image_label: bool,
     factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
 ) -> Option<(Option<NodeId>, usize)> {
     if !has_possible_link_label_close(state, offset) {
@@ -493,14 +500,18 @@ fn document_link_run(
     // We found the end of the link and know for a fact it's a valid link;
     // all that's left to do is to parse the label contents as inline children.
     let node = factory(state.document, candidate.href, candidate.title);
-    let child_link_level = state
-        .link_level
-        .checked_add(1)
-        .expect("inline link nesting level overflow");
-    let children = state.parse_subrange_with_link_level(
-        candidate.label_start..candidate.label_end,
-        child_link_level,
-    )?;
+    let label_range = candidate.label_start..candidate.label_end;
+    let children = if image_label {
+        let mut label = state.child_state(label_range, 0, 0)?;
+        let len = label.remaining().len();
+        label.parse_subrange_at_current_depth(0..len)?
+    } else {
+        let child_link_level = state
+            .link_level
+            .checked_add(1)
+            .expect("inline link nesting level overflow");
+        state.parse_subrange_with_link_level(label_range, child_link_level)?
+    };
     state.document.attach_children(node, children);
 
     Some((Some(node), candidate.end))

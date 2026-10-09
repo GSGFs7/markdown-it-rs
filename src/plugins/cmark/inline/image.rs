@@ -90,3 +90,23 @@ pub fn add(md: &mut MarkdownIt) {
     md.add_document_renderer::<Image, _>("html", ImageDocumentRenderer);
     md.add_document_renderer::<Image, _>("text", TransparentDocumentRenderer);
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn alt_text_uses_a_fresh_inline_nesting_budget() {
+        let mut md = crate::MarkdownIt::new();
+        for limit in [3, 4, 5, 100] {
+            md.max_nesting = limit;
+            assert_eq!(
+                md.render("![[[foo](uri1)](uri2)](uri3)"),
+                "<p><img src=\"uri3\" alt=\"[foo](uri2)\"></p>\n"
+            );
+        }
+        md.max_nesting = 2;
+        assert_eq!(
+            md.render("![![x](in)](out)"),
+            "<p><img src=\"out\" alt=\"x\"></p>\n"
+        );
+    }
+}

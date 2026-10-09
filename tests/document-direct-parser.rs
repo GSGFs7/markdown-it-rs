@@ -1588,11 +1588,8 @@ fn direct_linkify_matches_snapshots() {
                 r"https:\//aa.org https://bb.org",
                 r"https:/\/cc.org",
                 "x//example.com 。//example.com 组//example.com",
-                "[https://example.com](other) ![https://example.com](/img)",
                 "[https://example.com/foo[bar]](/url)",
-                "![https://example.com/a[b]](/img)",
                 "[https://example.com][id]\n\n[id]: /url",
-                "[outer ![a@b.co](/img)](/url)",
                 "<https://example.com> <a href='/x'>https://example.com</a>",
                 "</a>[https://example.com](other)",
                 "ftp://example.com javascript://example.com http:/example.com",
@@ -1604,6 +1601,28 @@ fn direct_linkify_matches_snapshots() {
                     source,
                     &format!("fuzzy_links={fuzzy_links};linkify_first={linkify_first}"),
                 );
+            }
+            // Fresh image sessions can linkify alt text, unlike the legacy tree.
+            for (source, expected) in [
+                (
+                    "[https://example.com](other) ![https://example.com](/img)",
+                    "<p><a href=\"other\">https://example.com</a> <img src=\"/img\" alt=\"https://example.com\"></p>\n",
+                ),
+                (
+                    "![https://example.com/a[b]](/img)",
+                    "<p><img src=\"/img\" alt=\"https://example.com/a[b]\"></p>\n",
+                ),
+                (
+                    "[outer ![a@b.co](/img)](/url)",
+                    "<p><a href=\"/url\">outer <img src=\"/img\" alt=\"a@b.co\"></a></p>\n",
+                ),
+            ] {
+                let document = assert_document_structure(&md, source);
+                assert_eq!(md.render_document(&document), expected);
+                for event in document.events(document.root()) {
+                    let (start, end) = event.node().srcmap().unwrap().get_byte_offsets();
+                    assert!(source.get(start..end).is_some());
+                }
             }
             markdown_it::plugins::extra::beautify_links::add_with_char_limit(&mut md, 12);
             assert_document_valid_with_config(
