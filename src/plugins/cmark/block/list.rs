@@ -390,7 +390,11 @@ impl BlockRule for ListScanner {
                 }
             } else {
                 state.line = next_line;
+                // markdown-it counts both the list and its item as containers.
+                let old_level = state.level;
+                state.level = state.level.saturating_add(1);
                 state.tokenize_nested();
+                state.level = old_level;
             }
 
             // If any of list item is tight, mark list as tight
@@ -487,6 +491,39 @@ mod tests {
 
         let html = md.render(&format!("{}x", "- ".repeat(100)));
 
-        assert_eq!(html.matches("<ul>").count(), 10);
+        assert_eq!(html.matches("<ul>").count(), 5);
+    }
+
+    #[test]
+    fn nested_list_content_respects_container_depth() {
+        let mut md = crate::MarkdownIt::empty();
+        crate::plugins::cmark::add(&mut md);
+        let source = "- one\n  - two\n\n    continuation";
+
+        for limit in [3, 4] {
+            md.max_nesting = limit;
+            assert_eq!(
+                md.render(source),
+                "<ul>\n<li>one\n<ul>\n<li></li>\n</ul>\n</li>\n</ul>\n"
+            );
+        }
+
+        md.max_nesting = 5;
+        assert_eq!(
+            md.render(source),
+            "<ul>\n<li>one\n<ul>\n<li>\n<p>two</p>\n<p>continuation</p>\n</li>\n</ul>\n</li>\n</ul>\n"
+        );
+    }
+
+    #[test]
+    fn list_depth_is_restored_for_siblings_and_following_blocks() {
+        let mut md = crate::MarkdownIt::empty();
+        crate::plugins::cmark::add(&mut md);
+        md.max_nesting = 3;
+
+        assert_eq!(
+            md.render("1. one\n2. two\n\nafter\n\n> quote"),
+            "<ol>\n<li>one</li>\n<li>two</li>\n</ol>\n<p>after</p>\n<blockquote>\n<p>quote</p>\n</blockquote>\n"
+        );
     }
 }
