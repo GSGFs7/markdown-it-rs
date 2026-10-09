@@ -280,7 +280,11 @@ fn scan_and_match_document<const MARKER: char>(
 
         if opener.remaining > 0 {
             let id = state.nodes()[idx];
-            state.document.node_mut(id).replace_value(opener);
+            *state
+                .document
+                .node_mut(id)
+                .cast_mut::<EmphMarker>()
+                .unwrap() = opener; // reuse the Box, avoid unnecessary memory allocation
         } // otherwise node was already deleted
 
         if closer.remaining == 0 {
@@ -304,7 +308,11 @@ fn scan_and_match_document<const MARKER: char>(
 
     // remove empty node as a small optimization so we can do less work later
     if closer.remaining > 0 {
-        state.document.node_mut(closer_token).replace_value(closer);
+        *state
+            .document
+            .node_mut(closer_token)
+            .cast_mut::<EmphMarker>()
+            .unwrap() = closer;
         closer_token
     } else {
         state.document.discard_node(closer_token);
@@ -341,35 +349,52 @@ fn is_odd_match(opener: &EmphMarker, closer: &EmphMarker) -> bool {
 /// into opening/closing elements (which messes up the source maps inside).
 ///
 fn fragments_join_children(document: &mut Document, nodes: &mut Vec<NodeId>) {
-    for &id in nodes.iter() {
-        if let Some(data) = document.node(id).cast::<EmphMarker>() {
-            let content = data.marker.to_string().repeat(data.remaining);
-            document.node_mut(id).replace_value(Text { content });
-        }
-    }
-    let mut write = 0;
+    let mut write = 0; // result
     for read in 0..nodes.len() {
         let id = nodes[read];
+        let marker = document
+            .node(id)
+            .cast::<EmphMarker>()
+            .map(|data| (data.marker, data.remaining));
+
+        // empty test || no remaining chars marker
         if document
             .node(id)
             .cast::<Text>()
             .is_some_and(|text| text.content.is_empty())
+            || marker.is_some_and(|(_, remaining)| remaining == 0)
         {
             document.discard_node(id);
             continue;
         }
+
+        // whether it can be merged into the preceding result node
         if write > 0
             && document.node(nodes[write - 1]).is::<Text>()
-            && document.node(id).is::<Text>()
+            && (marker.is_some() || document.node(id).is::<Text>())
         {
             let previous = nodes[write - 1];
-            let content =
-                std::mem::take(&mut document.node_mut(id).cast_mut::<Text>().unwrap().content);
-            document
-                .node_mut(previous)
-                .cast_mut::<Text>()
-                .unwrap()
-                .content += &content;
+
+            if let Some((marker, remaining)) = marker {
+                // Append unmatched delimiters without materializing a temporary
+                // String or replacing a payload that will immediately be discarded.
+                let previous = document.node_mut(previous);
+                let content = &mut previous.cast_mut::<Text>().unwrap().content;
+                content.reserve(remaining * marker.len_utf8());
+                for _ in 0..remaining {
+                    content.push(marker);
+                }
+            } else {
+                let content =
+                    std::mem::take(&mut document.node_mut(id).cast_mut::<Text>().unwrap().content);
+                document
+                    .node_mut(previous)
+                    .cast_mut::<Text>()
+                    .unwrap()
+                    .content += &content;
+            }
+
+            // update source map
             if let (Some(first), Some(last)) =
                 (document.node(previous).srcmap(), document.node(id).srcmap())
             {
@@ -378,12 +403,19 @@ fn fragments_join_children(document: &mut Document, nodes: &mut Vec<NodeId>) {
                     last.get_byte_offsets().1,
                 )));
             }
+
             document.discard_node(id);
         } else {
+            if let Some((marker, remaining)) = marker {
+                let mut encoded = [0; 4];
+                let content = marker.encode_utf8(&mut encoded).repeat(remaining);
+                document.node_mut(id).replace_value(Text { content });
+            }
             nodes[write] = id;
             write += 1;
         }
     }
+
     nodes.truncate(write);
 }
 
@@ -409,6 +441,107 @@ fn finalize_emphasis_document(state: &mut DocumentInlineState<'_>) {
 mod tests {
     use super::*;
     use crate::Preset;
+
+    #[test]
+    fn joining_markers_preserves_first_node_metadata_and_source_maps() {
+        let mut document = Document::new("", crate::document::Root::new(""));
+        let first = document.create_node(EmphMarker {
+            marker: '🦀',
+            length: 2,
+            remaining: 2,
+            open: false,
+            close: false,
+        });
+        document
+            .node_mut(first)
+            .set_srcmap(Some(SourcePos::new(0, 8)));
+        document
+            .node_mut(first)
+            .attrs_mut()
+            .push(("class".into(), "kept".into()));
+        document.node_mut(first).ext_mut().insert(42_u8);
+        let empty = document.create_node(Text {
+            content: String::new(),
+        });
+        let text = document.create_node(Text {
+            content: "雪".into(),
+        });
+        document
+            .node_mut(text)
+            .set_srcmap(Some(SourcePos::new(8, 11)));
+        let last = document.create_node(EmphMarker {
+            marker: '_',
+            length: 3,
+            remaining: 1,
+            open: false,
+            close: true,
+        });
+        document
+            .node_mut(last)
+            .set_srcmap(Some(SourcePos::new(11, 12)));
+        let barrier = document.create_node(CustomEmphasis);
+        let trailing = document.create_node(EmphMarker {
+            marker: '🦀',
+            length: 1,
+            remaining: 1,
+            open: false,
+            close: false,
+        });
+        let mut nodes = vec![first, empty, text, last, barrier, trailing];
+
+        fragments_join_children(&mut document, &mut nodes);
+
+        assert_eq!(nodes, vec![first, barrier, trailing]);
+        assert_eq!(
+            document.node(first).cast::<Text>().unwrap().content,
+            "🦀🦀雪_"
+        );
+        assert_eq!(
+            document.node(first).srcmap().unwrap().get_byte_offsets(),
+            (0, 12)
+        );
+        assert_eq!(document.node(first).attrs()[0].1, "kept");
+        assert_eq!(document.node(first).ext().get::<u8>(), Some(&42));
+        assert_eq!(
+            document.node(trailing).cast::<Text>().unwrap().content,
+            "🦀"
+        );
+        assert!(document.node(trailing).srcmap().is_none());
+        for removed in [empty, text, last] {
+            assert!(document.get_node(removed).is_none());
+        }
+    }
+
+    #[test]
+    fn joining_markers_keeps_missing_source_map_and_discards_empty_markers() {
+        let mut document = Document::new("", crate::document::Root::new(""));
+        let first = document.create_node(Text {
+            content: "a".into(),
+        });
+        let marker = document.create_node(EmphMarker {
+            marker: '_',
+            length: 1,
+            remaining: 1,
+            open: false,
+            close: true,
+        });
+        document
+            .node_mut(marker)
+            .set_srcmap(Some(SourcePos::new(1, 2)));
+        let empty = document.create_node(EmphMarker {
+            marker: '*',
+            length: 1,
+            remaining: 0,
+            open: false,
+            close: false,
+        });
+        let mut nodes = vec![first, marker, empty];
+        fragments_join_children(&mut document, &mut nodes);
+        assert_eq!(nodes, vec![first]);
+        assert_eq!(document.node(first).cast::<Text>().unwrap().content, "a_");
+        assert!(document.node(first).srcmap().is_none());
+        assert!(document.get_node(empty).is_none());
+    }
 
     fn run(input: &str, output: &str) {
         let md = &mut MarkdownIt::with_preset(Preset::CommonMark);
