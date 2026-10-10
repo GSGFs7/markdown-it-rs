@@ -15,6 +15,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  linkify:
+    name: Linkify crate compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: crates/markdown-it-rs-linkify/tests/differential/pnpm-lock.yaml
+      - name: Install pinned JS oracle dependencies
+        run: pnpm --dir crates/markdown-it-rs-linkify/tests/differential install --frozen-lockfile --ignore-scripts
+      - name: Test linkify crate and live oracle snapshots
+        run: cargo test -p markdown-it-rs-linkify --locked -- --include-ignored
+      - name: Test linkify oracle and comparison policy
+        run: pnpm --dir crates/markdown-it-rs-linkify/tests/differential test:tool
+
   differential:
     name: Differential (config ${{ matrix.config }})
     runs-on: ubuntu-latest

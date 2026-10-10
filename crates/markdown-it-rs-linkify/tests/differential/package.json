@@ -1,0 +1,14 @@
+{
+  "name": "markdown-it-rs-linkify-differential",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node linkify-run.mjs",
+    "test:tool": "node --test oracle.test.mjs linkify.test.mjs"
+  },
+  "dependencies": {
+    "linkify-it": "6.1.0",
+    "markdown-it": "15.0.2",
+    "uc.micro": "3.0.0"
+  }
+}

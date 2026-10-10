@@ -1,0 +1,188 @@
+[
+  {
+    "id": "empty",
+    "request": {"source": "", "fuzzyLinks": false},
+    "expected": []
+  },
+  {
+    "id": "plain-text",
+    "request": {"source": "中文 😀 plain text", "fuzzyLinks": false},
+    "expected": []
+  },
+  {
+    "id": "explicit-http",
+    "request": {"source": "http://example.com/path", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 23, "kind": "url", "raw": "http://example.com/path"}]
+  },
+  {
+    "id": "uppercase-https",
+    "request": {"source": "HTTPS://example.com:8080/path", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 29, "kind": "url", "raw": "HTTPS://example.com:8080/path"}]
+  },
+  {
+    "id": "explicit-ftp",
+    "request": {"source": "ftp://example.com/file", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "ftp://example.com/file"}]
+  },
+  {
+    "id": "unsupported-schema",
+    "request": {"source": "custom://example.com/path", "fuzzyLinks": false},
+    "expected": []
+  },
+  {
+    "id": "unicode-host",
+    "request": {"source": "https://例子.测试/路径", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 28, "kind": "url", "raw": "https://例子.测试/路径"}]
+  },
+  {
+    "id": "unicode-offsets",
+    "request": {"source": "中文 😀 é́ https://例子.测试/path 后文 a@b.co", "fuzzyLinks": false},
+    "expected": [{"start": 17, "end": 43, "kind": "url", "raw": "https://例子.测试/path"}, {"start": 51, "end": 57, "kind": "email", "raw": "a@b.co"}]
+  },
+  {
+    "id": "unmatched-parenthesis-unicode",
+    "request": {"source": "https://例子.测试/a_(b", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 24, "kind": "url", "raw": "https://例子.测试/a_"}],
+    "knownDifference": {
+      "reason": "Consumes an unmatched opening parenthesis after a Unicode host (seed 1145 regression).",
+      "rust": [{"start": 0, "end": 26, "kind": "url", "raw": "https://例子.测试/a_(b"}]
+    }
+  },
+  {
+    "id": "unmatched-parenthesis-ascii",
+    "request": {"source": "https://example.org/a_(b", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "https://example.org/a_"}],
+    "knownDifference": {
+      "reason": "Consumes an unmatched opening parenthesis after an ASCII host.",
+      "rust": [{"start": 0, "end": 24, "kind": "url", "raw": "https://example.org/a_(b"}]
+    }
+  },
+  {
+    "id": "balanced-parenthesis",
+    "request": {"source": "https://例子.测试/a_(b)", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 27, "kind": "url", "raw": "https://例子.测试/a_(b)"}]
+  },
+  {
+    "id": "nested-parentheses",
+    "request": {"source": "https://example.org/a_((b))", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 27, "kind": "url", "raw": "https://example.org/a_((b))"}]
+  },
+  {
+    "id": "unmatched-bracket",
+    "request": {"source": "https://example.org/a_[b", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "https://example.org/a_"}],
+    "knownDifference": {
+      "reason": "Consumes an unmatched opening square bracket in the URL path.",
+      "rust": [{"start": 0, "end": 24, "kind": "url", "raw": "https://example.org/a_[b"}]
+    }
+  },
+  {
+    "id": "unmatched-brace",
+    "request": {"source": "https://example.org/a_{b", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "https://example.org/a_"}],
+    "knownDifference": {
+      "reason": "Consumes an unmatched opening brace in the URL path.",
+      "rust": [{"start": 0, "end": 24, "kind": "url", "raw": "https://example.org/a_{b"}]
+    }
+  },
+  {
+    "id": "trailing-punctuation",
+    "request": {"source": "https://example.org/path., next", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 25, "kind": "url", "raw": "https://example.org/path."}],
+    "knownDifference": {
+      "reason": "Drops the period before a comma, while linkify-it retains it.",
+      "rust": [{"start": 0, "end": 24, "kind": "url", "raw": "https://example.org/path"}]
+    }
+  },
+  {
+    "id": "backticks-pipes",
+    "request": {"source": "https://example.org/foo`bar|baz", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 31, "kind": "url", "raw": "https://example.org/foo`bar|baz"}]
+  },
+  {
+    "id": "fullwidth-separator",
+    "request": {"source": "https://example.org/path｜text", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 24, "kind": "url", "raw": "https://example.org/path"}],
+    "knownDifference": {
+      "reason": "Consumes the fullwidth vertical pipe and following text.",
+      "rust": [{"start": 0, "end": 31, "kind": "url", "raw": "https://example.org/path｜text"}]
+    }
+  },
+  {
+    "id": "relative-protocol",
+    "request": {"source": "//example.org/path", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 18, "kind": "url", "raw": "//example.org/path"}]
+  },
+  {
+    "id": "relative-protocol-boundary",
+    "request": {"source": "x//example.org ///example.org http:////example.org", "fuzzyLinks": false},
+    "expected": []
+  },
+  {
+    "id": "email",
+    "request": {"source": "test@example.com", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 16, "kind": "email", "raw": "test@example.com"}]
+  },
+  {
+    "id": "email-numeric-tld",
+    "request": {"source": "foo+special@Bar.b9", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 18, "kind": "email", "raw": "foo+special@Bar.b9"}]
+  },
+  {
+    "id": "explicit-mailto",
+    "request": {"source": "mailto:test@example.com", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 23, "kind": "email", "raw": "mailto:test@example.com"}]
+  },
+  {
+    "id": "email-in-url",
+    "request": {"source": "https://example.org/a@b.co", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 26, "kind": "url", "raw": "https://example.org/a@b.co"}]
+  },
+  {
+    "id": "multiple-links",
+    "request": {"source": "https://example.org mailto:test@example.com //example.net/path", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 19, "kind": "url", "raw": "https://example.org"}, {"start": 20, "end": 43, "kind": "email", "raw": "mailto:test@example.com"}, {"start": 44, "end": 62, "kind": "url", "raw": "//example.net/path"}]
+  },
+  {
+    "id": "fuzzy-disabled",
+    "request": {"source": "example.org www.example.com", "fuzzyLinks": false},
+    "expected": []
+  },
+  {
+    "id": "fuzzy-enabled",
+    "request": {"source": "example.org www.example.com", "fuzzyLinks": true},
+    "expected": [{"start": 0, "end": 11, "kind": "url", "raw": "example.org"}, {"start": 12, "end": 27, "kind": "url", "raw": "www.example.com"}]
+  },
+  {
+    "id": "fuzzy-ip-disabled",
+    "request": {"source": "192.168.0.1", "fuzzyLinks": true},
+    "expected": [],
+    "knownDifference": {
+      "reason": "Recognizes a bare IPv4 address although upstream fuzzyIP defaults to false.",
+      "rust": [{"start": 0, "end": 11, "kind": "url", "raw": "192.168.0.1"}]
+    }
+  },
+  {
+    "id": "ipv6",
+    "request": {"source": "http://[::1]:8080/path", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "http://[::1]:8080/path"}],
+    "knownDifference": {
+      "reason": "Does not recognize a bracketed IPv6 URL host.",
+      "rust": []
+    }
+  },
+  {
+    "id": "auth-disabled",
+    "request": {"source": "https://user:pass@example.org/path", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 12, "kind": "url", "raw": "https://user"}],
+    "knownDifference": {
+      "reason": "Consumes URL authentication although upstream urlAuth defaults to false.",
+      "rust": [{"start": 0, "end": 34, "kind": "url", "raw": "https://user:pass@example.org/path"}]
+    }
+  },
+  {
+    "id": "newline-boundary",
+    "request": {"source": "https://example.org/a\nb@c.co", "fuzzyLinks": false},
+    "expected": [{"start": 0, "end": 21, "kind": "url", "raw": "https://example.org/a"}, {"start": 22, "end": 28, "kind": "email", "raw": "b@c.co"}]
+  }
+]

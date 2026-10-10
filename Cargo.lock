@@ -808,6 +808,8 @@ name = "markdown-it-rs-linkify"
 version = "0.1.0"
 dependencies = [
  "linkify",
+ "serde",
+ "serde_json",
  "unicode-general-category",
 ]
 
