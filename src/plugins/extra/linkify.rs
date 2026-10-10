@@ -1,12 +1,13 @@
 //! Find urls and emails, and turn them into links
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 use linkify::{LinkKind, Linkify};
 
 use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
-use crate::document::{NodeId, NodeRef, NodeValue, TextSpecial};
+use crate::document::{NodeId, NodeRef, NodeValue, StructuralEvent, Text, TextSpecial};
 use crate::links::LinkFormatter;
 use crate::parser::core::{CoreRule, DocumentCoreRule};
 use crate::parser::inline::builtin::InlineParserRule;
@@ -61,12 +62,236 @@ pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
     md.add_rule::<LinkifyPrescan>()
         .before::<InlineParserRule>()
         .before_all();
-
-    md.inline.add_rule::<LinkifyScanner>();
+    md.inline
+        .add_rule_with_finalize::<LinkifyScanner>(retry_html_link_text);
     md.inline.add_rule::<LinkifyFuzzyScanner>();
     md.inline.add_rule::<LinkifyEmailScanner>();
     md.add_document_renderer::<Linkified, _>("html", LinkifiedDocumentRenderer);
     md.add_document_renderer::<Linkified, _>("text", TransparentDocumentRenderer);
+}
+
+// The JS core linkifier walks parsed tokens backwards. An unmatched HTML
+// opening anchor therefore does not protect text in that second pass, even
+// though it disabled the inline scanner. Retry that text after tokenization.
+fn retry_html_link_text(state: &mut DocumentInlineState<'_>) {
+    use crate::plugins::cmark::inline::autolink::Autolink;
+    use crate::plugins::cmark::inline::image::Image;
+    use crate::plugins::cmark::inline::link::Link;
+    use crate::plugins::html::html_inline::HtmlInline;
+
+    if state.link_level <= 0 {
+        return;
+    }
+
+    let mut leaves = Vec::new();
+    let mut protected_depth = 0;
+    let mut html_delta = 0;
+    for &root in state.nodes() {
+        for event in state.document.events(root) {
+            let node = event.node();
+            let protected = node.is::<Link>()
+                || node.is::<Autolink>()
+                || node.is::<Linkified>()
+                || node.is::<Image>();
+            match event {
+                StructuralEvent::Enter(_) if protected => protected_depth += 1,
+                StructuralEvent::Exit(_) if protected => protected_depth -= 1,
+                StructuralEvent::Leaf(_) if protected_depth == 0 && !protected => {
+                    if let Some(html) = node.cast::<HtmlInline>() {
+                        let delta = anchor_delta(&html.content);
+                        html_delta += delta;
+                        leaves.push((node.id(), delta));
+                    } else {
+                        leaves.push((node.id(), 0));
+                    }
+                }
+                StructuralEvent::Enter(_) | StructuralEvent::Exit(_) if protected_depth == 0 => {
+                    leaves.push((node.id(), 0));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Child sessions inside Markdown links inherit a positive link level.
+    if html_delta <= 0 || state.link_level - html_delta > 0 {
+        return;
+    }
+
+    let mut reverse_level = 0;
+    let mut replacements: HashMap<Option<NodeId>, HashMap<NodeId, Vec<NodeId>>> = HashMap::new();
+    let fuzzy = state
+        .md
+        .ext
+        .get::<LinkifyOptions>()
+        .copied()
+        .unwrap_or_default()
+        .fuzzy_links;
+    for index in (0..leaves.len()).rev() {
+        let (id, delta) = leaves[index];
+        if delta < 0 {
+            reverse_level += 1;
+        } else if delta > 0 && reverse_level > 0 {
+            reverse_level -= 1;
+        }
+
+        if reverse_level > 0 {
+            continue;
+        }
+
+        let Some(text) = state.document.node(id).cast::<Text>() else {
+            continue;
+        };
+
+        // With fuzzy links disabled, every URL/email needs one of these
+        // markers. Avoid matching and copying ordinary text in the retry pass.
+        if !fuzzy && !text.content.contains([':', '@', '/']) {
+            continue;
+        }
+
+        let links = Linkify::new().links_with_fuzzy(&text.content, fuzzy);
+        if links.is_empty() {
+            continue;
+        }
+
+        let content = text.content.clone();
+        let source_map = state.document.node(id).srcmap();
+        let mut nodes = Vec::new();
+        let mut end = 0;
+        for found in links {
+            if found.start() == 0
+                && index > 0
+                && state.document.node(leaves[index - 1].0).is::<TextSpecial>()
+            {
+                continue;
+            }
+
+            let url = &content[found.start()..found.end()];
+            let mode = if found.kind() == LinkKind::Email {
+                LinkifyMode::Email
+            } else if url.contains("://") {
+                LinkifyMode::Scheme
+            } else {
+                LinkifyMode::Fuzzy
+            };
+            let Some(link) = prepare_link(state.md.link_formatter.as_ref(), mode, url) else {
+                continue;
+            };
+
+            if found.start() > end {
+                let node = state.document.create_node(Text {
+                    content: content[end..found.start()].to_owned(),
+                });
+                state.document.node_mut(node).set_srcmap(text_range_map(
+                    source_map,
+                    content.len(),
+                    end,
+                    found.start(),
+                ));
+                nodes.push(node);
+            }
+
+            let inner = state.document.create_node(TextSpecial {
+                content: link.content.clone(),
+                markup: link.content,
+                info: "autolink",
+            });
+            let node = state.document.create_node(Linkified { url: link.href });
+            let map = text_range_map(source_map, content.len(), found.start(), found.end());
+            state.document.node_mut(inner).set_srcmap(map);
+            state.document.node_mut(node).set_srcmap(map);
+            state.document.push_child(node, inner);
+            nodes.push(node);
+            end = found.end();
+        }
+
+        if nodes.is_empty() {
+            continue;
+        }
+
+        if end < content.len() {
+            let node = state.document.create_node(Text {
+                content: content[end..].to_owned(),
+            });
+            state.document.node_mut(node).set_srcmap(text_range_map(
+                source_map,
+                content.len(),
+                end,
+                content.len(),
+            ));
+            nodes.push(node);
+        }
+        replacements
+            .entry(state.document.parent(id))
+            .or_default()
+            .insert(id, nodes);
+    }
+
+    for (parent, replacements) in replacements {
+        if let Some(parent) = parent {
+            state
+                .document
+                .rewrite_children(parent, |document, children| {
+                    rebuild_linkified_children(document, children, replacements);
+                });
+        } else {
+            let mut children = std::mem::take(state.nodes_mut());
+            rebuild_linkified_children(state.document, &mut children, replacements);
+            *state.nodes_mut() = children;
+        }
+    }
+}
+
+// As in JS core linkify, size the result once and copy each sibling once.
+// Arena nodes are grouped by parent because emphasis creates nested arrays.
+fn rebuild_linkified_children(
+    document: &mut crate::document::Document,
+    children: &mut Vec<NodeId>,
+    mut replacements: HashMap<NodeId, Vec<NodeId>>,
+) {
+    let extra: usize = replacements.values().map(|nodes| nodes.len() - 1).sum();
+    let old_children = std::mem::replace(children, Vec::with_capacity(children.len() + extra));
+    for child in old_children {
+        if let Some(nodes) = replacements.remove(&child) {
+            children.extend(nodes);
+            document.discard_node(child);
+        } else {
+            children.push(child);
+        }
+    }
+    debug_assert!(replacements.is_empty());
+}
+
+fn text_range_map(
+    map: Option<crate::common::sourcemap::SourcePos>,
+    text_len: usize,
+    start: usize,
+    end: usize,
+) -> Option<crate::common::sourcemap::SourcePos> {
+    let (source_start, source_end) = map?.get_byte_offsets();
+    // Multiline container prefixes can make the original span noncontiguous.
+    // Only derive subranges when text and source offsets correspond directly.
+    (source_end - source_start == text_len)
+        .then(|| crate::common::sourcemap::SourcePos::new(source_start + start, source_start + end))
+}
+
+fn anchor_delta(content: &str) -> i32 {
+    let bytes = content.as_bytes();
+    if bytes.len() >= 3
+        && bytes[0] == b'<'
+        && bytes[1].eq_ignore_ascii_case(&b'a')
+        && (bytes[2] == b'>' || bytes[2].is_ascii_whitespace())
+    {
+        1
+    } else if bytes.len() >= 4
+        && bytes[..2] == *b"</"
+        && bytes[2].eq_ignore_ascii_case(&b'a')
+        && (bytes[3] == b'>' || bytes[3].is_ascii_whitespace())
+    {
+        -1
+    } else {
+        0
+    }
 }
 
 type LinkifyState = Vec<LinkifyPosition>;
@@ -388,6 +613,56 @@ fn find_scheme_len(src: &str, pos: usize, trailing_len: usize) -> Option<usize> 
 #[cfg(all(test, feature = "linkify"))]
 mod tests {
     use crate as markdown_it;
+
+    #[test]
+    fn retry_batches_siblings_and_nested_emphasis() {
+        let input = format!(
+            "<a>{}",
+            "https://example.org *https://example.com* &amp; plain ".repeat(128)
+        );
+        let output = format!(
+            "<p><a>{}</p>",
+            "<a href=\"https://example.org\">https://example.org</a> <em><a href=\"https://example.com\">https://example.com</a></em> &amp; plain ".repeat(128),
+        );
+        // The parser trims trailing spaces at the end of the inline range.
+        run(input.trim_end(), &output.replace("plain </p>", "plain</p>"));
+    }
+
+    #[test]
+    fn unmatched_html_anchor_retries_linkification() {
+        let mut md = crate::MarkdownIt::new();
+        crate::plugins::html::add(&mut md);
+        crate::plugins::extra::linkify::add(&mut md);
+        crate::plugins::extra::typographer::add(&mut md);
+        crate::plugins::extra::smartquotes::add(&mut md);
+        let run = |input: &str, output: &str| {
+            assert_eq!(md.render(input), format!("{output}\n"));
+        };
+        run(
+            r#"<a href>a!~|\中="/">https://example.org</a"#,
+            r#"<p><a href>a!~|\中=“/”&gt;<a href="https://example.org">https://example.org</a>&lt;/a</p>"#,
+        );
+        run(
+            "<a>https://example.org",
+            "<p><a><a href=\"https://example.org\">https://example.org</a></p>",
+        );
+        run(
+            "<a>a@b.co //example.org",
+            "<p><a><a href=\"mailto:a@b.co\">a@b.co</a> <a href=\"//example.org\">//example.org</a></p>",
+        );
+        run(
+            "<a>*https://example.org*</a",
+            "<p><a><em><a href=\"https://example.org\">https://example.org</a></em>&lt;/a</p>",
+        );
+        run(
+            "<a>https://example.org</a> <a>https://example.org",
+            "<p><a>https://example.org</a> <a><a href=\"https://example.org\">https://example.org</a></p>",
+        );
+        run(
+            "[<a>https://example.org](https://example.org)",
+            "<p><a href=\"https://example.org\"><a>https://example.org</a></p>",
+        );
+    }
 
     #[test]
     fn direct_prescan_persists_original_source_positions_without_scanners() {
