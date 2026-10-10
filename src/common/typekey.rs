@@ -92,6 +92,31 @@ impl Debug for TypeKey {
     }
 }
 
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub enum RuleMark {
+    Type(TypeKey),  // rust or static rule
+    Name(Arc<str>), // python or dynamic rule
+}
+
+impl RuleMark {
+    pub fn of<T: 'static>() -> Self {
+        Self::Type(TypeKey::of::<T>())
+    }
+
+    pub fn named(name: impl Into<Arc<str>>) -> Self {
+        Self::Name(name.into())
+    }
+}
+
+impl Debug for RuleMark {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            RuleMark::Type(key) => key.fmt(f),
+            RuleMark::Name(name) => write!(f, "{name:?}"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::TypeKey;
@@ -128,30 +153,5 @@ mod tests {
         struct B;
         assert_eq!(TypeKey::of::<A>(), TypeKey::of::<A>());
         assert_ne!(TypeKey::of::<A>(), TypeKey::of::<B>());
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Hash)]
-pub enum RuleMark {
-    Type(TypeKey),  // rust or static rule
-    Name(Arc<str>), // python or dynamic rule
-}
-
-impl RuleMark {
-    pub fn of<T: 'static>() -> Self {
-        Self::Type(TypeKey::of::<T>())
-    }
-
-    pub fn named(name: impl Into<Arc<str>>) -> Self {
-        Self::Name(name.into())
-    }
-}
-
-impl Debug for RuleMark {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            RuleMark::Type(key) => key.fmt(f),
-            RuleMark::Name(name) => write!(f, "{name:?}"),
-        }
     }
 }

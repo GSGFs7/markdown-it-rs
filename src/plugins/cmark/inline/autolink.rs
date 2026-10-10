@@ -230,7 +230,7 @@ mod tests {
         let md = parser();
         for (source, expected) in [
             (
-                "<javascriript:ale:)b\00>)>",
+                "<javascriript:ale:)b\x000>)>",
                 "<p><a href=\"javascriript:ale:)b%EF%BF%BD0\">javascriript:ale:)b�0</a>)&gt;</p>\n",
             ),
             (

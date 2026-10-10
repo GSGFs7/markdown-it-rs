@@ -50,67 +50,6 @@ impl DocumentNodeRenderer<Blockquote> for BlockquoteDocumentRenderer {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn lists_terminate_blockquotes_without_paragraph_interrupt_restrictions() {
-        for preset in [crate::Preset::MarkdownItDefault, crate::Preset::CommonMark] {
-            let mut md = crate::MarkdownIt::with_preset(preset);
-            for limit in [3, 100] {
-                md.max_nesting = limit;
-                for marker in ["-", "+", "*", "- \t"] {
-                    assert_eq!(
-                        md.render(&format!("> foo\n{marker}")),
-                        "<blockquote>\n<p>foo</p>\n</blockquote>\n<ul>\n<li></li>\n</ul>\n",
-                        "marker={marker:?}, max_nesting={limit}"
-                    );
-                }
-                for (marker, attrs) in [("1.", ""), ("2.", " start=\"2\""), ("0)", " start=\"0\"")]
-                {
-                    for content in ["", " bar"] {
-                        assert_eq!(
-                            md.render(&format!("> foo\n{marker}{content}")),
-                            format!(
-                                "<blockquote>\n<p>foo</p>\n</blockquote>\n<ol{attrs}>\n<li>{}</li>\n</ol>\n",
-                                content.trim()
-                            ),
-                            "marker={marker:?}, content={content:?}, max_nesting={limit}"
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn empty_blockquotes_have_no_inner_newline() {
-        for preset in [crate::Preset::MarkdownItDefault, crate::Preset::CommonMark] {
-            let mut md = crate::MarkdownIt::with_preset(preset);
-            for xhtml_out in [false, true] {
-                md.render_options.xhtml_out = xhtml_out;
-                for source in [">", ">\n> \n>", "> [foo]: /url"] {
-                    assert_eq!(md.render(source), "<blockquote></blockquote>\n");
-                }
-                assert_eq!(
-                    md.render("[foo]\n\n> [foo]: /url\n"),
-                    "<p><a href=\"/url\">foo</a></p>\n<blockquote></blockquote>\n"
-                );
-                assert_eq!(
-                    md.render("> >"),
-                    "<blockquote>\n<blockquote></blockquote>\n</blockquote>\n"
-                );
-                assert_eq!(
-                    md.render("> text"),
-                    "<blockquote>\n<p>text</p>\n</blockquote>\n"
-                );
-                md.max_nesting = 1;
-                assert_eq!(md.render("> text"), "<blockquote></blockquote>\n");
-                md.max_nesting = 100;
-            }
-        }
-    }
-}
-
 impl NodeValue for Blockquote {}
 
 pub fn add(md: &mut MarkdownIt) {
@@ -273,5 +212,66 @@ impl BlockRule for BlockquoteScanner {
 
         let node = std::mem::replace(&mut state.node, old_node);
         Some((Some(node), next_line - start_line))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn lists_terminate_blockquotes_without_paragraph_interrupt_restrictions() {
+        for preset in [crate::Preset::MarkdownItDefault, crate::Preset::CommonMark] {
+            let mut md = crate::MarkdownIt::with_preset(preset);
+            for limit in [3, 100] {
+                md.max_nesting = limit;
+                for marker in ["-", "+", "*", "- \t"] {
+                    assert_eq!(
+                        md.render(&format!("> foo\n{marker}")),
+                        "<blockquote>\n<p>foo</p>\n</blockquote>\n<ul>\n<li></li>\n</ul>\n",
+                        "marker={marker:?}, max_nesting={limit}"
+                    );
+                }
+                for (marker, attrs) in [("1.", ""), ("2.", " start=\"2\""), ("0)", " start=\"0\"")]
+                {
+                    for content in ["", " bar"] {
+                        assert_eq!(
+                            md.render(&format!("> foo\n{marker}{content}")),
+                            format!(
+                                "<blockquote>\n<p>foo</p>\n</blockquote>\n<ol{attrs}>\n<li>{}</li>\n</ol>\n",
+                                content.trim()
+                            ),
+                            "marker={marker:?}, content={content:?}, max_nesting={limit}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn empty_blockquotes_have_no_inner_newline() {
+        for preset in [crate::Preset::MarkdownItDefault, crate::Preset::CommonMark] {
+            let mut md = crate::MarkdownIt::with_preset(preset);
+            for xhtml_out in [false, true] {
+                md.render_options.xhtml_out = xhtml_out;
+                for source in [">", ">\n> \n>", "> [foo]: /url"] {
+                    assert_eq!(md.render(source), "<blockquote></blockquote>\n");
+                }
+                assert_eq!(
+                    md.render("[foo]\n\n> [foo]: /url\n"),
+                    "<p><a href=\"/url\">foo</a></p>\n<blockquote></blockquote>\n"
+                );
+                assert_eq!(
+                    md.render("> >"),
+                    "<blockquote>\n<blockquote></blockquote>\n</blockquote>\n"
+                );
+                assert_eq!(
+                    md.render("> text"),
+                    "<blockquote>\n<p>text</p>\n</blockquote>\n"
+                );
+                md.max_nesting = 1;
+                assert_eq!(md.render("> text"), "<blockquote></blockquote>\n");
+                md.max_nesting = 100;
+            }
+        }
     }
 }
