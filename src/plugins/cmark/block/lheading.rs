@@ -6,7 +6,7 @@
 use crate::MarkdownIt;
 use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
-use crate::plugins::cmark::block::paragraph::ParagraphScanner;
+use crate::plugins::cmark::block::paragraph::{ParagraphScanner, test_paragraph_rules_at_line};
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -127,7 +127,7 @@ impl BlockRule for LHeadingScanner {
             // Some tags can terminate paragraph without empty line.
             let old_state_line = state.line;
             state.line = next_line;
-            let interrupted = state.test_rules_at_line();
+            let interrupted = test_paragraph_rules_at_line(state);
             state.line = old_state_line;
             if interrupted {
                 break 'outer;

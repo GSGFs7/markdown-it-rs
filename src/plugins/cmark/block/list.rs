@@ -11,7 +11,7 @@ use crate::common::utils::find_indent_of;
 use crate::document::{Document, NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::plugins::cmark::block::hr::HrScanner;
-use crate::plugins::cmark::block::paragraph::Paragraph;
+use crate::plugins::cmark::block::paragraph::{Paragraph, ParagraphInterrupt};
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -195,7 +195,7 @@ fn scan_list_marker(
     indent_nonspace: i32,
     blk_indent: usize,
     max_indent: i32,
-    silent: bool,
+    paragraph_interrupt: bool,
 ) -> Option<(usize, Option<u32>, char)> {
     if line_indent >= max_indent {
         return None;
@@ -218,7 +218,7 @@ fn scan_list_marker(
 
     // limit conditions when list can interrupt
     // a paragraph (validation mode only)
-    if silent {
+    if paragraph_interrupt {
         // Next list item should still terminate previous list item;
         //
         // This code can fail if plugins use blkIndent as well as lists,
@@ -283,7 +283,7 @@ fn find_document_marker(
         state.line_offsets[line].indent_nonspace,
         state.blk_indent,
         state.md.max_indent,
-        silent,
+        silent && state.root_ext.contains::<ParagraphInterrupt>(),
     )
 }
 
@@ -483,6 +483,31 @@ impl BlockRule for ListScanner {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn paragraph_and_setext_content_keep_list_interrupt_restrictions() {
+        for preset in [crate::Preset::MarkdownItDefault, crate::Preset::CommonMark] {
+            let md = crate::MarkdownIt::with_preset(preset);
+            for marker in ["+", "*", "1.", "2. bar", "0) bar"] {
+                assert_eq!(
+                    md.render(&format!("foo\n{marker}")),
+                    format!("<p>foo\n{marker}</p>\n")
+                );
+                assert_eq!(
+                    md.render(&format!("foo\n{marker}\n===")),
+                    format!("<h1>foo\n{marker}</h1>\n")
+                );
+            }
+            assert_eq!(
+                md.render("foo\n1. bar"),
+                "<p>foo</p>\n<ol>\n<li>bar</li>\n</ol>\n"
+            );
+            assert_eq!(
+                md.render("plain\n\n> foo\n-\n\nplain\n2. bar"),
+                "<p>plain</p>\n<blockquote>\n<p>foo</p>\n</blockquote>\n<ul>\n<li></li>\n</ul>\n<p>plain\n2. bar</p>\n"
+            );
+        }
+    }
+
     #[test]
     fn respects_max_nesting() {
         let mut md = crate::MarkdownIt::empty();

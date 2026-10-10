@@ -47,7 +47,7 @@ impl BlockRule for ParagraphScanner {
             // Some tags can terminate paragraph without empty line.
             let old_line = state.line;
             state.line = next_line;
-            let interrupted = state.test_rules_at_line();
+            let interrupted = test_paragraph_rules_at_line(state);
             state.line = old_line;
             if interrupted {
                 break;
@@ -69,3 +69,18 @@ impl NodeValue for Paragraph {}
 
 #[doc(hidden)]
 pub struct ParagraphScanner;
+
+/// Temporary plugin context: list interruption restrictions apply only to paragraphs.
+#[derive(Debug)]
+pub(super) struct ParagraphInterrupt;
+
+pub(super) fn test_paragraph_rules_at_line(state: &mut DocumentBlockState<'_>) -> bool {
+    let old_context = state.root_ext.insert(ParagraphInterrupt);
+    let interrupted = state.test_rules_at_line();
+    if let Some(old_context) = old_context {
+        state.root_ext.insert(old_context);
+    } else {
+        state.root_ext.remove::<ParagraphInterrupt>();
+    }
+    interrupted
+}

@@ -53,6 +53,36 @@ impl DocumentNodeRenderer<Blockquote> for BlockquoteDocumentRenderer {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn lists_terminate_blockquotes_without_paragraph_interrupt_restrictions() {
+        for preset in [crate::Preset::MarkdownItDefault, crate::Preset::CommonMark] {
+            let mut md = crate::MarkdownIt::with_preset(preset);
+            for limit in [3, 100] {
+                md.max_nesting = limit;
+                for marker in ["-", "+", "*", "- \t"] {
+                    assert_eq!(
+                        md.render(&format!("> foo\n{marker}")),
+                        "<blockquote>\n<p>foo</p>\n</blockquote>\n<ul>\n<li></li>\n</ul>\n",
+                        "marker={marker:?}, max_nesting={limit}"
+                    );
+                }
+                for (marker, attrs) in [("1.", ""), ("2.", " start=\"2\""), ("0)", " start=\"0\"")]
+                {
+                    for content in ["", " bar"] {
+                        assert_eq!(
+                            md.render(&format!("> foo\n{marker}{content}")),
+                            format!(
+                                "<blockquote>\n<p>foo</p>\n</blockquote>\n<ol{attrs}>\n<li>{}</li>\n</ol>\n",
+                                content.trim()
+                            ),
+                            "marker={marker:?}, content={content:?}, max_nesting={limit}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn empty_blockquotes_have_no_inner_newline() {
         for preset in [crate::Preset::MarkdownItDefault, crate::Preset::CommonMark] {
             let mut md = crate::MarkdownIt::with_preset(preset);
