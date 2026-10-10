@@ -1,4 +1,4 @@
-//! Crate-owned baseline; the live JS oracle is opt-in so ordinary tests need no Node.js.
+//! Strict detection snapshots; the live JS oracle is opt-in so ordinary tests need no Node.js.
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::Path;
@@ -23,18 +23,11 @@ struct Match {
 }
 
 #[derive(Deserialize)]
-struct KnownDifference {
-    reason: String,
-    rust: Vec<Match>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Fixture {
     id: String,
     request: Request,
     expected: Vec<Match>,
-    known_difference: Option<KnownDifference>,
 }
 
 fn fixtures() -> Vec<Fixture> {
@@ -59,28 +52,17 @@ fn detect(request: &Request) -> Vec<Match> {
 }
 
 #[test]
-fn reviewed_detection_baseline() {
+fn pinned_detection_snapshots() {
     let fixtures = fixtures();
     assert!(!fixtures.is_empty());
     let mut ids = HashSet::new();
     for fixture in &fixtures {
         assert!(ids.insert(&fixture.id), "duplicate fixture: {}", fixture.id);
         let actual = detect(&fixture.request);
-        let expected = if let Some(known) = &fixture.known_difference {
-            assert!(!known.reason.is_empty(), "{}", fixture.id);
-            assert_ne!(
-                actual, fixture.expected,
-                "{}: difference resolved; remove its baseline",
-                fixture.id
-            );
-            eprintln!("KNOWN: {}: {}", fixture.id, known.reason);
-            &known.rust
-        } else {
-            &fixture.expected
-        };
+        let expected = &fixture.expected;
         assert_eq!(
             &actual, expected,
-            "{}: detection baseline changed",
+            "{}: detection snapshot changed",
             fixture.id
         );
         for matches in [&fixture.expected, expected] {
@@ -140,6 +122,12 @@ fn pinned_linkify_it_oracle() {
         assert_eq!(
             response.matches, fixture.expected,
             "{}: JS oracle changed",
+            fixture.id
+        );
+        assert_eq!(
+            detect(&fixture.request),
+            response.matches,
+            "{}: Rust differs from JS",
             fixture.id
         );
     }

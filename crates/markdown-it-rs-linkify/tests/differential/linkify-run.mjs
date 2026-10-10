@@ -6,6 +6,7 @@ import { random, mutate } from "./generator.mjs";
 import { detect, versions } from "./linkify-oracle.mjs";
 import { compare } from "./compare.mjs";
 import { rustWorker } from "./linkify-worker.mjs";
+import { structuredCases } from "./corpus.mjs";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(directory, "../../../..");
@@ -14,7 +15,7 @@ const flags = new Map();
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
   const flag = args[i];
-  if (["--baseline", "--no-build", "--random-only"].includes(flag)) {
+  if (["--baseline", "--no-build", "--random-only", "--structured"].includes(flag)) {
     flags.set(flag, true);
   } else if (["--seed", "--iterations", "--replay", "--rust-bin"].includes(flag)) {
     if (!args[i + 1] || args[i + 1].startsWith("--")) throw new Error(`missing value for ${flag}`);
@@ -33,7 +34,7 @@ function integer(flag, fallback, max) {
 const seed = integer("--seed", 1, 0xffffffff);
 const iterations = integer("--iterations", 0, 1_000_000);
 const baseline = flags.has("--baseline");
-if (baseline && (iterations || flags.has("--replay") || flags.has("--random-only"))) {
+if (baseline && (iterations || flags.has("--replay") || flags.has("--random-only") || flags.has("--structured"))) {
   throw new Error("--baseline only accepts the reviewed fixtures, without mutations or replay");
 }
 const replay = flags.has("--replay")
@@ -62,6 +63,7 @@ function* cases() {
     return;
   }
   if (!flags.has("--random-only")) yield* fixtures;
+  if (flags.has("--structured")) yield* structuredCases();
   const rng = random(seed);
   for (let i = 0; i < iterations; i++) {
     const fixture = fixtures[Math.floor(rng() * fixtures.length)];

@@ -42,20 +42,12 @@
   {
     "id": "unmatched-parenthesis-unicode",
     "request": {"source": "https://例子.测试/a_(b", "fuzzyLinks": false},
-    "expected": [{"start": 0, "end": 24, "kind": "url", "raw": "https://例子.测试/a_"}],
-    "knownDifference": {
-      "reason": "Consumes an unmatched opening parenthesis after a Unicode host (seed 1145 regression).",
-      "rust": [{"start": 0, "end": 26, "kind": "url", "raw": "https://例子.测试/a_(b"}]
-    }
+    "expected": [{"start": 0, "end": 24, "kind": "url", "raw": "https://例子.测试/a_"}]
   },
   {
     "id": "unmatched-parenthesis-ascii",
     "request": {"source": "https://example.org/a_(b", "fuzzyLinks": false},
-    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "https://example.org/a_"}],
-    "knownDifference": {
-      "reason": "Consumes an unmatched opening parenthesis after an ASCII host.",
-      "rust": [{"start": 0, "end": 24, "kind": "url", "raw": "https://example.org/a_(b"}]
-    }
+    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "https://example.org/a_"}]
   },
   {
     "id": "balanced-parenthesis",
@@ -70,29 +62,17 @@
   {
     "id": "unmatched-bracket",
     "request": {"source": "https://example.org/a_[b", "fuzzyLinks": false},
-    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "https://example.org/a_"}],
-    "knownDifference": {
-      "reason": "Consumes an unmatched opening square bracket in the URL path.",
-      "rust": [{"start": 0, "end": 24, "kind": "url", "raw": "https://example.org/a_[b"}]
-    }
+    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "https://example.org/a_"}]
   },
   {
     "id": "unmatched-brace",
     "request": {"source": "https://example.org/a_{b", "fuzzyLinks": false},
-    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "https://example.org/a_"}],
-    "knownDifference": {
-      "reason": "Consumes an unmatched opening brace in the URL path.",
-      "rust": [{"start": 0, "end": 24, "kind": "url", "raw": "https://example.org/a_{b"}]
-    }
+    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "https://example.org/a_"}]
   },
   {
     "id": "trailing-punctuation",
     "request": {"source": "https://example.org/path., next", "fuzzyLinks": false},
-    "expected": [{"start": 0, "end": 25, "kind": "url", "raw": "https://example.org/path."}],
-    "knownDifference": {
-      "reason": "Drops the period before a comma, while linkify-it retains it.",
-      "rust": [{"start": 0, "end": 24, "kind": "url", "raw": "https://example.org/path"}]
-    }
+    "expected": [{"start": 0, "end": 25, "kind": "url", "raw": "https://example.org/path."}]
   },
   {
     "id": "backticks-pipes",
@@ -102,11 +82,7 @@
   {
     "id": "fullwidth-separator",
     "request": {"source": "https://example.org/path｜text", "fuzzyLinks": false},
-    "expected": [{"start": 0, "end": 24, "kind": "url", "raw": "https://example.org/path"}],
-    "knownDifference": {
-      "reason": "Consumes the fullwidth vertical pipe and following text.",
-      "rust": [{"start": 0, "end": 31, "kind": "url", "raw": "https://example.org/path｜text"}]
-    }
+    "expected": [{"start": 0, "end": 24, "kind": "url", "raw": "https://example.org/path"}]
   },
   {
     "id": "relative-protocol",
@@ -156,33 +132,146 @@
   {
     "id": "fuzzy-ip-disabled",
     "request": {"source": "192.168.0.1", "fuzzyLinks": true},
-    "expected": [],
-    "knownDifference": {
-      "reason": "Recognizes a bare IPv4 address although upstream fuzzyIP defaults to false.",
-      "rust": [{"start": 0, "end": 11, "kind": "url", "raw": "192.168.0.1"}]
-    }
+    "expected": []
   },
   {
     "id": "ipv6",
     "request": {"source": "http://[::1]:8080/path", "fuzzyLinks": false},
-    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "http://[::1]:8080/path"}],
-    "knownDifference": {
-      "reason": "Does not recognize a bracketed IPv6 URL host.",
-      "rust": []
-    }
+    "expected": [{"start": 0, "end": 22, "kind": "url", "raw": "http://[::1]:8080/path"}]
   },
   {
     "id": "auth-disabled",
     "request": {"source": "https://user:pass@example.org/path", "fuzzyLinks": false},
-    "expected": [{"start": 0, "end": 12, "kind": "url", "raw": "https://user"}],
-    "knownDifference": {
-      "reason": "Consumes URL authentication although upstream urlAuth defaults to false.",
-      "rust": [{"start": 0, "end": 34, "kind": "url", "raw": "https://user:pass@example.org/path"}]
-    }
+    "expected": [{"start": 0, "end": 12, "kind": "url", "raw": "https://user"}]
   },
   {
     "id": "newline-boundary",
     "request": {"source": "https://example.org/a\nb@c.co", "fuzzyLinks": false},
     "expected": [{"start": 0, "end": 21, "kind": "url", "raw": "https://example.org/a"}, {"start": 22, "end": 28, "kind": "email", "raw": "b@c.co"}]
+  },
+  {
+    "id": "email-single-character-tld",
+    "request": {"source":"test@example.c","fuzzyLinks":false},
+    "expected": [{"start":0,"end":14,"kind":"email","raw":"test@example.c"}]
+  },
+  {
+    "id": "explicit-single-character-tld",
+    "request": {"source":"https://example.c","fuzzyLinks":false},
+    "expected": [{"start":0,"end":17,"kind":"url","raw":"https://example.c"}]
+  },
+  {
+    "id": "unlisted-fuzzy-tld",
+    "request": {"source":"example.or","fuzzyLinks":true},
+    "expected": []
+  },
+  {
+    "id": "incomplete-www-domain",
+    "request": {"source":"www.example","fuzzyLinks":true},
+    "expected": []
+  },
+  {
+    "id": "fuzzy-backslash-boundary",
+    "request": {"source":"\\example.org www.example.com","fuzzyLinks":true},
+    "expected": [{"start":1,"end":12,"kind":"url","raw":"example.org"},{"start":13,"end":28,"kind":"url","raw":"www.example.com"}]
+  },
+  {
+    "id": "fuzzy-symbol-in-domain",
+    "request": {"source":"文9|ample.org/path., next","fuzzyLinks":true},
+    "expected": [{"start":0,"end":20,"kind":"url","raw":"文9|ample.org/path."}]
+  },
+  {
+    "id": "repeated-schema",
+    "request": {"source":"https:https://example.org/a_((b))","fuzzyLinks":true},
+    "expected": []
+  },
+  {
+    "id": "repeated-mailto",
+    "request": {"source":"mailto:mailto:test@example.com","fuzzyLinks":false},
+    "expected": []
+  },
+  {
+    "id": "email-schema-boundary",
+    "request": {"source":"mailtoilto:test@example.co","fuzzyLinks":true},
+    "expected": []
+  },
+  {
+    "id": "email-unicode-name",
+    "request": {"source":"😀test@example.com","fuzzyLinks":false},
+    "expected": []
+  },
+  {
+    "id": "email-trailing-at",
+    "request": {"source":"b@c.cob@","fuzzyLinks":false},
+    "expected": [{"start":0,"end":7,"kind":"email","raw":"b@c.cob"}]
+  },
+  {
+    "id": "email-dot-boundary",
+    "request": {"source":".foo+special@Bar.b9","fuzzyLinks":false},
+    "expected": []
+  },
+  {
+    "id": "mailto-single-label-host",
+    "request": {"source":"mailto:test@example","fuzzyLinks":false},
+    "expected": [{"start":0,"end":19,"kind":"email","raw":"mailto:test@example"}]
+  },
+  {
+    "id": "relative-unicode-host",
+    "request": {"source":"//例子.测试/path","fuzzyLinks":false},
+    "expected": [{"start":0,"end":20,"kind":"url","raw":"//例子.测试/path"}]
+  },
+  {
+    "id": "port-upper-bound",
+    "request": {"source":"https://a.com:65535/path","fuzzyLinks":false},
+    "expected": [{"start":0,"end":24,"kind":"url","raw":"https://a.com:65535/path"}]
+  },
+  {
+    "id": "port-out-of-range",
+    "request": {"source":"https://a.com:65536/path","fuzzyLinks":false},
+    "expected": []
+  },
+  {
+    "id": "ipv6-embedded-ipv4",
+    "request": {"source":"http://[::ffff:192.168.0.1]/path","fuzzyLinks":false},
+    "expected": [{"start":0,"end":32,"kind":"url","raw":"http://[::ffff:192.168.0.1]/path"}]
+  },
+  {
+    "id": "ipv6-mail-host",
+    "request": {"source":"a@[IPv6:::1]","fuzzyLinks":false},
+    "expected": [{"start":0,"end":12,"kind":"email","raw":"a@[IPv6:::1]"}]
+  },
+  {
+    "id": "path-trailing-stars",
+    "request": {"source":"https://example.com/foobar**","fuzzyLinks":false},
+    "expected": [{"start":0,"end":28,"kind":"url","raw":"https://example.com/foobar**"}]
+  },
+  {
+    "id": "path-pair-depth-limit",
+    "request": {"source":"https://a.com/a_(((((b)))))","fuzzyLinks":false},
+    "expected": [{"start":0,"end":16,"kind":"url","raw":"https://a.com/a_"}]
+  },
+  {
+    "id": "unicode-frozen-format-control",
+    "request": {"source":"https://a.com/​next","fuzzyLinks":false},
+    "expected": [{"start":0,"end":21,"kind":"url","raw":"https://a.com/​next"}]
+  },
+  {
+    "id": "unicode-astral-punctuation",
+    "request": {"source":"https://a.com/𐄀next","fuzzyLinks":false},
+    "expected": [{"start":0,"end":14,"kind":"url","raw":"https://a.com/"}]
+  },
+  {
+    "id": "unicode-astral-host-quirk",
+    "request": {
+      "source": "https://a.com𐄀next",
+      "fuzzyLinks": false
+    },
+    "expected": [
+      {
+        "start": 0,
+        "end": 21,
+        "kind": "url",
+        "raw": "https://a.com𐄀next"
+      }
+    ]
   }
 ]

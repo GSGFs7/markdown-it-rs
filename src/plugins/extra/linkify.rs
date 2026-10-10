@@ -499,11 +499,18 @@ fn scan_candidate(input: CandidateInput<'_>, mode: LinkifyMode) -> Option<Candid
         &input.src[input.pos - rewind..input.pos]
     );
 
-    let candidate = CandidateRange {
+    let mut candidate = CandidateRange {
         start: input.pos - rewind,
         end: input.pos - rewind + found.end - found.start,
         rewind,
     };
+    // markdown-it's inline linkifier leaves trailing asterisks for emphasis.
+    // The detector itself must retain them: they are valid URL path content.
+    if matches!(mode, LinkifyMode::Scheme) {
+        while candidate.end > candidate.start && input.src.as_bytes()[candidate.end - 1] == b'*' {
+            candidate.end -= 1;
+        }
+    }
     if candidate.end > input.pos_max {
         return None;
     }

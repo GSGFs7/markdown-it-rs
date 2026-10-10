@@ -4,6 +4,19 @@ import fixtures from "./linkify-fixtures.json" with { type: "json" };
 import { detect } from "./linkify-oracle.mjs";
 import { compare } from "./compare.mjs";
 import { random, mutate } from "./generator.mjs";
+import { structuredCases } from "./corpus.mjs";
+
+test("systematic corpus is deterministic and uses representable Unicode", () => {
+  const corpus = Array.from(structuredCases());
+  assert.deepEqual(corpus, Array.from(structuredCases()));
+  assert.equal(new Set(corpus.map(c => c.id)).size, corpus.length);
+  assert.ok(corpus.some(c => c.request.source.includes("65536")));
+  assert.ok(corpus.some(c => c.request.source.includes("[::ffff:")));
+  assert.ok(corpus.some(c => c.request.source.length > 10000));
+  for (const { request } of corpus) {
+    assert.equal(Buffer.from(request.source).toString("utf8"), request.source);
+  }
+});
 
 test("crate-owned mutations reproduce and preserve valid Unicode", () => {
   function generate(seed) {
@@ -46,7 +59,20 @@ for (const fixture of fixtures) {
   });
 }
 
-const known = fixtures.find((fixture) => fixture.id === "unmatched-parenthesis-unicode");
+// Synthetic old regression: keep testing the comparison tool without allowing
+// compatibility exceptions in the actual native scanner's fixture corpus.
+const known = {
+  ...fixtures.find((fixture) => fixture.id === "unmatched-parenthesis-unicode"),
+  knownDifference: {
+    reason: "Historical unmatched-parenthesis regression",
+    rust: [{ start: 0, end: 26, kind: "url", raw: "https://例子.测试/a_(b" }],
+  },
+};
+
+test("native detection corpus has no compatibility exceptions", () => {
+  assert.ok(fixtures.every((fixture) => !fixture.knownDifference));
+});
+
 test("strict comparison fails the seed 1145 detection regression", () => {
   assert.equal(compare(known, known.expected, known.knownDifference.rust, false), "detection mismatch");
 });

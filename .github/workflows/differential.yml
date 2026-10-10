@@ -5,7 +5,7 @@ on:
   pull_request:
   workflow_dispatch:
   schedule:
-    - cron: '23 21 * * *'
+    - cron: "23 21 * * *"
 
 permissions:
   contents: read
@@ -36,6 +36,21 @@ jobs:
         run: cargo test -p markdown-it-rs-linkify --locked -- --include-ignored
       - name: Test linkify oracle and comparison policy
         run: pnpm --dir crates/markdown-it-rs-linkify/tests/differential test:tool
+      - name: Compare native detection grammar and seeded mutations
+        run: |
+          structured_seed=$(node -p 'require("node:crypto").randomInt(0, 4294967296)')
+          mutation_seed=$(node -p 'require("node:crypto").randomInt(0, 4294967296)')
+          echo "structured_seed=$structured_seed mutation_seed=$mutation_seed"
+
+          node crates/markdown-it-rs-linkify/tests/differential/linkify-run.mjs --structured --seed "$structured_seed" --iterations 10000
+          node crates/markdown-it-rs-linkify/tests/differential/linkify-run.mjs --no-build --seed "$mutation_seed" --iterations 10000
+      - name: Upload detection failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linkify-detection-failures
+          path: crates/markdown-it-rs-linkify/tests/differential/failures/*.json
+          if-no-files-found: ignore
 
   differential:
     name: Differential (config ${{ matrix.config }})
@@ -46,10 +61,9 @@ jobs:
       matrix:
         config: [0, 1, 2, 3, 4, 5]
     env:
-      CARGO_NET_RETRY: '3'
+      CARGO_NET_RETRY: "3"
       CONFIG: ${{ matrix.config }}
       EVENT_NAME: ${{ github.event_name }}
-      RUN_NUMBER: ${{ github.run_number }}
 
     steps:
       - name: Checkout repository
@@ -85,10 +99,9 @@ jobs:
       - name: Compare seeded mutations
         if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.tool.outcome == 'success' }}
         run: |
-          seed=1
+          seed=$(node -p 'require("node:crypto").randomInt(0, 4294967296)')
           iterations=1000
           if [[ "$EVENT_NAME" == schedule ]]; then
-            seed=$((RUN_NUMBER % 4294967296))
             iterations=10000
           fi
           echo "config=$CONFIG seed=$seed iterations=$iterations"
