@@ -172,6 +172,15 @@ mod tests {
     }
 
     #[test]
+    fn decodes_empty_punycode_label() {
+        let md = parser();
+        assert_eq!(
+            md.render("<http://xn--.com/>\n"),
+            "<p><a href=\"http://xn--.com/\">http://.com/</a></p>\n"
+        );
+    }
+
+    #[test]
     fn renders_autolinks() {
         let md = parser();
         let cases: &[(&str, &str)] = &[

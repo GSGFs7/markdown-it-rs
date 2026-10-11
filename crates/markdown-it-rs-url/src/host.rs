@@ -89,12 +89,15 @@ pub(crate) fn display_host(host: &str) -> String {
             result.push('.');
         }
 
-        if label
-            .get(..4)
-            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("xn--"))
-        {
-            let (display, status) = idna::domain_to_unicode(label);
-            result.push_str(if status.is_ok() { &display } else { label });
+        if let Some(encoded) = label.strip_prefix("xn--") {
+            // markdown-it uses raw Punycode, without IDNA validation. Empty
+            // payloads decode to empty labels, and a failure in any label
+            // leaves the entire hostname unchanged.
+            let Some(display) = idna::punycode::decode_to_string(&encoded.to_ascii_lowercase())
+            else {
+                return host.to_owned();
+            };
+            result.push_str(&display);
         } else {
             result.push_str(label);
         }
@@ -109,7 +112,24 @@ fn is_ipv6_host(host: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_host;
+    use super::{display_host, normalize_host};
+
+    #[test]
+    fn display_uses_raw_punycode() {
+        for (host, expected) in [
+            ("xn--.com", ".com"),
+            ("xn--a.com", "\u{80}.com"),
+            ("xn--abc-.com", "abc.com"),
+            ("xn--ABC-.com", "abc.com"),
+            ("XN--ABC-.com", "XN--ABC-.com"),
+            ("xn--n3h.net", "☃.net"),
+            ("xn--xn.com", "xn--xn.com"),
+            ("xn--n3h.xn--xn.com", "xn--n3h.xn--xn.com"),
+            ("xn--.xn--xn.com", "xn--.xn--xn.com"),
+        ] {
+            assert_eq!(display_host(host), expected, "{host}");
+        }
+    }
 
     #[test]
     fn falls_back_to_raw_punycode_for_markdown_it_compatibility() {
