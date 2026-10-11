@@ -46,7 +46,6 @@ impl DocumentNodeRenderer<CodeFence> for CodeFenceDocumentRenderer {
             attrs.push(("class".into(), format!("{lang_prefix}{lang_name}")));
         }
 
-        context.cr(output);
         write_html_open(output, "pre", &[]);
         write_html_open(output, "code", &attrs);
         write_html_text(output, &fence.content);
@@ -233,6 +232,34 @@ impl BlockRule for FenceScanner {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fences_after_tight_paragraphs_do_not_insert_a_line_break() {
+        let mut md = crate::MarkdownIt::new();
+        for limit in [3, 100] {
+            md.max_nesting = limit;
+            for (source, expected) in [
+                (
+                    "- a中< (9#` `  ```\n  c\n  ```\n- d\n",
+                    "<ul>\n<li>a中&lt; (9#<code> </code>  ```\nc<pre><code></code></pre>\n</li>\n<li>d</li>\n</ul>\n",
+                ),
+                (
+                    "- a\n  ```\n  code\n  ```\n- d\n",
+                    "<ul>\n<li>a<pre><code>code\n</code></pre>\n</li>\n<li>d</li>\n</ul>\n",
+                ),
+                (
+                    "- ```\n  code\n  ```\n",
+                    "<ul>\n<li>\n<pre><code>code\n</code></pre>\n</li>\n</ul>\n",
+                ),
+                (
+                    "- a\n\n  ```\n  code\n  ```\n",
+                    "<ul>\n<li>\n<p>a</p>\n<pre><code>code\n</code></pre>\n</li>\n</ul>\n",
+                ),
+            ] {
+                assert_eq!(md.render(source), expected, "limit={limit}, {source:?}");
+            }
+        }
+    }
+
     #[test]
     fn unclosed_fences_preserve_source_final_line_break() {
         let md = crate::MarkdownIt::new();

@@ -81,6 +81,22 @@ impl DocumentNodeRenderer<ListItem> for ListItemDocumentRenderer {
         output: &mut crate::DocumentWriter,
     ) {
         write_html_open(output, "li", node.attrs());
+        // A fence writes no leading newline: the list item's opening tag
+        // supplies it only when the fence is its first visible block.
+        let first_visible = node.children().iter().find(|&&child| {
+            !context
+                .document()
+                .node(child)
+                .is::<super::reference::Definition>()
+        });
+        if first_visible.is_some_and(|&child| {
+            context
+                .document()
+                .node(child)
+                .is::<super::fence::CodeFence>()
+        }) {
+            context.cr(output);
+        }
         context.render_children(node.id(), output);
         write_html_close(output, "li");
         context.cr(output);
