@@ -1,6 +1,52 @@
 mod common;
 
 #[test]
+fn link_destinations_treat_nul_as_the_replacement_character() {
+    for (source, expected) in [
+        (
+            "[foo #bar](/uri\0>])",
+            "<p><a href=\"/uri%EF%BF%BD%3E%5D\">foo #bar</a></p>",
+        ),
+        ("[x](</a\0b>)", "<p><a href=\"/a%EF%BF%BDb\">x</a></p>"),
+        ("[x](/a\\\0b)", "<p><a href=\"/a%5C%EF%BF%BDb\">x</a></p>"),
+        ("![x](/a\0b)", "<p><img src=\"/a%EF%BF%BDb\" alt=\"x\"></p>"),
+        (
+            "[x][r]\n\n[r]: /a\0b",
+            "<p><a href=\"/a%EF%BF%BDb\">x</a></p>",
+        ),
+        ("[x](/a\x01b)", "<p>[x](/a\x01b)</p>"),
+    ] {
+        run(source, expected);
+    }
+}
+
+#[test]
+fn nul_link_destination_keeps_original_source_offsets() {
+    let md = markdown_it::MarkdownIt::new();
+    let source = "雪 [x](/a\0b) 尾";
+    let document = md.parse_document(source);
+    assert_eq!(document.source(), source);
+    let link = document
+        .events(document.root())
+        .find_map(|event| {
+            let node = event.node();
+            node.is::<markdown_it::plugins::cmark::inline::link::Link>()
+                .then_some(node)
+        })
+        .unwrap();
+    assert_eq!(
+        link.srcmap().unwrap().get_byte_offsets(),
+        (source.find('[').unwrap(), source.find(')').unwrap() + 1)
+    );
+    assert_eq!(
+        link.cast::<markdown_it::plugins::cmark::inline::link::Link>()
+            .unwrap()
+            .url,
+        "/a%EF%BF%BDb"
+    );
+}
+
+#[test]
 fn emphasis_classifies_nul_as_the_replacement_character() {
     for (source, expected) in [
         (
