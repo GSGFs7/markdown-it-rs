@@ -169,6 +169,29 @@ fn reference_can_be_interrupted_by_other_rules() {
 }
 
 #[test]
+fn reference_title_continuations_strip_leading_whitespace() {
+    for (open, close) in [('\'', '\''), ('"', '"'), ('(', ')')] {
+        for indent in [" ", "   ", "    ", "\t", " \t "] {
+            let input = format!("[foo]: /url {open}title\n{indent}中 - -  \n{indent}{close}\n\n[foo]\n");
+            run(&input, "<p><a href=\"/url\" title=\"title\n中 - -  \n\">foo</a></p>");
+        }
+    }
+
+    run(
+        "> [foo]: /url 'title\n>   中 - -\n>   '\n>\n> [foo]\n",
+        "<blockquote>\n<p><a href=\"/url\" title=\"title\n中 - -\n\">foo</a></p>\n</blockquote>",
+    );
+    run(
+        "- [foo]: /url 'title\n    中 - -\n    '\n\n  [foo]\n",
+        "<ul>\n<li>\n<p><a href=\"/url\" title=\"title\n中 - -\n\">foo</a></p>\n</li>\n</ul>",
+    );
+    run(
+        "[foo]: /url 'title\\\n  中\n  '\n\n[foo]\n",
+        "<p><a href=\"/url\" title=\"title\\\n中\n\">foo</a></p>",
+    );
+}
+
+#[test]
 fn escape_character_in_link_reference_title_doesn_t_escape_newlines() {
     let input = r#"[foo]: /url "
 hello

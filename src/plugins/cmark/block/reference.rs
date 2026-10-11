@@ -255,7 +255,11 @@ impl DocumentBlockState<'_> {
                 return None;
             }
         }
-        Some(self.get_lines(line, line + 1, self.blk_indent, true).0)
+        // Reference continuations start at the first nonspace character,
+        // including inside multiline labels and titles.
+        let mut content = self.get_line(line).to_owned();
+        content.push('\n');
+        Some(content)
     }
 
     fn references(&mut self) -> &mut ReferenceMap {
