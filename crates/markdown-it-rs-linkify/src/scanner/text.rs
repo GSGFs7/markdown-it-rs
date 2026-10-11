@@ -3,7 +3,7 @@ use crate::unicode;
 /// map UTF-16 -> UTF-8
 ///
 /// ## example
-/// 
+///
 /// in "a😀中"
 ///
 /// | UTF-16 position | units  |    bytes    |    means    |

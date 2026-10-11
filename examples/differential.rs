@@ -1,7 +1,7 @@
 //! Persistent JSONL adapter for tests/differential/run.mjs.
 use std::io::{self, BufRead, Write};
 
-use markdown_it::{plugins, MarkdownIt};
+use markdown_it::{MarkdownIt, plugins};
 use serde::Deserialize;
 
 #[derive(Deserialize)]

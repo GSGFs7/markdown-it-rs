@@ -166,10 +166,7 @@ mod tests {
             compact(&build_line_offsets("<style\n  ")),
             vec![(0, 6, 0, 0)]
         );
-        assert_eq!(
-            compact(&build_line_offsets("a\n\t")),
-            vec![(0, 1, 0, 0)]
-        );
+        assert_eq!(compact(&build_line_offsets("a\n\t")), vec![(0, 1, 0, 0)]);
         // Whitespace-only tail after content is dropped; alone it keeps one line.
         assert_eq!(compact(&build_line_offsets("   ")), vec![(0, 3, 3, 3)]);
         assert_eq!(compact(&build_line_offsets("  \n  ")), vec![(0, 2, 2, 2)]);

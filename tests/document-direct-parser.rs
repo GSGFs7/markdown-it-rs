@@ -1,5 +1,5 @@
-use markdown_it::{MarkdownIt, Root, StructuralEvent};
 use markdown_it::plugins::html::html_block::HtmlBlock;
+use markdown_it::{MarkdownIt, Root, StructuralEvent};
 
 // KaTeX uses unordered attribute/style maps; normalize only their ordering.
 fn normalize_math_html(html: &str) -> String {

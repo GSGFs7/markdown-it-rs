@@ -2,6 +2,8 @@
 // 93e83cee382c8dd9088314a68dfe068b5f5f3bcd in an isolated archive of that
 // revision (default- and all-feature tests passed during capture). They were
 // NOT generated from the direct parser under test.
+// The tight-list fence HTML baseline was corrected to match markdown-it.js:
+// `foo<pre>` has no inserted newline; text and structural hashes are unchanged.
 //
 // Key: test name, explicit plugin configuration, nesting/indent limits, render
 // options, source FNV-1a, and KaTeX mode (0 = off, 1 = on, 2 = identical with
@@ -742,7 +744,7 @@
     ("direct_lists_match_snapshots", "default;nesting=100;indent=2147483647;options=RenderOptions { xhtml_out: false, breaks: false, lang_prefix: None }", 0x36777fb9628710d2, 2, (0x808a42d0dcf094bd, 0xfbf699f6cd737096, 0x969a8e8f536b6063, 0x669b18c6d2d9c95b)),
     ("direct_lists_match_snapshots", "default;nesting=100;indent=2147483647;options=RenderOptions { xhtml_out: false, breaks: false, lang_prefix: None }", 0x45a94450fb94dd58, 2, (0x44d1ca86a5f1c013, 0xb5df61255aec0957, 0x2f9b7644d1b5f79f, 0x669b18c6d2d9c95b)),
     ("direct_lists_match_snapshots", "default;nesting=100;indent=2147483647;options=RenderOptions { xhtml_out: false, breaks: false, lang_prefix: None }", 0x4ac119ecd47415eb, 2, (0xa5d04cd27bfeb4e4, 0xfbf699f6cd737096, 0xec7b8ada49d21aca, 0x669b18c6d2d9c95b)),
-    ("direct_lists_match_snapshots", "default;nesting=100;indent=2147483647;options=RenderOptions { xhtml_out: false, breaks: false, lang_prefix: None }", 0x501b808be5ceded7, 2, (0xaf0555e568237604, 0x47c63107e5308f24, 0xdcf31f815f4b1beb, 0x669b18c6d2d9c95b)),
+    ("direct_lists_match_snapshots", "default;nesting=100;indent=2147483647;options=RenderOptions { xhtml_out: false, breaks: false, lang_prefix: None }", 0x501b808be5ceded7, 2, (0x04cee77baa4c38b4, 0x47c63107e5308f24, 0xdcf31f815f4b1beb, 0x669b18c6d2d9c95b)),
     ("direct_lists_match_snapshots", "default;nesting=100;indent=2147483647;options=RenderOptions { xhtml_out: false, breaks: false, lang_prefix: None }", 0x55acbdaaebb7206e, 2, (0x09e0dad09b28600a, 0x5cf82ca036eadc95, 0x756d80bb45e9dcbf, 0x669b18c6d2d9c95b)),
     ("direct_lists_match_snapshots", "default;nesting=100;indent=2147483647;options=RenderOptions { xhtml_out: false, breaks: false, lang_prefix: None }", 0x57838bf655fd9474, 2, (0x97a3371d3bb7f181, 0xfbf699f6cd737096, 0x3fe7384253397d95, 0x669b18c6d2d9c95b)),
     ("direct_lists_match_snapshots", "default;nesting=100;indent=2147483647;options=RenderOptions { xhtml_out: false, breaks: false, lang_prefix: None }", 0x5fd51d0d875ea215, 2, (0xdadbca8c08f112c9, 0xdd1276790c25c367, 0x8ab7d0278271447f, 0x669b18c6d2d9c95b)),
