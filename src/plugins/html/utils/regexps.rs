@@ -21,7 +21,7 @@ const open_tag: &str = formatcp!("<[A-Za-z][A-Za-z0-9\\-]*{attribute}*\\s*/?>");
 const close_tag: &str = r#"</[A-Za-z][A-Za-z0-9\-]*\s*>"#;
 const comment: &str = r#"<!---?>|<!--(?:[^-]|-[^-]|--[^>])*-->"#;
 const processing: &str = r#"<[?][\s\S]*?[?]>"#;
-const declaration: &str = r#"<![A-Z]+\s+[^>]*>"#;
+const declaration: &str = r#"<![A-Za-z][^>]*>"#;
 const cdata: &str = r#"<!\[CDATA\[[\s\S]*?\]\]>"#;
 
 #[allow(clippy::double_parens)]

@@ -183,4 +183,35 @@ mod tests {
             "<p>foo <!--> foo --&gt;</p>\n<p>foo <!---> foo --&gt;</p>\n",
         );
     }
+
+    #[test]
+    fn declaration_requires_only_an_initial_ascii_letter() {
+        for declaration in [
+            r"<!ELEMENc\T br EMPTY>",
+            "<!bar baz>",
+            "<!A>",
+            "<!a>",
+            "<!DOCTYPEhtml>",
+            "<!a\\* &amp;\nbody>",
+        ] {
+            assert_eq!(
+                render(&format!("foo {declaration}\n")),
+                format!("<p>foo {declaration}</p>\n"),
+            );
+        }
+    }
+
+    #[test]
+    fn declaration_rejects_non_ascii_initial_letters_and_missing_closers() {
+        for (input, expected) in [
+            ("foo <!>", "<p>foo &lt;!&gt;</p>\n"),
+            ("foo <!1>", "<p>foo &lt;!1&gt;</p>\n"),
+            ("foo <! A>", "<p>foo &lt;! A&gt;</p>\n"),
+            ("foo <!é>", "<p>foo &lt;!é&gt;</p>\n"),
+            ("foo <!a", "<p>foo &lt;!a</p>\n"),
+            ("foo <!a> tail >", "<p>foo <!a> tail &gt;</p>\n"),
+        ] {
+            assert_eq!(render(input), expected);
+        }
+    }
 }
