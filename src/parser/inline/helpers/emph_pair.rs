@@ -333,6 +333,13 @@ fn scan_and_match_document<const MARKER: char>(
 }
 
 fn is_odd_match(opener: &EmphMarker, closer: &EmphMarker) -> bool {
+    // The rule of three applies to CommonMark emphasis, not fixed-length
+    // pairs such as strikethrough. markdown-it's ~~ delimiters have length 0
+    // for this check, regardless of the length of the original tilde run.
+    if !matches!(opener.marker, '*' | '_') {
+        return false;
+    }
+
     // from spec:
     //
     // If one of the delimiters can both open and close emphasis, then the
