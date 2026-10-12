@@ -380,14 +380,18 @@ fn scan_reference(state: &mut DocumentBlockState<'_>) -> Option<(Definition, usi
     // [label]:   destination   'title'
     //                          ^^^^^^^ parse this
     let mut title = None;
-    if pos != start {
-        if let Some(res) = parse_reference_title(state, &mut next_line, &mut str, pos) {
+    if let Some(res) = parse_reference_title(state, &mut next_line, &mut str, pos) {
+        // markdown-it also accepts adjacent multiline titles.
+        if pos != start || res.lines > 0 {
             title = Some(res.str);
             pos = res.pos;
         } else {
             pos = dest_end_pos;
             next_line = dest_end_next_line;
         }
+    } else {
+        pos = dest_end_pos;
+        next_line = dest_end_next_line;
     }
 
     // skip trailing spaces until the rest of the line
