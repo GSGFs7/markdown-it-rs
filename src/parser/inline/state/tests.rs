@@ -26,6 +26,7 @@ impl<'a> DocumentInlineState<'a> {
             mapping: Cow::Borrowed(&[(0, 0)]),
             depth,
             inline_ext: InlineRootExtSet::new(),
+            scan_limit_cache: Rc::new(RefCell::new(ScanLimitCache::default())),
             root_ext: None,
             link_level,
             ruleset,
@@ -97,6 +98,7 @@ fn parent_state<'a>(
         mapping: Cow::Owned(vec![(0, 10), (9, 30)]),
         depth: 0,
         inline_ext,
+        scan_limit_cache: Rc::new(RefCell::new(ScanLimitCache::default())),
         root_ext: None,
         link_level: 2,
         ruleset,
@@ -123,6 +125,7 @@ fn check_state<'a>(
         mapping: Cow::Owned(vec![(0, 0)]),
         depth: 0,
         inline_ext: InlineRootExtSet::new(),
+        scan_limit_cache: Rc::new(RefCell::new(ScanLimitCache::default())),
         root_ext: None,
         link_level: 0,
         ruleset,
@@ -176,6 +179,7 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
         mapping: Cow::Owned(vec![(0, 10)]),
         depth: 0,
         inline_ext: InlineRootExtSet::new(),
+        scan_limit_cache: Rc::new(RefCell::new(ScanLimitCache::default())),
         root_ext: None,
         link_level: 1,
         ruleset: &ruleset,
@@ -618,9 +622,57 @@ fn check_stops_at_nesting_limit() {
     };
     let mut state = check_state(&mut document, &md, &ruleset, "abc");
     let mut context = scan(&mut state, 0..3).unwrap();
+    let mut deep = scan(&mut context, 0..3).unwrap();
 
-    assert_eq!(context.skip_token().unwrap(), 3);
-    assert_eq!(context.skip_token(), None);
+    assert_eq!(deep.skip_token().unwrap(), 3);
+    assert_eq!(deep.skip_token(), None);
+}
+
+#[test]
+fn nesting_limit_decision_is_shared_with_shallower_scans() {
+    let mut document = Document::new("", crate::Root::new(""));
+    let mut md = MarkdownIt::empty();
+    md.max_nesting = 1;
+    let ruleset = DocumentRuleSet {
+        runs: vec![],
+        checks: vec![check_rule(|_| panic!("cached cutoff must skip checks"))],
+        finalizers: vec![],
+    };
+    let mut state = check_state(&mut document, &md, &ruleset, "前abc");
+    {
+        let mut deep = state.child_state(3..6, 2, 0).unwrap();
+        assert_eq!(deep.skip_token(), Some(3));
+    }
+    // A different start with the same end still observes the absolute cursor
+    // recorded by the nested scan.
+    let mut shallow = state.child_state(0..6, 0, 0).unwrap();
+    shallow.pos = 3;
+    assert_eq!(shallow.skip_token(), Some(3));
+    assert_eq!(shallow.trailing_text(), "abc");
+    assert_eq!(shallow.skip_token(), None);
+}
+
+#[test]
+fn nesting_limit_decisions_are_isolated_by_range_end() {
+    let mut document = Document::new("", crate::Root::new(""));
+    let mut md = MarkdownIt::empty();
+    md.max_nesting = 1;
+    let ruleset = DocumentRuleSet {
+        runs: vec![],
+        checks: vec![],
+        finalizers: vec![],
+    };
+    // Test both short-to-long and long-to-short reuse of the same source.
+    for (truncated_end, other_end) in [(5, 7), (7, 5)] {
+        let mut state = check_state(&mut document, &md, &ruleset, "前abcd");
+        {
+            let mut deep = state.child_state(3..truncated_end, 2, 0).unwrap();
+            assert_eq!(deep.skip_token(), Some(truncated_end - 3));
+        }
+        let mut shallow = state.child_state(3..other_end, 0, 0).unwrap();
+        assert_eq!(shallow.skip_token(), Some(1));
+        assert_eq!(shallow.remaining().len(), other_end - 4);
+    }
 }
 
 #[test]
@@ -936,8 +988,13 @@ fn recursive_check_depth_limit_is_exact() {
 
     let mut limit = scan(&mut second, 0..2).unwrap();
     assert_eq!(limit.depth, 3);
-    assert_eq!(limit.skip_token().unwrap(), 2);
-    assert!(limit.skip_token().is_none());
+    // At the limit checks still run; with no checks one byte is consumed.
+    assert_eq!(limit.skip_token().unwrap(), 1);
+
+    let mut over = scan(&mut limit, 0..1).unwrap();
+    assert_eq!(over.depth, 4);
+    assert_eq!(over.skip_token().unwrap(), 1);
+    assert!(over.skip_token().is_none());
 }
 
 #[test]
@@ -1053,7 +1110,7 @@ fn recursive_check_same_range_terminates_at_depth_limit() {
     CALLS.with(|calls| calls.set(0));
 
     assert_eq!(context.skip_token().unwrap(), 1);
-    assert_eq!(CALLS.with(Cell::get), 4);
+    assert_eq!(CALLS.with(Cell::get), 5);
     assert_eq!(context.remaining(), "");
     assert_eq!(context.skip_token(), None);
 }

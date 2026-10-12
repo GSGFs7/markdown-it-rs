@@ -1147,6 +1147,26 @@ fn direct_image_only_registration_matches_expected_output() {
 }
 
 #[test]
+fn direct_reference_label_preserves_nested_scan_limit_decisions() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut md);
+    markdown_it::plugins::html::add(&mut md);
+    let source = "[[b*\\中\t[\t\\ar [foo]\n\n[foo]: /url\n";
+
+    // markdown-it 15.0.2 caches the deep scan cutoff at the start of `foo`.
+    // Retrying the reference later at a shallower depth must still fail.
+    md.max_nesting = 3;
+    assert_eq!(md.render(source), "<p>[[b*\\中\t[\t\\ar [foo]</p>\n");
+
+    // The reference itself is valid when scanning has enough nesting budget.
+    md.max_nesting = 4;
+    assert_eq!(
+        md.render(source),
+        "<p>[[b*\\中\t[\t\\ar <a href=\"/url\">foo</a></p>\n"
+    );
+}
+
+#[test]
 fn direct_link_and_image_nesting_thresholds_are_explicit() {
     use markdown_it::plugins::cmark::{block, inline};
 
@@ -1156,34 +1176,17 @@ fn direct_link_and_image_nesting_thresholds_are_explicit() {
     inline::image::add(&mut md);
 
     let cases = [
-        (
-            "[x](/url)",
-            "<p>[x](/url)</p>\n",
-            "<p><a href=\"/url\">x</a></p>\n",
-        ),
-        (
-            "[](/url)",
-            "<p>[](/url)</p>\n",
-            "<p><a href=\"/url\"></a></p>\n",
-        ),
-        (
-            "![雪](/img)",
-            "<p>![雪](/img)</p>\n",
-            "<p><img src=\"/img\" alt=\"雪\"></p>\n",
-        ),
-        (
-            "![](/img)",
-            "<p>![](/img)</p>\n",
-            "<p><img src=\"/img\" alt=\"\"></p>\n",
-        ),
+        ("[x](/url)", "<p><a href=\"/url\">x</a></p>\n"),
+        ("[](/url)", "<p><a href=\"/url\"></a></p>\n"),
+        ("![雪](/img)", "<p><img src=\"/img\" alt=\"雪\"></p>\n"),
+        ("![](/img)", "<p><img src=\"/img\" alt=\"\"></p>\n"),
     ];
     for limit in [0, 1, 2, 32] {
         md.max_nesting = limit;
-        for (source, literal, parsed) in cases {
+        for (source, parsed) in cases {
             let document = md.parse_document(source);
             let expected = match limit {
                 0 => "",
-                1 => literal,
                 _ => parsed,
             };
             assert_eq!(

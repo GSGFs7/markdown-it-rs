@@ -1,7 +1,10 @@
 //! Inline parsing state, source mapping, and nested parse sessions.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::ops::Range;
+use std::rc::Rc;
 
 use super::DocumentRuleSet;
 use crate::MarkdownIt;
@@ -10,6 +13,18 @@ use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId, Text};
 
 // TODO: adjust API visibility
+
+/// Per-inline cache of boundary scans truncated by the nesting limit.
+///
+/// Mirrors markdown-it's inline skip cache: once a scan at the nesting limit
+/// jumps to the end of a window, later scans over the same window see the same
+/// cutoff. The window end is part of the key so a truncated subrange does not
+/// affect a scan over a different range.
+#[derive(Debug, Default)]
+pub(crate) struct ScanLimitCache {
+    truncated: HashSet<(usize, usize)>,
+}
+
 pub struct DocumentInlineState<'a> {
     /// Markdown source.
     pub(crate) src: Cow<'a, str>,
@@ -31,6 +46,9 @@ pub struct DocumentInlineState<'a> {
     pub(crate) depth: u32,
 
     pub(crate) inline_ext: InlineRootExtSet,
+
+    /// Nesting-limit decisions shared by nested boundary scans.
+    pub(crate) scan_limit_cache: Rc<RefCell<ScanLimitCache>>,
 
     pub(crate) root_ext: Option<&'a RootExtSet>,
 
@@ -84,6 +102,7 @@ impl<'a> DocumentInlineState<'a> {
             mapping: Cow::Owned(mapping),
             depth: 0,
             inline_ext: InlineRootExtSet::new(),
+            scan_limit_cache: Rc::new(RefCell::new(ScanLimitCache::default())),
             root_ext,
             link_level: 0,
             ruleset,
@@ -201,7 +220,16 @@ impl<'a> DocumentInlineState<'a> {
             return None;
         }
 
-        if self.depth >= self.md.max_nesting {
+        let span = (self.pos, self.pos_max);
+        let truncated = if self.depth > self.md.max_nesting {
+            // At the nesting limit every scan is treated as truncated; record it
+            // so later scans over the same window see the same cutoff.
+            self.scan_limit_cache.borrow_mut().truncated.insert(span);
+            true
+        } else {
+            self.scan_limit_cache.borrow().truncated.contains(&span)
+        };
+        if truncated {
             let len = self.pos_max - self.pos;
             self.pending_text = Some((self.pos, self.pos_max));
             self.pos += len;
@@ -267,6 +295,7 @@ impl<'a> DocumentInlineState<'a> {
             mapping: Cow::Borrowed(self.mapping.as_ref()),
             depth,
             inline_ext: InlineRootExtSet::new(),
+            scan_limit_cache: Rc::clone(&self.scan_limit_cache),
             root_ext: self.root_ext,
             link_level,
             ruleset: self.ruleset,

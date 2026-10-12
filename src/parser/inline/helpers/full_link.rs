@@ -144,10 +144,6 @@ fn scan_link_label(
     mut context: crate::parser::inline::DocumentInlineState<'_>,
     enable_nested: bool,
 ) -> Option<usize> {
-    if context.depth >= context.markdown_it().max_nesting {
-        return None;
-    }
-
     let initial_len = context.remaining().len();
     let mut level = 1usize;
     while let Some(ch) = context.remaining().chars().next() {
@@ -891,8 +887,13 @@ mod check_label_tests {
     #[test]
     fn recursive_entry_at_depth_limit_yields_no_label() {
         let mut md = parser::<false>();
-        md.max_nesting = 2;
-        assert_eq!(render(&md, "@[]"), "<p>none</p>\n");
+        md.max_nesting = 1;
+        // An immediately closing bracket does not call `skipToken`, so it is
+        // still accepted at the nesting limit.
+        assert_eq!(render(&md, "@[]"), "<p>end=0</p>\n");
+        // A non-empty label must be scanned with `skipToken`, which records
+        // the failure once the nesting limit is reached.
+        assert_eq!(render(&md, "@[x]"), "<p>none</p>\n");
     }
 
     #[test]
@@ -905,7 +906,7 @@ mod check_label_tests {
         let rules = md.inline.document_rules();
 
         for source in ["[雪](/url)", "[](/url)", "![雪](/img)", "![](/img)"] {
-            for depth in [1, 2] {
+            for depth in [1, 2, 3] {
                 let mut context = DocumentInlineState::new(
                     &mut document,
                     source,
@@ -921,7 +922,15 @@ mod check_label_tests {
                 } else {
                     <LinkScanner<false> as InlineRule>::check(&mut context)
                 };
-                let expected = if depth == 1 { Some(source.len()) } else { None };
+                // `depth` is the rule level of the check; a non-empty label
+                // is rejected once that level reaches `maxNesting`. An empty
+                // label closes before `skipToken` and is still accepted.
+                let empty_label = source.starts_with("[]") || source.starts_with("![]");
+                let expected = if depth < 3 || empty_label {
+                    Some(source.len())
+                } else {
+                    None
+                };
                 assert_eq!(result, expected, "depth={depth}, source={source:?}");
                 assert_eq!(context.remaining(), source);
                 assert_eq!(context.depth, depth);
@@ -1129,22 +1138,11 @@ mod check_label_tests {
         let mut nested = root
             .child_state(
                 0..source.len(),
-                root.depth.saturating_add(1),
+                root.depth.saturating_add(2),
                 root.link_level,
             )
             .unwrap();
-        assert_eq!(nested.depth, 1);
-        assert_eq!(
-            nested
-                .child_state(
-                    1..source.len(),
-                    nested.depth.saturating_add(1),
-                    nested.link_level
-                )
-                .unwrap()
-                .depth,
-            2
-        );
+        assert_eq!(nested.depth, 2);
         assert!(scan_link_candidate(&mut nested, 0, false, None).is_none());
     }
 
