@@ -186,6 +186,18 @@ mod tests {
     }
 
     #[test]
+    fn encodes_brackets_when_forbidden_characters_interrupt_the_host() {
+        for (source, expected) in [
+            ("//[::f|ff:192.0.2.1]/", "//%5B::f%7Cff:192.0.2.1%5D/"),
+            ("https://[::f|ff]/", "https://%5B::f%7Cff%5D/"),
+            ("https://[::f{ff}]/", "https://%5B::f%7Bff%7D%5D/"),
+            ("https://[::f<ff>]/", "https://%5B::f%3Cff%3E%5D/"),
+        ] {
+            assert_eq!(format_url_for_computers(source), expected, "{source}");
+        }
+    }
+
+    #[test]
     fn encodes_inner_brackets_in_bracketed_hosts() {
         for (source, expected) in [
             (

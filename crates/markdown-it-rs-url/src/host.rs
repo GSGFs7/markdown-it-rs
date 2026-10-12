@@ -10,6 +10,13 @@ pub(crate) fn normalize_host(host: &str) -> Option<Cow<'_, str>> {
 
     // Preserve outer IPv6 brackets; encode the hostname inside them.
     if is_ipv6_host(host) {
+        // mdurl does not preserve brackets when forbidden characters interrupt the host.
+        if host.contains([
+            '%', '/', '?', ';', '#', '\'', '{', '}', '|', '\\', '^', '`', '<', '>', '"', ' ', '\r',
+            '\n', '\t',
+        ]) {
+            return None;
+        }
         return Some(match encode_url(&host[1..host.len() - 1]) {
             Cow::Borrowed(_) => Cow::Borrowed(host),
             Cow::Owned(inner) => Cow::Owned(format!("[{inner}]")),

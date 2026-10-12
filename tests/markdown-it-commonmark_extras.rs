@@ -154,6 +154,20 @@ fn link_destinations_trim_trailing_line_breaks_before_encoding() {
     );
 }
 
+#[test]
+fn malformed_bracketed_link_hosts_encode_outer_brackets() {
+    let mut md = markdown_it::MarkdownIt::new();
+    md.max_nesting = 3;
+    assert_eq!(
+        md.render("[foo](//[::f|ff:192.0.2.1]/)\n"),
+        "<p><a href=\"//%5B::f%7Cff:192.0.2.1%5D/\">foo</a></p>\n"
+    );
+    assert_eq!(
+        md.render("[foo](//[::ffff:192.0.2.1]/)\n"),
+        "<p><a href=\"//[::ffff:192.0.2.1]/\">foo</a></p>\n"
+    );
+}
+
 fn run(input: &str, output: &str) {
     let expected = if output.is_empty() {
         String::new()
