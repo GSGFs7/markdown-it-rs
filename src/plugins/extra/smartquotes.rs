@@ -406,6 +406,17 @@ fn document_smartquotes_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> 
 }
 
 fn can_open_or_close(quote_type: QuoteType, last_char: char, next_char: char) -> (bool, bool) {
+    // classify NUL as markdown-it's replacement character
+    let last_char = if last_char == '\0' {
+        '\u{fffd}'
+    } else {
+        last_char
+    };
+    let next_char = if next_char == '\0' {
+        '\u{fffd}'
+    } else {
+        next_char
+    };
     let is_double = quote_type == QuoteType::Double;
     if next_char == DOUBLE_QUOTE && is_double && last_char.is_ascii_digit() {
         return (false, false);
