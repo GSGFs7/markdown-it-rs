@@ -129,6 +129,31 @@ fn emphasis_across_normalized_lines_preserves_source_offsets() {
     }
 }
 
+#[test]
+fn link_destinations_trim_trailing_line_breaks_before_encoding() {
+    let mut md = markdown_it::MarkdownIt::new();
+    md.render_options.breaks = true;
+    md.render_options.xhtml_out = false;
+    assert_eq!(
+        md.render("[ﬀﬁﬂ]\n\n[ff\n\n[fffifl]:|9\\\r0 /url\nurl"),
+        "<p><a href=\"%7C9%5C\">ﬀﬁﬂ</a></p>\n<p>[ff</p>\n<p>0 /url<br>\nurl</p>\n"
+    );
+    for newline in ["\n", "\r\n", "\r"] {
+        assert_eq!(
+            md.render(&format!("[x]\n\n[x]: /url\\{newline}next")),
+            "<p><a href=\"/url%5C\">x</a></p>\n<p>next</p>\n"
+        );
+        assert_eq!(
+            md.render(&format!("[x](/url\\{newline})")),
+            "<p><a href=\"/url%5C\">x</a></p>\n"
+        );
+    }
+    assert_eq!(
+        md.render("[x](< /url >)"),
+        "<p><a href=\"/url\">x</a></p>\n"
+    );
+}
+
 fn run(input: &str, output: &str) {
     let expected = if output.is_empty() {
         String::new()

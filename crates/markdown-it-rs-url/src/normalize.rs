@@ -4,6 +4,24 @@ use crate::parse::{split_authority_url, split_mailto_url};
 use crate::percent::encode_url;
 
 pub fn format_url_for_computers(input: &str) -> String {
+    // mdurl parses URLs after JavaScript String.trim(). Keep interior whitespace
+    // for percent encoding; Rust's whitespace set differs for NEL and BOM.
+    let input = input.trim_matches(|ch| {
+        matches!(
+            ch,
+            '\u{0009}'..='\u{000d}'
+                | ' '
+                | '\u{00a0}'
+                | '\u{1680}'
+                | '\u{2000}'..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+        )
+    });
     if let Some(url) = split_authority_url(input) {
         return normalize_authority_url(url.prefix, url.authority, url.suffix);
     }
@@ -72,6 +90,28 @@ mod tests {
     use super::*;
     use crate::authority::split_host_port;
     use crate::parse::is_url_scheme;
+
+    #[test]
+    fn trims_javascript_whitespace_before_normalizing() {
+        for whitespace in [
+            '\t', '\n', '\u{000b}', '\u{000c}', '\r', ' ', '\u{00a0}', '\u{1680}', '\u{2000}',
+            '\u{200a}', '\u{2028}', '\u{2029}', '\u{202f}', '\u{205f}', '\u{3000}', '\u{feff}',
+        ] {
+            for url in ["/url", "https://example.com/path", "mailto:x@example.com"] {
+                assert_eq!(
+                    format_url_for_computers(&format!("{whitespace}{url}{whitespace}")),
+                    url
+                );
+            }
+        }
+        assert_eq!(format_url_for_computers("/url\\\n"), "/url%5C");
+        assert_eq!(format_url_for_computers("a\nb"), "a%0Ab");
+        assert_eq!(format_url_for_computers("/url%0A"), "/url%0A");
+        assert_eq!(
+            format_url_for_computers("\u{0085}/url\u{0085}"),
+            "%C2%85/url%C2%85"
+        );
+    }
 
     #[test]
     fn encodes_spaces_and_unicode() {
