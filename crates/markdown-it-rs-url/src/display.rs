@@ -14,7 +14,10 @@ pub fn decode_url_for_display(input: &str) -> String {
     if let Some(url) = split_authority_url(input) {
         let mut result = String::with_capacity(input.len());
         result.push_str(url.prefix);
-        result.push_str(&display_authority(url.authority));
+        // markdown-it only recodes hostnames for these exact protocol names.
+        // Unknown protocols still decode percent escapes in their display text.
+        let recode_host = matches!(url.prefix, "//" | "http://" | "https://");
+        result.push_str(&display_authority(url.authority, recode_host));
         result.push_str(&decode_for_display(url.suffix));
         return result;
     }
@@ -23,7 +26,7 @@ pub fn decode_url_for_display(input: &str) -> String {
         let prefix_len = input.len() - mailto.body.len();
         let mut result = String::with_capacity(input.len());
         result.push_str(&input[..prefix_len]);
-        result.push_str(&display_mailto_url(mailto));
+        result.push_str(&display_mailto_url(mailto, input.starts_with("mailto:")));
         return result;
     }
 
@@ -47,7 +50,7 @@ fn display_url(input: &str) -> String {
     }
 
     if let Some(mailto) = split_mailto_url(input) {
-        return display_mailto_url(mailto);
+        return display_mailto_url(mailto, true);
     }
 
     decode_for_display(input)
@@ -56,7 +59,7 @@ fn display_url(input: &str) -> String {
 fn display_authority_url(input: &str) -> String {
     // authority: domain, port, userinfo
     let (authority, suffix) = split_authority_suffix(input);
-    let authority = display_authority(authority);
+    let authority = display_authority(authority, true);
 
     if suffix == "/" {
         authority
@@ -65,15 +68,18 @@ fn display_authority_url(input: &str) -> String {
     }
 }
 
-fn display_mailto_url(mailto: MailtoUrl<'_>) -> String {
+fn display_mailto_url(mailto: MailtoUrl<'_>, recode_host: bool) -> String {
     let Some((local, domain)) = mailto.address.rsplit_once('@') else {
         return decode_for_display(mailto.body);
     };
 
-    decode_for_display(local) + "@" + &display_host(domain) + &decode_for_display(mailto.query)
+    decode_for_display(local)
+        + "@"
+        + &display_hostname(domain, recode_host)
+        + &decode_for_display(mailto.query)
 }
 
-fn display_authority(authority: &str) -> String {
+fn display_authority(authority: &str, recode_host: bool) -> String {
     let parts = split_authority(authority);
 
     let mut result = String::with_capacity(authority.len());
@@ -82,15 +88,40 @@ fn display_authority(authority: &str) -> String {
         result.push('@');
     }
 
-    result.push_str(&display_host(parts.host));
+    result.push_str(&display_hostname(parts.host, recode_host));
     result.push_str(parts.port);
     result.push_str(&decode_for_display(parts.suffix));
     result
 }
 
+fn display_hostname(host: &str, recode_host: bool) -> String {
+    if recode_host {
+        display_host(host)
+    } else {
+        decode_for_display(host)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recodes_display_hostnames_only_for_markdown_it_protocols() {
+        for (prefix, host) in [
+            ("http://", "☃.net"),
+            ("https://", "☃.net"),
+            ("//", "☃.net"),
+            ("httttp://", "xn--n3h.net"),
+            ("ftp://", "xn--n3h.net"),
+            ("HTTP://", "xn--n3h.net"),
+            ("mailto:user@", "☃.net"),
+            ("MAILTO:user@", "xn--n3h.net"),
+        ] {
+            let source = format!("{prefix}xn--n3h.net?x=%CE%B1");
+            assert_eq!(decode_url_for_display(&source), format!("{prefix}{host}?x=α"));
+        }
+    }
 
     #[test]
     fn strips_common_prefixes() {

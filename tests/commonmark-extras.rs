@@ -37,6 +37,14 @@ fn empty_link_and_image_titles_match_markdown_it() {
 
 // markdown-it compatibility: it reasonable???
 #[test]
+fn unknown_autolink_protocol_preserves_punycode_display_text() {
+    run(
+        "<httttp://xn--n3h.net/>",
+        "<p><a href=\"httttp://xn--n3h.net/\">httttp://xn--n3h.net/</a></p>",
+    );
+}
+
+#[test]
 fn autolink_relocates_invalid_host_suffix_after_numeric_port() {
     let md = markdown_it::MarkdownIt::new();
     assert_eq!(
