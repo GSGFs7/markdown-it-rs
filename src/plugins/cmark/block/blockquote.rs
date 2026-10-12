@@ -41,10 +41,9 @@ impl DocumentNodeRenderer<Blockquote> for BlockquoteDocumentRenderer {
             context.cr(output);
         }
         context.render_children(node.id(), output);
-        if has_visible_children {
-            context.cr(output);
-        }
 
+        // Block children supply their own trailing newlines. In particular,
+        // raw HTML at EOF must remain adjacent to the closing blockquote tag.
         write_html_close(output, "blockquote");
         context.cr(output);
     }

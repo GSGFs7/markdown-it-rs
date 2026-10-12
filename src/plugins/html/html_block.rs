@@ -233,4 +233,45 @@ mod tests {
         );
         assert_eq!(md.render("<div>\r\n"), "<div>\n");
     }
+
+    #[test]
+    fn quoted_html_preserves_final_line_break() {
+        let mut md = crate::MarkdownIt::empty();
+        crate::plugins::cmark::add(&mut md);
+        crate::plugins::html::add(&mut md);
+
+        for html in [
+            "<div>",
+            "<script>text</script>",
+            "<!-- comment -->",
+            "<?instruction?>",
+            "<!DOCTYPE html>",
+            "<![CDATA[text]]>",
+            "<custom>",
+        ] {
+            for newline in ["", "\n", "\r\n"] {
+                let source = format!("> {html}{newline}");
+                let trailing = if newline.is_empty() { "" } else { "\n" };
+                assert_eq!(
+                    md.render(&source),
+                    format!("<blockquote>\n{html}{trailing}</blockquote>\n"),
+                    "source={source:?}"
+                );
+            }
+        }
+        for (source, expected) in [
+            (
+                "> > <div>",
+                "<blockquote>\n<blockquote>\n<div></blockquote>\n</blockquote>\n",
+            ),
+            (
+                "> text\n>\n> <div>",
+                "<blockquote>\n<p>text</p>\n<div></blockquote>\n",
+            ),
+            ("> text", "<blockquote>\n<p>text</p>\n</blockquote>\n"),
+            (">", "<blockquote></blockquote>\n"),
+        ] {
+            assert_eq!(md.render(source), expected, "source={source:?}");
+        }
+    }
 }
