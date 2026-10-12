@@ -3,6 +3,7 @@ pub(crate) struct Authority<'a> {
     pub(crate) userinfo: Option<&'a str>,
     pub(crate) host: &'a str,
     pub(crate) port: &'a str,
+    pub(crate) suffix: &'a str,
 }
 
 pub(crate) fn split_authority(input: &str) -> Authority<'_> {
@@ -14,12 +15,38 @@ pub(crate) fn split_authority(input: &str) -> Authority<'_> {
             (Some(userinfo), host_port)
         });
     let (host, port) = split_host_port(host_port);
+    let (host, suffix) = split_hostname_suffix(host);
 
     Authority {
         userinfo,
         host,
         port,
+        suffix,
     }
+}
+
+fn split_hostname_suffix(host: &str) -> (&str, &str) {
+    if host.starts_with('[') && host.ends_with(']') {
+        return (host, "");
+    }
+    let is_ascii_host_char =
+        |byte: u8| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'_');
+    let mut start = 0;
+    for label in host.split('.') {
+        if label
+            .bytes()
+            .any(|byte| byte.is_ascii() && !is_ascii_host_char(byte))
+        {
+            // markdown-it compatibility: move invalid host content after the port.
+            let valid = label
+                .bytes()
+                .take_while(|&byte| is_ascii_host_char(byte))
+                .count();
+            return host.split_at(start + valid);
+        }
+        start += label.len() + 1;
+    }
+    (host, "")
 }
 
 // this fn only split host:port
@@ -38,6 +65,7 @@ pub(crate) fn split_host_port(input: &str) -> (&str, &str) {
         return (input, "");
     }
 
+    // markdown-it compatibility: extract numeric ports even from unclosed brackets.
     if let Some((host, port)) = input.rsplit_once(':')
         && port.bytes().all(|byte| byte.is_ascii_digit())
     {

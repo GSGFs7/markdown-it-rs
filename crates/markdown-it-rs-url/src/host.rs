@@ -10,7 +10,7 @@ pub(crate) fn normalize_host(host: &str) -> Option<Cow<'_, str>> {
 
     // Preserve outer IPv6 brackets; encode the hostname inside them.
     if is_ipv6_host(host) {
-        // mdurl does not preserve brackets when forbidden characters interrupt the host.
+        // markdown-it compatibility: forbidden host characters disable bracket preservation.
         if host.contains(is_host_terminator) {
             return None;
         }
@@ -60,9 +60,7 @@ pub(crate) fn normalize_host(host: &str) -> Option<Cow<'_, str>> {
         }
     }
 
-    // markdown-it's `punycode.toASCII` is less strict than UTS #46. Keep
-    // strict IDNA as the normal path, but encode non-ASCII labels directly as
-    // a compatibility fallback (for example `xn--γ.com`).
+    // markdown-it compatibility: use raw Punycode when IDNA rejects a label.
     if host.is_ascii() {
         return None;
     }
@@ -126,9 +124,7 @@ pub(crate) fn display_host(host: &str) -> String {
         }
 
         if let Some(encoded) = label.strip_prefix("xn--") {
-            // markdown-it uses raw Punycode, without IDNA validation. Empty
-            // payloads decode to empty labels, and a failure in any label
-            // leaves the entire hostname unchanged.
+            // markdown-it compatibility: decode raw Punycode without IDNA validation.
             let Some(display) = idna::punycode::decode_to_string(&encoded.to_ascii_lowercase())
             else {
                 return host.to_owned();

@@ -12,6 +12,16 @@ fn run(input: &str, output: &str) {
     assert_eq!(actual, expected);
 }
 
+// markdown-it compatibility: it reasonable???
+#[test]
+fn autolink_relocates_invalid_host_suffix_after_numeric_port() {
+    let md = markdown_it::MarkdownIt::new();
+    assert_eq!(
+        md.render("<irc://foo.bar:2233r:2:33/baaz>\n"),
+        "<p><a href=\"irc://foo.bar:33:2233r:2/baaz\">irc://foo.bar:33:2233r:2/baaz</a></p>\n"
+    );
+}
+
 #[test]
 fn autolink_normalizes_host_before_semicolon_suffix() {
     let md = markdown_it::MarkdownIt::new();

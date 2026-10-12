@@ -85,7 +85,7 @@ fn decode_percent_bytes(bytes: &[u8], result: &mut String) {
             // try decode to UTF-8
             match std::str::from_utf8(sequence) {
                 Ok(text) => result.push_str(text),
-                // mdurl replaces each byte of an invalid scalar value.
+                // markdown-it compatibility: replace each byte of an invalid scalar value.
                 Err(_) => result.extend(std::iter::repeat_n('\u{fffd}', width)),
             }
             pos += width;

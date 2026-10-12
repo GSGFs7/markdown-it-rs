@@ -37,7 +37,7 @@ pub fn format_url_for_computers(input: &str) -> String {
 
 // authority, such as: postgresql://db_user:db_passwd@localhost:5432/db?searchpath=schema
 fn normalize_authority_url(prefix: &str, authority: &str, suffix: &str) -> String {
-    // mdurl ends the host at forbidden characters before normalizing it.
+    // markdown-it compatibility: forbidden host characters begin the URL suffix.
     let host_start = authority.rfind('@').map_or(0, |pos| pos + 1);
     let host_end = authority[host_start..]
         .find(is_host_terminator)
@@ -49,7 +49,7 @@ fn normalize_authority_url(prefix: &str, authority: &str, suffix: &str) -> Strin
     let Some(host) = normalize_host(parts.host) else {
         let mut result = encode_url(prefix).into_owned();
         if parts.host.starts_with('[') && !parts.host.ends_with(']') && !parts.port.is_empty() {
-            // mdurl extracts the port before moving an unclosed bracketed host to the path.
+            // markdown-it compatibility: place the port before an unclosed bracketed host.
             if let Some(userinfo) = parts.userinfo {
                 result.push_str(encode_url(userinfo).as_ref());
                 result.push('@');
@@ -75,6 +75,7 @@ fn normalize_authority_url(prefix: &str, authority: &str, suffix: &str) -> Strin
 
     result.push_str(&host);
     result.push_str(parts.port);
+    result.push_str(encode_url(parts.suffix).as_ref());
     result.push_str(encode_url(host_suffix).as_ref());
     result.push_str(encode_url(suffix).as_ref());
     result
@@ -161,6 +162,23 @@ mod tests {
             format_url_for_computers("https://example.com/<tags>"),
             "https://example.com/%3Ctags%3E"
         )
+    }
+
+    #[test]
+    fn relocates_invalid_hostname_suffix_after_port() {
+        for (source, expected) in [
+            (
+                "irc://foo.bar:2233r:2:33/baaz",
+                "irc://foo.bar:33:2233r:2/baaz",
+            ),
+            ("http://foo:bad:80/path", "http://foo:80:bad/path"),
+            ("//user@foo:bad:80/path", "//user@foo:80:bad/path"),
+            ("http://foo:80/path", "http://foo:80/path"),
+            ("http://[::1]:80/path", "http://[::1]:80/path"),
+        ] {
+            assert_eq!(format_url_for_computers(source), expected, "{source}");
+            assert_eq!(crate::decode_url_for_display(source), expected, "{source}");
+        }
     }
 
     #[test]

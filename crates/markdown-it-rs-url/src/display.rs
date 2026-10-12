@@ -84,6 +84,7 @@ fn display_authority(authority: &str) -> String {
 
     result.push_str(&display_host(parts.host));
     result.push_str(parts.port);
+    result.push_str(&decode_for_display(parts.suffix));
     result
 }
 
