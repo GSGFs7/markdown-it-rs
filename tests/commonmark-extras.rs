@@ -52,11 +52,12 @@ fn link_destinations_treat_nul_as_the_replacement_character() {
 }
 
 #[test]
-fn nul_link_destination_keeps_original_source_offsets() {
+fn nul_link_destination_uses_normalized_source_offsets() {
     let md = markdown_it::MarkdownIt::new();
     let source = "雪 [x](/a\0b) 尾";
+    let normalized = "雪 [x](/a\u{fffd}b) 尾";
     let document = md.parse_document(source);
-    assert_eq!(document.source(), source);
+    assert_eq!(document.source(), normalized);
     let link = document
         .events(document.root())
         .find_map(|event| {
@@ -67,7 +68,10 @@ fn nul_link_destination_keeps_original_source_offsets() {
         .unwrap();
     assert_eq!(
         link.srcmap().unwrap().get_byte_offsets(),
-        (source.find('[').unwrap(), source.find(')').unwrap() + 1)
+        (
+            normalized.find('[').unwrap(),
+            normalized.find(')').unwrap() + 1
+        )
     );
     assert_eq!(
         link.cast::<markdown_it::plugins::cmark::inline::link::Link>()
@@ -97,12 +101,13 @@ fn emphasis_classifies_nul_as_the_replacement_character() {
 }
 
 #[test]
-fn emphasis_next_to_nul_keeps_original_source_offsets() {
+fn emphasis_next_to_nul_uses_normalized_source_offsets() {
     let md = markdown_it::MarkdownIt::new();
     let source = "雪 \0_a_";
+    let normalized = "雪 \u{fffd}_a_";
     let document = md.parse_document(source);
-    assert_eq!(document.source(), source);
-    let start = source.find('_').unwrap();
+    assert_eq!(document.source(), normalized);
+    let start = normalized.find('_').unwrap();
     let emphasis = document
         .events(document.root())
         .find_map(|event| {
@@ -113,7 +118,7 @@ fn emphasis_next_to_nul_keeps_original_source_offsets() {
         .unwrap();
     assert_eq!(
         emphasis.srcmap().unwrap().get_byte_offsets(),
-        (start, source.len())
+        (start, normalized.len())
     );
 }
 

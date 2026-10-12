@@ -180,8 +180,10 @@ fn relocated_payload_paths_are_rewritten_in_debug_trees() {
     }
 }
 fn assert_document_structure(md: &MarkdownIt, source: &str) -> markdown_it::Document {
+    // parse_document replaces NUL with U+FFFD.
+    let normalized = source.replace('\0', "\u{FFFD}");
     let document = md.parse_document(source);
-    assert_eq!(document.source(), source);
+    assert_eq!(document.source(), normalized);
     assert_eq!(
         document
             .node(document.root())
@@ -189,7 +191,7 @@ fn assert_document_structure(md: &MarkdownIt, source: &str) -> markdown_it::Docu
             .unwrap()
             .content
             .as_ref(),
-        source
+        normalized.as_str()
     );
     assert!(std::ptr::eq(
         document

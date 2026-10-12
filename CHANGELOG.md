@@ -4,6 +4,9 @@
 
 ### Breaking changes
 
+- NUL is now replaced with U+FFFD before parsing, matching markdown-it.js.
+  `Document::source` and byte source maps refer to the normalized text, so
+  offsets after a NUL grow by two bytes; plugins no longer special-case NUL
 - changed `Root.content` from `String` to `Arc<str>` to share source storage
   with `Document`; use `.as_ref()` for borrowed text or `.to_string()` for an
   owned, mutable copy. `Root::new` accepts `String`, `&str`, and `Arc<str>`;

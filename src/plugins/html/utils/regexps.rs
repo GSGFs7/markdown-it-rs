@@ -8,8 +8,7 @@ use regex::Regex;
 
 const attr_name: &str = r#"[a-zA-Z_:][a-zA-Z0-9:._-]*"#;
 
-// NUL is rendered as U+FFFD, which is valid in attribute values.
-const unquoted: &str = r#"[^"'=<>`\x01-\x20]+"#;
+const unquoted: &str = r#"[^"'=<>`\x00-\x20]+"#;
 const single_quoted: &str = r#"'[^']*'"#;
 const double_quoted: &str = r#""[^"]*""#;
 

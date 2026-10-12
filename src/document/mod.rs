@@ -149,7 +149,10 @@ impl Document {
         self.arena.trim_unused_tail();
     }
 
-    /// Original Markdown source owned by this document.
+    /// Markdown source owned by this document, used for byte source maps.
+    ///
+    /// [`crate::MarkdownIt::parse_document`] stores it with NUL replaced by
+    /// U+FFFD; [`Document::from_draft`] stores it verbatim.
     pub fn source(&self) -> &str {
         &self.source
     }

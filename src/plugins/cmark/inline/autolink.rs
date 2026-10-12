@@ -3,7 +3,6 @@
 //! `<https://example.org>`
 //!
 //! <https://spec.commonmark.org/0.30/#autolinks>
-use std::borrow::Cow;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -128,22 +127,17 @@ fn scan_autolink(src: &str, formatter: &dyn LinkFormatter) -> Option<AutolinkMat
 
     let label_end = closing?;
     let raw = &src[1..label_end];
-    let normalized = if raw.contains('\0') {
-        Cow::Owned(raw.replace('\0', "\u{FFFD}"))
-    } else {
-        Cow::Borrowed(raw)
-    };
 
-    let is_uri = AUTOLINK_RE.is_match(&normalized);
-    let is_email = EMAIL_RE.is_match(&normalized);
+    let is_uri = AUTOLINK_RE.is_match(raw);
+    let is_email = EMAIL_RE.is_match(raw);
     if !is_uri && !is_email {
         return None;
     }
 
     let destination = if is_uri {
-        formatter.normalize_link(&normalized)
+        formatter.normalize_link(raw)
     } else {
-        formatter.normalize_link(&format!("mailto:{normalized}"))
+        formatter.normalize_link(&format!("mailto:{raw}"))
     };
     formatter.validate_link(&destination)?;
 
@@ -152,7 +146,7 @@ fn scan_autolink(src: &str, formatter: &dyn LinkFormatter) -> Option<AutolinkMat
         label_start: 1,
         label_end,
         destination,
-        label: formatter.normalize_link_text(&normalized),
+        label: formatter.normalize_link_text(raw),
     })
 }
 
@@ -261,13 +255,14 @@ mod tests {
     }
 
     #[test]
-    fn nul_autolink_source_maps_use_original_byte_offsets() {
+    fn nul_autolink_source_maps_use_normalized_byte_offsets() {
         let md = parser();
         let source = "雪 <ab:é\0x> 尾";
+        let normalized = "雪 <ab:é\u{fffd}x> 尾";
         let document = md.parse_document(source);
-        assert_eq!(document.source(), source);
-        let start = source.find('<').unwrap();
-        let end = source.find('>').unwrap();
+        assert_eq!(document.source(), normalized);
+        let start = normalized.find('<').unwrap();
+        let end = normalized.find('>').unwrap();
         let mut found = false;
         for event in document.events(document.root()) {
             let node = event.node();

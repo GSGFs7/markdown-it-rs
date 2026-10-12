@@ -183,15 +183,6 @@ pub struct ParseLinkFragmentResult {
     pub str: String,
 }
 
-fn unescape_link_destination(source: &str) -> String {
-    let destination = unescape_all(source);
-    if destination.contains('\0') {
-        destination.replace('\0', "\u{FFFD}")
-    } else {
-        destination.into_owned()
-    }
-}
-
 /// Helper function used to parse `<href>` part of the links with optional brackets.
 pub fn parse_link_destination(
     str: &str,
@@ -211,7 +202,7 @@ pub fn parse_link_destination(
                     return Some(ParseLinkFragmentResult {
                         pos: pos + 1,
                         lines: 0,
-                        str: unescape_link_destination(&str[start + 1..pos]),
+                        str: unescape_all(&str[start + 1..pos]).into_owned(),
                     });
                 }
                 Some('\\') => {
@@ -227,9 +218,8 @@ pub fn parse_link_destination(
         let mut level: u32 = 0;
         loop {
             match chars.next() {
-                // Treat NUL as U+FFFD, as markdown-it does before parsing,
-                // while keeping positions relative to the original source.
-                Some('\x01'..=' ' | '\x7f') | None => break,
+                // space + ascii control characters
+                Some('\0'..=' ' | '\x7f') | None => break,
                 Some('\\') => match chars.next() {
                     Some(' ') | None => {
                         // [a](/url\ "title")
@@ -269,7 +259,7 @@ pub fn parse_link_destination(
         Some(ParseLinkFragmentResult {
             pos,
             lines: 0,
-            str: unescape_link_destination(&str[start..pos]),
+            str: unescape_all(&str[start..pos]).into_owned(),
         })
     }
 }

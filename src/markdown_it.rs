@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use crate::common::RuleMark;
@@ -116,6 +117,9 @@ impl MarkdownIt {
 
     /// Parse Markdown into an arena-backed document and run registered transforms.
     ///
+    /// NUL is replaced with U+FFFD first, so [`Document::source`] and byte source
+    /// maps refer to the normalized text.
+    ///
     /// At low `max_nesting` values links and images may remain literal; a zero
     /// limit stops block parsing.
     ///
@@ -123,7 +127,7 @@ impl MarkdownIt {
     ///
     /// Panics if core-rule stages are missing, repeated, or out of order.
     pub fn parse_document(&self, src: &str) -> Document {
-        let source: Arc<str> = Arc::from(src);
+        let source: Arc<str> = Arc::from(normalize_input(src).as_ref());
         let mut document = Document::new(Arc::clone(&source), Root::new(Arc::clone(&source)));
         document
             .node_mut(document.root())
@@ -178,14 +182,8 @@ impl MarkdownIt {
     ///
     /// Panics if a leaf node has no renderer registered for `format`.
     pub fn render_document_as(&self, document: &Document, format: &str) -> String {
-        let output = self
-            .document_renderers
-            .render(document, format, &self.render_options);
-        if output.contains('\0') {
-            output.replace('\0', "\u{FFFD}")
-        } else {
-            output
-        }
+        self.document_renderers
+            .render(document, format, &self.render_options)
     }
 
     /// Render an arena-backed document directly as HTML.
@@ -235,6 +233,15 @@ impl MarkdownIt {
 impl Default for MarkdownIt {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Replace NUL with U+FFFD before parsing, matching markdown-it's `normalize`.
+fn normalize_input(src: &str) -> Cow<'_, str> {
+    if src.contains('\0') {
+        Cow::Owned(src.replace('\0', "\u{FFFD}"))
+    } else {
+        Cow::Borrowed(src)
     }
 }
 
