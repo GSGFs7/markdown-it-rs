@@ -261,6 +261,7 @@ impl TableScanner {
                     if is_escaped {
                         str.push_str(&line[srcmap.last().unwrap().1..pos - 1]);
                         srcmap.push((str.len(), pos));
+                        is_escaped = false;
                     } else {
                         str.push_str(&line[srcmap.last().unwrap().1..pos]);
                         result.push(RowContent {
