@@ -196,7 +196,8 @@ fn scan_code_pair_bounds<const MARKER: char>(
         while cache.max.len() <= closer_len {
             cache.max.push(0);
         }
-        cache.max[closer_len] = closer_start;
+        // Preserve the farthest position from earlier scans.
+        cache.max[closer_len] = cache.max[closer_len].max(closer_start);
         search = closer_end;
     }
 
@@ -223,6 +224,21 @@ mod tests {
         assert_eq!(matched.consumed, source.len());
         assert_eq!(matched.content_start, '雪'.len_utf8());
         assert_eq!(matched.content_end, source.len() - '雪'.len_utf8());
+    }
+
+    #[test]
+    fn shorter_scan_preserves_cached_later_closers() {
+        let source = "```a``b`c``d`e`";
+        let mut scratch = InlineRootExtSet::new();
+        assert!(
+            scan_code_pair_bounds::<'`'>(source, 0, source.len(), false, &mut scratch).is_none()
+        );
+        let double =
+            scan_code_pair_bounds::<'`'>(source, 4, source.len(), false, &mut scratch).unwrap();
+        assert_eq!(&source[double.content_start..double.content_end], "b`c");
+        let single =
+            scan_code_pair_bounds::<'`'>(source, 12, source.len(), false, &mut scratch).unwrap();
+        assert_eq!(&source[single.content_start..single.content_end], "e");
     }
 
     #[test]
