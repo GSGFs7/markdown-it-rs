@@ -110,6 +110,28 @@ fn quotes_still_pair_across_line_breaks_and_inline_markup() {
     }
 }
 
+#[test]
+fn smartquotes_matches_utf16_boundaries_for_supplementary_characters() {
+    for (source, expected) in [
+        (
+            "'\"double in single\"'😀b\n 0_\n\"'single in d文*ouuble'\"\n",
+            "<p>'“double in single”'😀b\n0_\n“‘single in d文*ouuble’”</p>",
+        ),
+        ("'\"x\"'😀b", "<p>'“x”'😀b</p>"),
+        ("'\"x\"'☀b", "<p>‘“x”’☀b</p>"),
+        ("😀'x'😀", "<p>😀’x’😀</p>"),
+        ("☀'x'☀", "<p>☀‘x’☀</p>"),
+        ("😀\"x\"😀", "<p>😀&quot;x&quot;😀</p>"),
+        ("☀\"x\"☀", "<p>☀“x”☀</p>"),
+        ("'\"x\"'𐄀b", "<p>'“x”'𐄀b</p>"),
+        ("𐄀'x'𐄀", "<p>𐄀’x’𐄀</p>"),
+        ("😀*x*'tail'", "<p>😀<em>x</em>’tail’</p>"),
+        ("'\"x\"'*😀*", "<p>'“x”'<em>😀</em></p>"),
+    ] {
+        run(source, expected);
+    }
+}
+
 // TESTGEN: fixtures/markdown-it/smartquotes.txt
 #[rustfmt::skip]
 mod fixtures_markdown_it_smartquotes_txt {

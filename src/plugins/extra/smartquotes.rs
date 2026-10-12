@@ -411,8 +411,12 @@ fn can_open_or_close(quote_type: QuoteType, last_char: char, next_char: char) ->
         return (false, false);
     }
 
-    let is_last_punctuation = last_char.is_ascii_punctuation() || is_punct_char(last_char);
-    let is_next_punctuation = next_char.is_ascii_punctuation() || is_punct_char(next_char);
+    // markdown-it inspects adjacent UTF-16 code units with charCodeAt.
+    // Supplementary characters appear as surrogates, not punctuation/symbols.
+    let is_last_punctuation = last_char.len_utf16() == 1
+        && (last_char.is_ascii_punctuation() || is_punct_char(last_char));
+    let is_next_punctuation = next_char.len_utf16() == 1
+        && (next_char.is_ascii_punctuation() || is_punct_char(next_char));
     let is_last_whitespace = last_char.is_whitespace();
     let is_next_whitespace = next_char.is_whitespace();
 
