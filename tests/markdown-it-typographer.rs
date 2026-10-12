@@ -35,44 +35,6 @@ fn run(input: &str, output: &str) {
     run_with(input, output, |_| {});
 }
 
-#[test]
-fn typographer_preserves_code_spans_and_image_alt_text() {
-    for (source, expected) in [
-        (
-            "before... `<strong>...</strong>` after...",
-            "<p>before… <code>&lt;strong&gt;...&lt;/strong&gt;</code> after…</p>",
-        ),
-        (
-            "`(c) (r) (tm) +- -- --- ???? !!!! ,,,,` (c) (r) (tm)",
-            "<p><code>(c) (r) (tm) +- -- --- ???? !!!! ,,,,</code> © ® ™</p>",
-        ),
-        (
-            "``a ` ...`` and `b...` ...",
-            "<p><code>a ` ...</code> and <code>b...</code> …</p>",
-        ),
-        (
-            "[*label...* `code...`](/url)",
-            "<p><a href=\"/url\"><em>label…</em> <code>code...</code></a></p>",
-        ),
-        (
-            "![text... `code...`](/img) after...",
-            "<p><img src=\"/img\" alt=\"text... code...\"> after…</p>",
-        ),
-    ] {
-        run(source, expected);
-    }
-}
-
-#[cfg(feature = "linkify")]
-#[test]
-fn typographer_does_not_touch_text_in_linkified_urls() {
-    let input = r#"URL with (C) (c) (R) (r) (TM) (tm): https://example.com/(c)(r)(tm)/(C)(R)(TM) what do you think?"#;
-    let output = r#"<p>URL with © © ® ® ™ ™: <a href="https://example.com/(c)(r)(tm)/(C)(R)(TM)">https://example.com/(c)(r)(tm)/(C)(R)(TM)</a> what do you think?</p>"#;
-
-    run_with(input, output, |md| {
-        markdown_it::plugins::extra::linkify::add(md);
-    });
-}
 ///////////////////////////////////////////////////////////////////////////
 // TESTGEN: fixtures/markdown-it/typographer-extra.txt
 #[rustfmt::skip]

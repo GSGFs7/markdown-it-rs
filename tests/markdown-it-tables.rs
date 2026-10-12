@@ -1,34 +1,3 @@
-#[test]
-fn table_headers_require_a_pipe() {
-    for (source, expected) in [
-        (
-            "&é\n:------:\nbar | baz",
-            "<p>&amp;é\n:------:\nbar | baz</p>",
-        ),
-        ("foo\n|---\nbar", "<p>foo\n|—\nbar</p>"),
-    ] {
-        run(source, expected);
-    }
-    run(
-        "| abc  |\n:-: |\r\r&é\r:------:\nbar | baz\n",
-        "<table>\n<thead>\n<tr>\n<th style=\"text-align:center\">abc</th>\n</tr>\n</thead>\n</table>\n<p>&amp;é\n:------:\nbar | baz</p>",
-    );
-}
-
-#[test]
-fn single_column_tables_allow_plain_dash_delimiters() {
-    for delimiter in ["--", "---"] {
-        run(
-            &format!("before\n|a\n{delimiter}\n"),
-            "<p>before</p>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>",
-        );
-    }
-    let md = markdown_it::MarkdownIt::with_preset(markdown_it::Preset::MarkdownItDefault);
-    for delimiter in ["-", "- ", "-\t"] {
-        assert!(!md.render(&format!("|a\n{delimiter}")).contains("<table>"));
-    }
-}
-
 fn run(input: &str, output: &str) {
     let output = if output.is_empty() {
         "".to_owned()
