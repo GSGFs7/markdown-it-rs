@@ -13,6 +13,15 @@ fn run(input: &str, output: &str) {
 }
 
 #[test]
+fn autolink_normalizes_host_before_semicolon_suffix() {
+    let md = markdown_it::MarkdownIt::new();
+    assert_eq!(
+        md.render("[foo<https://examp\0;.com/?searc?search=](uri)>\n"),
+        "<p>[foo<a href=\"https://xn--examp-pm43a;.com/?searc?search=%5D(uri)\">https://examp�;.com/?searc?search=](uri)</a></p>\n"
+    );
+}
+
+#[test]
 fn link_destinations_treat_nul_as_the_replacement_character() {
     for (source, expected) in [
         (

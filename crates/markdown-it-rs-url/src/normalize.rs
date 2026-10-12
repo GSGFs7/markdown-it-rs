@@ -1,5 +1,5 @@
 use crate::authority::split_authority;
-use crate::host::normalize_host;
+use crate::host::{is_host_terminator, normalize_host};
 use crate::parse::{split_authority_url, split_mailto_url};
 use crate::percent::encode_url;
 
@@ -37,7 +37,13 @@ pub fn format_url_for_computers(input: &str) -> String {
 
 // authority, such as: postgresql://db_user:db_passwd@localhost:5432/db?searchpath=schema
 fn normalize_authority_url(prefix: &str, authority: &str, suffix: &str) -> String {
-    let parts = split_authority(authority);
+    // mdurl ends the host at forbidden characters before normalizing it.
+    let host_start = authority.rfind('@').map_or(0, |pos| pos + 1);
+    let host_end = authority[host_start..]
+        .find(is_host_terminator)
+        .map_or(authority.len(), |pos| host_start + pos);
+    let (host_authority, host_suffix) = authority.split_at(host_end);
+    let parts = split_authority(host_authority);
 
     // encode each part
     let Some(host) = normalize_host(parts.host) else {
@@ -50,6 +56,7 @@ fn normalize_authority_url(prefix: &str, authority: &str, suffix: &str) -> Strin
             }
             result.push_str(parts.port);
             result.push_str(encode_url(parts.host).as_ref());
+            result.push_str(encode_url(host_suffix).as_ref());
         } else {
             result.push_str(encode_url(authority).as_ref());
         }
@@ -68,6 +75,7 @@ fn normalize_authority_url(prefix: &str, authority: &str, suffix: &str) -> Strin
 
     result.push_str(&host);
     result.push_str(parts.port);
+    result.push_str(encode_url(host_suffix).as_ref());
     result.push_str(encode_url(suffix).as_ref());
     result
 }
@@ -153,6 +161,26 @@ mod tests {
             format_url_for_computers("https://example.com/<tags>"),
             "https://example.com/%3Ctags%3E"
         )
+    }
+
+    #[test]
+    fn normalizes_host_before_forbidden_character_suffix() {
+        for (source, expected) in [
+            (
+                "https://examp�;.com/?searc?search=](uri)",
+                "https://xn--examp-pm43a;.com/?searc?search=%5D(uri)",
+            ),
+            ("https://中;.com/path", "https://xn--fiq;.com/path"),
+            (
+                "https://中:8080;.com/path",
+                "https://xn--fiq:8080;.com/path",
+            ),
+            ("https://u:p@中;.com/path", "https://u:p@xn--fiq;.com/path"),
+            ("//中|tail/path", "//xn--fiq%7Ctail/path"),
+            ("https://中%20tail/path", "https://xn--fiq%20tail/path"),
+        ] {
+            assert_eq!(format_url_for_computers(source), expected, "{source}");
+        }
     }
 
     #[test]
