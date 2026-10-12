@@ -86,6 +86,49 @@ fn emphasis_next_to_nul_keeps_original_source_offsets() {
     );
 }
 
+#[test]
+fn emphasis_across_normalized_lines_preserves_source_offsets() {
+    use markdown_it::plugins::cmark::inline::emphasis::{Em, Strong};
+    use markdown_it::plugins::extra::strikethrough::Strikethrough;
+
+    let mut md = markdown_it::MarkdownIt::new();
+    markdown_it::plugins::extra::strikethrough::add(&mut md);
+    md.render_options.breaks = true;
+    md.render_options.xhtml_out = false;
+    for newline in ["\n", "\r\n", "\r"] {
+        for indent in ["", "\t", "   "] {
+            for (marker, open, close) in [
+                ("*", "<em>", "</em>"),
+                ("_", "<em>", "</em>"),
+                ("**", "<strong>", "</strong>"),
+                ("***", "<em><strong>", "</strong></em>"),
+                ("~~", "<s>", "</s>"),
+            ] {
+                let source = format!("<div>\n\n{marker}te{newline}{indent}!90xt{marker} 尾\n");
+                let document = md.parse_document(&source);
+                assert_eq!(
+                    md.render_document(&document),
+                    format!("<p>&lt;div&gt;</p>\n<p>{open}te<br>\n!90xt{close} 尾</p>\n"),
+                    "{source:?}"
+                );
+                let node = document
+                    .events(document.root())
+                    .find_map(|event| {
+                        let node = event.node();
+                        (node.is::<Em>() || node.is::<Strong>() || node.is::<Strikethrough>())
+                            .then_some(node)
+                    })
+                    .unwrap();
+                assert_eq!(
+                    node.srcmap().unwrap().get_byte_offsets(),
+                    (source.find(marker).unwrap(), source.find(" 尾").unwrap()),
+                    "{source:?}"
+                );
+            }
+        }
+    }
+}
+
 fn run(input: &str, output: &str) {
     let expected = if output.is_empty() {
         String::new()

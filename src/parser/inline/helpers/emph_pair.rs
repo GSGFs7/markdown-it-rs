@@ -161,18 +161,12 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
 
         closer = scan_and_match_document::<MARKER>(state, closer);
 
-        let map = state
-            .document
-            .node(closer)
-            .srcmap()
-            .unwrap()
-            .get_byte_offsets();
-        // backtrack to keep correct source maps
-        state.pos += scanned_bytes;
-        let token_len = map.1 - map.0;
-        state.pos -= token_len;
-
-        Some((Some(closer), token_len))
+        // Matching already sets the node's source map, which may span earlier
+        // delimiters and lines. Append it directly so tokenize does not replace
+        // that map with the current delimiter's span. Original source offsets
+        // cannot be used to backtrack within the normalized inline source.
+        state.nodes_mut().push(closer);
+        Some((None, scanned_bytes))
     }
 }
 
