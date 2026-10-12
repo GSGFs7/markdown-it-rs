@@ -82,6 +82,12 @@ impl<'a> DocumentInlineState<'a> {
         &self.nodes
     }
 
+    /// Mutate the nodes accumulated for this inline container.
+    ///
+    /// Emphasis caches bounds as indices into this list. A caller that removes,
+    /// inserts, or reorders entries must repair or invalidate those bounds before
+    /// the next emphasis scan; appending is safe. Finalizers run after
+    /// tokenization and never resume emphasis matching, so they need no repair.
     pub(crate) fn nodes_mut(&mut self) -> &mut Vec<NodeId> {
         &mut self.nodes
     }

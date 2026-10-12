@@ -58,8 +58,44 @@ struct PairConfig<const MARKER: char> {
     fns: [Option<NodeIdFn>; 3],
 }
 
+/// Cached lower bounds for the emphasis scan.
+///
+/// Indexed by marker character and `(closer.open as usize) * 3 + length_class`.
+/// Bounds are node indices, so they must be rebased when matches remove nodes.
 #[derive(Debug, Default)]
-struct OpenersBottom<const MARKER: char>([usize; 6]);
+struct OpenersBottom {
+    markers: Vec<(char, [usize; 6])>,
+}
+
+impl OpenersBottom {
+    fn get(&self, marker: char, parameter: usize) -> usize {
+        self.markers
+            .iter()
+            .find(|(known, _)| *known == marker)
+            .map_or(0, |(_, bounds)| bounds[parameter])
+    }
+
+    fn set(&mut self, marker: char, parameter: usize, value: usize) {
+        if let Some((_, bounds)) = self.markers.iter_mut().find(|(known, _)| *known == marker) {
+            bounds[parameter] = value;
+        } else {
+            let mut bounds = [0; 6];
+            bounds[parameter] = value;
+            self.markers.push((marker, bounds));
+        }
+    }
+
+    /// Clamp all bounds to `removal_index` after nodes at or past it were removed.
+    fn rebase_after_removal(&mut self, removal_index: usize) {
+        for (_, bounds) in &mut self.markers {
+            for bound in bounds.iter_mut() {
+                if *bound > removal_index {
+                    *bound = removal_index;
+                }
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 #[doc(hidden)]
@@ -202,11 +238,14 @@ fn scan_and_match_document<const MARKER: char>(
     let openers_parameter = (closer.open as usize) * 3 + length_class;
     let min_opener_idx = state
         .inline_ext
-        .get_or_insert_default::<OpenersBottom<MARKER>>()
-        .0[openers_parameter];
+        .get_or_insert_default::<OpenersBottom>()
+        .get(MARKER, openers_parameter);
 
-    let mut idx = state.nodes().len() - 1;
-    let mut new_min_opener_idx = idx;
+    let closer_idx = state.nodes().len() - 1;
+    let mut idx = closer_idx;
+    // Earliest opener consumed by a match; removing nodes shifts later indices,
+    // so bounds beyond it must be clamped.
+    let mut removed_from: Option<usize> = None;
     while idx > min_opener_idx {
         idx -= 1;
 
@@ -284,7 +323,7 @@ fn scan_and_match_document<const MARKER: char>(
                     state.document.discard_node(removed);
                 }
 
-                new_min_opener_idx = 0;
+                removed_from = Some(removed_from.map_or(idx, |earliest| earliest.min(idx)));
                 state.nodes_mut().push(new_token);
             }
         }
@@ -303,18 +342,17 @@ fn scan_and_match_document<const MARKER: char>(
         }
     }
 
-    if new_min_opener_idx != 0 {
+    let openers = state.inline_ext.get_or_insert_default::<OpenersBottom>();
+    if let Some(removed_from) = removed_from {
+        openers.rebase_after_removal(removed_from);
+    } else {
         // If match for this delimiter run failed, we want to set lower bound for
         // future lookups. This is required to make sure algorithm has linear
         // complexity.
         //
         // See details here:
         // https://github.com/commonmark/cmark/issues/178#issuecomment-270417442
-        //
-        let openers_for_marker = state
-            .inline_ext
-            .get_or_insert_default::<OpenersBottom<MARKER>>();
-        openers_for_marker.0[openers_parameter] = new_min_opener_idx;
+        openers.set(MARKER, openers_parameter, closer_idx);
     }
 
     // remove empty node as a small optimization so we can do less work later
@@ -509,7 +547,10 @@ mod tests {
                 "<p><a href=\"url\">a_ <strong>雪</strong></a></p>\n",
             ),
             ("*a_ b*", "<p><em>a_ b</em></p>\n"),
-            ("*__[b_a_)___>_", "<p>*<strong>[b_a_)</strong>_&gt;_</p>\n"),
+            (
+                "*__[b_a_)___>_",
+                "<p>*<strong>[b_a_)</strong><em>&gt;</em></p>\n",
+            ),
             (
                 "_`__a*_[a_雪*雪*",
                 "<p><em>`__a*</em>[a_雪<em>雪</em></p>\n",
@@ -517,6 +558,35 @@ mod tests {
         ] {
             run(source, expected);
         }
+    }
+
+    #[test]
+    fn cached_openers_bottom_is_rebased_after_matches_remove_nodes() {
+        // A `*` match removes nodes; the cached `_` bound must still allow the
+        // trailing `_b_` to match.
+        for (source, expected) in [
+            (" *a_(c_*_b_)9", "<p><em>a_(c_</em><em>b</em>)9</p>\n"),
+            (
+                " *)😀é\n90é(c_*_b_)9",
+                "<p><em>)😀é\n90é(c_</em><em>b</em>)9</p>\n",
+            ),
+            (
+                " *)😀é\r90é(c_*_b_)9!!(< foo -->\n\n    <!-- fo",
+                "<p><em>)😀é\n90é(c_</em><em>b</em>)9!!(&lt; foo --&gt;</p>\n<pre><code>&lt;!-- fo\n</code></pre>\n",
+            ),
+            (
+                "> *a_(c_*_b_)9",
+                "<blockquote>\n<p><em>a_(c_</em><em>b</em>)9</p>\n</blockquote>\n",
+            ),
+        ] {
+            run(source, expected);
+        }
+    }
+
+    #[test]
+    fn failed_closer_at_cached_bound_can_open_later_emphasis() {
+        // A failed closer may still open a later pair; the bound is inclusive.
+        run("a*b*c", "<p>a<em>b</em>c</p>\n");
     }
 
     #[test]

@@ -325,7 +325,19 @@ mod markdownit {
 }
 
 mod markdownit_rs {
-    use super::{Instant, MarkdownIt, assert_within_budget, black_box};
+    use super::{Instant, MarkdownIt, assert_within_budget, black_box, run, run_render};
+
+    #[test]
+    fn emphasis_matches_removing_cached_bounds() {
+        // Each `*a_ b*` moves a failed `_` closer into an emphasis node. If the
+        // cached search bound is lost, later closers repeatedly scan the code
+        // nodes and earlier emphasis nodes, causing quadratic growth.
+        for size in [10_000, 20_000, 40_000] {
+            let src = format!("{}{}", "`x` ".repeat(size), "*a_ b* ".repeat(size));
+            run(&src);
+            run_render(&src);
+        }
+    }
 
     #[test]
     fn deferred_inline_siblings() {
