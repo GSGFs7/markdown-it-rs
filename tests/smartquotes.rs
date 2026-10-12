@@ -33,6 +33,27 @@ fn run(input: &str, output: &str) {
 }
 
 #[test]
+fn smartquotes_uses_escaped_and_entity_text_as_read_only_context() {
+    for (source, expected) in [
+        (
+            "\\:[)é;0[url \"title \\\"&quot;\")\n",
+            "<p>:[)é;0[url “title &quot;&quot;”)</p>",
+        ),
+        ("\"title \\\"&quot;\")", "<p>“title &quot;&quot;”)</p>"),
+        ("\"foo &quot;\"", "<p>“foo &quot;”</p>"),
+        ("\"foo \\\"\"", "<p>“foo &quot;”</p>"),
+        ("&quot;foo&quot;", "<p>&quot;foo&quot;</p>"),
+        ("\\\"foo\\\"", "<p>&quot;foo&quot;</p>"),
+        ("foo&quot;\"bar\"", "<p>foo&quot;“bar”</p>"),
+        ("\"foo\"&quot;", "<p>“foo”&quot;</p>"),
+        ("\"foo\"&#32;bar", "<p>“foo” bar</p>"),
+        ("&#32;\"foo\"", "<p> “foo”</p>"),
+    ] {
+        run(source, expected);
+    }
+}
+
+#[test]
 fn smartquotes_preserves_code_and_image_alt_text() {
     for (source, expected) in [
         (

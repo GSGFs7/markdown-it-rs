@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use crate::common::utils::is_punct_char;
-use crate::document::Text;
+use crate::document::{Text, TextSpecial};
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
 use crate::plugins::cmark::block::list::ListItem;
@@ -386,6 +386,9 @@ fn document_smartquotes_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> 
     if let Some(text) = node.cast::<Text>() {
         // normal text, editable
         TextProjectionKind::Writable(&text.content)
+    } else if let Some(text) = node.cast::<TextSpecial>() {
+        // Escapes and entities provide context but remain literal.
+        TextProjectionKind::ReadOnly(&text.content)
     } else if let Some(html) = node.cast::<HtmlInline>() {
         // HTML, not editable (protect quotes for <a href="...">)
         TextProjectionKind::ReadOnly(&html.content)
