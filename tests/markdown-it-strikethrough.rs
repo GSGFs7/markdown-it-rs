@@ -1,6 +1,20 @@
 mod common;
 
 #[test]
+fn short_delimiter_failures_do_not_hide_longer_strikethrough_matches() {
+    let mut md = markdown_it::MarkdownIt::with_preset(markdown_it::Preset::MarkdownItDefault);
+    md.max_nesting = 3;
+    for (source, expected) in [
+        ("-~~~~;~\n文~~~~\n", "<p>-<s><s>;~\n文</s></s></p>\n"),
+        ("~~a~ b~~", "<p><s>a~ b</s></p>\n"),
+        ("~~a~ b~~~", "<p><s>a~ b</s>~</p>\n"),
+        ("-~~~~;~\n文~~~~尾", "<p>-<s><s>;~\n文</s></s>尾</p>\n"),
+    ] {
+        assert_eq!(md.render(source), expected, "{source:?}");
+    }
+}
+
+#[test]
 fn strikethrough_does_not_apply_the_emphasis_rule_of_three() {
     for (source, expected) in [
         ("-~~~~;~~", "<p>-~~<s>;</s></p>"),

@@ -191,10 +191,15 @@ fn scan_and_match_document<const MARKER: char>(
     }
 
     // Previously calculated lower bounds (previous fails)
-    // for each marker, each delimiter length modulo 3,
+    // for each marker, each delimiter length class,
     // and for whether this closer can be an opener;
     // https://github.com/commonmark/cmark/commit/34250e12ccebdc6372b8b49c44fab57c72443460
-    let openers_parameter = (closer.open as usize) * 3 + closer.length % 3;
+    let length_class = if matches!(MARKER, '*' | '_') {
+        closer.length % 3
+    } else {
+        min(closer.length, 3) - 1
+    };
+    let openers_parameter = (closer.open as usize) * 3 + length_class;
     let min_opener_idx = state
         .inline_ext
         .get_or_insert_default::<OpenersBottom<MARKER>>()
