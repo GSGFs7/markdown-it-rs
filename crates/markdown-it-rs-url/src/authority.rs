@@ -66,7 +66,9 @@ pub(crate) fn split_host_port(input: &str) -> (&str, &str) {
     }
 
     // markdown-it compatibility: extract numeric ports even from unclosed brackets.
+    // A bare trailing colon is not a port.
     if let Some((host, port)) = input.rsplit_once(':')
+        && !port.is_empty()
         && port.bytes().all(|byte| byte.is_ascii_digit())
     {
         return (host, &input[host.len()..]);

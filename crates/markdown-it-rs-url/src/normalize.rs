@@ -259,6 +259,19 @@ mod tests {
     }
 
     #[test]
+    fn treats_bare_trailing_colon_as_suffix_not_port() {
+        // A lone trailing colon is not a port, so it stays with the suffix.
+        for (source, expected) in [
+            ("//[:", "//%5B:"),
+            ("//[a:", "//%5Ba:"),
+            ("//[::1]:", "//[::1]:"),
+            ("//example.com:", "//example.com:"),
+        ] {
+            assert_eq!(format_url_for_computers(source), expected, "{source}");
+        }
+    }
+
+    #[test]
     fn extracts_ports_before_relocating_unclosed_bracketed_hosts() {
         for (source, expected) in [
             (
