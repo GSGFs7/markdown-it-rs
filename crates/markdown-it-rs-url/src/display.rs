@@ -124,6 +124,29 @@ mod tests {
     }
 
     #[test]
+    fn display_decode_replaces_invalid_utf8_bytes() {
+        for (source, expected) in [
+            ("%Ccom", "�om"),
+            ("%CC", "�"),
+            ("%80%FF", "��"),
+            ("%E2%82", "��"),
+            ("%E2%28%A1", "�(�"),
+            ("%C0%AF", "��"),
+            ("%E0%80%AF", "���"),
+            ("%ED%A0%80", "���"),
+            ("%F4%90%80%80", "����"),
+            ("%F0%80%80%AF", "����"),
+            ("%F0%9F%98%80", "😀"),
+            ("%CC%2f%41", "�%2FA"),
+            ("%2E%252E", ".%252E"),
+            ("%CC%CE%B1", "�α"),
+            ("%GG%1%", "%GG%1%"),
+        ] {
+            assert_eq!(decode_url_for_display(source), expected, "{source}");
+        }
+    }
+
+    #[test]
     fn display_decode_does_not_decode_percent_twice() {
         assert_eq!(
             decode_url_for_display("https://example.com/hello%2E%252Ehello"),

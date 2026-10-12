@@ -186,6 +186,15 @@ fn image_url_with_unicode_and_forbidden_host_punctuation_is_not_punycoded() {
     );
 }
 
+#[test]
+fn autolink_display_replaces_invalid_percent_encoded_utf8() {
+    let md = markdown_it::MarkdownIt::new();
+    assert_eq!(
+        md.render("<http://example.com/α%Ccom/α%CE%B2γ%CE%B4>\n"),
+        "<p><a href=\"http://example.com/%CE%B1%Ccom/%CE%B1%CE%B2%CE%B3%CE%B4\">http://example.com/α�om/αβγδ</a></p>\n"
+    );
+}
+
 fn run(input: &str, output: &str) {
     let expected = if output.is_empty() {
         String::new()

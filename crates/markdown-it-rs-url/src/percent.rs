@@ -23,40 +23,18 @@ pub(crate) fn decode_for_display(input: &str) -> String {
                     break;
                 };
 
-                // Decode adjacent safe escapes independently from reserved
-                // ones. This lets `%2E%252E` become `.%252E` without ever
-                // turning `%25` into a literal percent and decoding twice.
-                let unsafe_ascii = byte.is_ascii() && !is_safe_display_char(byte as char);
-                if unsafe_ascii && !decoded.is_empty() {
-                    break;
-                }
-
                 decoded.push(byte);
                 pos += 3;
-
-                if unsafe_ascii {
-                    break;
-                }
             }
 
-            // try utf-8
-            if !decoded.is_empty()
-                // legal UTF-8
-                && let Ok(decoded) = std::str::from_utf8(&decoded)
-                // safety display
-                && decoded.chars().all(is_safe_display_char)
-            {
-                result.push_str(decoded);
+            // if read some %XX
+            if !decoded.is_empty() {
+                decode_percent_bytes(&decoded, &mut result);
                 continue;
             }
 
-            // fallback, keep it
-            result.push_str(&input[start..pos.max(start + 1)]);
-            if pos == start {
-                // '%' only
-                // not process the remaining part
-                pos += 1;
-            }
+            result.push('%');
+            pos = start + 1;
             continue;
         }
 
@@ -72,6 +50,50 @@ pub(crate) fn decode_for_display(input: &str) -> String {
     }
 
     result
+}
+
+fn decode_percent_bytes(bytes: &[u8], result: &mut String) {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut pos = 0;
+    while pos < bytes.len() {
+        let byte = bytes[pos];
+        // append ascii
+        if byte.is_ascii() {
+            if is_safe_display_char(byte as char) {
+                result.push(byte as char);
+            } else {
+                result.push('%');
+                result.push(HEX[(byte >> 4) as usize] as char);
+                result.push(HEX[(byte & 15) as usize] as char);
+            }
+            pos += 1;
+            continue;
+        }
+
+        // not a ascii, calculate expected length
+        // https://datatracker.ietf.org/doc/html/rfc3629#section-3
+        let width = match byte {
+            0xc0..=0xdf => 2,
+            0xe0..=0xef => 3,
+            0xf0..=0xf7 => 4,
+            _ => 1,
+        };
+        if width > 1
+            && let Some(sequence) = bytes.get(pos..pos + width)
+            && sequence[1..].iter().all(|byte| byte & 0xc0 == 0x80)
+        {
+            // try decode to UTF-8
+            match std::str::from_utf8(sequence) {
+                Ok(text) => result.push_str(text),
+                // mdurl replaces each byte of an invalid scalar value.
+                Err(_) => result.extend(std::iter::repeat_n('\u{fffd}', width)),
+            }
+            pos += width;
+        } else {
+            result.push('\u{fffd}');
+            pos += 1;
+        }
+    }
 }
 
 // two hex -> a byte
