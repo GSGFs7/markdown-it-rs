@@ -168,6 +168,15 @@ fn malformed_bracketed_link_hosts_encode_outer_brackets() {
     );
 }
 
+#[test]
+fn unclosed_bracketed_link_host_extracts_port_before_encoding() {
+    let md = markdown_it::MarkdownIt::new();
+    assert_eq!(
+        md.render("[foo](http://[2001:db:1896/a[b]?x=[y])\n"),
+        "<p><a href=\"http://:1896%5B2001:db/a%5Bb%5D?x=%5By%5D\">foo</a></p>\n"
+    );
+}
+
 fn run(input: &str, output: &str) {
     let expected = if output.is_empty() {
         String::new()

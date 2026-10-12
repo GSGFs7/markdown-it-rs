@@ -42,7 +42,17 @@ fn normalize_authority_url(prefix: &str, authority: &str, suffix: &str) -> Strin
     // encode each part
     let Some(host) = normalize_host(parts.host) else {
         let mut result = encode_url(prefix).into_owned();
-        result.push_str(encode_url(authority).as_ref());
+        if parts.host.starts_with('[') && !parts.host.ends_with(']') && !parts.port.is_empty() {
+            // mdurl extracts the port before moving an unclosed bracketed host to the path.
+            if let Some(userinfo) = parts.userinfo {
+                result.push_str(encode_url(userinfo).as_ref());
+                result.push('@');
+            }
+            result.push_str(parts.port);
+            result.push_str(encode_url(parts.host).as_ref());
+        } else {
+            result.push_str(encode_url(authority).as_ref());
+        }
         result.push_str(encode_url(suffix).as_ref());
         return result;
     };
@@ -186,6 +196,29 @@ mod tests {
     }
 
     #[test]
+    fn extracts_ports_before_relocating_unclosed_bracketed_hosts() {
+        for (source, expected) in [
+            (
+                "http://[2001:db:1896/a[b]?x=[y]",
+                "http://:1896%5B2001:db/a%5Bb%5D?x=%5By%5D",
+            ),
+            ("//[2001:db:1896/path", "//:1896%5B2001:db/path"),
+            (
+                "http://user:pass@[2001:db:1896/path",
+                "http://user:pass@:1896%5B2001:db/path",
+            ),
+            ("http://[2001:db/path", "http://%5B2001:db/path"),
+            ("http://[2001:db:1896]/path", "http://[2001:db:1896]/path"),
+            (
+                "http://[2001:db:1896]:8080/path",
+                "http://[2001:db:1896]:8080/path",
+            ),
+        ] {
+            assert_eq!(format_url_for_computers(source), expected, "{source}");
+        }
+    }
+
+    #[test]
     fn encodes_brackets_when_forbidden_characters_interrupt_the_host() {
         for (source, expected) in [
             ("//[::f|ff:192.0.2.1]/", "//%5B::f%7Cff:192.0.2.1%5D/"),
@@ -251,7 +284,7 @@ mod tests {
         assert_eq!(split_host_port("localhost:8080"), ("localhost", ":8080"));
         assert_eq!(split_host_port("localhost8080"), ("localhost8080", ""));
         assert_eq!(split_host_port("[::1]:8000"), ("[::1]", ":8000"));
-        assert_eq!(split_host_port("[::1:8000"), ("[::1:8000", ""));
+        assert_eq!(split_host_port("[::1:8000"), ("[::1", ":8000"));
         assert_eq!(split_host_port("[::1]abc"), ("[::1]abc", ""));
         assert_eq!(split_host_port("gsgfs.moe:443"), ("gsgfs.moe", ":443"));
     }

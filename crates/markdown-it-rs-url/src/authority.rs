@@ -25,11 +25,9 @@ pub(crate) fn split_authority(input: &str) -> Authority<'_> {
 // this fn only split host:port
 pub(crate) fn split_host_port(input: &str) -> (&str, &str) {
     // IPv6
-    if input.starts_with('[') {
-        let Some(end) = input.find(']') else {
-            return (input, "");
-        };
-
+    if input.starts_with('[')
+        && let Some(end) = input.find(']')
+    {
         let (host, port) = input.split_at(end + 1);
         if port.is_empty()
             || (port.starts_with(':') && port[1..].bytes().all(|byte| byte.is_ascii_digit()))
