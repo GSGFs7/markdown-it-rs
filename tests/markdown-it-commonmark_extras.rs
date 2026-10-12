@@ -177,6 +177,15 @@ fn unclosed_bracketed_link_host_extracts_port_before_encoding() {
     );
 }
 
+#[test]
+fn image_url_with_unicode_and_forbidden_host_punctuation_is_not_punycoded() {
+    let md = markdown_it::MarkdownIt::new();
+    assert_eq!(
+        md.render("There is a newline in this image ![here\nit is](https://中!)0*c😀&github/executablebooks/)\n"),
+        "<p>There is a newline in this image <img src=\"https://%E4%B8%AD!\" alt=\"here\nit is\">0*c😀&amp;github/executablebooks/)</p>\n"
+    );
+}
+
 fn run(input: &str, output: &str) {
     let expected = if output.is_empty() {
         String::new()

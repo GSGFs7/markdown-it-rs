@@ -156,6 +156,23 @@ mod tests {
     }
 
     #[test]
+    fn rejects_url_punctuation_before_idna_conversion() {
+        for (source, expected) in [
+            ("https://中!", "https://%E4%B8%AD!"),
+            ("https://中&", "https://%E4%B8%AD&"),
+            ("https://中=", "https://%E4%B8%AD="),
+            ("https://中,", "https://%E4%B8%AD,"),
+            ("https://中!/path", "https://%E4%B8%AD!/path"),
+            ("//中!", "//%E4%B8%AD!"),
+            ("https://中", "https://xn--fiq"),
+            ("https://中+", "https://xn--+-kq6a"),
+            ("https://中_", "https://xn--_-kq6a"),
+        ] {
+            assert_eq!(format_url_for_computers(source), expected, "{source}");
+        }
+    }
+
+    #[test]
     fn encode_internationalized_domain() {
         assert_eq!(
             format_url_for_computers("https://クロ.com"),

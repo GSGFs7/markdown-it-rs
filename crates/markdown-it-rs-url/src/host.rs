@@ -33,6 +33,15 @@ pub(crate) fn normalize_host(host: &str) -> Option<Cow<'_, str>> {
             .then_some(Cow::Borrowed(host));
     }
 
+    // Validate ASCII hostname characters before IDNA accepts URL punctuation.
+    if host.bytes().any(|byte| {
+        byte.is_ascii()
+            && !byte.is_ascii_alphanumeric()
+            && !matches!(byte, b'+' | b'-' | b'_' | b'.')
+    }) {
+        return None;
+    }
+
     if let Ok(normalized) = idna::domain_to_ascii_cow(host.as_bytes(), idna::AsciiDenyList::URL) {
         let mut labels = normalized.split('.');
         let mut result = String::with_capacity(normalized.len());
@@ -67,10 +76,9 @@ pub(crate) fn normalize_host(host: &str) -> Option<Cow<'_, str>> {
             result.push('.');
         }
 
-        if label
-            .bytes()
-            .any(|byte| byte.is_ascii() && !byte.is_ascii_alphanumeric() && byte != b'-')
-        {
+        if label.bytes().any(|byte| {
+            byte.is_ascii() && !byte.is_ascii_alphanumeric() && !matches!(byte, b'+' | b'-' | b'_')
+        }) {
             return None;
         }
 
