@@ -12,6 +12,29 @@ fn run(input: &str, output: &str) {
     assert_eq!(actual, expected);
 }
 
+#[test]
+fn empty_link_and_image_titles_match_markdown_it() {
+    for (open, close) in [('"', '"'), ('\'', '\''), ('(', ')')] {
+        for (title, attr) in [
+            ("", ""),
+            (" ", " title=\" \""),
+            ("title", " title=\"title\""),
+        ] {
+            let expected = format!(
+                "<p><a href=\"/url\"{attr}>link</a>\n<img src=\"/url\" alt=\"image\"{attr}></p>"
+            );
+            run(
+                &format!("[link](/url {open}{title}{close})\n![image](/url {open}{title}{close})"),
+                &expected,
+            );
+            run(
+                &format!("[link][ref]\n![image][ref]\n\n[ref]: /url {open}{title}{close}"),
+                &expected,
+            );
+        }
+    }
+}
+
 // markdown-it compatibility: it reasonable???
 #[test]
 fn autolink_relocates_invalid_host_suffix_after_numeric_port() {

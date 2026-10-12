@@ -34,7 +34,7 @@ impl DocumentNodeRenderer<Image> for ImageDocumentRenderer {
         let mut attrs = node.attrs().clone();
         attrs.push(("src".into(), image.url.clone()));
         attrs.push(("alt".into(), collect_document_alt_text(context, node)));
-        if let Some(title) = &image.title {
+        if let Some(title) = image.title.as_ref().filter(|title| !title.is_empty()) {
             attrs.push(("title".into(), title.clone()));
         }
         write_html_self_close(output, "img", &attrs, context.options().xhtml_out);
