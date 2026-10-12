@@ -315,6 +315,14 @@ mod tests {
             ),
             ("https://[::1[extra]]/", "https://[::1%5Bextra%5D]/"),
             ("https://[::1]extra]/", "https://[::1%5Dextra]/"),
+            (
+                "http://[2001:db8::1]:1]:1896/a[b]?x=[y]",
+                "http://[2001:db8::1%5D:1]:1896/a%5Bb%5D?x=%5By%5D",
+            ),
+            (
+                "http://user:pass@[::1]extra]:8080/path",
+                "http://user:pass@[::1%5Dextra]:8080/path",
+            ),
             ("https://[::1]:8080/path", "https://[::1]:8080/path"),
         ] {
             assert_eq!(format_url_for_computers(source), expected, "{source}");

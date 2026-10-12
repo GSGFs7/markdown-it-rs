@@ -228,6 +228,15 @@ fn malformed_bracketed_link_hosts_encode_outer_brackets() {
 }
 
 #[test]
+fn bracketed_link_host_with_inner_closing_bracket_preserves_outer_brackets() {
+    let md = markdown_it::MarkdownIt::new();
+    assert_eq!(
+        md.render("[foo](http://[2001:db8::1]:1]:1896/a[b]?x=[y])\n"),
+        "<p><a href=\"http://[2001:db8::1%5D:1]:1896/a%5Bb%5D?x=%5By%5D\">foo</a></p>\n"
+    );
+}
+
+#[test]
 fn unclosed_bracketed_link_host_extracts_port_before_encoding() {
     let md = markdown_it::MarkdownIt::new();
     assert_eq!(

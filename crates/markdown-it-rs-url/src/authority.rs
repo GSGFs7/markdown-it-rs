@@ -53,7 +53,7 @@ fn split_hostname_suffix(host: &str) -> (&str, &str) {
 pub(crate) fn split_host_port(input: &str) -> (&str, &str) {
     // IPv6
     if input.starts_with('[')
-        && let Some(end) = input.find(']')
+        && let Some(end) = input.rfind(']')
     {
         let (host, port) = input.split_at(end + 1);
         if port.is_empty()
