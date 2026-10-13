@@ -33,6 +33,7 @@ impl<'a> DocumentInlineState<'a> {
             nodes: Vec::new(),
             document,
             pending_text: None,
+            needs_finalization: false,
         }
     }
 }
@@ -107,6 +108,7 @@ fn parent_state<'a>(
         })],
         document,
         pending_text: Some((0, 3)),
+        needs_finalization: false,
     }
 }
 
@@ -132,6 +134,7 @@ fn check_state<'a>(
         nodes: vec![],
         document,
         pending_text: None,
+        needs_finalization: false,
     }
 }
 
@@ -188,6 +191,7 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
         })],
         document: &mut document,
         pending_text: Some((4, 7)),
+        needs_finalization: false,
     };
 
     state.finish_nodes();
@@ -235,6 +239,102 @@ fn top_level_plain_text_still_skips_finalizers() {
         "plain"
     );
     assert_eq!(document.node(nodes[0]).srcmap(), Some(SourcePos::new(1, 6)));
+}
+
+#[test]
+fn text_only_rules_can_request_finalization_in_top_level_and_child_sessions() {
+    let mut document = Document::new("", crate::Root::new(""));
+    let md = MarkdownIt::empty();
+    let ruleset = DocumentRuleSet {
+        runs: vec![run_rule(|state| {
+            let end = state.pos_max;
+            state.push_text(state.pos, end);
+            state.request_finalization();
+            state.request_finalization();
+            assert!(state.nodes.is_empty());
+            Some((None, end - state.pos))
+        })],
+        checks: vec![],
+        finalizers: vec![|state| {
+            assert!(state.inline_ext.get::<FinalizerCalls>().is_none());
+            count_finalizer(state);
+            assert_eq!(state.nodes.len(), 1);
+            state
+                .document
+                .node_mut(state.nodes[0])
+                .cast_mut::<Text>()
+                .unwrap()
+                .content
+                .push('!');
+        }],
+    };
+    let top = DocumentInlineState::parse(
+        &mut document,
+        " 雪plain ".to_owned(),
+        vec![(0, 10)],
+        &md,
+        &ruleset,
+        None,
+    );
+    assert_eq!(top.len(), 1);
+    assert_eq!(
+        document.node(top[0]).cast::<Text>().unwrap().content,
+        "雪plain!"
+    );
+    assert_eq!(document.node(top[0]).srcmap(), Some(SourcePos::new(11, 19)));
+
+    let mut parent = check_state(&mut document, &md, &ruleset, "[雪plain]");
+    for _ in 0..2 {
+        let child = parent.parse_subrange(1..9).unwrap();
+        assert_eq!(child.len(), 1);
+        assert_eq!(
+            parent
+                .document
+                .node(child[0])
+                .cast::<Text>()
+                .unwrap()
+                .content,
+            "雪plain!"
+        );
+        assert_eq!(
+            parent.document.node(child[0]).srcmap(),
+            Some(SourcePos::new(1, 9))
+        );
+        assert!(!parent.needs_finalization);
+        assert!(parent.inline_ext.get::<FinalizerCalls>().is_none());
+        assert!(parent.nodes.is_empty());
+        assert!(parent.pending_text.is_none());
+        assert_eq!((parent.pos, parent.pos_max), (0, 10));
+    }
+}
+
+#[test]
+fn child_session_does_not_inherit_parent_finalization_request() {
+    let mut document = Document::new("", crate::Root::new(""));
+    let md = MarkdownIt::empty();
+    let ruleset = DocumentRuleSet {
+        runs: vec![],
+        checks: vec![],
+        finalizers: vec![|_| panic!("child without a request must skip finalizers")],
+    };
+    let mut parent = check_state(&mut document, &md, &ruleset, "[plain]");
+    parent.request_finalization();
+    let child = parent.parse_subrange(1..6).unwrap();
+    assert_eq!(child.len(), 1);
+    assert_eq!(
+        parent
+            .document
+            .node(child[0])
+            .cast::<Text>()
+            .unwrap()
+            .content,
+        "plain"
+    );
+    assert_eq!(
+        parent.document.node(child[0]).srcmap(),
+        Some(SourcePos::new(1, 6))
+    );
+    assert!(parent.needs_finalization);
 }
 
 #[test]

@@ -1,5 +1,7 @@
 //! Find urls and emails, and turn them into links
 
+// TODO: refactor this
+
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
@@ -63,23 +65,23 @@ pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
         .before::<InlineParserRule>()
         .before_all();
     md.inline
-        .add_rule_with_finalize::<LinkifyScanner>(retry_html_link_text);
+        .add_rule_with_finalize::<LinkifyScanner>(linkify_text);
     md.inline.add_rule::<LinkifyFuzzyScanner>();
     md.inline.add_rule::<LinkifyEmailScanner>();
     md.add_document_renderer::<Linkified, _>("html", LinkifiedDocumentRenderer);
     md.add_document_renderer::<Linkified, _>("text", TransparentDocumentRenderer);
 }
 
-// The JS core linkifier walks parsed tokens backwards. An unmatched HTML
-// opening anchor therefore does not protect text in that second pass, even
-// though it disabled the inline scanner. Retry that text after tokenization.
-fn retry_html_link_text(state: &mut DocumentInlineState<'_>) {
+// Second linkify pass, mirroring JS core linkify: match protocol-relative
+// URLs after emphasis, and retry text hidden by an unmatched `<a>` (which
+// disables the inline scanners but does not protect text in JS).
+fn linkify_text(state: &mut DocumentInlineState<'_>) {
     use crate::plugins::cmark::inline::autolink::Autolink;
     use crate::plugins::cmark::inline::image::Image;
     use crate::plugins::cmark::inline::link::Link;
     use crate::plugins::html::html_inline::HtmlInline;
 
-    if state.link_level <= 0 {
+    if state.link_level <= 0 && !state.src.contains("//") {
         return;
     }
 
@@ -114,9 +116,10 @@ fn retry_html_link_text(state: &mut DocumentInlineState<'_>) {
     }
 
     // Child sessions inside Markdown links inherit a positive link level.
-    if html_delta <= 0 || state.link_level - html_delta > 0 {
+    if state.link_level > 0 && state.link_level - html_delta > 0 {
         return;
     }
+    let retry_html = state.link_level > 0 && html_delta > 0;
 
     let mut reverse_level = 0;
     let mut replacements: HashMap<Option<NodeId>, HashMap<NodeId, Vec<NodeId>>> = HashMap::new();
@@ -127,6 +130,17 @@ fn retry_html_link_text(state: &mut DocumentInlineState<'_>) {
         .copied()
         .unwrap_or_default()
         .fuzzy_links;
+
+    // JS gates on the original inline content first; e.g. `__//example.org__`
+    // fails the `_//` boundary even after emphasis strips the underscores.
+    if !retry_html
+        && Linkify::new()
+            .links_with_fuzzy(&state.src, fuzzy)
+            .is_empty()
+    {
+        return;
+    }
+
     for index in (0..leaves.len()).rev() {
         let (id, delta) = leaves[index];
         if delta < 0 {
@@ -167,6 +181,12 @@ fn retry_html_link_text(state: &mut DocumentInlineState<'_>) {
             }
 
             let url = &content[found.start()..found.end()];
+            // Non-`//` kinds come from the inline scanners unless an
+            // unmatched `<a>` disabled them.
+            if !retry_html && !url.starts_with("//") {
+                continue;
+            }
+
             let mode = if found.kind() == LinkKind::Email {
                 LinkifyMode::Email
             } else if url.contains("://") {
@@ -569,6 +589,15 @@ fn run_document_candidate(
         mode,
     )?;
 
+    if matches!(mode, LinkifyMode::Fuzzy)
+        && state.src[candidate.start..candidate.end].starts_with("//")
+    {
+        // Defer to emphasis and the finalizer below. The flag keeps the
+        // finalizer running even when the block stays plain text.
+        state.request_finalization();
+        return None;
+    }
+
     let link = prepare_link(
         state.markdown_it().link_formatter.as_ref(),
         mode,
@@ -963,6 +992,72 @@ mod tests {
             "//example.com//other.org",
             "<p><a href=\"//example.com//other.org\">//example.com//other.org</a></p>",
         );
+    }
+
+    #[test]
+    fn protocol_relative_links_are_matched_after_emphasis() {
+        for (input, output) in [
+            (
+                "__a<https(:0:&//foo.bar/?q=__>",
+                "<p><strong>a&lt;https(:0:&amp;<a href=\"//foo.bar/?q=\">//foo.bar/?q=</a></strong>&gt;</p>",
+            ),
+            (
+                "*//example.org/a*",
+                "<p><em><a href=\"//example.org/a\">//example.org/a</a></em></p>",
+            ),
+            (
+                "__//example.org/a__",
+                "<p><strong>//example.org/a</strong></p>",
+            ),
+            (
+                "//example.org/a__",
+                "<p><a href=\"//example.org/a__\">//example.org/a__</a></p>",
+            ),
+            (
+                "//example.org/a_b",
+                "<p><a href=\"//example.org/a_b\">//example.org/a_b</a></p>",
+            ),
+            (
+                "https://example.org/a__",
+                "<p><a href=\"https://example.org/a__\">https://example.org/a__</a></p>",
+            ),
+            (
+                "[//example.org/a](/url)",
+                "<p><a href=\"/url\">//example.org/a</a></p>",
+            ),
+            ("<a>//example.org/a</a>", "<p><a>//example.org/a</a></p>"),
+            ("`//example.org/a`", "<p><code>//example.org/a</code></p>"),
+            ("&amp;//example.org/a", "<p>&amp;//example.org/a</p>"),
+        ] {
+            run(input, output);
+        }
+    }
+
+    #[test]
+    fn protocol_relative_links_without_emphasis_plugin() {
+        let mut md = crate::MarkdownIt::empty();
+        crate::plugins::cmark::block::paragraph::add(&mut md);
+        super::add(&mut md);
+        for (input, output) in [
+            (
+                "//example.org/a__",
+                "<p><a href=\"//example.org/a__\">//example.org/a__</a></p>\n",
+            ),
+            (
+                "雪 //example.org/a_b tail //example.com/b",
+                "<p>雪 <a href=\"//example.org/a_b\">//example.org/a_b</a> tail <a href=\"//example.com/b\">//example.com/b</a></p>\n",
+            ),
+        ] {
+            let document = md.parse_document(input);
+            assert_eq!(md.render_document(&document), output);
+            for event in document.events(document.root()) {
+                let node = event.node();
+                if let Some(link) = node.cast::<super::Linkified>() {
+                    let (start, end) = node.srcmap().unwrap().get_byte_offsets();
+                    assert_eq!(&input[start..end], link.url);
+                }
+            }
+        }
     }
 
     #[test]

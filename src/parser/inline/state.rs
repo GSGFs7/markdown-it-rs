@@ -65,6 +65,9 @@ pub struct DocumentInlineState<'a> {
     pub document: &'a mut Document,
 
     pending_text: Option<(usize, usize)>,
+
+    /// A rule requested a finalizer even for a plain-text-only session.
+    needs_finalization: bool,
 }
 
 impl<'a> DocumentInlineState<'a> {
@@ -115,6 +118,7 @@ impl<'a> DocumentInlineState<'a> {
             nodes: Vec::new(),
             document,
             pending_text: None,
+            needs_finalization: false,
         };
         state.trim();
         state.tokenize();
@@ -308,6 +312,7 @@ impl<'a> DocumentInlineState<'a> {
             nodes: Vec::new(),
             document: &mut *self.document,
             pending_text: None,
+            needs_finalization: false,
         })
     }
 
@@ -338,6 +343,11 @@ impl<'a> DocumentInlineState<'a> {
         }
     }
 
+    /// Run finalizers for this session even if it only produced plain text.
+    pub(crate) fn request_finalization(&mut self) {
+        self.needs_finalization = true;
+    }
+
     pub(crate) fn flush_text(&mut self) {
         let Some((start, end)) = self.pending_text.take() else {
             return;
@@ -351,7 +361,7 @@ impl<'a> DocumentInlineState<'a> {
     }
 
     fn finish(mut self) -> Vec<NodeId> {
-        if self.nodes.is_empty() {
+        if self.nodes.is_empty() && !self.needs_finalization {
             if let Some((start, end)) = self.pending_text.take() {
                 let srcmap = self.get_map(start, end);
                 let mut content = self.src.into_owned();
@@ -372,7 +382,7 @@ impl<'a> DocumentInlineState<'a> {
     }
 
     fn finish_nodes(&mut self) {
-        let needs_finalization = !self.nodes().is_empty();
+        let needs_finalization = self.needs_finalization || !self.nodes().is_empty();
         self.flush_text();
 
         if needs_finalization {
