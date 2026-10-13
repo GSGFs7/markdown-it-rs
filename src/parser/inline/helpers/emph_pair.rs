@@ -161,11 +161,21 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
             return None;
         }
 
+        let (src, start, end) = state
+            .inline_ext
+            .get::<super::delimiters::EmphasisSourceStart>()
+            .map_or((state.src.as_ref(), state.pos, state.pos_max), |boundary| {
+                (
+                    &state.src[boundary.0..state.pos_max],
+                    state.pos - boundary.0,
+                    state.pos_max - boundary.0,
+                )
+            });
         let scanned = super::delimiters::scan_delimiter_run(
             state.markdown_it(),
-            &state.src,
-            state.pos,
-            state.pos_max,
+            src,
+            start,
+            end,
             CAN_SPLIT_WORD,
         );
         let scanned_bytes = scanned.byte_length();

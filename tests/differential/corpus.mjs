@@ -1,4 +1,9 @@
 const regressions = [
+  '![____&_|\t0___b_____ ___](/img)',
+  '![*****|\r|c*_a ***\u0000_**b***** c*****](/img)\r;`&a|\n',
+  '雪 ![____&_|\t0___b_____ ___](/img)',
+  '![![____&_|\t0___b_____ ___](/inner)](/outer)',
+  '![[____&_|\t0___b_____ ___](/link)](/img)',
   'b@example.com</a>',
   'mailto:b@example.com</a>',
   'b@example.com</a></a>',

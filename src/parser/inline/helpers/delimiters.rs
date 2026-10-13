@@ -31,6 +31,11 @@ type DelimiterScanner =
 #[derive(Debug)]
 struct DelimiterScannerConfig(DelimiterScanner);
 
+/// Start of an independent label for emphasis classification only.
+/// Node offsets and source mapping remain in the parent source coordinates.
+#[derive(Debug)]
+pub(super) struct EmphasisSourceStart(pub usize);
+
 fn scan_delims_default(
     src: &str,
     start: usize,

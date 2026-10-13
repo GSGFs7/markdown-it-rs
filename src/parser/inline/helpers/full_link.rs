@@ -628,8 +628,16 @@ fn document_link_run(
     let label_range = candidate.label_start..candidate.label_end;
     let children = if options.label_context == LabelContext::Independent {
         let mut label = state.child_state(label_range, 0, 0)?;
-        let len = label.remaining().len();
-        label.parse_subrange_at_current_depth(0..len)?
+        label
+            .inline_ext
+            .insert(super::delimiters::EmphasisSourceStart(label.pos));
+        // Parse this state directly: another child session would discard the
+        // label-local extension. Nested labels retain their own syntax context.
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+            label.tokenize();
+            label.finish_nodes();
+        });
+        std::mem::take(label.nodes_mut())
     } else {
         let child_link_level = state
             .link_level

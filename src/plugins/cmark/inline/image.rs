@@ -104,6 +104,78 @@ pub fn add(md: &mut MarkdownIt) {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn alt_boundary_is_local_and_reaches_custom_delimiter_scanners() {
+        use crate::parser::inline::helpers::delimiters::{DelimiterRun, set_delimiter_scanner};
+
+        const SOURCE: &str = "雪 ![*x*](/img) *y*";
+        let mut md = crate::MarkdownIt::new();
+        set_delimiter_scanner(&mut md, |src, start, end, _| {
+            let (open, close) = if src == "*x*" {
+                assert_eq!(end, 3);
+                assert!(start == 0 || start == 2);
+                (start == 0, start == 2)
+            } else {
+                assert_eq!(src, SOURCE);
+                assert_eq!(end, SOURCE.len());
+                assert!(start == SOURCE.find("*y*").unwrap() || start == SOURCE.len() - 1);
+                (
+                    start == SOURCE.find("*y*").unwrap(),
+                    start == SOURCE.len() - 1,
+                )
+            };
+            DelimiterRun {
+                marker: '*',
+                can_open: open,
+                can_close: close,
+                length: 1,
+            }
+        });
+        assert_eq!(
+            md.render(SOURCE),
+            "<p>雪 <img src=\"/img\" alt=\"x\"> <em>y</em></p>\n",
+        );
+    }
+
+    #[test]
+    fn independent_alt_source_preserves_multiline_source_maps() {
+        use crate::plugins::cmark::inline::emphasis::Em;
+
+        let md = crate::MarkdownIt::new();
+        let source = "> 雪 ![*a\n> b*](/img)";
+        let document = md.parse_document(source);
+        assert_eq!(
+            md.render_document(&document),
+            "<blockquote>\n<p>雪 <img src=\"/img\" alt=\"a\nb\"></p>\n</blockquote>\n",
+        );
+        let emphasis = document
+            .events(document.root())
+            .find_map(|event| event.node().is::<Em>().then_some(event.node()))
+            .unwrap();
+        assert_eq!(
+            emphasis.srcmap().unwrap().get_byte_offsets(),
+            (source.find('*').unwrap(), source.rfind('*').unwrap() + 1),
+        );
+    }
+
+    #[test]
+    fn alt_emphasis_uses_an_independent_source_boundary() {
+        let md = crate::MarkdownIt::new();
+        for (source, alt) in [
+            ("![____&_|\t0___b_____ ___](/img)", "&amp;|\t0___b__ ___"),
+            (
+                "![*****|\r|c*_a ***\0_**b***** c*****](/img)",
+                "|\n|ca ***�b c****",
+            ),
+        ] {
+            assert_eq!(
+                md.render(source),
+                format!("<p><img src=\"/img\" alt=\"{alt}\"></p>\n"),
+                "{source:?}",
+            );
+        }
+    }
+
+    #[test]
     fn nested_image_alt_text_matches_js_text_join_depth() {
         let md = crate::MarkdownIt::new();
         for (source, alt) in [

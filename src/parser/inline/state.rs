@@ -193,7 +193,7 @@ impl<'a> DocumentInlineState<'a> {
         }
     }
 
-    fn tokenize(&mut self) {
+    pub(super) fn tokenize(&mut self) {
         if self.depth >= self.md.max_nesting {
             if self.pos < self.pos_max {
                 self.push_text(self.pos, self.pos_max);
@@ -393,7 +393,7 @@ impl<'a> DocumentInlineState<'a> {
         self.nodes
     }
 
-    fn finish_nodes(&mut self) {
+    pub(super) fn finish_nodes(&mut self) {
         let needs_finalization = self.needs_finalization || !self.nodes().is_empty();
         self.flush_text();
 
