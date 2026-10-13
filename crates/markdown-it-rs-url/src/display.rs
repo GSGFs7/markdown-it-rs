@@ -1,105 +1,44 @@
-use crate::authority::split_authority;
 use crate::elide::fit_to_length;
 use crate::host::display_host;
-use crate::parse::{
-    MailtoUrl,
-    split_authority_suffix,
-    split_authority_url,
-    split_mailto_url,
-    strip_ascii_prefix,
-};
+use crate::parse::ParsedUrl;
 use crate::percent::decode_for_display;
 
 pub fn decode_url_for_display(input: &str) -> String {
-    if let Some(url) = split_authority_url(input) {
-        let mut result = String::with_capacity(input.len());
-        result.push_str(url.prefix);
-        // markdown-it only recodes hostnames for these exact protocol names.
-        // Unknown protocols still decode percent escapes in their display text.
-        let recode_host = matches!(url.prefix, "//" | "http://" | "https://");
-        result.push_str(&display_authority(url.authority, recode_host));
-        result.push_str(&decode_for_display(url.suffix));
-        return result;
-    }
-
-    if let Some(mailto) = split_mailto_url(input) {
-        let prefix_len = input.len() - mailto.body.len();
-        let mut result = String::with_capacity(input.len());
-        result.push_str(&input[..prefix_len]);
-        result.push_str(&display_mailto_url(mailto, input.starts_with("mailto:")));
-        return result;
-    }
-
-    decode_for_display(input)
-}
-
-// provide a human read url
-pub fn format_url_for_humans(input: &str, max_length: usize) -> String {
-    fit_to_length(display_url(input), max_length)
-}
-
-// --- helper method ---
-
-fn display_url(input: &str) -> String {
-    if let Some(rest) = strip_ascii_prefix(input, "http://")
-        .or_else(|| strip_ascii_prefix(input, "https://"))
-        .or_else(|| input.strip_prefix("//"))
+    let mut url = ParsedUrl::parse(input);
+    if url.recodes_hostname()
+        && let Some(host) = &mut url.hostname
     {
-        // delete protocol
-        return display_authority_url(rest);
+        *host = display_host(host).into();
     }
-
-    if let Some(mailto) = split_mailto_url(input) {
-        return display_mailto_url(mailto, true);
-    }
-
-    decode_for_display(input)
+    // Decode once after formatting, including escapes in the recoded hostname.
+    decode_for_display(&url.format())
 }
 
-fn display_authority_url(input: &str) -> String {
-    // authority: domain, port, userinfo
-    let (authority, suffix) = split_authority_suffix(input);
-    let authority = display_authority(authority, true);
-
-    if suffix == "/" {
-        authority
-    } else {
-        authority + &decode_for_display(suffix)
+/// Shorten a URL for display by removing common prefixes and a sole root slash.
+pub fn format_url_for_humans(input: &str, max_length: usize) -> String {
+    let mut url = ParsedUrl::parse(input);
+    let common_prefix = url.slashes
+        && url.protocol.is_none_or(|protocol| {
+            protocol.eq_ignore_ascii_case("http:") || protocol.eq_ignore_ascii_case("https:")
+        });
+    let mailto = url
+        .protocol
+        .is_some_and(|protocol| protocol.eq_ignore_ascii_case("mailto:"));
+    if common_prefix || mailto {
+        if let Some(host) = &mut url.hostname {
+            *host = display_host(host).into();
+        }
+        url.protocol = None;
+        url.slashes = false;
+        if common_prefix
+            && url.pathname.as_deref() == Some("/")
+            && url.search.is_none()
+            && url.hash.is_none()
+        {
+            url.pathname = None;
+        }
     }
-}
-
-fn display_mailto_url(mailto: MailtoUrl<'_>, recode_host: bool) -> String {
-    let Some((local, domain)) = mailto.address.rsplit_once('@') else {
-        return decode_for_display(mailto.body);
-    };
-
-    decode_for_display(local)
-        + "@"
-        + &display_hostname(domain, recode_host)
-        + &decode_for_display(mailto.query)
-}
-
-fn display_authority(authority: &str, recode_host: bool) -> String {
-    let parts = split_authority(authority);
-
-    let mut result = String::with_capacity(authority.len());
-    if let Some(userinfo) = parts.userinfo {
-        result.push_str(&decode_for_display(userinfo));
-        result.push('@');
-    }
-
-    result.push_str(&display_hostname(parts.host, recode_host));
-    result.push_str(parts.port);
-    result.push_str(&decode_for_display(parts.suffix));
-    result
-}
-
-fn display_hostname(host: &str, recode_host: bool) -> String {
-    if recode_host {
-        display_host(host)
-    } else {
-        decode_for_display(host)
-    }
+    fit_to_length(decode_for_display(&url.format()), max_length)
 }
 
 #[cfg(test)]
@@ -119,7 +58,10 @@ mod tests {
             ("MAILTO:user@", "xn--n3h.net"),
         ] {
             let source = format!("{prefix}xn--n3h.net?x=%CE%B1");
-            assert_eq!(decode_url_for_display(&source), format!("{prefix}{host}?x=α"));
+            assert_eq!(
+                decode_url_for_display(&source),
+                format!("{prefix}{host}?x=α")
+            );
         }
     }
 
