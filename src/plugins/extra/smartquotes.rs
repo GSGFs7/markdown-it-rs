@@ -130,6 +130,8 @@ fn document_edits_with<
         }
         Some(event)
     });
+
+    let mut special_replacements: HashMap<NodeId, Vec<(usize, char)>> = HashMap::new();
     transform_events::<
         NodeId,
         _,
@@ -139,8 +141,36 @@ fn document_edits_with<
         OPEN_DOUBLE_QUOTE,
         CLOSE_DOUBLE_QUOTE,
     >(events, |node, byte_offset, replacement| {
-        edits.replace_char(node, byte_offset..byte_offset + 1, replacement);
+        if document.node(node).is::<TextSpecial>() {
+            special_replacements
+                .entry(node)
+                .or_default()
+                .push((byte_offset, replacement));
+        } else {
+            edits.replace_char(node, byte_offset..byte_offset + 1, replacement);
+        }
     });
+    for (node, mut replacements) in special_replacements {
+        let text = document.node(node).cast::<TextSpecial>().unwrap();
+        replacements.sort_unstable_by_key(|&(offset, _)| offset);
+
+        let mut content = String::with_capacity(text.content.len());
+        let mut end = 0;
+        for (offset, replacement) in replacements {
+            content.push_str(&text.content[end..offset]);
+            content.push(replacement);
+            end = offset + 1;
+        }
+        content.push_str(&text.content[end..]);
+        edits.replace_value(
+            node,
+            TextSpecial {
+                content,
+                markup: text.markup.clone(),
+                info: text.info,
+            },
+        );
+    }
     edits
 }
 
@@ -387,8 +417,13 @@ fn document_smartquotes_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> 
         // normal text, editable
         TextProjectionKind::Writable(&text.content)
     } else if let Some(text) = node.cast::<TextSpecial>() {
-        // Escapes and entities provide context but remain literal.
-        TextProjectionKind::ReadOnly(&text.content)
+        if text.info == "autolink" {
+            // JS smartquotes processes automatic link labels as normal text.
+            TextProjectionKind::Writable(&text.content)
+        } else {
+            // Escapes and entities provide context but remain literal.
+            TextProjectionKind::ReadOnly(&text.content)
+        }
     } else if let Some(html) = node.cast::<HtmlInline>() {
         // HTML, not editable (protect quotes for <a href="...">)
         TextProjectionKind::ReadOnly(&html.content)

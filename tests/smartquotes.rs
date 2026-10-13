@@ -33,6 +33,47 @@ fn run(input: &str, output: &str) {
 }
 
 #[test]
+fn smartquotes_transforms_autolink_labels() {
+    for (source, expected) in [
+        (
+            "<a9:]ef=\"`\">`",
+            "<p><a href=\"a9:%5Def=%22%60%22\">a9:]ef=“`”</a>`</p>",
+        ),
+        (
+            "<https://example.org/\"x\">",
+            "<p><a href=\"https://example.org/%22x%22\">https://example.org/“x”</a></p>",
+        ),
+        (
+            "<foo'bar@example.org>",
+            "<p><a href=\"mailto:foo'bar@example.org\">foo’bar@example.org</a></p>",
+        ),
+        (
+            "<https://example.org/\"...\">",
+            "<p><a href=\"https://example.org/%22...%22\">https://example.org/“...”</a></p>",
+        ),
+        (
+            "`<https://example.org/\"x\">`",
+            "<p><code>&lt;https://example.org/&quot;x&quot;&gt;</code></p>",
+        ),
+    ] {
+        run(source, expected);
+    }
+}
+
+#[cfg(feature = "linkify")]
+#[test]
+fn smartquotes_transforms_linkified_labels() {
+    let mut md = markdown_it::MarkdownIt::new();
+    markdown_it::plugins::extra::linkify::add(&mut md);
+    markdown_it::plugins::extra::typographer::add(&mut md);
+    markdown_it::plugins::extra::smartquotes::add(&mut md);
+    assert_eq!(
+        md.render("https://example.org/a'b"),
+        "<p><a href=\"https://example.org/a'b\">https://example.org/a’b</a></p>\n",
+    );
+}
+
+#[test]
 fn smartquotes_uses_escaped_and_entity_text_as_read_only_context() {
     for (source, expected) in [
         (
