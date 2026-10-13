@@ -14,7 +14,7 @@ use crate::document::{Document, NodeId, Text};
 
 // TODO: adjust API visibility
 
-/// Per-inline cache of boundary scans truncated by the nesting limit.
+/// Per-inline cache shared by nested boundary scans.
 ///
 /// Mirrors markdown-it's inline skip cache: once a scan at the nesting limit
 /// jumps to the end of a window, later scans over the same window see the same
@@ -23,6 +23,18 @@ use crate::document::{Document, NodeId, Text};
 #[derive(Debug, Default)]
 pub(crate) struct ScanLimitCache {
     truncated: HashSet<(usize, usize)>,
+    pub(crate) link_bounds: Option<super::helpers::full_link::LinkLabelBounds>,
+}
+
+impl ScanLimitCache {
+    /// Monotonic version of the truncation set, used to invalidate cached
+    /// label boundaries after a new nesting cutoff is recorded.
+    ///
+    /// Relies on `truncated` only ever growing; adding removal would make this
+    /// a non-monotonic counter and silently revive stale cache entries.
+    pub(crate) fn epoch(&self) -> usize {
+        self.truncated.len()
+    }
 }
 
 pub struct DocumentInlineState<'a> {

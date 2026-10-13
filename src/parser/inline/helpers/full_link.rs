@@ -13,6 +13,7 @@
 //!  - `md` - parser instance
 //!  - `f` - function that should return your custom [NodeId] given href and title
 //!
+use std::any::TypeId;
 use std::collections::HashMap;
 
 use crate::MarkdownIt;
@@ -29,6 +30,7 @@ struct InlineLinkTarget {
 }
 
 // TODO: public some API?
+// TODO: refactor this
 
 /// How to proceed when an attempted inline target cannot be parsed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -197,30 +199,93 @@ fn scan_link_label(
     mut context: crate::parser::inline::DocumentInlineState<'_>,
     enable_nested: bool,
 ) -> Option<usize> {
-    let initial_len = context.remaining().len();
-    let mut level = 1usize;
-    while let Some(ch) = context.remaining().chars().next() {
-        let before = context.remaining().len();
-        if ch == ']' {
-            level -= 1;
-            if level == 0 {
-                return Some(initial_len - before);
-            }
-        }
-
-        context.skip_token()?;
-
-        let consumed = before - context.remaining().len();
-        if ch == '[' {
-            if consumed == 1 {
-                level += 1;
-            } else if !enable_nested {
-                return None;
+    let start = context.pos;
+    let memoize = context
+        .scan_limit_cache
+        .borrow()
+        .link_bounds
+        .as_ref()
+        .is_some_and(|bounds| bounds.can_memoize_labels(start, context.pos_max));
+    let initial_key = LabelScanKey {
+        start,
+        end: context.pos_max,
+        depth: context.depth,
+        link_level: context.link_level,
+        enable_nested,
+    };
+    if memoize {
+        let shared = context.scan_limit_cache.borrow();
+        if let Some(&(epoch, close)) = shared.link_bounds.as_ref()?.labels.get(&initial_key) {
+            // Additional nesting cutoffs can invalidate a successful boundary.
+            if epoch == shared.epoch() {
+                return close.map(|close| close - start);
             }
         }
     }
 
+    let mut open = vec![initial_key];
+    while let Some(ch) = context.remaining().chars().next() {
+        let before = context.remaining().len();
+        if ch == ']' {
+            let matched = open.pop().unwrap();
+            if memoize {
+                // Every raw opener traversed by this scan has the same fresh
+                // label boundary at this depth. Record its result as well, so
+                // later candidates do not walk the overlapping label again.
+                cache_label_scan(&context, matched, Some(context.pos));
+            }
+            if open.is_empty() {
+                return Some(context.pos - start);
+            }
+        }
+
+        if context.skip_token().is_none() {
+            break;
+        }
+
+        let consumed = before - context.remaining().len();
+        if ch == '[' {
+            if consumed == 1 {
+                open.push(LabelScanKey {
+                    start: context.pos,
+                    end: context.pos_max,
+                    depth: context.depth,
+                    link_level: context.link_level,
+                    enable_nested,
+                });
+            } else if !enable_nested {
+                break;
+            }
+        }
+    }
+
+    if memoize {
+        for key in open {
+            cache_label_scan(&context, key, None);
+        }
+    }
     None
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct LabelScanKey {
+    start: usize,
+    end: usize,
+    depth: u32,
+    link_level: i32,
+    enable_nested: bool,
+}
+
+fn cache_label_scan(context: &DocumentInlineState<'_>, key: LabelScanKey, close: Option<usize>) {
+    let mut shared = context.scan_limit_cache.borrow_mut();
+    let epoch = shared.epoch();
+    // Only reached while `memoize` is set, which requires `link_bounds`.
+    shared
+        .link_bounds
+        .as_mut()
+        .expect("label memoization requires link bounds")
+        .labels
+        .insert(key, (epoch, close));
 }
 
 pub struct ParseLinkFragmentResult {
@@ -470,19 +535,11 @@ fn scan_link_candidate(
     references: Option<&ReferenceMap>,
     fallback: InlineTargetFallback,
 ) -> Option<ParseLinkResult> {
+    if !has_possible_link_label_close(context, pos, references) {
+        return None;
+    }
+
     let source = context.remaining();
-    if references.is_none() && !source.contains('(') {
-        return None;
-    }
-
-    if !source.get(pos..)?.starts_with('[') {
-        return None;
-    }
-
-    if !source[pos + 1..].contains(']') {
-        return None;
-    }
-
     let child_depth = context.depth.checked_add(1)?;
     let label_start = pos + 1;
     let label_end = label_start
@@ -555,10 +612,6 @@ fn document_link_run(
     options: LinkOptions,
     factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
 ) -> Option<(Option<NodeId>, usize)> {
-    if !has_possible_link_label_close(state, offset) {
-        return None;
-    }
-
     // Parses [link](<to> "stuff") and other link forms (inline target or
     // reference), then parses the label as inline children.
     let references = state.root_ext.and_then(|ext| ext.get::<ReferenceMap>());
@@ -590,11 +643,119 @@ fn document_link_run(
 }
 
 #[derive(Debug)]
-struct LastLinkLabelClose {
-    end: usize,
-    last: Option<usize>,
+pub(crate) struct LinkLabelBounds {
+    close_positions: Vec<usize>,
     plain_closes: Option<HashMap<usize, usize>>,
-    has_target: bool,
+    target_positions: Vec<usize>,
+    non_memoizable_positions: Option<Vec<usize>>,
+    labels: HashMap<LabelScanKey, (usize, Option<usize>)>,
+}
+
+impl LinkLabelBounds {
+    fn can_memoize_labels(&self, start: usize, end: usize) -> bool {
+        let Some(positions) = &self.non_memoizable_positions else {
+            return false;
+        };
+        let next = positions.partition_point(|&pos| pos < start);
+        positions.get(next).is_none_or(|&pos| pos >= end)
+    }
+}
+
+/// Index markers that prevent memoization within a label scan's window.
+fn non_memoizable_positions(source: &str, state: &DocumentInlineState<'_>) -> Option<Vec<usize>> {
+    use crate::plugins::cmark::block::reference::DefaultReferenceMap;
+
+    if state
+        .root_ext
+        .and_then(|ext| ext.get::<ReferenceMap>())
+        .is_some_and(|map| map.downcast_ref::<DefaultReferenceMap>().is_none())
+    {
+        return None;
+    }
+
+    let uncached_rules: Vec<_> = state
+        .ruleset
+        .checks
+        .iter()
+        .filter(|rule| !is_memoizable_check(rule.type_id))
+        .collect();
+    Some(
+        source
+            .char_indices()
+            .filter(|&(_, ch)| uncached_rules.iter().any(|rule| rule.matches_marker(ch)))
+            .map(|(pos, _)| pos)
+            .collect(),
+    )
+}
+
+/// Check rules whose `check` is a pure boundary probe.
+///
+/// A memoized label scan skips re-running checks, so this list must cover every
+/// built-in rule that can run inside a label. The
+/// `memoizable_checks_cover_shipped_presets` test derives that set from the
+/// shipped parsers, so a missing rule fails instead of silently disabling the
+/// cache (which would restore the quadratic blowup). Mutable built-ins such as
+/// `FootnoteInlineScanner` are deliberately absent.
+fn is_memoizable_check(type_id: TypeId) -> bool {
+    use crate::parser::inline::builtin::TextScanner;
+    use crate::parser::inline::helpers::code_pair::CodePairScanner;
+    use crate::parser::inline::helpers::emph_pair::EmphPairScanner;
+    use crate::plugins::cmark::inline::autolink::AutolinkScanner;
+    use crate::plugins::cmark::inline::entity::EntityScanner;
+    use crate::plugins::cmark::inline::escape::EscapeScanner;
+    use crate::plugins::cmark::inline::newline::NewlineScanner;
+    use crate::plugins::directives::TextDirective;
+    use crate::plugins::extra::footnote::FootnoteReferenceScanner;
+    use crate::plugins::html::html_inline::HtmlInlineScanner;
+
+    if [
+        TypeId::of::<LinkScanner<false>>(),
+        TypeId::of::<LinkPrefixScanner<'!', true>>(),
+        TypeId::of::<LinkScannerEnd>(),
+        TypeId::of::<TextScanner>(),
+        TypeId::of::<FootnoteReferenceScanner>(),
+        TypeId::of::<CodePairScanner<'`'>>(),
+        TypeId::of::<EmphPairScanner<'*', true>>(),
+        TypeId::of::<EmphPairScanner<'_', false>>(),
+        TypeId::of::<EmphPairScanner<'~', true>>(),
+        TypeId::of::<EmphPairScanner<'=', true>>(),
+        TypeId::of::<EscapeScanner>(),
+        TypeId::of::<EntityScanner>(),
+        TypeId::of::<NewlineScanner>(),
+        TypeId::of::<AutolinkScanner>(),
+        TypeId::of::<HtmlInlineScanner>(),
+        TypeId::of::<TextDirective>(),
+    ]
+    .contains(&type_id)
+    {
+        return true;
+    }
+
+    #[cfg(feature = "linkify")]
+    if [
+        TypeId::of::<crate::plugins::extra::linkify::LinkifyScanner>(),
+        TypeId::of::<crate::plugins::extra::linkify::LinkifyFuzzyScanner>(),
+        TypeId::of::<crate::plugins::extra::linkify::LinkifyEmailScanner>(),
+    ]
+    .contains(&type_id)
+    {
+        return true;
+    }
+
+    #[cfg(feature = "katex")]
+    if type_id == TypeId::of::<crate::plugins::extra::math::MathInlineScanner>() {
+        return true;
+    }
+
+    false
+}
+
+/// Built-in check that is deliberately left uncached: its `check` mutates the
+/// shared inline-footnote scan budget, so the same probe can return different
+/// results under budget pressure.
+#[cfg(test)]
+fn is_known_uncached_check(type_id: TypeId) -> bool {
+    type_id == TypeId::of::<crate::plugins::extra::footnote::FootnoteInlineScanner>()
 }
 
 /// Index label ends directly, bypassing check sessions for plain input.
@@ -615,8 +776,8 @@ fn plain_label_closes(
 
 /// Whether the source is simple enough to index directly.
 ///
-/// Only plain characters and empty `()` targets are allowed; other syntax
-/// could change how a label is scanned.
+/// Parenthesized text must contain no brackets or image markers: a checked
+/// target can hide those bytes and change the raw bracket pairing.
 fn is_plain_label_source(source: &str) -> bool {
     let bytes = source.as_bytes();
     let is_plain = |byte: u8| {
@@ -626,12 +787,16 @@ fn is_plain_label_source(source: &str) -> bool {
         return false;
     }
 
-    // Parentheses may only appear as an empty `()` target.
-    bytes.iter().enumerate().all(|(index, &byte)| match byte {
-        b'(' => bytes.get(index + 1) == Some(&b')'),
-        b')' => index.checked_sub(1).and_then(|i| bytes.get(i)) == Some(&b'('),
-        _ => true,
-    })
+    let mut depth = 0usize;
+    for &byte in bytes {
+        match byte {
+            b'(' => depth += 1,
+            b')' => depth = depth.saturating_sub(1),
+            b'[' | b']' | b'!' if depth != 0 => return false,
+            _ => {}
+        }
+    }
+    true
 }
 
 /// Whether every check rule triggered by this source is handled by the index pass.
@@ -671,7 +836,11 @@ fn index_bracket_closes(source: &str) -> HashMap<usize, usize> {
     closes
 }
 
-fn has_possible_link_label_close(state: &mut DocumentInlineState<'_>, offset: usize) -> bool {
+fn has_possible_link_label_close(
+    state: &mut DocumentInlineState<'_>,
+    offset: usize,
+    references: Option<&ReferenceMap>,
+) -> bool {
     if !state
         .remaining()
         .get(offset..)
@@ -682,31 +851,49 @@ fn has_possible_link_label_close(state: &mut DocumentInlineState<'_>, offset: us
 
     let source = state.src.as_ref();
     let end = state.pos_max;
-    let cache = state.inline_ext.get_or_insert_with(|| LastLinkLabelClose {
-        end,
-        last: source[..end].rfind(']'),
-        plain_closes: plain_label_closes(source, end, state.ruleset),
-        has_target: source[..end].contains('('),
+    let mut shared = state.scan_limit_cache.borrow_mut();
+    let cache = shared.link_bounds.get_or_insert_with(|| LinkLabelBounds {
+        close_positions: source.match_indices(']').map(|(pos, _)| pos).collect(),
+        plain_closes: plain_label_closes(source, source.len(), state.ruleset),
+        target_positions: source.match_indices('(').map(|(pos, _)| pos).collect(),
+        non_memoizable_positions: non_memoizable_positions(source, state),
+        labels: HashMap::new(),
     });
-    if cache.end != end {
-        cache.end = end;
-        cache.last = source[..end].rfind(']');
-        cache.plain_closes = plain_label_closes(source, end, state.ruleset);
-        cache.has_target = source[..end].contains('(');
-    }
 
-    if !cache.has_target
-        && state
-            .root_ext
-            .and_then(|ext| ext.get::<ReferenceMap>())
-            .is_none()
+    let open = state.pos + offset;
+    let last_before_end = |positions: &[usize]| {
+        positions[..positions.partition_point(|&pos| pos < end)]
+            .last()
+            .copied()
+    };
+    if !last_before_end(&cache.target_positions).is_some_and(|last| last > open)
+        && references.is_none()
     {
         return false;
     }
+
     if let Some(closes) = &cache.plain_closes {
-        return closes.contains_key(&(state.pos + offset));
+        let Some(&close) = closes.get(&open) else {
+            return false;
+        };
+
+        if close >= end {
+            return false;
+        }
+
+        if source[close + 1..end].starts_with(['(', '[']) {
+            return true;
+        }
+
+        return references.is_some_and(|map| {
+            map.downcast_ref::<crate::plugins::cmark::block::reference::DefaultReferenceMap>()
+                .is_none_or(|map| {
+                    use crate::plugins::cmark::block::reference::CustomReferenceMap;
+                    map.get(&source[open + 1..close]).is_some()
+                })
+        });
     }
-    cache.last.is_some_and(|last| last > state.pos + offset)
+    last_before_end(&cache.close_positions).is_some_and(|last| last > open)
 }
 
 #[cfg(test)]
@@ -1566,4 +1753,107 @@ fn plain_brackets_have_a_linear_close_index() {
         .expect("plain cmark brackets support a close index");
     assert!(!closes.contains_key(&1));
     assert_eq!(closes.get(&2), Some(&3));
+    assert!(plain_label_closes("[[a]](x)", 8, &rules).is_some());
+    for source in ["[a](x[y])", "[a](x!y)", "[a](x\\)y)"] {
+        assert!(plain_label_closes(source, source.len(), &rules).is_none());
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn indexed_labels_preserve_nested_link_and_image_rendering() {
+    let md = MarkdownIt::new();
+    for (source, expected) in [
+        ("[[[a]]](x)", "<p><a href=\"x\">[[a]]</a></p>\n"),
+        ("[[[a](x)]]", "<p>[[<a href=\"x\">a</a>]]</p>\n"),
+        (
+            "[![a](x)](y)",
+            "<p><a href=\"y\"><img src=\"x\" alt=\"a\"></a></p>\n",
+        ),
+        (
+            "[r]: x\n\n[[[a]]] [r]",
+            "<p>[[[a]]] <a href=\"x\">r</a></p>\n",
+        ),
+        ("[r]: x\n\n[[a]][r]", "<p><a href=\"x\">[a]</a></p>\n"),
+    ] {
+        assert_eq!(md.render(source), expected, "{source}");
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn memoizable_checks_cover_shipped_presets() {
+    fn assert_all_memoizable(md: &MarkdownIt, preset: &str) {
+        for rule in &md.inline.document_rules().checks {
+            assert!(
+                is_memoizable_check(rule.type_id) || is_known_uncached_check(rule.type_id),
+                "{preset}: check rule for marker {:?} is neither memoizable nor a known \
+                 uncached rule; update `is_memoizable_check`",
+                rule.marker,
+            );
+        }
+    }
+
+    assert_all_memoizable(&MarkdownIt::new(), "MarkdownItDefault");
+
+    let mut extras = MarkdownIt::empty();
+    crate::plugins::cmark::add(&mut extras);
+    crate::plugins::html::add(&mut extras);
+    crate::plugins::extra::add(&mut extras);
+    assert_all_memoizable(&extras, "cmark+html+extra");
+}
+
+#[cfg(test)]
+#[test]
+fn memoized_labels_match_uncached_checks_across_nesting_limits() {
+    struct Uncached;
+    impl InlineRule for Uncached {
+        const MARKER: char = '\0';
+        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+            None
+        }
+    }
+
+    let mut cached = MarkdownIt::new();
+    crate::plugins::html::add(&mut cached);
+    crate::plugins::extra::add(&mut cached);
+    let mut uncached = MarkdownIt::new();
+    crate::plugins::html::add(&mut uncached);
+    crate::plugins::extra::add(&mut uncached);
+    // A custom check disables both optimizations, without changing syntax.
+    uncached.inline.add_rule::<Uncached>().before_all();
+
+    for depth in [0, 1, 2, 3, 8, 20] {
+        cached.max_nesting = depth;
+        uncached.max_nesting = depth;
+        for body in [
+            "a",
+            "雪",
+            "*a*",
+            "`[`",
+            "`]`",
+            "\\]",
+            "<b>]</b>",
+            "<a href=x>a</a>",
+            "![a](x)",
+            "[a](x)",
+            "[r]",
+            "&amp;",
+            "^[note]",
+            "^[^[nested]]",
+        ] {
+            for suffix in ["(x)", "[r]", "(/unfinished", ""] {
+                for prefix in ["雪", "^"] {
+                    let source = format!(
+                        "[r]: /u\n\n{prefix}[[[{body}]]]{suffix} *[[[{body}]]]{suffix} ^[tail]"
+                    );
+                    assert_eq!(
+                        cached.render(&source),
+                        uncached.render(&source),
+                        "depth={depth}, source={source:?}"
+                    );
+                }
+            }
+        }
+    }
 }

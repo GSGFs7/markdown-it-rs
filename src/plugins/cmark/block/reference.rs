@@ -127,7 +127,10 @@ pub trait CustomReferenceMap: Debug + Downcast + Send + Sync {
 impl_downcast!(CustomReferenceMap);
 
 #[derive(Default, Debug)]
-pub struct DefaultReferenceMap(HashMap<ReferenceMapKey, ReferenceMapEntry>);
+pub struct DefaultReferenceMap {
+    entries: HashMap<ReferenceMapKey, ReferenceMapEntry>,
+    max_normalized_len: usize,
+}
 
 impl DefaultReferenceMap {
     pub fn new() -> Self {
@@ -136,7 +139,7 @@ impl DefaultReferenceMap {
 
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str, Option<&str>)> {
         Box::new(
-            self.0
+            self.entries
                 .iter()
                 .map(|(a, b)| (a.label.as_str(), b.destination.as_str(), b.title.as_deref())),
         )
@@ -148,15 +151,26 @@ impl CustomReferenceMap for DefaultReferenceMap {
         let Some(key) = ReferenceMapKey::new(label) else {
             return false;
         };
-        self.0
+        self.max_normalized_len = self.max_normalized_len.max(key.normalized.len());
+        self.entries
             .entry(key)
             .or_insert(ReferenceMapEntry::new(destination, title));
         true
     }
 
     fn get(&self, label: &str) -> Option<(&str, Option<&str>)> {
+        if label
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .take(self.max_normalized_len.saturating_add(1))
+            .count()
+            > self.max_normalized_len
+        {
+            return None;
+        }
+
         let key = ReferenceMapKey::new(label.to_owned())?;
-        self.0
+        self.entries
             .get(&key)
             .map(|r| (r.destination.as_str(), r.title.as_deref()))
     }
@@ -509,5 +523,27 @@ fn parse_reference_title(
             }
             _ => pos += ch.len_utf8(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CustomReferenceMap, DefaultReferenceMap};
+
+    #[test]
+    fn lookup_length_filter_preserves_whitespace_and_unicode_normalization() {
+        let mut map = DefaultReferenceMap::new();
+        for (stored, query) in [("r", "R"), ("ss", "ß"), ("k", "K"), ("a b", "A\u{2003} B")] {
+            assert!(map.insert(stored.to_owned(), stored.to_owned(), None));
+            assert_eq!(map.get(query), Some((stored, None)), "{query}");
+        }
+        let padded = format!("{}R{}", " ".repeat(4096), "\t".repeat(4096));
+        assert_eq!(map.get(&padded), Some(("r", None)));
+        assert_eq!(map.get(&"[".repeat(50_000)), None);
+
+        // Publicly inserted maps can contain labels longer than parsed definitions.
+        let long = "a".repeat(2048);
+        assert!(map.insert(long.clone(), "long".to_owned(), None));
+        assert_eq!(map.get(&long), Some(("long", None)));
     }
 }

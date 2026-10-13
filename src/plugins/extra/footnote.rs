@@ -118,7 +118,7 @@ struct FootnoteDefinitionScanner;
 pub(crate) struct FootnoteReferenceScanner;
 
 // ^[inline note]
-struct FootnoteInlineScanner;
+pub(crate) struct FootnoteInlineScanner;
 
 struct FootnoteFinalizeRule;
 

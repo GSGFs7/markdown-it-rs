@@ -340,6 +340,68 @@ mod markdownit_rs {
     }
 
     #[test]
+    fn nested_brackets_with_inline_target() {
+        // The trailing `(x)` disables the plain-label fast path, so the link
+        // checker rescans the entire nested label for every opening bracket.
+        run(&format!(
+            "{}{}{}(x)",
+            "[".repeat(50_000),
+            "a",
+            "]".repeat(50_000),
+        ));
+    }
+
+    #[test]
+    fn nested_brackets_with_reference_map() {
+        // A reference definition also disables the plain-label fast path even
+        // though the nested source contains no inline target.
+        run(&format!(
+            "[r]: /u\n\n{}{}{}",
+            "[".repeat(50_000),
+            "a",
+            "]".repeat(50_000),
+        ));
+    }
+
+    #[test]
+    fn sibling_links_with_nested_brackets() {
+        // Parsing each label enters a shorter window; it must reuse the source
+        // index rather than invalidating the parent window's bracket cache.
+        run_render(&"[[a]](x) ".repeat(50_000));
+    }
+
+    #[test]
+    fn nested_brackets_outside_plain_fast_path() {
+        // Every prefix triggers a check rule that the plain-label index cannot
+        // handle: emphasis, non-ASCII text, `mark` (=) and the linkify scanners
+        // (`.`, `:`, `@`). They must all stay linear through label memoization.
+        for prefix in ["*", "雪", "=", ".", ":", "@"] {
+            for size in [10, 20, 40, 80, 160, 1000, 4000] {
+                let src = format!("{prefix}{}a{}(x)", "[".repeat(size), "]".repeat(size));
+                run_render(&src);
+            }
+        }
+    }
+
+    #[test]
+    fn nested_brackets_with_opaque_label_spans() {
+        for size in [10, 20, 40, 80, 160, 1000, 4000] {
+            let src = format!("{}a `]` {}(x)", "[".repeat(size), "]".repeat(size));
+            run_render(&src);
+        }
+    }
+
+    #[test]
+    fn inline_footnote_with_nested_link_brackets() {
+        // The mutable footnote check is outside the link-label scan window;
+        // it must not disable memoization of the nested brackets inside it.
+        for size in [10, 20, 40, 80, 160, 1000, 4000] {
+            let src = format!("^{}a{}(x)", "[".repeat(size), "]".repeat(size));
+            run_render(&src);
+        }
+    }
+
+    #[test]
     fn deferred_inline_siblings() {
         let mut md = MarkdownIt::empty();
         markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
