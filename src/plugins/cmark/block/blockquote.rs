@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#block-quotes>
 use crate::MarkdownIt;
-use crate::common::utils::find_indent_of;
+use crate::common::utils::find_indent_of_from_column;
 use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::plugins::cmark::block::reference::Definition;
@@ -131,22 +131,46 @@ impl BlockRule for BlockquoteScanner {
 
                     // set offset past spaces and ">"
                     let offsets = &state.line_offsets[next_line];
-                    let pos_after_marker = offsets.first_nonspace + 1;
+                    let marker_pos = offsets.first_nonspace;
+                    let line_slice = &state.src[offsets.line_start..offsets.line_end];
+                    let line_end_relative = offsets.line_end - offsets.line_start;
+                    let marker_indent = offsets.indent_nonspace;
 
                     old_line_offsets.push(state.line_offsets[next_line].clone());
 
-                    let (mut indent_after_marker, first_nonspace) = find_indent_of(
-                        &state.src[offsets.line_start..offsets.line_end],
-                        pos_after_marker - offsets.line_start,
-                    );
-
-                    last_line_empty = first_nonspace == offsets.line_end - offsets.line_start;
-
-                    // skip one optional space after '>'
-                    if matches!(chars.next(), Some(' ' | '\t')) {
-                        indent_after_marker -= 1;
+                    // Consume the optional space after '>'; a tab is consumed
+                    // only when it is exactly one column wide.
+                    let mut pos = marker_pos + 1;
+                    let mut column = marker_indent + 1 + offsets.tab_offset;
+                    let mut space_after_marker = false;
+                    match state.src.as_bytes().get(pos) {
+                        Some(b' ') => {
+                            pos += 1;
+                            column += 1;
+                            space_after_marker = true;
+                        }
+                        Some(b'\t') => {
+                            space_after_marker = true;
+                            let tab_width = 4 - column % 4;
+                            if tab_width == 1 {
+                                pos += 1;
+                            }
+                            column += 1;
+                        }
+                        _ => {}
                     }
 
+                    let (indent_after_marker, first_nonspace) = find_indent_of_from_column(
+                        line_slice,
+                        pos - offsets.line_start,
+                        column.max(0) as usize,
+                    );
+
+                    last_line_empty = first_nonspace == line_end_relative;
+
+                    state.line_offsets[next_line].tab_offset =
+                        marker_indent + 1 + i32::from(space_after_marker);
+                    state.line_offsets[next_line].content_start = pos;
                     state.line_offsets[next_line].indent_nonspace = indent_after_marker as i32;
                     state.line_offsets[next_line].first_nonspace =
                         first_nonspace + state.line_offsets[next_line].line_start;
@@ -243,6 +267,38 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn tabs_after_nested_container_markers_use_correct_stop() {
+        for preset in [crate::Preset::MarkdownItDefault, crate::Preset::CommonMark] {
+            let md = crate::MarkdownIt::with_preset(preset);
+
+            // Nested containers shift the tab stop, so this tab is only two
+            // columns wide and must stay a paragraph.
+            assert_eq!(
+                md.render("> 1. > 1. > \tfoo"),
+                "<blockquote>\n<ol>\n<li>\n<blockquote>\n<ol>\n<li>\n<blockquote>\n<p>foo</p>\n</blockquote>\n</li>\n</ol>\n</blockquote>\n</li>\n</ol>\n</blockquote>\n"
+            );
+
+            // Here the tab reaches a full stop, so it becomes an indented code
+            // block.
+            assert_eq!(
+                md.render("> > > \tfoo"),
+                "<blockquote>\n<blockquote>\n<blockquote>\n<pre><code>foo\n</code></pre>\n</blockquote>\n</blockquote>\n</blockquote>\n"
+            );
+
+            // Code indentation uses the same tab stops; a cut inside a tab is
+            // re-added as spaces.
+            assert_eq!(
+                md.render("> > \t foo"),
+                "<blockquote>\n<blockquote>\n<pre><code>foo\n</code></pre>\n</blockquote>\n</blockquote>\n"
+            );
+            assert_eq!(
+                md.render("> > >   \tfoo"),
+                "<blockquote>\n<blockquote>\n<blockquote>\n<pre><code>  foo\n</code></pre>\n</blockquote>\n</blockquote>\n</blockquote>\n"
+            );
         }
     }
 

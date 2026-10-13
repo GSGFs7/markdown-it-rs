@@ -4,7 +4,6 @@ use super::{BlockRuleFns, LineOffset, build_line_offsets};
 use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
 use crate::common::sourcemap::SourcePos;
-use crate::common::utils::calc_right_whitespace_with_tabstops;
 use crate::document::{Document, NodeId};
 use crate::parser::pipeline::PendingInline;
 
@@ -218,14 +217,29 @@ impl<'a> DocumentBlockState<'a> {
         for line in begin..end {
             let offsets = &self.line_offsets[line];
             let add_last_lf = line + 1 < end || keep_last_lf;
-            let (num_spaces, first) = calc_right_whitespace_with_tabstops(
-                &self.src[offsets.line_start..offsets.first_nonspace],
-                offsets.indent_nonspace - indent as i32,
-            );
 
-            mapping.push((result.len(), offsets.line_start + first));
-            result += &" ".repeat(num_spaces);
-            result += &self.src[offsets.line_start + first..offsets.line_end];
+            // Strip the indent, expanding tabs with the container's tab stops;
+            // a cut inside a tab is re-added as spaces.
+            let target = indent as i32;
+            let mut line_indent = 0i32;
+            let mut first = offsets.content_start;
+
+            while first < offsets.line_end && line_indent < target {
+                match self.src.as_bytes()[first] {
+                    b' ' => line_indent += 1,
+                    b'\t' => line_indent += 4 - (line_indent + offsets.tab_offset) % 4,
+                    // Consumed list markers count as whitespace.
+                    _ if first < offsets.first_nonspace => line_indent += 1,
+                    _ => break,
+                }
+                first += 1;
+            }
+
+            mapping.push((result.len(), first));
+            if line_indent > target {
+                result += &" ".repeat((line_indent - target) as usize);
+            }
+            result += &self.src[first..offsets.line_end];
             if add_last_lf {
                 result.push('\n');
             }

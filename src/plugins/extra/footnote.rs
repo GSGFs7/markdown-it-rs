@@ -496,6 +496,7 @@ impl BlockRule for FootnoteDefinitionScanner {
 
         state.blk_indent += FOOTNOTE_INDENT as usize;
         state.line_offsets[start_line].first_nonspace = content_source_offset;
+        state.line_offsets[start_line].content_start = content_source_offset;
         state.line_offsets[start_line].indent_nonspace = state.blk_indent as i32;
         state.line = start_line;
         state.line_max = end_line;

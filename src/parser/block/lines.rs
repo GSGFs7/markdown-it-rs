@@ -54,6 +54,15 @@ pub struct LineOffset {
     /// so you must take into account that any math can end up negative.
     ///
     pub indent_nonspace: i32,
+
+    /// Column offset added when expanding tabs. Corresponds to markdown-it's
+    /// `bsCount`; only blockquotes change it.
+    pub tab_offset: i32,
+
+    /// Byte offset of the line content after container markers. Corresponds to
+    /// markdown-it's `bMarks`; starts at `line_start` and is advanced by
+    /// blockquotes and footnotes.
+    pub content_start: usize,
 }
 
 pub(crate) fn build_line_offsets(src: &str) -> Vec<LineOffset> {
@@ -109,6 +118,8 @@ fn build_line_offset(bytes: &[u8], line_start: usize, line_end: usize) -> LineOf
         line_end,
         first_nonspace,
         indent_nonspace,
+        tab_offset: 0,
+        content_start: line_start,
     }
 }
 

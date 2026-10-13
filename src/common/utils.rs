@@ -234,6 +234,35 @@ pub fn find_indent_of(line: &str, mut pos: usize) -> (usize, usize) {
     }
 }
 
+/// Like [`find_indent_of`], but expands tabs from the given virtual `column`
+/// instead of assuming column zero. Needed after container markers, which
+/// shift tab stops.
+///
+/// Returns relative indent and offset of the first non-space character.
+pub fn find_indent_of_from_column(line: &str, mut pos: usize, mut column: usize) -> (usize, usize) {
+    let bytes = line.as_bytes();
+    let mut indent = 0;
+
+    while pos < bytes.len() {
+        match bytes[pos] {
+            b' ' => {
+                indent += 1;
+                column += 1;
+                pos += 1;
+            }
+            b'\t' => {
+                let width = 4 - column % 4;
+                indent += width;
+                column += width;
+                pos += 1;
+            }
+            _ => break,
+        }
+    }
+
+    (indent, pos)
+}
+
 /// Returns trailing whitespace with total length of `indent`.
 ///
 /// Input: a string of characters (presumed whitespaces, can be anything), where each one of

@@ -7,7 +7,7 @@
 //!  - <https://spec.commonmark.org/0.30/#lists>
 //!  - <https://spec.commonmark.org/0.30/#list-items>
 use crate::MarkdownIt;
-use crate::common::utils::find_indent_of;
+use crate::common::utils::find_indent_of_from_column;
 use crate::document::{Document, NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
 use crate::plugins::cmark::block::hr::HrScanner;
@@ -348,9 +348,11 @@ impl BlockRule for ListScanner {
             let offsets = &state.line_offsets[next_line];
             let initial = offsets.indent_nonspace as usize + pos_after_marker;
 
-            let (mut indent_after_marker, first_nonspace) = find_indent_of(
+            let column = (initial as i32 + offsets.tab_offset).max(0) as usize;
+            let (mut indent_after_marker, first_nonspace) = find_indent_of_from_column(
                 &state.src[offsets.line_start..offsets.line_end],
                 pos_after_marker + offsets.first_nonspace - offsets.line_start,
+                column,
             );
 
             let reached_end_of_line = first_nonspace == offsets.line_end - offsets.line_start;
