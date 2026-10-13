@@ -5,6 +5,7 @@ use crate::MarkdownIt;
 use crate::common::sourcemap::SourcePos;
 use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
+use crate::plugins::cmark::block::blockquote::BlockquoteScanner;
 use crate::plugins::cmark::block::heading::HeadingScanner;
 use crate::plugins::cmark::block::list::ListScanner;
 use crate::render::{
@@ -211,6 +212,7 @@ impl NodeValue for TableCell {}
 pub fn add(md: &mut MarkdownIt) {
     md.block
         .add_rule::<TableScanner>()
+        .before::<BlockquoteScanner>()
         .before::<ListScanner>()
         .before::<HeadingScanner>();
     md.add_document_renderer::<Table, _>("html", TableDocumentRenderer);
@@ -559,6 +561,44 @@ impl BlockRule for TableScanner {
 #[cfg(test)]
 mod tests {
     use super::{MAX_AUTOCOMPLETED_CELLS, TableScanner};
+
+    #[test]
+    fn tables_take_precedence_over_blockquote_markers_in_headers() {
+        for tables_first in [false, true] {
+            let mut md = crate::MarkdownIt::empty();
+            if tables_first {
+                super::add(&mut md);
+            }
+            crate::plugins::cmark::add(&mut md);
+            if !tables_first {
+                super::add(&mut md);
+            }
+            for (source, expected) in [
+                (
+                    ">|\n:-",
+                    "<table>\n<thead>\n<tr>\n<th style=\"text-align:left\">&gt;</th>\n</tr>\n</thead>\n</table>\n",
+                ),
+                (
+                    "> a |\n---|\n",
+                    "<table>\n<thead>\n<tr>\n<th>&gt; a</th>\n</tr>\n</thead>\n</table>\n",
+                ),
+                (
+                    "> a |\n> ---|\n",
+                    "<blockquote>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n</table>\n</blockquote>\n",
+                ),
+                (
+                    "> ordinary quote",
+                    "<blockquote>\n<p>ordinary quote</p>\n</blockquote>\n",
+                ),
+            ] {
+                assert_eq!(
+                    md.render(source),
+                    expected,
+                    "{source:?}, tables_first={tables_first}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn should_split_cells() {
