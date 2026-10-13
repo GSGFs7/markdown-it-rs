@@ -90,10 +90,9 @@ impl DocumentNodeRenderer<ListItem> for ListItemDocumentRenderer {
                 .is::<super::reference::Definition>()
         });
         if first_visible.is_some_and(|&child| {
-            context
-                .document()
-                .node(child)
-                .is::<super::fence::CodeFence>()
+            let node = context.document().node(child);
+            node.is::<super::fence::CodeFence>()
+                || node.is::<crate::plugins::html::html_block::HtmlBlock>()
         }) {
             context.cr(output);
         }

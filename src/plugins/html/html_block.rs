@@ -24,10 +24,9 @@ impl DocumentNodeRenderer<HtmlBlock> for HtmlBlockDocumentRenderer {
         &self,
         _: NodeRef<'_>,
         value: &HtmlBlock,
-        context: &mut DocumentRenderContext<'_>,
+        _: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
     ) {
-        context.cr(output);
         output.write_str(&value.content);
     }
 }
@@ -207,6 +206,45 @@ impl BlockRule for HtmlBlockScanner {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn html_blocks_after_tight_list_text_do_not_insert_a_line_break() {
+        let mut md = crate::MarkdownIt::empty();
+        crate::plugins::cmark::add(&mut md);
+        crate::plugins::html::add(&mut md);
+
+        for max_nesting in [3, 100] {
+            md.max_nesting = max_nesting;
+            for (source, expected) in [
+                ("1. a\n    <!--", "<ol>\n<li>a <!--</li>\n</ol>\n"),
+                ("1. a\n    <!--\n", "<ol>\n<li>a <!--\n</li>\n</ol>\n"),
+                (
+                    "- a\n  <!-- comment -->",
+                    "<ul>\n<li>a<!-- comment --></li>\n</ul>\n",
+                ),
+                ("1. a\n    <div>", "<ol>\n<li>a <div></li>\n</ol>\n"),
+                ("1. a\n    <?x?>", "<ol>\n<li>a <?x?></li>\n</ol>\n"),
+                (
+                    "- <div>\n- foo\n",
+                    "<ul>\n<li>\n<div>\n</li>\n<li>foo</li>\n</ul>\n",
+                ),
+                (
+                    "1. a\n\n    <!--",
+                    "<ol>\n<li>\n<p>a</p>\n <!--</li>\n</ol>\n",
+                ),
+                (
+                    "1. i&9文\t\n    <!--\n!c😀;    a\n\n    b\n    -->\n    c\n",
+                    "<ol>\n<li>i&amp;9文 <!--\n</li>\n</ol>\n<p>!c😀;    a</p>\n<pre><code>b\n--&gt;\nc\n</code></pre>\n",
+                ),
+            ] {
+                assert_eq!(
+                    md.render(source),
+                    expected,
+                    "source={source:?}, max_nesting={max_nesting}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn preserves_html_block_final_line_break() {
         let mut md = crate::MarkdownIt::empty();
