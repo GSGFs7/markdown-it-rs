@@ -983,6 +983,28 @@ fn direct_links_use_real_registration() {
 }
 
 #[test]
+fn direct_link_title_requires_whitespace_after_destination() {
+    let mut md = MarkdownIt::empty();
+    markdown_it::plugins::cmark::add(&mut md);
+    markdown_it::plugins::html::add(&mut md);
+    md.max_nesting = 3;
+
+    let source = "[](<&quot;>\"é!中&amp;&ouml;\")\n\n[](<\\&quot;> \"\\&amp;\\&oum)\tc :~文*(<\\\\&quot;> \"";
+    assert_eq!(
+        md.render(source),
+        "<p>[](&lt;&quot;&gt;&quot;é!中&amp;ö&quot;)</p>\n<p>[](&lt;&amp;quot;&gt; &quot;&amp;amp;&amp;oum)\tc :~文*(&lt;\\&quot;&gt; &quot;</p>\n",
+    );
+    assert_eq!(
+        md.render("![x](<url>\"title\")"),
+        "<p>![x](<url>&quot;title&quot;)</p>\n",
+    );
+    assert_eq!(
+        md.render("![x](<url> \"title\")"),
+        "<p><img src=\"url\" alt=\"x\" title=\"title\"></p>\n",
+    );
+}
+
+#[test]
 fn direct_references_match_snapshots() {
     let mut md = MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md);

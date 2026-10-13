@@ -356,8 +356,11 @@ fn parse_inline_link_target(
 
         // [link](  <href>  "title"  )
         //                ^^ skipping these spaces
+        let title_separator_start = pos;
         pos = skip_link_spaces(source, pos, max);
-        if let Some(result) = parse_link_title(source, pos, max) {
+        if pos > title_separator_start
+            && let Some(result) = parse_link_title(source, pos, max)
+        {
             title = Some(result.str);
             // [link](  <href>  "title"  )
             //                         ^^ skipping these spaces
@@ -658,6 +661,20 @@ mod tests {
         assert_eq!(target.href.as_deref(), Some("a"));
         assert_eq!(target.title.as_deref(), Some("t"));
         assert_eq!(target.end, source.len());
+    }
+
+    #[test]
+    fn inline_title_requires_whitespace_after_destination() {
+        for title in ["\"title\"", "'title'", "(title)"] {
+            assert!(parse_target(&format!("(<url>{title})")).is_none());
+            for whitespace in [" ", "\t", "\n"] {
+                let source = format!("(<url>{whitespace}{title})");
+                let target = parse_target(&source).unwrap();
+                assert_eq!(target.href.as_deref(), Some("url"));
+                assert_eq!(target.title.as_deref(), Some("title"));
+                assert_eq!(target.end, source.len());
+            }
+        }
     }
 
     #[test]
