@@ -390,11 +390,11 @@ fn parse_inline_link_target(
     start: usize,
     max: usize,
 ) -> Option<InlineLinkTarget> {
-    if !source[start..max].starts_with('(') {
+    let mut pos = start;
+    if pos >= max {
         return None;
     }
 
-    let mut pos = skip_link_spaces(source, start + 1, max);
     let mut href = None;
     let mut title = None;
 
@@ -492,21 +492,29 @@ fn scan_link_candidate(
         )?;
 
     let source = context.remaining();
-    if let Some(target) =
-        parse_inline_link_target(context.markdown_it(), source, label_end + 1, source.len())
-    {
-        return Some(ParseLinkResult {
-            label_start,
-            label_end,
-            href: target.href,
-            title: target.title,
-            end: target.end,
-        });
-    }
-
     let suffix_start = label_end + 1;
-    if fallback == InlineTargetFallback::Reject && source[suffix_start..].starts_with('(') {
-        return None;
+    if source[suffix_start..].starts_with('(') {
+        let target_start = skip_link_spaces(source, suffix_start + 1, source.len());
+        // An opening parenthesis followed only by spaces cannot resolve a reference.
+        if target_start == source.len() {
+            return None;
+        }
+
+        if let Some(target) =
+            parse_inline_link_target(context.markdown_it(), source, target_start, source.len())
+        {
+            return Some(ParseLinkResult {
+                label_start,
+                label_end,
+                href: target.href,
+                title: target.title,
+                end: target.end,
+            });
+        }
+
+        if fallback == InlineTargetFallback::Reject {
+            return None;
+        }
     }
 
     let reference_end = if source[suffix_start..].starts_with('[') {
@@ -707,7 +715,11 @@ mod tests {
 
     fn parse_target(source: &str) -> Option<InlineLinkTarget> {
         let md = MarkdownIt::empty();
-        parse_inline_link_target(&md, source, 0, source.len())
+        if !source.starts_with('(') {
+            return None;
+        }
+        let pos = skip_link_spaces(source, 1, source.len());
+        parse_inline_link_target(&md, source, pos, source.len())
     }
 
     #[test]
@@ -717,6 +729,20 @@ mod tests {
         assert_eq!(target.href.as_deref(), Some(""));
         assert_eq!(target.title, None);
         assert_eq!(target.end, source.len());
+    }
+
+    #[test]
+    fn missing_target_content_respects_the_parse_window() {
+        let md = MarkdownIt::empty();
+        let source = "雪( \t\n/url)";
+        let start = "雪".len();
+        for max in start + 1..=source.find('/').unwrap() {
+            let target_start = skip_link_spaces(source, start + 1, max);
+            assert!(parse_inline_link_target(&md, source, target_start, max).is_none());
+        }
+        let target_start = skip_link_spaces(source, start + 1, source.len());
+        let target = parse_inline_link_target(&md, source, target_start, source.len()).unwrap();
+        assert_eq!(target.href.as_deref(), Some("/url"));
     }
 
     #[test]
@@ -779,11 +805,12 @@ mod tests {
         let source = "雪(/url \"title\")雨";
         let start = "雪".len();
         let max = source.len() - "雨".len();
-        let target = parse_inline_link_target(&md, source, start, max).unwrap();
+        let target_start = skip_link_spaces(source, start + 1, max);
+        let target = parse_inline_link_target(&md, source, target_start, max).unwrap();
         assert_eq!(target.href.as_deref(), Some("/url"));
         assert_eq!(target.title.as_deref(), Some("title"));
         assert_eq!(target.end, max);
-        assert!(parse_inline_link_target(&md, source, start, max - 1).is_none());
+        assert!(parse_inline_link_target(&md, source, target_start, max - 1).is_none());
     }
 
     #[test]
@@ -1183,7 +1210,13 @@ mod check_label_tests {
             assert_eq!(context.link_level, 0);
         }
 
-        for source in ["[x][missing]", "[missing]", "[unclosed"] {
+        for source in [
+            "[x][missing]",
+            "[missing]",
+            "[unclosed",
+            "[x](",
+            "[x]( \t\n",
+        ] {
             let mut context = DocumentInlineState::new(
                 &mut document,
                 source,
