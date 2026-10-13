@@ -21,6 +21,29 @@ struct Candidate {
     kind: LinkKind,
 }
 
+/// Supported schema prefixes in linkify-it priority order. `https:` and
+/// `http:` cannot shadow each other because their `:` positions differ, so
+/// the literal order is safe.
+const SCHEMAS: &[(&str, LinkKind)] = &[
+    ("https:", LinkKind::Url),
+    ("http:", LinkKind::Url),
+    ("ftp:", LinkKind::Url),
+    ("mailto:", LinkKind::Email),
+    ("//", LinkKind::Url),
+];
+
+/// Map a UTF-16 unit boundary to a byte offset. JS may truncate a validator
+/// between surrogate halves at `maxLength`; Rust strings cannot represent
+/// that raw text, so retain the complete scalar prefix.
+fn unit_byte_end(text: &Text, unit: usize) -> usize {
+    let unit = if text.bytes[unit] == usize::MAX {
+        unit - 1
+    } else {
+        unit
+    };
+    text.bytes[unit]
+}
+
 fn schema_boundary(text: &Text, start: usize) -> bool {
     if start == 0 {
         return true;
@@ -60,6 +83,51 @@ fn fuzzy_boundary(text: &Text, start: usize) -> bool {
             ))
 }
 
+fn schema_end(text: &Text, start: usize, prefix: &[u8], kind: LinkKind) -> Option<usize> {
+    let tail = start + prefix.len();
+    let end = text.units.len();
+    let limit = (tail + 10000).min(end);
+    if kind == LinkKind::Email {
+        mail_name_end(text, tail, limit)
+            .filter(|&p| text.at(p, limit) == Some(0x40))
+            .and_then(|p| host_end(text, p + 1, limit, Host::Mail))
+    } else if prefix == b"//" {
+        if start > 0 && matches!(text.units[start - 1], 0x3a | 0x2f) {
+            None
+        } else {
+            host_end(text, tail, limit, Host::Relative).map(|p| path_end(text, p, limit))
+        }
+    } else if text.ascii(tail, b"//", limit) {
+        host_end(text, tail + 2, limit, Host::Explicit).map(|p| path_end(text, p, limit))
+    } else {
+        None
+    }
+}
+
+/// Match only a supported schema at byte zero, without a global boundary scan.
+pub(super) fn match_at_start(source: &str) -> Option<Link> {
+    let (prefix, kind) = SCHEMAS.iter().copied().find(|(prefix, _)| {
+        source
+            .as_bytes()
+            .get(..prefix.len())
+            .is_some_and(|s| s.eq_ignore_ascii_case(prefix.as_bytes()))
+    })?;
+
+    // Copy only the 10,000-unit window validators read; 3 bytes cover any unit.
+    let mut byte_limit = source.len().min(3 * (prefix.len() + 10000));
+    while !source.is_char_boundary(byte_limit) {
+        byte_limit -= 1;
+    }
+    let text = Text::new(&source[..byte_limit]);
+    let last = schema_end(&text, 0, prefix.as_bytes(), kind)?;
+    let end = unit_byte_end(&text, last);
+    Some(Link {
+        start: 0,
+        end,
+        kind,
+    })
+}
+
 fn next_schema(text: &Text, cursor: &mut usize, pos: usize) -> Option<Candidate> {
     let end = text.units.len();
     *cursor = (*cursor).max(pos.saturating_sub(1));
@@ -80,37 +148,18 @@ fn next_schema(text: &Text, cursor: &mut usize, pos: usize) -> Option<Candidate>
             continue;
         }
 
-        let Some((prefix, kind)) = [
-            (b"https:".as_slice(), LinkKind::Url),
-            (b"http:", LinkKind::Url),
-            (b"ftp:", LinkKind::Url),
-            (b"mailto:", LinkKind::Email),
-            (b"//", LinkKind::Url),
-        ]
-        .into_iter()
-        .find(|(prefix, _)| text.ascii(start, prefix, end)) else {
+        let Some((prefix, kind)) = SCHEMAS
+            .iter()
+            .copied()
+            .find(|(prefix, _)| text.ascii(start, prefix.as_bytes(), end))
+        else {
             continue;
         };
 
         let tail = start + prefix.len();
         *cursor = tail;
         search_from = tail;
-        let limit = (tail + 10000).min(end);
-        let last = if kind == LinkKind::Email {
-            mail_name_end(text, tail, limit)
-                .filter(|&p| text.at(p, limit) == Some(0x40))
-                .and_then(|p| host_end(text, p + 1, limit, Host::Mail))
-        } else if prefix == b"//" {
-            if start > 0 && matches!(text.units[start - 1], 0x3a | 0x2f) {
-                None
-            } else {
-                host_end(text, tail, limit, Host::Relative).map(|p| path_end(text, p, limit))
-            }
-        } else if text.ascii(tail, b"//", limit) {
-            host_end(text, tail + 2, limit, Host::Explicit).map(|p| path_end(text, p, limit))
-        } else {
-            None
-        };
+        let last = schema_end(text, start, prefix.as_bytes(), kind);
 
         if let Some(last) = last {
             return Some(Candidate {
@@ -234,16 +283,7 @@ pub(super) fn scan(source: &str, fuzzy: bool) -> Vec<Link> {
         pos = candidate.end;
 
         let start = text.bytes[candidate.start];
-        // JS may truncate a validator between surrogate halves at maxLength.
-        // Rust strings cannot represent that raw text; retain the complete
-        // scalar prefix rather than losing the whole URL or exporting bad bytes.
-        let boundary = if text.bytes[candidate.end] == usize::MAX {
-            candidate.end - 1
-        } else {
-            candidate.end
-        };
-
-        let end = text.bytes[boundary];
+        let end = unit_byte_end(&text, candidate.end);
         if start != usize::MAX && end > start {
             result.push(Link {
                 start,

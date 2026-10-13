@@ -451,43 +451,47 @@ fn scan_candidate(input: CandidateInput<'_>, mode: LinkifyMode) -> Option<Candid
     }
 
     let trailing = input.trailing;
-    let scheme_len = if matches!(mode, LinkifyMode::Scheme) {
-        Some(find_scheme_len(input.src, input.pos, trailing.len())?)
+    let (rewind, length) = if matches!(mode, LinkifyMode::Scheme) {
+        if !input.src[input.pos..input.pos_max].starts_with("://") {
+            return None;
+        }
+
+        let rewind = find_scheme_len(input.src, input.pos, trailing.len())?;
+        // Scheme match skips the prescan's boundary rule, so `//https://` still links.
+        let found = Linkify::new().match_at_start(&input.src[input.pos - rewind..input.pos_max])?;
+        (rewind, found.end())
     } else {
-        None
+        let start = input.source_start;
+        // https://example.com
+        // ^    ^            ^
+        // |    |            |
+        // start colon      end
+        // find which interval the colon is in
+        let found_idx = input
+            .positions
+            .binary_search_by(|x| {
+                if x.start >= start {
+                    Ordering::Greater
+                } else if x.end <= start {
+                    Ordering::Less
+                } else {
+                    Ordering::Equal
+                }
+            })
+            .ok()?;
+        let found = input.positions[found_idx];
+        if !mode.accepts(found) {
+            return None;
+        }
+
+        let rewind = start - found.start;
+        if rewind > trailing.len() {
+            return None;
+        }
+
+        (rewind, found.end - found.start)
     };
 
-    let start = input.source_start;
-    let positions = input.positions;
-    // https://example.com
-    // ^    ^            ^
-    // |    |            |
-    // start colon      end
-    // find which interval the colon is in
-    let found_idx = positions
-        .binary_search_by(|x| {
-            if x.start >= start {
-                Ordering::Greater
-            } else if x.end <= start {
-                Ordering::Less
-            } else {
-                Ordering::Equal
-            }
-        })
-        .ok()?;
-
-    let found = positions[found_idx];
-    if !mode.accepts(found) {
-        return None;
-    }
-
-    let rewind = start - found.start;
-    if rewind > trailing.len() {
-        return None;
-    }
-    if scheme_len.is_some_and(|scheme_len| scheme_len != rewind) {
-        return None;
-    }
     // \https://example.com
     // this should keep text.
     if trailing[..trailing.len() - rewind].ends_with('\\') {
@@ -501,7 +505,7 @@ fn scan_candidate(input: CandidateInput<'_>, mode: LinkifyMode) -> Option<Candid
 
     let mut candidate = CandidateRange {
         start: input.pos - rewind,
-        end: input.pos - rewind + found.end - found.start,
+        end: input.pos - rewind + length,
         rewind,
     };
     // markdown-it's inline linkifier leaves trailing asterisks for emphasis.
@@ -902,6 +906,42 @@ mod tests {
         markdown_it::plugins::extra::linkify::add(md);
 
         assert_eq!(md.render("www.example.org"), "<p>www.example.org</p>\n");
+    }
+
+    #[test]
+    fn explicit_urls_after_failed_protocol_relative_prefixes() {
+        for (input, output) in [
+            (
+                "<//https://foo.[a",
+                "<p>&lt;//<a href=\"https://foo\">https://foo</a>.[a</p>",
+            ),
+            (
+                "//https://foo",
+                "<p>//<a href=\"https://foo\">https://foo</a></p>",
+            ),
+            (
+                "//HTTPS://foo",
+                "<p>//<a href=\"HTTPS://foo\">HTTPS://foo</a></p>",
+            ),
+            (
+                "<//ftp://foo.[a",
+                "<p>&lt;//<a href=\"ftp://foo\">ftp://foo</a>.[a</p>",
+            ),
+            (
+                "<//https://foo*",
+                "<p>&lt;//<a href=\"https://foo\">https://foo</a>*</p>",
+            ),
+            ("//\\https://foo", "<p>//\\https://foo</p>"),
+            (
+                "[//https://foo](/url)",
+                "<p><a href=\"/url\">//https://foo</a></p>",
+            ),
+            ("<a>//https://foo</a>", "<p><a>//https://foo</a></p>"),
+            ("//ahttps://foo", "<p>//ahttps://foo</p>"),
+            ("//mailto:a@b.co", "<p>//mailto:a@b.co</p>"),
+        ] {
+            run(input, output);
+        }
     }
 
     #[test]

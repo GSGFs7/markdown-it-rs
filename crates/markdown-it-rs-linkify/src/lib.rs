@@ -67,6 +67,14 @@ impl Linkify {
         self.links_with_fuzzy(input, false)
     }
 
+    /// Match a supported explicit schema or protocol-relative URL at byte zero.
+    ///
+    /// Unlike [`Self::links`], this does not search later positions or recognize
+    /// bare email addresses and domains. The returned range is into `input`.
+    pub fn match_at_start(&self, input: &str) -> Option<Link> {
+        scanner::match_at_start(input)
+    }
+
     /// Return links, optionally recognizing URLs without an explicit scheme.
     pub fn links_with_fuzzy(&self, input: &str, fuzzy_links: bool) -> Vec<Link> {
         scanner::scan(input, fuzzy_links)
@@ -83,6 +91,52 @@ mod tests {
             .into_iter()
             .map(|link| (link.as_str(input), link.kind()))
             .collect()
+    }
+
+    #[test]
+    fn matches_only_schemas_at_the_start() {
+        let detector = Linkify::new();
+        for (input, expected, kind) in [
+            ("https://foo.[a", "https://foo", LinkKind::Url),
+            (
+                "HTTPS://例子.测试/a😀 text",
+                "HTTPS://例子.测试/a😀",
+                LinkKind::Url,
+            ),
+            ("ftp://foo/path", "ftp://foo/path", LinkKind::Url),
+            ("//example.org text", "//example.org", LinkKind::Url),
+            ("mailto:a@b.co text", "mailto:a@b.co", LinkKind::Email),
+        ] {
+            let found = detector.match_at_start(input).unwrap();
+            assert_eq!(found.start(), 0);
+            assert_eq!(found.as_str(input), expected);
+            assert_eq!(found.kind(), kind);
+        }
+        for input in [
+            "",
+            "a@b.co",
+            "example.org",
+            "//https://foo",
+            "http:/bad https://foo",
+            "unknown://foo https://foo",
+        ] {
+            assert_eq!(detector.match_at_start(input), None, "{input:?}");
+        }
+        // Global detection still honors its consumed schema boundaries.
+        assert!(detector.links("<//https://foo.[a").is_empty());
+    }
+
+    #[test]
+    fn start_matches_respect_utf16_validator_limits() {
+        let detector = Linkify::new();
+        for tail in ["a", "中", "😀"] {
+            let input = format!("https://foo/{}", tail.repeat(10001));
+            let expected = detector.links(&input)[0];
+            let found = detector.match_at_start(&input).unwrap();
+            assert_eq!(found, expected, "tail={tail:?}");
+            assert!(found.end() < input.len());
+            assert!(input.is_char_boundary(found.end()));
+        }
     }
 
     #[test]
