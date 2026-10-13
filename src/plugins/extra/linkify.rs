@@ -73,9 +73,8 @@ pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
 }
 
 // Second linkify pass, mirroring JS core linkify: match protocol-relative
-// URLs after emphasis, retry emails whose prescan span crossed an inline
-// token boundary, and retry text hidden by an unmatched `<a>` (which disables
-// the inline scanners but does not protect text in JS).
+// URLs and emails after emphasis, and retry text hidden by an unmatched `<a>`
+// (which disables the inline scanners but does not protect text in JS).
 fn linkify_text(state: &mut DocumentInlineState<'_>) {
     use crate::plugins::cmark::inline::autolink::Autolink;
     use crate::plugins::cmark::inline::backticks::CodeInline;
@@ -119,7 +118,9 @@ fn linkify_text(state: &mut DocumentInlineState<'_>) {
     }
 
     // Child sessions inside Markdown links inherit a positive link level.
-    if state.link_level > 0 && state.link_level - html_delta > 0 {
+    // An HTML closing tag can lower the final level to zero even inside a
+    // Markdown link. Recover the inherited level before deciding to retry.
+    if state.link_level - html_delta > 0 {
         return;
     }
     let retry_html = state.link_level > 0 && html_delta > 0;
@@ -184,8 +185,8 @@ fn linkify_text(state: &mut DocumentInlineState<'_>) {
             }
 
             let url = &content[found.start()..found.end()];
-            // Non-`//` kinds come from the inline scanners unless an
-            // unmatched `<a>` disabled them.
+            // Emails are deferred until this pass so the reverse HTML-anchor
+            // scan can suppress them even before an unmatched closing tag.
             if !retry_html && found.kind() != LinkKind::Email && !url.starts_with("//") {
                 continue;
             }
@@ -591,6 +592,14 @@ fn run_document_candidate(
         },
         mode,
     )?;
+
+    if matches!(mode, LinkifyMode::Email) {
+        // JS only links emails in its core postpass. At `@` we cannot yet
+        // know whether a later `</a>` protects this text, and consuming the
+        // prescan span here could also swallow emphasis or code delimiters.
+        state.request_finalization();
+        return None;
+    }
 
     if matches!(mode, LinkifyMode::Fuzzy)
         && state.src[candidate.start..candidate.end].starts_with("//")
@@ -1108,6 +1117,45 @@ mailto:test@example.com"#;
         let output = r#"<p><a href="mailto:test@example.com">test@example.com</a></p>
 <p><a href="mailto:test@example.com">mailto:test@example.com</a></p>"#;
         run(input, output);
+    }
+
+    #[test]
+    fn emails_respect_reverse_html_anchor_boundaries() {
+        for (input, output) in [
+            ("b@example.com</a>", "<p>b@example.com</a></p>"),
+            (
+                "mailto:b@example.com</a>",
+                "<p>mailto:b@example.com</a></p>",
+            ),
+            ("b@example.com</a></a>", "<p>b@example.com</a></a></p>"),
+            ("*b@example.com*</A >", "<p><em>b@example.com</em></A ></p>"),
+            (
+                "`a`+b@example.oé</a>",
+                "<p><code>a</code>+b@example.oé</a></p>",
+            ),
+            (
+                "b@example.com</a> c@example.com",
+                "<p>b@example.com</a> <a href=\"mailto:c@example.com\">c@example.com</a></p>",
+            ),
+            (
+                "<a>b@example.com</a> c@example.com",
+                "<p><a>b@example.com</a> <a href=\"mailto:c@example.com\">c@example.com</a></p>",
+            ),
+            (
+                "</a>b@example.com",
+                "<p></a><a href=\"mailto:b@example.com\">b@example.com</a></p>",
+            ),
+            (
+                "*a*+b@example.com",
+                "<p><em>a</em><a href=\"mailto:+b@example.com\">+b@example.com</a></p>",
+            ),
+            (
+                "[</a>b@example.com](/url)",
+                "<p><a href=\"/url\"></a>b@example.com</a></p>",
+            ),
+        ] {
+            run(input, output);
+        }
     }
 
     #[test]
