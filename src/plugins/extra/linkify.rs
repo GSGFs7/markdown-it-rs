@@ -73,8 +73,9 @@ pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
 }
 
 // Second linkify pass, mirroring JS core linkify: match protocol-relative
-// URLs after emphasis, and retry text hidden by an unmatched `<a>` (which
-// disables the inline scanners but does not protect text in JS).
+// URLs after emphasis, retry emails whose prescan span crossed an inline
+// token boundary, and retry text hidden by an unmatched `<a>` (which disables
+// the inline scanners but does not protect text in JS).
 fn linkify_text(state: &mut DocumentInlineState<'_>) {
     use crate::plugins::cmark::inline::autolink::Autolink;
     use crate::plugins::cmark::inline::backticks::CodeInline;
@@ -82,7 +83,7 @@ fn linkify_text(state: &mut DocumentInlineState<'_>) {
     use crate::plugins::cmark::inline::link::Link;
     use crate::plugins::html::html_inline::HtmlInline;
 
-    if state.link_level <= 0 && !state.src.contains("//") {
+    if state.link_level <= 0 && !state.src.contains("//") && !state.src.contains('@') {
         return;
     }
 
@@ -185,7 +186,7 @@ fn linkify_text(state: &mut DocumentInlineState<'_>) {
             let url = &content[found.start()..found.end()];
             // Non-`//` kinds come from the inline scanners unless an
             // unmatched `<a>` disabled them.
-            if !retry_html && !url.starts_with("//") {
+            if !retry_html && found.kind() != LinkKind::Email && !url.starts_with("//") {
                 continue;
             }
 
@@ -1107,6 +1108,40 @@ mailto:test@example.com"#;
         let output = r#"<p><a href="mailto:test@example.com">test@example.com</a></p>
 <p><a href="mailto:test@example.com">mailto:test@example.com</a></p>"#;
         run(input, output);
+    }
+
+    #[test]
+    fn emails_after_inline_code_are_matched_in_remaining_text() {
+        for (input, output) in [
+            (
+                "`a<`+b@example.oé! é[#\t&",
+                "<p><code>a&lt;</code><a href=\"mailto:+b@example.xn--o-bga\">+b@example.oé</a>! é[#\t&amp;</p>",
+            ),
+            (
+                "`a`b@example.com",
+                "<p><code>a</code><a href=\"mailto:b@example.com\">b@example.com</a></p>",
+            ),
+            (
+                "`a<b@example.com`+c@example.com",
+                "<p><code>a&lt;b@example.com</code><a href=\"mailto:+c@example.com\">+c@example.com</a></p>",
+            ),
+            (
+                "`a`+b@example.com `c`+d@example.com",
+                "<p><code>a</code><a href=\"mailto:+b@example.com\">+b@example.com</a> <code>c</code><a href=\"mailto:+d@example.com\">+d@example.com</a></p>",
+            ),
+            (
+                "`a`+b@example.com <a>+c@example.com</a>",
+                "<p><code>a</code><a href=\"mailto:+b@example.com\">+b@example.com</a> <a>+c@example.com</a></p>",
+            ),
+            (
+                "[`a`+b@example.com](/url)",
+                "<p><a href=\"/url\"><code>a</code>+b@example.com</a></p>",
+            ),
+            ("\\+b@example.com", "<p>+b@example.com</p>"),
+            ("&amp;+b@example.com", "<p>&amp;+b@example.com</p>"),
+        ] {
+            run(input, output);
+        }
     }
 
     #[test]

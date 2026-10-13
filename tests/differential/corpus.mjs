@@ -1,4 +1,12 @@
 const regressions = [
+  '`a<`+b@example.oé! é[#\t&',
+  '`a`b@example.com',
+  '`a<b@example.com`+c@example.com',
+  '`a`+b@example.com `c`+d@example.com',
+  '`a`+b@example.com <a>+c@example.com</a>',
+  '[`a`+b@example.com](/url)',
+  '\\+b@example.com',
+  '&amp;+b@example.com',
   '[foo]: <bar>(\naz)\n\n[foo]\no]\n',
   ...[['(', ')'], ["'", "'"], ['"', '"']].flatMap(([open, close]) => [
     `[foo]: <bar>${open}a\nb${close}\n\n[foo]\n`,

@@ -1615,7 +1615,6 @@ fn direct_linkify_matches_snapshots() {
                 "https://example.com/foo`bar`baz",
                 "https://example.com/foo[123](456)bar",
                 "https://example.com/foo&amp;bar",
-                "**https://example.com/path** *a@b.co*",
                 "`https://example.com`",
                 r"\https://example.com",
                 r"https\://example.com",
@@ -1636,8 +1635,17 @@ fn direct_linkify_matches_snapshots() {
                     &format!("fuzzy_links={fuzzy_links};linkify_first={linkify_first}"),
                 );
             }
-            // Fresh image sessions can linkify alt text, unlike the legacy tree.
+            // Check corrected behavior explicitly instead of preserving the
+            // legacy parser's missing email links and image-session behavior.
             for (source, expected) in [
+                (
+                    "**https://example.com/path** *a@b.co*",
+                    "<p><strong><a href=\"https://example.com/path\">https://example.com/path</a></strong> <em><a href=\"mailto:a@b.co\">a@b.co</a></em></p>\n",
+                ),
+                (
+                    "`a<`+b@example.oé! é[#\t&",
+                    "<p><code>a&lt;</code><a href=\"mailto:+b@example.xn--o-bga\">+b@example.oé</a>! é[#\t&amp;</p>\n",
+                ),
                 (
                     "[https://example.com](other) ![https://example.com](/img)",
                     "<p><a href=\"other\">https://example.com</a> <img src=\"/img\" alt=\"https://example.com\"></p>\n",
@@ -1656,6 +1664,11 @@ fn direct_linkify_matches_snapshots() {
                 for event in document.events(document.root()) {
                     let (start, end) = event.node().srcmap().unwrap().get_byte_offsets();
                     assert!(source.get(start..end).is_some());
+                    if let Some(link) = event.node().cast::<linkify::Linkified>()
+                        && link.url == "mailto:+b@example.xn--o-bga"
+                    {
+                        assert_eq!(&source[start..end], "+b@example.oé");
+                    }
                 }
             }
             markdown_it::plugins::extra::beautify_links::add_with_char_limit(&mut md, 12);
