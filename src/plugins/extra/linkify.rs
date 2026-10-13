@@ -77,6 +77,7 @@ pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
 // disables the inline scanners but does not protect text in JS).
 fn linkify_text(state: &mut DocumentInlineState<'_>) {
     use crate::plugins::cmark::inline::autolink::Autolink;
+    use crate::plugins::cmark::inline::backticks::CodeInline;
     use crate::plugins::cmark::inline::image::Image;
     use crate::plugins::cmark::inline::link::Link;
     use crate::plugins::html::html_inline::HtmlInline;
@@ -91,7 +92,8 @@ fn linkify_text(state: &mut DocumentInlineState<'_>) {
     for &root in state.nodes() {
         for event in state.document.events(root) {
             let node = event.node();
-            let protected = node.is::<Link>()
+            let protected = node.is::<CodeInline>()
+                || node.is::<Link>()
                 || node.is::<Autolink>()
                 || node.is::<Linkified>()
                 || node.is::<Image>();
@@ -1028,6 +1030,30 @@ mod tests {
             ("<a>//example.org/a</a>", "<p><a>//example.org/a</a></p>"),
             ("`//example.org/a`", "<p><code>//example.org/a</code></p>"),
             ("&amp;//example.org/a", "<p>&amp;//example.org/a</p>"),
+        ] {
+            run(input, output);
+        }
+    }
+
+    #[test]
+    fn linkify_postpass_preserves_inline_code() {
+        for (input, output) in [
+            (
+                "`<https:a__\0(:\t//foo.bar.`baz>`\n",
+                "<p><code>&lt;https:a__�(:\t//foo.bar.</code>baz&gt;`</p>",
+            ),
+            (
+                "`<https:\t//foo.bar`baz>`",
+                "<p><code>&lt;https:\t//foo.bar</code>baz&gt;`</p>",
+            ),
+            (
+                "`//example.org/a` //example.com/b",
+                "<p><code>//example.org/a</code> <a href=\"//example.com/b\">//example.com/b</a></p>",
+            ),
+            (
+                "<a>`https://example.org a@b.co //example.com` https://example.net",
+                "<p><a><code>https://example.org a@b.co //example.com</code> <a href=\"https://example.net\">https://example.net</a></p>",
+            ),
         ] {
             run(input, output);
         }
