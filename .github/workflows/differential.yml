@@ -72,19 +72,24 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.5
+
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: tests/differential/package-lock.json
+          cache: pnpm
+          cache-dependency-path: tests/differential/pnpm-lock.yaml
 
       - name: Install pinned JS dependencies
-        run: npm ci --prefix tests/differential --ignore-scripts
+        run: pnpm --dir tests/differential install --frozen-lockfile --ignore-scripts
 
       - name: Test mutation generator
         id: tool
-        run: npm run test:tool --prefix tests/differential
+        run: pnpm --dir tests/differential test:tool
 
       - name: Build Rust adapter
         id: build
