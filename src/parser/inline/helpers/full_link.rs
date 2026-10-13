@@ -28,38 +28,78 @@ struct InlineLinkTarget {
     end: usize,
 }
 
-#[derive(Debug)]
-struct DocumentLinkCfg<const PREFIX: char>(
-    fn(&mut Document, Option<String>, Option<String>) -> NodeId,
-);
+// TODO: public some API?
+
+/// How to proceed when an attempted inline target cannot be parsed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum InlineTargetFallback {
+    /// Try resolving the label as a reference.
+    #[default]
+    Reference,
+    /// Reject this rule's candidate without trying a reference.
+    Reject,
+}
+
+/// Nesting context used to parse the label's inline children.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum LabelContext {
+    /// Inherit the current depth and increment the link nesting level.
+    #[default]
+    NestedLink,
+    /// Parse with a fresh depth and link nesting budget.
+    Independent,
+}
+
+/// Parsing behavior independent of the marker and the constructed node type.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct LinkOptions {
+    pub(crate) inline_target_fallback: InlineTargetFallback,
+    pub(crate) label_context: LabelContext,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DocumentLinkCfg<const PREFIX: char> {
+    factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
+    options: LinkOptions,
+}
 
 /// Register a link rule with an arena node factory.
 pub fn add<const ENABLE_NESTED: bool>(
     md: &mut MarkdownIt,
     factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
 ) {
-    md.ext.insert(DocumentLinkCfg::<'\0'>(factory));
+    md.ext.insert(DocumentLinkCfg::<'\0'> {
+        factory,
+        options: LinkOptions::default(),
+    });
     md.inline.add_rule::<LinkScanner<ENABLE_NESTED>>();
     if !md.inline.has_rule::<LinkScannerEnd>() {
         md.inline.add_rule::<LinkScannerEnd>();
     }
 }
 
-/// Register a prefixed link rule with an arena node factory.
+/// Register a prefixed link rule with default parsing behavior.
 pub fn add_prefix<const PREFIX: char, const ENABLE_NESTED: bool>(
     md: &mut MarkdownIt,
     factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
 ) {
-    md.ext.insert(DocumentLinkCfg::<PREFIX>(factory));
-    let builder = md
-        .inline
-        .add_rule::<LinkPrefixScanner<PREFIX, ENABLE_NESTED>>();
-    if PREFIX == '!' {
-        builder.alias_named("image");
-    }
+    add_prefix_with_options::<PREFIX, ENABLE_NESTED>(md, LinkOptions::default(), factory);
+}
+
+/// Register a prefixed rule with explicit parsing behavior.
+/// The returned builder can assign syntax-specific names and rule ordering.
+pub(crate) fn add_prefix_with_options<const PREFIX: char, const ENABLE_NESTED: bool>(
+    md: &mut MarkdownIt,
+    options: LinkOptions,
+    factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
+) -> crate::parser::inline::RuleBuilder<'_, crate::parser::inline::RuleEntry> {
+    md.ext
+        .insert(DocumentLinkCfg::<PREFIX> { factory, options });
     if !md.inline.has_rule::<LinkScannerEnd>() {
         md.inline.add_rule::<LinkScannerEnd>();
     }
+    md.inline
+        .add_rule::<LinkPrefixScanner<PREFIX, ENABLE_NESTED>>()
 }
 
 #[doc(hidden)]
@@ -70,17 +110,21 @@ impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
     const NAMES: &'static [&'static str] = &["link"];
 
     fn check(context: &mut crate::DocumentInlineState<'_>) -> Option<usize> {
-        document_link_check(context, ENABLE_NESTED, 0)
+        let options = context
+            .markdown_it()
+            .ext
+            .get::<DocumentLinkCfg<'\0'>>()?
+            .options;
+        document_link_check(context, ENABLE_NESTED, 0, options.inline_target_fallback)
     }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
-        let factory = state
+        let config = *state
             .markdown_it()
             .ext
             .get::<DocumentLinkCfg<'\0'>>()
-            .expect("direct link rule requires an arena node factory")
-            .0;
-        document_link_run(state, ENABLE_NESTED, 0, false, factory)
+            .expect("direct link rule requires an arena node factory");
+        document_link_run(state, ENABLE_NESTED, 0, config.options, config.factory)
     }
 }
 
@@ -98,7 +142,17 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
             return None;
         }
 
-        document_link_check(context, ENABLE_NESTED, PREFIX.len_utf8())
+        let options = context
+            .markdown_it()
+            .ext
+            .get::<DocumentLinkCfg<PREFIX>>()?
+            .options;
+        document_link_check(
+            context,
+            ENABLE_NESTED,
+            PREFIX.len_utf8(),
+            options.inline_target_fallback,
+        )
     }
 
     fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
@@ -106,18 +160,17 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
             return None;
         }
 
-        let factory = state
+        let config = *state
             .markdown_it()
             .ext
             .get::<DocumentLinkCfg<PREFIX>>()
-            .expect("direct prefix rule requires an arena node factory")
-            .0;
+            .expect("direct prefix rule requires an arena node factory");
         document_link_run(
             state,
             ENABLE_NESTED,
             PREFIX.len_utf8(),
-            PREFIX == '!',
-            factory,
+            config.options,
+            config.factory,
         )
     }
 }
@@ -415,6 +468,7 @@ fn scan_link_candidate(
     pos: usize,
     enable_nested: bool,
     references: Option<&ReferenceMap>,
+    fallback: InlineTargetFallback,
 ) -> Option<ParseLinkResult> {
     let source = context.remaining();
     if references.is_none() && !source.contains('(') {
@@ -451,6 +505,10 @@ fn scan_link_candidate(
     }
 
     let suffix_start = label_end + 1;
+    if fallback == InlineTargetFallback::Reject && source[suffix_start..].starts_with('(') {
+        return None;
+    }
+
     let reference_end = if source[suffix_start..].starts_with('[') {
         let reference_start = suffix_start + 1;
         context
@@ -473,9 +531,10 @@ fn document_link_check(
     context: &mut crate::parser::inline::DocumentInlineState<'_>,
     enable_nested: bool,
     offset: usize,
+    fallback: InlineTargetFallback,
 ) -> Option<usize> {
     let references = context.root_ext.and_then(|ext| ext.get::<ReferenceMap>());
-    match scan_link_candidate(context, offset, enable_nested, references) {
+    match scan_link_candidate(context, offset, enable_nested, references, fallback) {
         Some(candidate) => Some(candidate.end),
         None => None,
     }
@@ -485,7 +544,7 @@ fn document_link_run(
     state: &mut DocumentInlineState<'_>,
     enable_nested: bool,
     offset: usize,
-    image_label: bool,
+    options: LinkOptions,
     factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
 ) -> Option<(Option<NodeId>, usize)> {
     if !has_possible_link_label_close(state, offset) {
@@ -495,12 +554,18 @@ fn document_link_run(
     // Parses [link](<to> "stuff") and other link forms (inline target or
     // reference), then parses the label as inline children.
     let references = state.root_ext.and_then(|ext| ext.get::<ReferenceMap>());
-    let candidate = scan_link_candidate(state, offset, enable_nested, references)?;
+    let candidate = scan_link_candidate(
+        state,
+        offset,
+        enable_nested,
+        references,
+        options.inline_target_fallback,
+    )?;
     // We found the end of the link and know for a fact it's a valid link;
     // all that's left to do is to parse the label contents as inline children.
     let node = factory(state.document, candidate.href, candidate.title);
     let label_range = candidate.label_start..candidate.label_end;
-    let children = if image_label {
+    let children = if options.label_context == LabelContext::Independent {
         let mut label = state.child_state(label_range, 0, 0)?;
         let len = label.remaining().len();
         label.parse_subrange_at_current_depth(0..len)?
@@ -969,6 +1034,79 @@ mod check_label_tests {
     }
 
     #[test]
+    fn custom_prefix_policies_are_independent_of_marker_and_label_context() {
+        fn verify<const PREFIX: char>() {
+            for fallback in [
+                InlineTargetFallback::Reference,
+                InlineTargetFallback::Reject,
+            ] {
+                for label_context in [LabelContext::NestedLink, LabelContext::Independent] {
+                    let mut md = utf8_parser::<PREFIX>();
+                    add_prefix_with_options::<PREFIX, true>(
+                        &mut md,
+                        LinkOptions {
+                            inline_target_fallback: fallback,
+                            label_context,
+                        },
+                        |document, href, title| {
+                            document.create_node(Link {
+                                url: href.unwrap_or_default(),
+                                title,
+                            })
+                        },
+                    );
+                    let source = format!("{PREFIX}[foo](/unfinished");
+                    let mut references = ReferenceMap::default();
+                    references.insert("foo".into(), "/url".into(), None);
+                    let mut root_ext = crate::common::extset::RootExtSet::default();
+                    root_ext.insert(references);
+                    let mut document = crate::Document::new("", crate::Root::new(""));
+                    let rules = md.inline.document_rules();
+                    let mut context = DocumentInlineState::new(
+                        &mut document,
+                        &source,
+                        0,
+                        source.len(),
+                        &md,
+                        &rules,
+                        0,
+                        0,
+                    );
+                    context.root_ext = Some(&root_ext);
+                    let expected_end = match fallback {
+                        InlineTargetFallback::Reference => Some(PREFIX.len_utf8() + "[foo]".len()),
+                        InlineTargetFallback::Reject => None,
+                    };
+                    assert_eq!(
+                        LinkPrefixScanner::<PREFIX, true>::check(&mut context),
+                        expected_end
+                    );
+                    let retained_prefix = if fallback == InlineTargetFallback::Reject {
+                        PREFIX.to_string()
+                    } else {
+                        String::new()
+                    };
+                    assert_eq!(
+                        md.render(&format!("{source}\n\n[foo]: /url\n")),
+                        format!("<p>{retained_prefix}<a href=\"/url\">foo</a>(/unfinished</p>\n"),
+                    );
+                    assert_eq!(
+                        md.render(&format!("{PREFIX}[foo](/inline)")),
+                        "<p><a href=\"/inline\">foo</a></p>\n",
+                    );
+                    assert_eq!(
+                        md.render(&format!("{PREFIX}[foo][ref]\n\n[ref]: /url\n")),
+                        "<p><a href=\"/url\">foo</a></p>\n",
+                    );
+                }
+            }
+        }
+        verify::<'~'>();
+        verify::<'雪'>();
+        verify::<'!'>();
+    }
+
+    #[test]
     fn custom_prefix_uses_utf8_byte_length() {
         for (source, html) in [
             ("雪[文字](/url)", "<p><a href=\"/url\">文字</a></p>\n"),
@@ -1028,8 +1166,14 @@ mod check_label_tests {
                 0,
                 0,
             );
-            let result =
-                scan_link_candidate(&mut context, 0, false, Some(&references)).expect(source);
+            let result = scan_link_candidate(
+                &mut context,
+                0,
+                false,
+                Some(&references),
+                InlineTargetFallback::Reference,
+            )
+            .expect(source);
             assert_eq!((result.label_start, result.label_end), (1, 2));
             assert_eq!(result.href.as_deref(), Some(href), "{source}");
             assert_eq!(result.title.as_deref(), title, "{source}");
@@ -1050,7 +1194,16 @@ mod check_label_tests {
                 0,
                 0,
             );
-            assert!(scan_link_candidate(&mut context, 0, false, Some(&references)).is_none());
+            assert!(
+                scan_link_candidate(
+                    &mut context,
+                    0,
+                    false,
+                    Some(&references),
+                    InlineTargetFallback::Reference
+                )
+                .is_none()
+            );
         }
     }
 
@@ -1070,14 +1223,30 @@ mod check_label_tests {
             0,
             0,
         );
-        let result = scan_link_candidate(&mut context, "雪".len(), false, None).unwrap();
+        let result = scan_link_candidate(
+            &mut context,
+            "雪".len(),
+            false,
+            None,
+            InlineTargetFallback::Reference,
+        )
+        .unwrap();
         assert_eq!(
             (result.label_start, result.label_end, result.end),
             (4, 5, 12)
         );
         assert_eq!(result.href.as_deref(), Some("/url"));
         assert_eq!(context.remaining(), "雪[x](/url)");
-        assert!(scan_link_candidate(&mut context, 1, false, None).is_none());
+        assert!(
+            scan_link_candidate(
+                &mut context,
+                1,
+                false,
+                None,
+                InlineTargetFallback::Reference
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -1097,8 +1266,14 @@ mod check_label_tests {
                 0,
                 0,
             );
-            let result = scan_link_candidate(&mut context, 0, false, None)
-                .unwrap_or_else(|| panic!("{source}"));
+            let result = scan_link_candidate(
+                &mut context,
+                0,
+                false,
+                None,
+                InlineTargetFallback::Reference,
+            )
+            .unwrap_or_else(|| panic!("{source}"));
             // `]` bytes inside opaque spans must not shorten the label.
             assert_eq!(
                 (result.label_start, result.label_end),
@@ -1121,7 +1296,14 @@ mod check_label_tests {
         let source = "[x](/url)";
         let mut context =
             DocumentInlineState::new(&mut document, source, 0, source.len(), &md, &ruleset, 0, 0);
-        let result = scan_link_candidate(&mut context, 0, false, None).expect(source);
+        let result = scan_link_candidate(
+            &mut context,
+            0,
+            false,
+            None,
+            InlineTargetFallback::Reference,
+        )
+        .expect(source);
         assert_eq!(result.href.as_deref(), Some("/url"));
         assert_eq!(result.end, source.len());
 
@@ -1137,7 +1319,14 @@ mod check_label_tests {
                 0,
             );
             assert!(
-                scan_link_candidate(&mut context, 0, false, None).is_none(),
+                scan_link_candidate(
+                    &mut context,
+                    0,
+                    false,
+                    None,
+                    InlineTargetFallback::Reference
+                )
+                .is_none(),
                 "{source}"
             );
         }
@@ -1150,7 +1339,10 @@ mod check_label_tests {
         let source = "[x](/url)";
         let mut root =
             DocumentInlineState::new(&mut document, source, 0, source.len(), &md, &ruleset, 0, 0);
-        assert!(scan_link_candidate(&mut root, 0, false, None).is_some());
+        assert!(
+            scan_link_candidate(&mut root, 0, false, None, InlineTargetFallback::Reference)
+                .is_some()
+        );
 
         let mut nested = root
             .child_state(
@@ -1160,7 +1352,10 @@ mod check_label_tests {
             )
             .unwrap();
         assert_eq!(nested.depth, 2);
-        assert!(scan_link_candidate(&mut nested, 0, false, None).is_none());
+        assert!(
+            scan_link_candidate(&mut nested, 0, false, None, InlineTargetFallback::Reference)
+                .is_none()
+        );
     }
 
     #[test]
@@ -1176,12 +1371,28 @@ mod check_label_tests {
         let mut truncated =
             DocumentInlineState::new(&mut document, source, 0, close, &md, &ruleset, 0, 0);
         assert_eq!(truncated.remaining(), "[x](/url");
-        assert!(scan_link_candidate(&mut truncated, 0, false, None).is_none());
+        assert!(
+            scan_link_candidate(
+                &mut truncated,
+                0,
+                false,
+                None,
+                InlineTargetFallback::Reference
+            )
+            .is_none()
+        );
 
         // Including the closing parenthesis makes the same window parse.
         let mut complete =
             DocumentInlineState::new(&mut document, source, 0, close + 1, &md, &ruleset, 0, 0);
-        let result = scan_link_candidate(&mut complete, 0, false, None).unwrap();
+        let result = scan_link_candidate(
+            &mut complete,
+            0,
+            false,
+            None,
+            InlineTargetFallback::Reference,
+        )
+        .unwrap();
         assert_eq!(result.end, close + 1);
 
         // After the parent cursor advances, results stay relative to
@@ -1199,7 +1410,14 @@ mod check_label_tests {
         );
         context.skip_token().unwrap();
         assert_eq!(context.remaining(), "[x](/url)");
-        let result = scan_link_candidate(&mut context, 0, false, None).unwrap();
+        let result = scan_link_candidate(
+            &mut context,
+            0,
+            false,
+            None,
+            InlineTargetFallback::Reference,
+        )
+        .unwrap();
         assert_eq!(
             (result.label_start, result.label_end, result.end),
             (1, 2, 9)

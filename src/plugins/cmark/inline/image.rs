@@ -81,18 +81,77 @@ fn append_document_alt_node(result: &mut String, node: NodeRef<'_>) {
 }
 
 pub fn add(md: &mut MarkdownIt) {
-    full_link::add_prefix::<'!', true>(md, |document, href, title| {
-        document.create_node(Image {
-            url: href.unwrap_or_default(),
-            title,
-        })
-    });
+    full_link::add_prefix_with_options::<'!', true>(
+        md,
+        full_link::LinkOptions {
+            inline_target_fallback: full_link::InlineTargetFallback::Reject,
+            label_context: full_link::LabelContext::Independent,
+        },
+        |document, href, title| {
+            document.create_node(Image {
+                url: href.unwrap_or_default(),
+                title,
+            })
+        },
+    )
+    .alias_named("image");
     md.add_document_renderer::<Image, _>("html", ImageDocumentRenderer);
     md.add_document_renderer::<Image, _>("text", TransparentDocumentRenderer);
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn malformed_inline_images_do_not_fall_back_to_references() {
+        let md = crate::MarkdownIt::new();
+        for suffix in [
+            "([]",
+            "(/unfinished",
+            "(<url>\"title\")",
+            "(javascript:alert(1))",
+        ] {
+            let source = format!("![foo]{suffix}\n\n[foo]: /url \"title\"\n");
+            let escaped_suffix = suffix
+                .replace('<', "&lt;")
+                .replace('>', "&gt;")
+                .replace('"', "&quot;");
+            assert_eq!(
+                md.render(&source),
+                format!("<p>!<a href=\"/url\" title=\"title\">foo</a>{escaped_suffix}</p>\n"),
+                "{source}",
+            );
+        }
+    }
+
+    #[test]
+    fn valid_inline_and_reference_images_still_parse() {
+        let md = crate::MarkdownIt::new();
+        for label in ["![foo]", "![foo][]", "![foo][foo]"] {
+            let source = format!("{label}\n\n[foo]: /url \"title\"\n");
+            assert_eq!(
+                md.render(&source),
+                "<p><img src=\"/url\" alt=\"foo\" title=\"title\"></p>\n"
+            );
+        }
+        assert_eq!(
+            md.render("![foo](/inline \"inline\")\n\n[foo]: /url \"title\"\n"),
+            "<p><img src=\"/inline\" alt=\"foo\" title=\"inline\"></p>\n",
+        );
+    }
+
+    #[test]
+    fn malformed_inline_image_checks_match_nested_parsing() {
+        let md = crate::MarkdownIt::new();
+        assert_eq!(
+            md.render("[![foo](/unfinished](/outer)\n\n[foo]: /url \"title\"\n"),
+            "<p>[!<a href=\"/url\" title=\"title\">foo</a>(/unfinished](/outer)</p>\n",
+        );
+        assert_eq!(
+            md.render("![![foo](/unfinished](/outer)\n\n[foo]: /url \"title\"\n"),
+            "<p><img src=\"/outer\" alt=\"!foo(/unfinished\"></p>\n",
+        );
+    }
+
     #[test]
     fn alt_text_uses_a_fresh_inline_nesting_budget() {
         let mut md = crate::MarkdownIt::new();
