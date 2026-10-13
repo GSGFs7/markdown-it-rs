@@ -1,27 +1,4 @@
-export const corpus = [
-  "",
-  "plain",
-  "# heading",
-  "**bold** and *em*",
-  "**x [a*b**c*](d)",
-  "- one\n  - two\n\n    continuation",
-  "> quote\n>\n> - item",
-  "| a | b |\n| :- | -: |\n| `x\\|y` | **z** |",
-  "```rust\nfn main() {}\n```",
-  '[a][id]\n\n[id]: /url "title"',
-  "![alt *em*](image.png)",
-  "<div>\n\n*text*\n</div>",
-  '<a href="/">https://example.org</a>',
-  "&amp; &#0; &#x1F600;",
-  "https://例子.测试/a_(b)?x=1&y=2",
-  "“中文”**强调** é\u0301 😀",
-  '"quotes" ... (c) -- ---',
-  "a  \nb\t",
-  "\u0000\uFEFFtext",
-  "a\rb\r\nc\n",
-  "trailing  ",
-  "trailing\t",
-];
+export { corpus } from "./corpus.mjs";
 
 export const configs = [
   { preset: "default", options: {} },
