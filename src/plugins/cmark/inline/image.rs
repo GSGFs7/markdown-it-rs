@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#images>
 use crate::MarkdownIt;
-use crate::document::{NodeRef, NodeValue, Text, TextSpecial};
+use crate::document::{NodeRef, NodeValue, StructuralEvent, Text, TextSpecial};
 use crate::parser::inline::helpers::full_link;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
@@ -50,29 +50,31 @@ impl NodeValue for Image {}
 // children: [text "a ", emph(text "b"), text " c"]
 // result: "a b c"
 fn collect_document_alt_text(context: &DocumentRenderContext<'_>, image: NodeRef<'_>) -> String {
-    context.with_scratch_node_stack(|document, stack| {
-        // reverse order in, original order out
-        stack.extend(image.children().iter().rev().copied());
-        let mut result = String::new();
-
-        while let Some(id) = stack.pop() {
-            let node = document.node(id);
-
-            // pre-order dfs
-            stack.extend(node.children().iter().rev().copied());
-
-            append_document_alt_node(&mut result, node);
+    let mut result = String::new();
+    let mut image_depth = 0;
+    for event in context.document().events(image.id()) {
+        let node = event.node();
+        match event {
+            StructuralEvent::Enter(_) if node.is::<Image>() => image_depth += 1,
+            StructuralEvent::Exit(_) if node.is::<Image>() => image_depth -= 1,
+            StructuralEvent::Exit(_) => {}
+            _ => append_document_alt_node(&mut result, node, image_depth > 1),
         }
-
-        result
-    })
+    }
+    result
 }
 
-fn append_document_alt_node(result: &mut String, node: NodeRef<'_>) {
+fn append_document_alt_node(result: &mut String, node: NodeRef<'_>, nested_image: bool) {
     if let Some(text) = node.cast::<Text>() {
         result.push_str(&text.content);
     } else if let Some(text) = node.cast::<TextSpecial>() {
-        result.push_str(&text.content);
+        // JS text_join converts text_special only in the outer image's
+        // children. Its alt renderer ignores escapes/entities still marked
+        // as text_special inside nested images. Autolinks use ordinary text
+        // tokens in JS and must remain visible at every depth.
+        if !nested_image || text.info == "autolink" {
+            result.push_str(&text.content);
+        }
     } else if let Some(html) = node.cast::<HtmlInline>() {
         result.push_str(&html.content);
     } else if node.is::<Softbreak>() || node.is::<Hardbreak>() {
@@ -101,6 +103,26 @@ pub fn add(md: &mut MarkdownIt) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn nested_image_alt_text_matches_js_text_join_depth() {
+        let md = crate::MarkdownIt::new();
+        for (source, alt) in [
+            (r"![\)]()", ")"),
+            (r"![![\)]()]()", ""),
+            (r"![![\`]()]()", ""),
+            (r"![![\0]()]()", ""),
+            (r"![![x\)y &amp; z]()]()", "xy  z"),
+            ("![![`x` *y* <a@b.co>]()]()", "x y a@b.co"),
+            (r"![before ![![\)]()]() after]()", "before  after"),
+        ] {
+            assert_eq!(
+                md.render(source),
+                format!("<p><img src=\"\" alt=\"{alt}\"></p>\n"),
+                "{source:?}"
+            );
+        }
+    }
+
     #[test]
     fn malformed_inline_images_do_not_fall_back_to_references() {
         let md = crate::MarkdownIt::new();
