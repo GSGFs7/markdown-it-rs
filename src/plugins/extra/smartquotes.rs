@@ -253,13 +253,14 @@ enum RelevantEvent<K> {
     },
     Space,
     HardBoundary,
+    Level(u32),
 }
 
 impl<K> RelevantEvent<K> {
     fn ch(self) -> char {
         match self {
             Self::Char { ch, .. } => ch,
-            Self::Space | Self::HardBoundary => SPACE,
+            Self::Space | Self::HardBoundary | Self::Level(_) => SPACE,
         }
     }
 }
@@ -338,7 +339,19 @@ fn transform_events<
     let mut quote_stack = QuoteStack::default();
 
     while let Some(event) = current {
+        if let RelevantEvent::Level(level) = event {
+            quote_stack.truncate_for_level(level);
+            current = events.next();
+            continue;
+        }
         current = events.next();
+        // Structural tokens trim opener state without affecting adjacent-
+        // character context; apply their level after the current character.
+        let mut next_level = u32::MAX;
+        while let Some(RelevantEvent::Level(level)) = current {
+            next_level = next_level.min(level);
+            current = events.next();
+        }
         let next_ch = current.map(RelevantEvent::ch).unwrap_or(SPACE);
 
         let RelevantEvent::Char {
@@ -353,6 +366,7 @@ fn transform_events<
             if matches!(event, RelevantEvent::HardBoundary) {
                 quote_stack.truncate(0);
             }
+            quote_stack.truncate_for_level(next_level);
             continue;
         };
 
@@ -380,6 +394,7 @@ fn transform_events<
             }
         }
         previous = ch;
+        quote_stack.truncate_for_level(next_level);
     }
 }
 
@@ -408,7 +423,8 @@ fn document_relevant_event(document: &Document, event: TextEvent) -> Option<Rele
         {
             Some(RelevantEvent::HardBoundary)
         }
-        TextEvent::Enter { .. } | TextEvent::Exit { .. } => None,
+        TextEvent::Exit { nesting_level, .. } => Some(RelevantEvent::Level(nesting_level)),
+        TextEvent::Enter { .. } => None,
     }
 }
 
