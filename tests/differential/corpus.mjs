@@ -1,4 +1,12 @@
 const regressions = [
+  // HTML whitespace follows JavaScript's \s (BOM included, NEL excluded).
+  ...['\uFEFF', '\u0085'].flatMap((space) => [
+    `<b${space}>`, `</b${space}>`, `<b>${space}`,
+    `<b${space}title${space}=${space}x>`,
+    `before <b${space}>after`,
+    `<div${space}?>\n*raw*`, `<script${space}?>\n\n*raw*`,
+    `<a${space}>a@example.com</a${space}> b@example.com`,
+  ]),
   // Smartquotes must discard openers when leaving sibling emphasis nodes.
   '*a "b* *c" d*',
   // Scan complete explicit reference labels, including nested links.

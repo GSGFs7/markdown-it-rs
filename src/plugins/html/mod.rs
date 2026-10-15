@@ -21,6 +21,9 @@ pub mod html_block;
 pub mod html_inline;
 mod utils;
 
+#[cfg(feature = "linkify")]
+pub(crate) use utils::regexps::{HTML_LINK_CLOSE, HTML_LINK_OPEN};
+
 use crate::MarkdownIt;
 
 pub fn add(md: &mut MarkdownIt) {

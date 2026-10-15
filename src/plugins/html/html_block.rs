@@ -80,7 +80,10 @@ static HTML_SEQUENCES: LazyLock<[HTMLSequence; 7]> = LazyLock::new(|| {
 
     [
         HTMLSequence::new(
-            Regex::new(r#"(?i)^<(script|pre|style|textarea)(\s|>|$)"#).unwrap(),
+            Regex::new(&format!(
+                "(?i)^<(script|pre|style|textarea)({HTML_WHITESPACE}|>|$)"
+            ))
+            .unwrap(),
             Regex::new(r#"(?i)</(script|pre|style|textarea)>"#).unwrap(),
             true,
         ),
@@ -105,12 +108,12 @@ static HTML_SEQUENCES: LazyLock<[HTMLSequence; 7]> = LazyLock::new(|| {
             true,
         ),
         HTMLSequence::new(
-            Regex::new(&format!("(?i)^</?({block_names})(\\s|/?>|$)")).unwrap(),
+            Regex::new(&format!("(?i)^</?({block_names})({HTML_WHITESPACE}|/?>|$)")).unwrap(),
             Regex::new(r#"^$"#).unwrap(),
             true,
         ),
         HTMLSequence::new(
-            Regex::new(&format!("{open_close_tag_re}\\s*$")).unwrap(),
+            Regex::new(&format!("{open_close_tag_re}{HTML_WHITESPACE}*$")).unwrap(),
             Regex::new(r#"^$"#).unwrap(),
             false,
         ),

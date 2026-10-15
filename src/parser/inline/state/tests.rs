@@ -1671,7 +1671,7 @@ fn check_html_lone_closing_tag_keeps_negative_level() {
     assert_eq!(context.skip_token().unwrap(), 4);
     assert_eq!(context.link_level, -1);
     assert_eq!(context.skip_token().unwrap(), 4);
-    assert_eq!(context.link_level, -1);
+    assert_eq!(context.link_level, -2);
     assert!(context.skip_token().is_none());
     assert_eq!(state.link_level, 0);
 }

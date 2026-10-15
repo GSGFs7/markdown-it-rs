@@ -6,6 +6,9 @@ use std::sync::LazyLock;
 use const_format::formatcp;
 use regex::Regex;
 
+// Match JavaScript's \s: Unicode White_Space plus BOM, excluding NEL.
+pub(crate) const HTML_WHITESPACE: &str = r"[\s\u{FEFF}--\u{0085}]";
+
 const attr_name: &str = r#"[a-zA-Z_:][a-zA-Z0-9:._-]*"#;
 
 const unquoted: &str = r#"[^"'=<>`\x00-\x20]+"#;
@@ -14,11 +17,13 @@ const double_quoted: &str = r#""[^"]*""#;
 
 const attr_value: &str = formatcp!("(?:{unquoted}|{single_quoted}|{double_quoted})");
 
-const attribute: &str = formatcp!("(?:\\s+{attr_name}(?:\\s*=\\s*{attr_value})?)");
+const attribute: &str = formatcp!(
+    "(?:{HTML_WHITESPACE}+{attr_name}(?:{HTML_WHITESPACE}*={HTML_WHITESPACE}*{attr_value})?)"
+);
 
-const open_tag: &str = formatcp!("<[A-Za-z][A-Za-z0-9\\-]*{attribute}*\\s*/?>");
+const open_tag: &str = formatcp!("<[A-Za-z][A-Za-z0-9\\-]*{attribute}*{HTML_WHITESPACE}*/?>");
 
-const close_tag: &str = r#"</[A-Za-z][A-Za-z0-9\-]*\s*>"#;
+const close_tag: &str = formatcp!("</[A-Za-z][A-Za-z0-9\\-]*{HTML_WHITESPACE}*>");
 const comment: &str = r#"<!---?>|<!--(?:[^-]|-[^-]|--[^>])*-->"#;
 const processing: &str = r#"<[?][\s\S]*?[?]>"#;
 const declaration: &str = r#"<![A-Za-z][^>]*>"#;
@@ -36,6 +41,8 @@ pub static HTML_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
 pub static HTML_OPEN_CLOSE_TAG_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(formatcp!("^(?:{open_tag}|{close_tag})")).unwrap());
 
-pub static HTML_LINK_OPEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^<a[>\s]"#).unwrap());
+pub static HTML_LINK_OPEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(formatcp!("(?i)^<a(?:>|{HTML_WHITESPACE})")).unwrap());
 
-pub static HTML_LINK_CLOSE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^</a\s*>"#).unwrap());
+pub static HTML_LINK_CLOSE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(formatcp!("(?i)^</a{HTML_WHITESPACE}*>")).unwrap());

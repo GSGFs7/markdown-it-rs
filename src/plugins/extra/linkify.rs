@@ -306,18 +306,11 @@ fn text_range_map(
 }
 
 fn anchor_delta(content: &str) -> i32 {
-    let bytes = content.as_bytes();
-    if bytes.len() >= 3
-        && bytes[0] == b'<'
-        && bytes[1].eq_ignore_ascii_case(&b'a')
-        && (bytes[2] == b'>' || bytes[2].is_ascii_whitespace())
-    {
+    use crate::plugins::html::{HTML_LINK_CLOSE, HTML_LINK_OPEN};
+
+    if HTML_LINK_OPEN.is_match(content) {
         1
-    } else if bytes.len() >= 4
-        && bytes[..2] == *b"</"
-        && bytes[2].eq_ignore_ascii_case(&b'a')
-        && (bytes[3] == b'>' || bytes[3].is_ascii_whitespace())
-    {
+    } else if HTML_LINK_CLOSE.is_match(content) {
         -1
     } else {
         0
