@@ -60,6 +60,10 @@ pub fn add(md: &mut MarkdownIt) {
 #[doc(hidden)]
 pub struct BlockquoteScanner;
 
+/// Table headers cannot interrupt lazy blockquote continuations.
+#[derive(Debug)]
+pub(crate) struct BlockquoteInterrupt;
+
 fn is_blockquote_line(line: &str, line_indent: i32, max_indent: i32) -> bool {
     if line_indent >= max_indent {
         return false;
@@ -188,7 +192,14 @@ impl BlockRule for BlockquoteScanner {
             // Case 3: another tag found.
             state.line = next_line;
 
-            if state.test_rules_at_line() {
+            let old_context = state.root_ext.insert(BlockquoteInterrupt);
+            let interrupted = state.test_rules_at_line();
+            if let Some(old_context) = old_context {
+                state.root_ext.insert(old_context);
+            } else {
+                state.root_ext.remove::<BlockquoteInterrupt>();
+            }
+            if interrupted {
                 // Quirk to enforce "hard termination mode" for paragraphs;
                 // normally if you call `nodeize(state, startLine, nextLine)`,
                 // paragraphs will look below nextLine for paragraph continuation,

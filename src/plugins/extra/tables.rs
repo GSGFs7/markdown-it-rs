@@ -5,7 +5,7 @@ use crate::MarkdownIt;
 use crate::common::sourcemap::SourcePos;
 use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, DocumentBlockState};
-use crate::plugins::cmark::block::blockquote::BlockquoteScanner;
+use crate::plugins::cmark::block::blockquote::{BlockquoteInterrupt, BlockquoteScanner};
 use crate::plugins::cmark::block::heading::HeadingScanner;
 use crate::plugins::cmark::block::list::ListScanner;
 use crate::render::{
@@ -414,7 +414,9 @@ impl TableScanner {
 impl BlockRule for TableScanner {
     const NAMES: &'static [&'static str] = &["table", "tables"];
     fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
-        if state.document.node(state.node).is::<TableBody>() {
+        if state.document.node(state.node).is::<TableBody>()
+            || state.root_ext.get::<BlockquoteInterrupt>().is_some()
+        {
             return None;
         }
 
