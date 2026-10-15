@@ -1,3 +1,15 @@
+#[test]
+fn smartquotes_use_markdown_whitespace_boundaries() {
+    for ch in ['\u{85}', '\u{2028}', '\u{2029}', '\u{feff}'] {
+        run(&format!("a{ch}'x'"), &format!("<p>a{ch}’x’</p>"));
+    }
+    for ch in [
+        '\u{a0}', '\u{1680}', '\u{2000}', '\u{200a}', '\u{202f}', '\u{205f}', '\u{3000}',
+    ] {
+        run(&format!("a{ch}'x'"), &format!("<p>a{ch}‘x’</p>"));
+    }
+}
+
 fn run(input: &str, output: &str) {
     let output = if output.is_empty() {
         "".to_owned()

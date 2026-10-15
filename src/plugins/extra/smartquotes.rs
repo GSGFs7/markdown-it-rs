@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::common::utils::is_punct_char;
+use crate::common::utils::{is_markdown_whitespace, is_punct_char};
 use crate::document::{Text, TextSpecial};
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
@@ -471,8 +471,8 @@ fn can_open_or_close(quote_type: QuoteType, last_char: char, next_char: char) ->
         && (last_char.is_ascii_punctuation() || is_punct_char(last_char));
     let is_next_punctuation = next_char.len_utf16() == 1
         && (next_char.is_ascii_punctuation() || is_punct_char(next_char));
-    let is_last_whitespace = last_char.is_whitespace();
-    let is_next_whitespace = next_char.is_whitespace();
+    let is_last_whitespace = is_markdown_whitespace(last_char);
+    let is_next_whitespace = is_markdown_whitespace(next_char);
 
     let can_open =
         !is_next_whitespace && (!is_next_punctuation || is_last_whitespace || is_last_punctuation);

@@ -1,4 +1,10 @@
 const regressions = [
+  // Delimiters and smartquotes use Markdown whitespace, not JS regex \s.
+  ...['\u0085', '\u2028', '\u2029', '\uFEFF', '\u00A0', '\u2000'].flatMap((ch) => [
+    `x${ch}_a_`, `*${ch}a*`, `*a${ch}*`, `_${ch}a_`,
+    `**${ch}a**`, `~~${ch}a~~`, `a${ch}'x'`,
+  ]),
+  '<b\u0085_b____ c____](/url)',
   // Fence languages are split after unescaping, with JavaScript whitespace.
   ...['```', '~~~'].flatMap((marker) => [
     'js\uFEFFextra', '\uFEFFjs\uFEFF', '&#xfeff;js&#xfeff;extra',

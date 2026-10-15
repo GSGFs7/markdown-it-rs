@@ -113,6 +113,37 @@ fn nul_link_destination_uses_normalized_source_offsets() {
 }
 
 #[test]
+fn emphasis_uses_markdown_whitespace_boundaries() {
+    for ch in ['\u{85}', '\u{2028}', '\u{2029}', '\u{feff}'] {
+        for (source, expected) in [
+            (format!("x{ch}_a_"), format!("<p>x{ch}_a_</p>")),
+            (format!("*{ch}a*"), format!("<p><em>{ch}a</em></p>")),
+            (format!("*a{ch}*"), format!("<p><em>a{ch}</em></p>")),
+            (format!("_{ch}a_"), format!("<p><em>{ch}a</em></p>")),
+            (
+                format!("**{ch}a**"),
+                format!("<p><strong>{ch}a</strong></p>"),
+            ),
+            (format!("~~{ch}a~~"), format!("<p><s>{ch}a</s></p>")),
+        ] {
+            run(&source, &expected);
+        }
+    }
+    for ch in [
+        '\u{b}', '\u{c}', '\u{a0}', '\u{1680}', '\u{2000}', '\u{200a}', '\u{202f}', '\u{205f}',
+        '\u{3000}',
+    ] {
+        run(&format!("x{ch}_a_"), &format!("<p>x{ch}<em>a</em></p>"));
+        run(&format!("*{ch}a*"), &format!("<p>*{ch}a*</p>"));
+        run(&format!("~~{ch}a~~"), &format!("<p>~~{ch}a~~</p>"));
+    }
+    run(
+        "<b\u{85}_b____ c____](/url)",
+        "<p>&lt;b\u{85}_b____ c____](/url)</p>",
+    );
+}
+
+#[test]
 fn emphasis_classifies_nul_as_the_replacement_character() {
     for (source, expected) in [
         (

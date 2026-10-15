@@ -331,6 +331,14 @@ pub fn calc_right_whitespace_with_tabstops(source: &str, mut indent: i32) -> (us
     (0, start)
 }
 
+/// Markdown whitespace used by markdown-it's delimiter and quote classifiers:
+/// Unicode Zs plus ASCII tab, LF, VT, FF, and CR. This differs from JavaScript
+/// regex \s and Rust's Unicode White_Space (notably for NEL, LS, PS, and BOM).
+pub(crate) fn is_markdown_whitespace(ch: char) -> bool {
+    matches!(ch, '\t'..='\r' | ' ' | '\u{a0}' | '\u{1680}' |
+        '\u{2000}'..='\u{200a}' | '\u{202f}' | '\u{205f}' | '\u{3000}')
+}
+
 /// Checks whether a given character should count as punctuation
 ///
 /// used to determine word boundaries, made to match the implementation of

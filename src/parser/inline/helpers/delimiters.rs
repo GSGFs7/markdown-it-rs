@@ -1,7 +1,7 @@
 //! Emphasis delimiter classification and its configurable policy.
 
 use crate::MarkdownIt;
-use crate::common::utils::is_punct_char;
+use crate::common::utils::{is_markdown_whitespace, is_punct_char};
 
 #[derive(Debug, Clone, Copy)]
 /// Classification of one emphasis delimiter run.
@@ -77,8 +77,8 @@ fn scan_delims_default(
     let is_last_punct_char = last_char.is_ascii_punctuation() || is_punct_char(last_char);
     let is_next_punct_char = next_char.is_ascii_punctuation() || is_punct_char(next_char);
 
-    let is_last_whitespace = last_char.is_whitespace();
-    let is_next_whitespace = next_char.is_whitespace();
+    let is_last_whitespace = is_markdown_whitespace(last_char);
+    let is_next_whitespace = is_markdown_whitespace(next_char);
 
     #[allow(clippy::collapsible_if)]
     if is_next_whitespace {
