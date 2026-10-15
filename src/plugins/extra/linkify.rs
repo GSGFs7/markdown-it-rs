@@ -82,6 +82,13 @@ fn linkify_text(state: &mut DocumentInlineState<'_>) {
     use crate::plugins::cmark::inline::link::Link;
     use crate::plugins::html::html_inline::HtmlInline;
 
+    if state
+        .inline_ext
+        .contains::<crate::parser::inline::helpers::full_link::MarkdownLinkLabel>()
+    {
+        return;
+    }
+
     if state.link_level <= 0 && !state.src.contains("//") && !state.src.contains('@') {
         return;
     }

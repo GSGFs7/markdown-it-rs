@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -23,6 +23,7 @@ use crate::document::{Document, NodeId, Text};
 #[derive(Debug, Default)]
 pub(crate) struct ScanLimitCache {
     truncated: HashSet<(usize, usize)>,
+    skip_tokens: HashMap<(usize, usize, i32), (usize, bool)>,
     pub(crate) link_bounds: Option<super::helpers::full_link::LinkLabelBounds>,
 }
 
@@ -243,6 +244,25 @@ impl<'a> DocumentInlineState<'a> {
         }
 
         let span = (self.pos, self.pos_max);
+        let skip_key = (self.pos, self.pos_max, self.link_level);
+        let cached = self
+            .scan_limit_cache
+            .borrow()
+            .skip_tokens
+            .get(&skip_key)
+            .copied();
+        if let Some((len, literal)) = cached {
+            // Reuse checked spans across depths; the key includes window end
+            // and link context to isolate unrelated sessions.
+            self.pending_text = literal.then(|| {
+                (
+                    self.pending_text.map_or(self.pos, |(start, _)| start),
+                    self.pos + len,
+                )
+            });
+            self.pos += len;
+            return Some(len);
+        }
         let truncated = if self.depth > self.md.max_nesting {
             // At the nesting limit every scan is treated as truncated; record it
             // so later scans over the same window see the same cutoff.
@@ -279,12 +299,14 @@ impl<'a> DocumentInlineState<'a> {
                 {
                     self.pending_text = None;
                 }
+                self.cache_skip_token(marker, skip_key, len, self.pending_text.is_some());
                 self.pos += len;
                 return Some(len);
             }
         }
 
         let len = marker.len_utf8();
+        self.cache_skip_token(marker, skip_key, len, true);
         self.pending_text = Some((
             self.pending_text.map_or(self.pos, |(start, _)| start),
             self.pos + len,
@@ -292,6 +314,19 @@ impl<'a> DocumentInlineState<'a> {
         self.pos += len;
 
         Some(len)
+    }
+
+    fn cache_skip_token(&self, marker: char, key: (usize, usize, i32), len: usize, literal: bool) {
+        if matches!(marker, '[' | '!') || literal {
+            let mut cache = self.scan_limit_cache.borrow_mut();
+            if cache
+                .link_bounds
+                .as_ref()
+                .is_some_and(|bounds| bounds.can_memoize_labels(self.pos, self.pos_max))
+            {
+                cache.skip_tokens.insert(key, (len, literal));
+            }
+        }
     }
 
     /// Create a child state over `range` with fresh scratch, nodes and pending text.
