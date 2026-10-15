@@ -96,36 +96,20 @@ fn resolve_pending_inline(
     }
 }
 
-pub(crate) struct DocumentParseContext<'a> {
-    source: Arc<str>,
-    md: &'a MarkdownIt,
-    document: Document,
-    root_ext: RootExtSet,
+#[derive(Debug, Default)]
+pub(crate) struct DocumentParsePlan {
+    preparations: Vec<DocumentPrepareStateFn>,
     inline_preparations: Vec<DocumentPrepareStateFn>,
     document_finalizers: Vec<DocumentFinalizeDocumentFn>,
 }
 
-impl<'a> DocumentParseContext<'a> {
-    pub(crate) fn new(source: Arc<str>, md: &'a MarkdownIt, mut document: Document) -> Self {
-        document
-            .node_mut(document.root())
-            .set_srcmap(Some(SourcePos::new(0, source.len())));
-        Self {
-            source,
-            md,
-            document,
-            root_ext: RootExtSet::new(),
-            inline_preparations: Vec::new(),
-            document_finalizers: Vec::new(),
-        }
-    }
-
-    pub(crate) fn parse(mut self) -> Document {
-        let mut preparations = Vec::new();
+impl DocumentParsePlan {
+    pub(crate) fn compile(rules: impl Iterator<Item = DocumentCoreRule>) -> Self {
+        let mut plan = Self::default();
         let mut seen_block = false;
         let mut seen_inline = false;
         let mut supported = true;
-        for rule in self.md.document_core_rules() {
+        for rule in rules {
             match rule {
                 DocumentCoreRule::ParseBlocks => {
                     supported &= !seen_block && !seen_inline;
@@ -139,15 +123,15 @@ impl<'a> DocumentParseContext<'a> {
                     // Preserve whether source analysis runs before or after blocks.
                     supported &= !seen_inline;
                     if seen_block {
-                        self.inline_preparations.push(prepare);
+                        plan.inline_preparations.push(prepare);
                     } else {
-                        preparations.push(prepare);
+                        plan.preparations.push(prepare);
                     }
                 }
                 DocumentCoreRule::FinalizeDocument(finalize) => {
                     // Finalizers must follow the inline pass.
                     supported &= seen_inline;
-                    self.document_finalizers.push(finalize);
+                    plan.document_finalizers.push(finalize);
                 }
             }
         }
@@ -157,10 +141,37 @@ impl<'a> DocumentParseContext<'a> {
             "direct parsing requires one block stage, then one inline stage, with correctly ordered core rules",
         );
 
+        plan
+    }
+}
+
+pub(crate) struct DocumentParseContext<'a> {
+    source: Arc<str>,
+    md: &'a MarkdownIt,
+    document: Document,
+    root_ext: RootExtSet,
+    plan: &'a DocumentParsePlan,
+}
+
+impl<'a> DocumentParseContext<'a> {
+    pub(crate) fn new(source: Arc<str>, md: &'a MarkdownIt, mut document: Document) -> Self {
+        document
+            .node_mut(document.root())
+            .set_srcmap(Some(SourcePos::new(0, source.len())));
+        Self {
+            source,
+            md,
+            document,
+            root_ext: RootExtSet::new(),
+            plan: md.document_parse_plan(),
+        }
+    }
+
+    pub(crate) fn parse(mut self) -> Document {
         let block_rules = self.md.block.document_rules();
         let inline_rules = self.md.inline.document_rules();
 
-        for prepare in preparations {
+        for prepare in &self.plan.preparations {
             prepare(&self.source, self.md, &mut self.root_ext);
         }
         if block_rules.is_empty() && self.md.inline.has_only_text_rule() && self.md.max_nesting > 0
@@ -176,19 +187,19 @@ impl<'a> DocumentParseContext<'a> {
         self.root_ext = state.root_ext;
         self.prepare_inlines();
 
-        resolve_pending_inline(&mut self.document, self.md, &inline_rules, &self.root_ext);
+        resolve_pending_inline(&mut self.document, self.md, inline_rules, &self.root_ext);
         self.finish()
     }
 
     fn prepare_inlines(&mut self) {
-        for prepare in &self.inline_preparations {
+        for prepare in &self.plan.inline_preparations {
             prepare(&self.source, self.md, &mut self.root_ext);
         }
     }
 
     fn finish(mut self) -> Document {
         // Post-inline core rules may now reorder the resolved document.
-        for finalize in self.document_finalizers {
+        for finalize in &self.plan.document_finalizers {
             finalize(&mut self.document, &self.root_ext);
         }
 

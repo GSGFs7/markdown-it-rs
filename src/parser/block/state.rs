@@ -45,14 +45,14 @@ pub struct DocumentBlockState<'a> {
     /// Cross-block storage shared with inline parsing (e.g. link references).
     pub root_ext: RootExtSet,
 
-    rules: Vec<BlockRuleFns>,
+    rules: &'a [BlockRuleFns],
 }
 
 impl<'a> DocumentBlockState<'a> {
     pub(in crate::parser) fn new(
         src: &'a str,
         md: &'a MarkdownIt,
-        rules: Vec<BlockRuleFns>,
+        rules: &'a [BlockRuleFns],
         document: Document,
     ) -> Self {
         let line_offsets = build_line_offsets(src);

@@ -1294,7 +1294,7 @@ mod check_label_tests {
                     0,
                     source.len(),
                     &md,
-                    &rules,
+                    rules,
                     depth,
                     0,
                 );
@@ -1367,7 +1367,7 @@ mod check_label_tests {
                         0,
                         source.len(),
                         &md,
-                        &rules,
+                        rules,
                         0,
                         0,
                     );
@@ -1461,7 +1461,7 @@ mod check_label_tests {
                 0,
                 source.len(),
                 &md,
-                &ruleset,
+                ruleset,
                 0,
                 0,
             );
@@ -1495,7 +1495,7 @@ mod check_label_tests {
                 0,
                 source.len(),
                 &md,
-                &ruleset,
+                ruleset,
                 0,
                 0,
             );
@@ -1524,7 +1524,7 @@ mod check_label_tests {
             "前".len(),
             source.len(),
             &md,
-            &ruleset,
+            ruleset,
             0,
             0,
         );
@@ -1567,7 +1567,7 @@ mod check_label_tests {
                 0,
                 source.len(),
                 &md,
-                &ruleset,
+                ruleset,
                 0,
                 0,
             );
@@ -1600,7 +1600,7 @@ mod check_label_tests {
         // Inline targets parse without references, shortcut references do not.
         let source = "[x](/url)";
         let mut context =
-            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, &ruleset, 0, 0);
+            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
         let result = scan_link_candidate(
             &mut context,
             0,
@@ -1619,7 +1619,7 @@ mod check_label_tests {
                 0,
                 source.len(),
                 &md,
-                &ruleset,
+                ruleset,
                 0,
                 0,
             );
@@ -1643,7 +1643,7 @@ mod check_label_tests {
         let ruleset = md.inline.document_rules();
         let source = "[x](/url)";
         let mut root =
-            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, &ruleset, 0, 0);
+            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
         assert!(
             scan_link_candidate(&mut root, 0, false, None, InlineTargetFallback::Reference)
                 .is_some()
@@ -1674,7 +1674,7 @@ mod check_label_tests {
         let source = "[x](/url)tail";
         let close = source.find(')').unwrap();
         let mut truncated =
-            DocumentInlineState::new(&mut document, source, 0, close, &md, &ruleset, 0, 0);
+            DocumentInlineState::new(&mut document, source, 0, close, &md, ruleset, 0, 0);
         assert_eq!(truncated.remaining(), "[x](/url");
         assert!(
             scan_link_candidate(
@@ -1689,7 +1689,7 @@ mod check_label_tests {
 
         // Including the closing parenthesis makes the same window parse.
         let mut complete =
-            DocumentInlineState::new(&mut document, source, 0, close + 1, &md, &ruleset, 0, 0);
+            DocumentInlineState::new(&mut document, source, 0, close + 1, &md, ruleset, 0, 0);
         let result = scan_link_candidate(
             &mut complete,
             0,
@@ -1709,7 +1709,7 @@ mod check_label_tests {
             "前".len(),
             source.len(),
             &md,
-            &ruleset,
+            ruleset,
             0,
             0,
         );
@@ -1741,7 +1741,7 @@ mod check_label_tests {
         let ruleset = md.inline.document_rules();
         let source = "[x](/url)";
         let mut context =
-            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, &ruleset, 0, 0);
+            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
         let token = context.skip_token().unwrap();
         assert_eq!(token, source.len());
         assert_eq!(context.link_level, 0);
@@ -1758,7 +1758,7 @@ mod check_label_tests {
         let ruleset = md.inline.document_rules();
         let source = "雪[x](/url)";
         let mut context =
-            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, &ruleset, 0, 0);
+            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
         let token = context.skip_token().unwrap();
         assert_eq!(token, source.len());
         assert_eq!(context.link_level, 0);
@@ -1834,13 +1834,13 @@ fn plain_brackets_have_a_linear_close_index() {
     crate::plugins::html::add(&mut md);
     crate::plugins::extra::add(&mut md);
     let rules = md.inline.document_rules();
-    let closes = plain_label_closes("![[]()", 6, &rules)
+    let closes = plain_label_closes("![[]()", 6, rules)
         .expect("plain cmark brackets support a close index");
     assert!(!closes.contains_key(&1));
     assert_eq!(closes.get(&2), Some(&3));
-    assert!(plain_label_closes("[[a]](x)", 8, &rules).is_some());
+    assert!(plain_label_closes("[[a]](x)", 8, rules).is_some());
     for source in ["[a](x[y])", "[a](x!y)", "[a](x\\)y)"] {
-        assert!(plain_label_closes(source, source.len(), &rules).is_none());
+        assert!(plain_label_closes(source, source.len(), rules).is_none());
     }
 }
 

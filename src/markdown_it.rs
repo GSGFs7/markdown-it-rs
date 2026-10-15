@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::common::RuleMark;
 use crate::common::extset::MarkdownItExtSet;
@@ -14,7 +14,7 @@ use crate::links::{LinkFormatter, MDLinkFormatter};
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::*;
 use crate::parser::inline::{self, InlineParser};
-use crate::parser::pipeline::DocumentParseContext;
+use crate::parser::pipeline::{DocumentParseContext, DocumentParsePlan};
 use crate::plugins::presets::{Preset, PresetConfig};
 use crate::render::{
     DebugTreeDocumentRenderer,
@@ -60,6 +60,8 @@ pub struct MarkdownIt {
     pub document_renderers: DocumentRendererRegistry,
 
     ruler: Ruler<RuleMark, DocumentCoreRule>,
+
+    document_parse_plan: OnceLock<DocumentParsePlan>,
 }
 
 impl std::fmt::Debug for MarkdownIt {
@@ -106,6 +108,7 @@ impl MarkdownIt {
             document_transforms: DocumentTransformRegistry::new(),
             document_renderers,
             ruler: Ruler::new(),
+            document_parse_plan: OnceLock::new(),
         };
 
         // infrastructure
@@ -138,6 +141,11 @@ impl MarkdownIt {
 
     pub(super) fn document_core_rules(&self) -> impl Iterator<Item = DocumentCoreRule> + '_ {
         self.ruler.iter().copied()
+    }
+
+    pub(crate) fn document_parse_plan(&self) -> &DocumentParsePlan {
+        self.document_parse_plan
+            .get_or_init(|| DocumentParsePlan::compile(self.document_core_rules()))
     }
 
     /// Register an arena-backed document transform.
@@ -204,6 +212,7 @@ impl MarkdownIt {
     /// Register a new core rule for type `T`, returning a builder to
     /// position it relative to other rules (before/after/alias/...).
     pub fn add_rule<T: CoreRule>(&mut self) -> RuleBuilder<'_, DocumentCoreRule> {
+        self.document_parse_plan.take();
         let item = self.ruler.add(RuleMark::of::<T>(), T::document_rule());
         for name in T::NAMES {
             item.alias(RuleMark::named(*name));
@@ -218,6 +227,7 @@ impl MarkdownIt {
 
     /// Remove the rule of type `T` from the ruler.
     pub fn remove_rule<T: CoreRule>(&mut self) {
+        self.document_parse_plan.take();
         self.ruler.remove(RuleMark::of::<T>());
     }
 

@@ -49,7 +49,7 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
     let mut state = DocumentBlockState::new(
         source,
         &md,
-        vec![
+        &[
             (
                 WrapperScanner::check as fn(&mut DocumentBlockState<'_>) -> Option<()>,
                 WrapperScanner::run,

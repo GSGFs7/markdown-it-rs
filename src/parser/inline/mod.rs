@@ -51,6 +51,7 @@ pub struct RuleEntry {
     document_finalize: Option<DocumentFinalizeFn>,
 }
 
+#[derive(Debug)]
 pub(crate) struct DocumentRuleSet {
     pub(crate) runs: Vec<InlineRuleFns>,
     pub(crate) checks: Vec<InlineRuleFns>,
@@ -63,6 +64,7 @@ pub struct InlineParser {
     ruler: Ruler<RuleMark, RuleEntry>,
     text_charmap: HashMap<char, Vec<RuleMark>>,
     text_impl: OnceLock<TextScannerImpl>,
+    document_rules: OnceLock<DocumentRuleSet>,
 }
 
 impl InlineParser {
@@ -70,13 +72,15 @@ impl InlineParser {
         Self::default()
     }
 
-    pub(crate) fn document_rules(&self) -> DocumentRuleSet {
-        let entries: Vec<_> = self.ruler.iter().map(|entry| entry.document).collect();
-        DocumentRuleSet {
-            runs: entries.clone(),
-            checks: entries,
-            finalizers: self.document_finalizers(),
-        }
+    pub(crate) fn document_rules(&self) -> &DocumentRuleSet {
+        self.document_rules.get_or_init(|| {
+            let entries: Vec<_> = self.ruler.iter().map(|entry| entry.document).collect();
+            DocumentRuleSet {
+                runs: entries.clone(),
+                checks: entries,
+                finalizers: self.document_finalizers(),
+            }
+        })
     }
 
     pub(crate) fn has_only_text_rule(&self) -> bool {
@@ -87,6 +91,7 @@ impl InlineParser {
         &mut self,
         finalize: Option<DocumentFinalizeFn>,
     ) -> &mut crate::common::ruler::RuleItem<RuleMark, RuleEntry> {
+        self.document_rules.take();
         if T::MARKER != '\0' {
             self.text_impl = OnceLock::new();
             self.text_charmap
@@ -126,6 +131,7 @@ impl InlineParser {
     }
 
     pub fn remove_rule<T: InlineRule>(&mut self) {
+        self.document_rules.take();
         if T::MARKER != '\0' {
             self.text_impl = OnceLock::new();
             let mut marks = self.text_charmap.remove(&T::MARKER).unwrap_or_default();

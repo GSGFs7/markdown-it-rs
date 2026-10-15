@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use markdown_it_benchmarks::{corpus, parser};
 
 fn benchmark(c: &mut Criterion) {
@@ -40,5 +40,37 @@ fn deferred_inline_siblings(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, benchmark, deferred_inline_siblings);
+// Keep construction, cold first parse, and warmed repeated parse separate.
+fn parser_lifecycle(c: &mut Criterion) {
+    let mut group = c.benchmark_group("document-parse/lifecycle");
+    group.bench_function("construct-default", |b| {
+        b.iter(|| black_box(markdown_it::MarkdownIt::new()))
+    });
+    for (name, source) in [
+        ("short", "Hello **world** and [link](/url)."),
+        ("plain", "A short plain text paragraph."),
+    ] {
+        // Construction is outside timing; the consumed parser is dropped inside it.
+        group.bench_function(format!("first-parse/{name}"), |b| {
+            b.iter_batched(
+                markdown_it::MarkdownIt::new,
+                |md| black_box(md.parse_document(black_box(source))),
+                BatchSize::SmallInput,
+            )
+        });
+        let md = markdown_it::MarkdownIt::new();
+        black_box(md.parse_document(source));
+        group.bench_function(format!("repeated-parse/{name}"), |b| {
+            b.iter(|| black_box(md.parse_document(black_box(source))))
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    benchmark,
+    deferred_inline_siblings,
+    parser_lifecycle
+);
 criterion_main!(benches);

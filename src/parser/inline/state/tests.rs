@@ -1133,7 +1133,7 @@ fn recursive_check_inherits_current_link_level_and_isolates_effects() {
     crate::plugins::html::html_inline::add(&mut md);
     let ruleset = md.inline.document_rules();
     let source = "<a><a>";
-    let mut state = check_state(&mut document, &md, &ruleset, source);
+    let mut state = check_state(&mut document, &md, ruleset, source);
     let mut parent = scan(&mut state, 0..source.len()).unwrap();
 
     assert_eq!(parent.skip_token().unwrap(), 3);
@@ -1157,7 +1157,7 @@ fn recursive_check_child_scratch_is_private() {
     let mut md = MarkdownIt::empty();
     md.inline.add_rule::<CodePairScanner<'`'>>();
     let ruleset = md.inline.document_rules();
-    let mut state = check_state(&mut document, &md, &ruleset, "`x`");
+    let mut state = check_state(&mut document, &md, ruleset, "`x`");
     let mut parent = scan(&mut state, 0..3).unwrap();
 
     // An unclosed child scan must not poison its siblings.
@@ -1291,7 +1291,7 @@ fn check_html_effects_stay_in_the_session() {
     crate::plugins::html::html_inline::add(&mut md);
     let ruleset = md.inline.document_rules();
     let source = "<a title=']'>x</a>";
-    let mut state = check_state(&mut document, &md, &ruleset, source);
+    let mut state = check_state(&mut document, &md, ruleset, source);
     let mut context = scan(&mut state, 0..source.len()).unwrap();
 
     let token = context.skip_token().unwrap();
@@ -1420,7 +1420,7 @@ fn check_newline_consumes_one_byte_and_resets_pending() {
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::newline::add(&mut md);
     let ruleset = md.inline.document_rules();
-    let mut state = check_state(&mut document, &md, &ruleset, "a  \n \tb");
+    let mut state = check_state(&mut document, &md, ruleset, "a  \n \tb");
     let scan_end = state.pos_max;
     let mut context = scan(&mut state, 0..scan_end).unwrap();
 
@@ -1450,7 +1450,7 @@ fn check_entity_uses_raw_byte_length() {
         ("&#0;", 4),
         ("&#x110000;", 10),
     ] {
-        let mut state = check_state(&mut document, &md, &ruleset, source);
+        let mut state = check_state(&mut document, &md, ruleset, source);
         let mut context = scan(&mut state, 0..source.len()).unwrap();
         assert_eq!(context.skip_token().unwrap(), (len), "{source}");
         assert!(context.skip_token().is_none(), "{source}");
@@ -1465,7 +1465,7 @@ fn check_unknown_and_truncated_entities_fall_back_to_text() {
     let ruleset = md.inline.document_rules();
 
     for source in ["&notanentity;", "&#x;", "&amp"] {
-        let mut state = check_state(&mut document, &md, &ruleset, source);
+        let mut state = check_state(&mut document, &md, ruleset, source);
         let mut context = scan(&mut state, 0..source.len()).unwrap();
         assert_eq!(context.skip_token().unwrap(), 1, "{source}");
         assert_eq!(
@@ -1476,7 +1476,7 @@ fn check_unknown_and_truncated_entities_fall_back_to_text() {
         assert!(context.skip_token().is_none(), "{source}");
     }
 
-    let mut state = check_state(&mut document, &md, &ruleset, "&amp;");
+    let mut state = check_state(&mut document, &md, ruleset, "&amp;");
     let mut short = scan(&mut state, 0..4).unwrap();
     assert_eq!(short.skip_token().unwrap(), 1);
     let mut long = scan(&mut state, 0..5).unwrap();
@@ -1491,7 +1491,7 @@ fn check_emphasis_defers_to_later_same_marker_rule() {
     md.inline.add_rule::<LaterMarkerCheck>();
     let ruleset = md.inline.document_rules();
 
-    let mut state = check_state(&mut document, &md, &ruleset, "*");
+    let mut state = check_state(&mut document, &md, ruleset, "*");
     let mut context = scan(&mut state, 0..1).unwrap();
     assert_eq!(context.skip_token().unwrap(), 1);
 
@@ -1500,7 +1500,7 @@ fn check_emphasis_defers_to_later_same_marker_rule() {
     md.inline.add_rule::<LaterUnderscoreCheck>();
     let ruleset = md.inline.document_rules();
 
-    let mut state = check_state(&mut document, &md, &ruleset, "_");
+    let mut state = check_state(&mut document, &md, ruleset, "_");
     let mut context = scan(&mut state, 0..1).unwrap();
     assert_eq!(context.skip_token().unwrap(), 1);
 }
@@ -1519,7 +1519,7 @@ fn check_emphasis_defers_for_unicode_marker() {
     md.inline.add_rule::<LaterUnicodeMarkerCheck>();
     let ruleset = md.inline.document_rules();
 
-    let mut state = check_state(&mut document, &md, &ruleset, "雪");
+    let mut state = check_state(&mut document, &md, ruleset, "雪");
     let mut context = scan(&mut state, 0..3).unwrap();
     assert_eq!(context.skip_token().unwrap(), 3);
 }
@@ -1530,7 +1530,7 @@ fn check_html_comment_cache_is_private_to_each_session() {
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
     let ruleset = md.inline.document_rules();
-    let mut state = check_state(&mut document, &md, &ruleset, "<!-- [ -->");
+    let mut state = check_state(&mut document, &md, ruleset, "<!-- [ -->");
     state.inline_ext.insert(FinalizerCalls(41));
     let node = state.document.create_node(Text {
         content: "sentinel".into(),
@@ -1644,7 +1644,7 @@ fn check_html_level_is_read_by_later_rules_and_inherited_from_parent() {
     md.inline.add_rule::<ExpectLinkLevelOne>();
     let ruleset = md.inline.document_rules();
     let source = "<a>[";
-    let mut state = check_state(&mut document, &md, &ruleset, source);
+    let mut state = check_state(&mut document, &md, ruleset, source);
     let mut context = scan(&mut state, 0..source.len()).unwrap();
 
     assert_eq!(context.skip_token().unwrap(), 3);
@@ -1652,7 +1652,7 @@ fn check_html_level_is_read_by_later_rules_and_inherited_from_parent() {
     assert_eq!(context.link_level, 1);
     assert_eq!(state.link_level, 0);
 
-    let mut inherited = check_state_with_level(&mut document, &md, &ruleset, source, 5);
+    let mut inherited = check_state_with_level(&mut document, &md, ruleset, source, 5);
     let context = scan(&mut inherited, 0..source.len()).unwrap();
     assert_eq!(context.link_level, 5);
     assert_eq!(inherited.link_level, 5);
@@ -1665,7 +1665,7 @@ fn check_html_lone_closing_tag_keeps_negative_level() {
     crate::plugins::html::html_inline::add(&mut md);
     let ruleset = md.inline.document_rules();
     let source = "</a></A>";
-    let mut state = check_state(&mut document, &md, &ruleset, source);
+    let mut state = check_state(&mut document, &md, ruleset, source);
     let mut context = scan(&mut state, 0..source.len()).unwrap();
 
     assert_eq!(context.skip_token().unwrap(), 4);
@@ -1688,7 +1688,7 @@ fn check_autolink_email_normalizes_mailto_before_validate() {
     });
     let ruleset = md.inline.document_rules();
     let source = "<foo@example.com>";
-    let mut state = check_state(&mut document, &md, &ruleset, source);
+    let mut state = check_state(&mut document, &md, ruleset, source);
     let mut context = scan(&mut state, 0..source.len()).unwrap();
 
     assert_eq!(context.skip_token().unwrap(), source.len());

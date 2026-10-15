@@ -27,8 +27,8 @@ impl BlockParser {
         Self::default()
     }
 
-    pub(crate) fn document_rules(&self) -> Vec<BlockRuleFns> {
-        self.ruler.iter().copied().collect()
+    pub(crate) fn document_rules(&self) -> &[BlockRuleFns] {
+        self.ruler.as_slice()
     }
 
     pub fn add_rule<T: BlockRule>(&mut self) -> RuleBuilder<'_, BlockRuleFns> {

@@ -854,15 +854,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "linkify"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92f9ae2f3d31697697311f016320fe984127e636b45cf5eb5c175b7eb103dadb"
-dependencies = [
- "memchr",
-]
-
-[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -896,7 +887,7 @@ dependencies = [
  "downcast-rs 1.2.1",
  "entities",
  "html-escape",
- "linkify 0.10.0",
+ "linkify",
  "mdurl",
  "once_cell",
  "readonly",
@@ -939,10 +930,6 @@ dependencies = [
 [[package]]
 name = "markdown-it-rs-linkify"
 version = "0.1.0"
-dependencies = [
- "linkify 0.11.0",
- "unicode-general-category 0.6.0",
-]
 
 [[package]]
 name = "markdown-it-rs-url"

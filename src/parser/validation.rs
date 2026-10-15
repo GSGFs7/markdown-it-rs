@@ -122,7 +122,7 @@ mod tests {
         let mut document = crate::Document::new("", crate::Root::new(""));
         let md = MarkdownIt::empty();
         let ruleset = md.inline.document_rules();
-        let mut state = DocumentInlineState::new(&mut document, "xy", 0, 2, &md, &ruleset, 0, 0);
+        let mut state = DocumentInlineState::new(&mut document, "xy", 0, 2, &md, ruleset, 0, 0);
         check_inline(&mut state, 0, |state| {
             state.pos += 1;
             None
@@ -135,7 +135,7 @@ mod tests {
         let mut document = crate::Document::new("", crate::Root::new(""));
         let md = MarkdownIt::empty();
         let ruleset = md.inline.document_rules();
-        let mut state = DocumentInlineState::new(&mut document, "x", 0, 1, &md, &ruleset, 0, 0);
+        let mut state = DocumentInlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
         check_inline(&mut state, 0, |state| {
             let node = state.document.create_node(Text {
                 content: "bad".into(),
@@ -151,7 +151,7 @@ mod tests {
         let mut document = crate::Document::new("", Root::new(""));
         let md = MarkdownIt::empty();
         let ruleset = md.inline.document_rules();
-        let mut state = DocumentInlineState::new(&mut document, "x", 0, 1, &md, &ruleset, 0, 0);
+        let mut state = DocumentInlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
         check_inline(&mut state, 0, |state| {
             state.document.create_node(Text {
                 content: "leaked".into(),
@@ -166,7 +166,7 @@ mod tests {
         let mut document = crate::Document::new("", Root::new(""));
         let md = MarkdownIt::empty();
         let ruleset = md.inline.document_rules();
-        let mut state = DocumentInlineState::new(&mut document, "x", 0, 1, &md, &ruleset, 0, 0);
+        let mut state = DocumentInlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
         let text = state.document.create_node(Text {
             content: "kept".into(),
         });
@@ -191,7 +191,7 @@ mod tests {
         let mut state = DocumentBlockState::new(
             source,
             &md,
-            vec![],
+            &[],
             crate::Document::new(source, Root::new(source)),
         );
         check_block(&mut state, 0, |state| {
