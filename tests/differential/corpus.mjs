@@ -1,4 +1,20 @@
 const regressions = [
+  // Smartquotes must discard openers when leaving sibling emphasis nodes.
+  '*a "b* *c" d*',
+  // Scan complete explicit reference labels, including nested links.
+  '[r]: /url\n[s]: /other\n\n[r][\n[x] [s] end]',
+  '[r]: /url\n[s]: /other\n\n![r][\n[x] [s] end]',
+  // Invalid inline targets resume reference scanning after the failed delimiter.
+  '[x](url z[ref]\n\n[ref]: /uri',
+  '[x](url 中[ref]\n\n[ref]: /uri',
+  // Closing HTML anchors must not expose Markdown link labels to core linkify.
+  '[</a>b@e[</a>b@example.com](/url)',
+  // Entity-decoded newlines must not swallow the following softbreak.
+  'foo&#10;\nbar',
+  'foo&#10;&#10;\nbar',
+  // A short unmatched label exercises the nesting cutoff; bulk cases live in
+  // tests/pathological.rs.
+  '[[[[le]](rl)',
   '![____&_|\t0___b_____ ___](/img)',
   '![*****|\r|c*_a ***\u0000_**b***** c*****](/img)\r;`&a|\n',
   '雪 ![____&_|\t0___b_____ ___](/img)',

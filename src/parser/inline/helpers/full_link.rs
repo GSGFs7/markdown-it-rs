@@ -14,7 +14,7 @@
 //!  - `f` - function that should return your custom [NodeId] given href and title
 //!
 use std::any::TypeId;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
@@ -64,6 +64,11 @@ struct DocumentLinkCfg<const PREFIX: char> {
     factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
     options: LinkOptions,
 }
+
+/// Marks a Markdown link label, which core linkify must skip regardless of
+/// inline anchor counter changes from HTML tags.
+#[derive(Debug)]
+pub(crate) struct MarkdownLinkLabel;
 
 /// Register a link rule with an arena node factory.
 pub fn add<const ENABLE_NESTED: bool>(
@@ -199,6 +204,10 @@ fn scan_link_label(
     mut context: crate::parser::inline::DocumentInlineState<'_>,
     enable_nested: bool,
 ) -> Option<usize> {
+    // Empty labels close immediately, even at the nesting limit; no cache needed.
+    if context.remaining().starts_with(']') {
+        return Some(0);
+    }
     let start = context.pos;
     let memoize = context
         .scan_limit_cache
@@ -215,10 +224,18 @@ fn scan_link_label(
     };
     if memoize {
         let shared = context.scan_limit_cache.borrow();
+        if shared.link_bounds.as_ref()?.failed_labels.contains(&(
+            initial_key.start,
+            initial_key.end,
+            initial_key.link_level,
+            initial_key.enable_nested,
+        )) {
+            return None;
+        }
         if let Some(&(epoch, close)) = shared.link_bounds.as_ref()?.labels.get(&initial_key) {
             // Additional nesting cutoffs can invalidate a successful boundary.
             if epoch == shared.epoch() {
-                return close.map(|close| close - start);
+                return Some(close - start);
             }
         }
     }
@@ -246,6 +263,25 @@ fn scan_link_label(
         let consumed = before - context.remaining().len();
         if ch == '[' {
             if consumed == 1 {
+                if memoize
+                    && context
+                        .scan_limit_cache
+                        .borrow()
+                        .link_bounds
+                        .as_ref()
+                        .is_some_and(|bounds| {
+                            bounds.failed_labels.contains(&(
+                                context.pos,
+                                context.pos_max,
+                                context.link_level,
+                                enable_nested,
+                            ))
+                        })
+                {
+                    // An uncloseable nested opener also blocks this label; its
+                    // probe already recorded any nesting cutoff.
+                    break;
+                }
                 open.push(LabelScanKey {
                     start: context.pos,
                     end: context.pos_max,
@@ -280,12 +316,17 @@ fn cache_label_scan(context: &DocumentInlineState<'_>, key: LabelScanKey, close:
     let mut shared = context.scan_limit_cache.borrow_mut();
     let epoch = shared.epoch();
     // Only reached while `memoize` is set, which requires `link_bounds`.
-    shared
+    let bounds = shared
         .link_bounds
         .as_mut()
-        .expect("label memoization requires link bounds")
-        .labels
-        .insert(key, (epoch, close));
+        .expect("label memoization requires link bounds");
+    if close.is_none() {
+        bounds
+            .failed_labels
+            .insert((key.start, key.end, key.link_level, key.enable_nested));
+        return;
+    }
+    bounds.labels.insert(key, (epoch, close.unwrap()));
 }
 
 pub struct ParseLinkFragmentResult {
@@ -449,15 +490,15 @@ fn skip_link_spaces(source: &str, mut pos: usize, max: usize) -> usize {
     pos
 }
 
-fn parse_inline_link_target(
+fn scan_inline_link_target(
     md: &MarkdownIt,
     source: &str,
     start: usize,
     max: usize,
-) -> Option<InlineLinkTarget> {
+) -> (Option<InlineLinkTarget>, usize) {
     let mut pos = start;
     if pos >= max {
-        return None;
+        return (None, max);
     }
 
     let mut href = None;
@@ -486,7 +527,7 @@ fn parse_inline_link_target(
         }
     }
 
-    if source[pos..max].starts_with(')') {
+    let target = if source[pos..max].starts_with(')') {
         Some(InlineLinkTarget {
             href,
             title,
@@ -494,20 +535,39 @@ fn parse_inline_link_target(
         })
     } else {
         None
-    }
+    };
+    // markdown-it advances past the failed delimiter before probing for a
+    // reference at that cursor.
+    let next = source[pos..max].chars().next().map_or(pos + 1, |ch| {
+        pos + if ch.len_utf16() == 1 {
+            ch.len_utf8()
+        } else {
+            1
+        }
+    });
+    (target, next)
+}
+
+#[cfg(test)]
+fn parse_inline_link_target(
+    md: &MarkdownIt,
+    source: &str,
+    start: usize,
+    max: usize,
+) -> Option<InlineLinkTarget> {
+    scan_inline_link_target(md, source, start, max).0
 }
 
 fn resolve_reference_link(
     source: &str,
     label_start: usize,
     label_end: usize,
-    reference_end: Option<usize>,
+    reference_end: Option<(usize, usize)>,
     references: &ReferenceMap,
 ) -> Option<ParseLinkResult> {
     let (label, end) = match reference_end {
-        Some(close) => {
-            // the second '[' immediately follows the first ']'.
-            let explicit_label = &source[label_end + 2..close];
+        Some((start, close)) => {
+            let explicit_label = &source[start..close];
             let label = if explicit_label.is_empty() {
                 &source[label_start..label_end]
             } else {
@@ -550,6 +610,7 @@ fn scan_link_candidate(
 
     let source = context.remaining();
     let suffix_start = label_end + 1;
+    let mut reference_pos = suffix_start;
     if source[suffix_start..].starts_with('(') {
         let target_start = skip_link_spaces(source, suffix_start + 1, source.len());
         // An opening parenthesis followed only by spaces cannot resolve a reference.
@@ -557,9 +618,10 @@ fn scan_link_candidate(
             return None;
         }
 
-        if let Some(target) =
-            parse_inline_link_target(context.markdown_it(), source, target_start, source.len())
-        {
+        let (target, next_pos) =
+            scan_inline_link_target(context.markdown_it(), source, target_start, source.len());
+        reference_pos = next_pos;
+        if let Some(target) = target {
             return Some(ParseLinkResult {
                 label_start,
                 label_end,
@@ -574,16 +636,16 @@ fn scan_link_candidate(
         }
     }
 
-    let reference_end = if source[suffix_start..].starts_with('[') {
-        let reference_start = suffix_start + 1;
+    let reference_end = if source.as_bytes().get(reference_pos) == Some(&b'[') {
+        let reference_start = reference_pos + 1;
         context
             .child_state(
                 reference_start..source.len(),
                 child_depth,
                 context.link_level,
             )
-            .and_then(|child| scan_link_label(child, false))
-            .map(|close| reference_start + close)
+            .and_then(|child| scan_link_label(child, true))
+            .map(|close| (reference_start, reference_start + close))
     } else {
         None
     };
@@ -643,7 +705,14 @@ fn document_link_run(
             .link_level
             .checked_add(1)
             .expect("inline link nesting level overflow");
-        state.parse_subrange_with_link_level(label_range, child_link_level)?
+        let mut label =
+            state.child_state(label_range, state.depth.saturating_add(1), child_link_level)?;
+        label.inline_ext.insert(MarkdownLinkLabel);
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+            label.tokenize();
+            label.finish_nodes();
+        });
+        std::mem::take(label.nodes_mut())
     };
     state.document.attach_children(node, children);
 
@@ -656,11 +725,12 @@ pub(crate) struct LinkLabelBounds {
     plain_closes: Option<HashMap<usize, usize>>,
     target_positions: Vec<usize>,
     non_memoizable_positions: Option<Vec<usize>>,
-    labels: HashMap<LabelScanKey, (usize, Option<usize>)>,
+    labels: HashMap<LabelScanKey, (usize, usize)>,
+    failed_labels: HashSet<(usize, usize, i32, bool)>,
 }
 
 impl LinkLabelBounds {
-    fn can_memoize_labels(&self, start: usize, end: usize) -> bool {
+    pub(crate) fn can_memoize_labels(&self, start: usize, end: usize) -> bool {
         let Some(positions) = &self.non_memoizable_positions else {
             return false;
         };
@@ -866,6 +936,7 @@ fn has_possible_link_label_close(
         target_positions: source.match_indices('(').map(|(pos, _)| pos).collect(),
         non_memoizable_positions: non_memoizable_positions(source, state),
         labels: HashMap::new(),
+        failed_labels: HashSet::new(),
     });
 
     let open = state.pos + offset;
@@ -881,12 +952,12 @@ fn has_possible_link_label_close(
     }
 
     if let Some(closes) = &cache.plain_closes {
-        let Some(&close) = closes.get(&open) else {
-            return false;
+        let Some(&close) = closes.get(&open).filter(|&&close| close < end) else {
+            return last_before_end(&cache.close_positions).is_some_and(|last| last > open);
         };
 
-        if close >= end {
-            return false;
+        if state.depth >= state.markdown_it().max_nesting || source[open + 1..close].contains('[') {
+            return true;
         }
 
         if source[close + 1..end].starts_with(['(', '[']) {
@@ -1021,8 +1092,14 @@ mod tests {
             ("[a][", None, "/shortcut", None, 3),
             ("[a](/unfinished", None, "/shortcut", None, 3),
         ] {
-            let result =
-                resolve_reference_link(source, 1, 2, reference_end, &references).expect(source);
+            let result = resolve_reference_link(
+                source,
+                1,
+                2,
+                reference_end.map(|end| (4, end)),
+                &references,
+            )
+            .expect(source);
             assert_eq!((result.label_start, result.label_end), (1, 2));
             assert_eq!(result.href.as_deref(), Some(href), "{source}");
             assert_eq!(result.title.as_deref(), title, "{source}");
@@ -1030,7 +1107,7 @@ mod tests {
         }
 
         // A missing explicit reference must not fall back to the first label.
-        assert!(resolve_reference_link("[a][missing]", 1, 2, Some(11), &references).is_none());
+        assert!(resolve_reference_link("[a][missing]", 1, 2, Some((4, 11)), &references).is_none());
     }
 }
 

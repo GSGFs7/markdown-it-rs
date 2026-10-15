@@ -1005,6 +1005,18 @@ fn direct_link_title_requires_whitespace_after_destination() {
 }
 
 #[test]
+fn nested_link_label_checks_spend_the_depth_budget_without_a_target() {
+    let mut md = MarkdownIt::new();
+    md.max_nesting = 3;
+    assert_eq!(md.render("[[[[leaf]]]](rl)\r"), "<p>[[[[leaf]]]](rl)</p>\n");
+    assert_eq!(md.render("[[[[le]](rl)\r"), "<p>[[[[le]](rl)</p>\n");
+    assert_eq!(
+        md.render("[[leaf]](rl)"),
+        "<p><a href=\"rl\">[leaf]</a></p>\n"
+    );
+}
+
+#[test]
 fn direct_references_match_snapshots() {
     let mut md = MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md);

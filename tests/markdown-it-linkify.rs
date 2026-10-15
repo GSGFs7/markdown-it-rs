@@ -2,6 +2,14 @@
 
 mod common;
 
+#[test]
+fn closing_html_anchors_do_not_enable_core_linkify_inside_markdown_links() {
+    run(
+        "[</a>b@e[</a>b@example.com](/url)\r",
+        "<p>[</a>b@e<a href=\"/url\"></a>b@example.com</a></p>",
+    );
+}
+
 fn run(input: &str, output: &str) {
     let expected = if output.is_empty() {
         String::new()

@@ -60,6 +60,20 @@ fn smartquotes_transforms_autolink_labels() {
     }
 }
 
+#[test]
+fn quotes_do_not_pair_between_sibling_emphasis_nodes() {
+    run(
+        "__<a [_ \r*_(b_f=\"__(b_f=\"__\">\n",
+        "<p><em><em>&lt;a [</em>\n*_(b_f=&quot;</em><em>(b_f=&quot;</em>_&quot;&gt;</p>",
+    );
+    // Leaving an emphasis node invalidates its openers even for a sibling's
+    // quote at the same depth.
+    run(
+        "*a \"b* *c\" d*",
+        "<p><em>a &quot;b</em> <em>c&quot; d</em></p>",
+    );
+}
+
 #[cfg(feature = "linkify")]
 #[test]
 fn smartquotes_transforms_linkified_labels() {

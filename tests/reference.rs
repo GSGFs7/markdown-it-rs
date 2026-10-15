@@ -30,3 +30,38 @@ fn adjacent_multiline_title_matches_markdown_it() {
         );
     }
 }
+#[test]
+fn explicit_reference_label_can_contain_a_resolved_link() {
+    let md = markdown_it::MarkdownIt::new();
+    assert_eq!(
+        md.render("[r]: /url\n[s]: /other\n\n[r][\n[x] [s] end]"),
+        "<p>[r][\n[x] <a href=\"/other\">s</a> end]</p>\n",
+    );
+    // The second label is unresolved, so the first must not fall back to its
+    // shortcut reference.
+    assert_eq!(
+        md.render("[r]: /url\n[s]: /other\n\n![r][\n[x] [s] end]"),
+        "<p>![r][\n[x] <a href=\"/other\">s</a> end]</p>\n",
+    );
+}
+
+#[test]
+fn invalid_inline_target_probes_reference_at_the_failed_delimiter() {
+    let md = MarkdownIt::new();
+    for (source, expected) in [
+        (
+            "[foo [bar](中b0 \r9[ref]\n\n[ref]: /uri\n",
+            "<p>[foo <a href=\"/uri\">bar</a></p>\n",
+        ),
+        (
+            "[![mo9 on](mjpg\09b\r(])][ref]\n\n[ref]: /uri\n",
+            "<p>[!<a href=\"/uri\">mo9 on</a></p>\n",
+        ),
+        (
+            "[![moon](moon.jp` 中[ref]\n\n[ref]: /uri\n",
+            "<p>[!<a href=\"/uri\">moon</a></p>\n",
+        ),
+    ] {
+        assert_eq!(md.render(source), expected, "{source:?}");
+    }
+}

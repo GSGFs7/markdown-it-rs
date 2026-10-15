@@ -352,6 +352,35 @@ mod markdownit_rs {
     }
 
     #[test]
+    fn nested_link_labels_respect_depth_limits() {
+        // Cover the cutoff and larger inputs, including unmatched outer
+        // openers; generate runs instead of storing fuzzed strings.
+        for limit in [3, 20, 100] {
+            let mut md = MarkdownIt::new();
+            md.max_nesting = limit;
+            for depth in [limit as usize + 1, limit as usize * 2 + 1, 4000] {
+                for extra_openers in [0, 2, 7] {
+                    for target in ["()", "(rl)"] {
+                        let source = format!(
+                            "{}leaf{}{target}",
+                            "[".repeat(depth + extra_openers),
+                            "]".repeat(depth),
+                        );
+                        let start = Instant::now();
+                        let output = md.render(&source);
+                        assert_within_budget(start, "render nested link label", source.len());
+                        assert_eq!(
+                            output,
+                            format!("<p>{source}</p>\n"),
+                            "limit={limit}, depth={depth}, extra_openers={extra_openers}, target={target}",
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn nested_brackets_with_reference_map() {
         // A reference definition also disables the plain-label fast path even
         // though the nested source contains no inline target.
