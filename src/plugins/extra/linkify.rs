@@ -137,10 +137,9 @@ fn linkify_text(state: &mut DocumentInlineState<'_>) {
 
     // JS gates on the original inline content first; e.g. `__//example.org__`
     // fails the `_//` boundary even after emphasis strips the underscores.
-    if !retry_html
-        && Linkify::new()
-            .links_with_fuzzy(&state.src, fuzzy)
-            .is_empty()
+    if Linkify::new()
+        .links_with_fuzzy(&state.src, fuzzy)
+        .is_empty()
     {
         return;
     }
