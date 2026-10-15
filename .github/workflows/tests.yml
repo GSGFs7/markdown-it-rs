@@ -44,4 +44,39 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test -p markdown-it-rs --locked --no-fail-fast ${{ matrix.args }}
+      - name: Run unit and integration tests
+        shell: bash
+        run: |
+          test_targets=()
+          for test_file in tests/*.rs; do
+            test_name="$(basename "$test_file" .rs)"
+            if [[ "$test_name" != pathological ]]; then
+              test_targets+=(--test "$test_name")
+            fi
+          done
+          cargo test -p markdown-it-rs --locked --no-fail-fast ${{ matrix.args }} --lib --bins --examples "${test_targets[@]}"
+      - name: Run documentation tests
+        if: ${{ !cancelled() }}
+        run: cargo test -p markdown-it-rs --locked --no-fail-fast ${{ matrix.args }} --doc
+
+  pathological:
+    name: Pathological tests (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_NET_RETRY: "3"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default features
+            args: ""
+          - name: no default features
+            args: --no-default-features
+          - name: all features
+            args: --all-features
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run pathological tests on a single thread
+        run: cargo test -p markdown-it-rs --locked --no-fail-fast ${{ matrix.args }} --test pathological -- --test-threads=1
