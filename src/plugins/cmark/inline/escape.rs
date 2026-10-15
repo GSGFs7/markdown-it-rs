@@ -15,6 +15,7 @@ pub fn add(md: &mut MarkdownIt) {
 
 #[derive(Clone, Copy)]
 enum EscapeMatch {
+    Space,
     Hardbreak { len: usize },
     Character { ch: char },
 }
@@ -22,6 +23,7 @@ enum EscapeMatch {
 impl EscapeMatch {
     fn len(self) -> usize {
         match self {
+            Self::Space => 1,
             Self::Hardbreak { len } => len,
             Self::Character { ch } => 1 + ch.len_utf8(),
         }
@@ -39,9 +41,9 @@ fn scan_escape(source: &str) -> Option<EscapeMatch> {
             // skip leading whitespaces from next line
             len: 2 + chars.take_while(|ch| matches!(ch, ' ' | '\t')).count(),
         }),
-        // A space is not escapable. Leave both characters in the pending
-        // text so the newline rule can still see two trailing spaces.
-        ' ' => None,
+        // Emit only the backslash; keep the space pending so newline can
+        // still recognize two trailing spaces as a hard break.
+        ' ' => Some(EscapeMatch::Space),
         ch => Some(EscapeMatch::Character { ch }),
     }
 }
@@ -60,6 +62,14 @@ impl InlineRule for EscapeScanner {
         let matched = scan_escape(state.remaining())?;
         let len = matched.len();
         match matched {
+            EscapeMatch::Space => Some((
+                Some(state.document.create_node(TextSpecial {
+                    content: "\\".into(),
+                    markup: "\\".into(),
+                    info: "escape",
+                })),
+                len,
+            )),
             EscapeMatch::Hardbreak { .. } => {
                 Some((Some(state.document.create_node(Hardbreak)), len))
             }
@@ -97,7 +107,8 @@ mod tests {
             scan_escape("\\\n"),
             Some(EscapeMatch::Hardbreak { len: 2 })
         ));
-        assert!(scan_escape("\\ ").is_none());
+        assert!(matches!(scan_escape("\\ "), Some(EscapeMatch::Space)));
+        assert_eq!(scan_escape("\\ ").unwrap().len(), 1);
         assert!(scan_escape("\\").is_none());
         assert!(scan_escape("x").is_none());
         assert!(matches!(
