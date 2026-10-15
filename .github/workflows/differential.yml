@@ -87,7 +87,7 @@ jobs:
       - name: Install pinned JS dependencies
         run: pnpm --dir tests/differential install --frozen-lockfile --ignore-scripts
 
-      - name: Test mutation generator
+      - name: Test input generators
         id: tool
         run: pnpm --dir tests/differential test:tool
 
@@ -100,8 +100,7 @@ jobs:
           node tests/differential/run.mjs --no-build --fixtures
           --config "$CONFIG" --iterations 0
 
-      # Run mutations even when a fixture already exposed a difference.
-      - name: Compare seeded mutations
+      - name: Compare seeded mixed inputs
         if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.tool.outcome == 'success' }}
         run: |
           seed=$(node -p 'require("node:crypto").randomInt(0, 4294967296)')
@@ -111,7 +110,7 @@ jobs:
           fi
           echo "config=$CONFIG seed=$seed iterations=$iterations"
           node tests/differential/run.mjs --no-build --fixtures --random-only \
-            --config "$CONFIG" --seed "$seed" --iterations "$iterations"
+            --strategy mixed --config "$CONFIG" --seed "$seed" --iterations "$iterations"
 
       - name: Upload replayable failures
         if: ${{ failure() }}

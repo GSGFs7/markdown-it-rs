@@ -1,7 +1,7 @@
-import readline from "node:readline";
 import MarkdownIt from "markdown-it";
+import { lines } from "./jsonl.mjs";
 
-for await (const line of readline.createInterface({ input: process.stdin })) {
+for await (const line of lines(process.stdin)) {
   try {
     const { source, preset, options } = JSON.parse(line);
     const html = new MarkdownIt(preset, options).render(source);

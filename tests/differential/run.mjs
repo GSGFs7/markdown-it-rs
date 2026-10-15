@@ -2,10 +2,10 @@ import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { readFile, mkdir, writeFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import testgen from "markdown-it-testgen";
-import { corpus, configs, random, mutate } from "./generator.mjs";
+import { corpus, configs, random, generate, strategies } from "./generator.mjs";
+import { lines } from "./jsonl.mjs";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(directory, "../..");
@@ -26,6 +26,7 @@ for (let i = 0; i < argv.length; i++) {
       "--replay",
       "--rust-bin",
       "--config",
+      "--strategy",
     ].includes(flag)
   ) {
     if (!argv[i + 1] || argv[i + 1].startsWith("--")) {
@@ -48,6 +49,10 @@ function integer(flag, fallback, min, max) {
 const seed = integer("--seed", 1, 0, 0xffffffff);
 const iterations = integer("--iterations", 200, 0, 1_000_000);
 const timeout = integer("--timeout", 5000, 1, 3_600_000);
+const strategy = flags.get("--strategy") ?? "mixed";
+if (!strategies.includes(strategy)) {
+  throw new Error(`invalid --strategy: expected ${strategies.join(", ")}`);
+}
 const selectedConfigs = flags.has("--config")
   ? [configs[integer("--config", 0, 0, configs.length - 1)]]
   : configs;
@@ -86,20 +91,23 @@ function worker(command, args, label) {
     fail(new Error(`${label} exited: ${code ?? signal}`)),
   );
 
-  readline.createInterface({ input: child.stdout }).on("line", (line) => {
-    if (!pending) return fail(new Error(`${label}: unsolicited response`));
-    const current = pending;
-    pending = undefined;
-    try {
-      const result = JSON.parse(line);
-      if (typeof result.html !== "string") {
-        throw new Error(`${label}: ${result.error ?? "invalid response"}`);
+  const receive = async () => {
+    for await (const line of lines(child.stdout)) {
+      if (!pending) return fail(new Error(`${label}: unsolicited response`));
+      const current = pending;
+      pending = undefined;
+      try {
+        const result = JSON.parse(line);
+        if (typeof result.html !== "string") {
+          throw new Error(`${label}: ${result.error ?? "invalid response"}`);
+        }
+        current.resolve(result.html);
+      } catch (error) {
+        current.reject(error);
       }
-      current.resolve(result.html);
-    } catch (error) {
-      current.reject(error);
     }
-  });
+  };
+  receive().catch(fail);
 
   return {
     request(value) {
@@ -147,21 +155,20 @@ function* cases() {
   if (!flags.has("--random-only")) {
     for (const source of sources) {
       for (const config of selectedConfigs) {
-        yield { ...config, source };
+        yield { request: { ...config, source }, strategy: "corpus" };
       }
     }
   }
 
   const rng = random(seed);
   for (let i = 0; i < iterations; i++) {
-    let source = sources[Math.floor(rng() * sources.length)];
-    const rounds = 1 + Math.floor(rng() * 4);
-    for (let j = 0; j < rounds; j++) {
-      source = mutate(source, rng);
-    }
+    const generated = generate(sources, rng, strategy);
     yield {
-      ...selectedConfigs[Math.floor(rng() * selectedConfigs.length)],
-      source,
+      request: {
+        ...selectedConfigs[Math.floor(rng() * selectedConfigs.length)],
+        source: generated.source,
+      },
+      strategy: generated.strategy,
     };
   }
 }
@@ -181,7 +188,8 @@ const rust = worker(rustBin, [], "Rust");
 let count = 0;
 
 try {
-  for (const request of replay ? [replay.request] : cases()) {
+  for (const entry of replay ? [replay] : cases()) {
+    const { request } = entry;
     let jsHtml, rustHtml, error;
     try {
       [jsHtml, rustHtml] = await Promise.all([
@@ -197,6 +205,7 @@ try {
       const record = {
         markdownItVersion: version,
         seed,
+        strategy: entry.strategy,
         caseIndex: count - 1,
         request,
         jsHtml,
@@ -231,7 +240,7 @@ try {
   }
 
   if (!process.exitCode) {
-    console.log(`PASS: ${count} cases; seed=${seed}; markdown-it=${version}`);
+    console.log(`PASS: ${count} cases; seed=${seed}; strategy=${replay ? "replay" : strategy}; markdown-it=${version}`);
   }
 } finally {
   js.close();
