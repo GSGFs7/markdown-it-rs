@@ -1,4 +1,10 @@
 const regressions = [
+  // Fence languages are split after unescaping, with JavaScript whitespace.
+  ...['```', '~~~'].flatMap((marker) => [
+    'js\uFEFFextra', '\uFEFFjs\uFEFF', '&#xfeff;js&#xfeff;extra',
+    'js&#10;extra', 'js\u0085extra', '\u0085js\u0085', '\uFEFF', '&#xfeff;',
+    'js\u200Bextra', 'js\u180Eextra', 'js&amp;x\uFEFFextra',
+  ].map((info) => `${marker}${info}\ncode\uFEFF\n${marker}`)),
   // HTML whitespace follows JavaScript's \s (BOM included, NEL excluded).
   ...['\uFEFF', '\u0085'].flatMap((space) => [
     `<b${space}>`, `</b${space}>`, `<b>${space}`,

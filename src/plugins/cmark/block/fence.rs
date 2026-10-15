@@ -35,7 +35,10 @@ impl DocumentNodeRenderer<CodeFence> for CodeFenceDocumentRenderer {
         output: &mut crate::DocumentWriter,
     ) {
         let info = unescape_all(&fence.info);
-        let lang_name = info.split_whitespace().next().unwrap_or("");
+        let lang_name = info
+            .split(|c: char| c == '\u{feff}' || (c.is_whitespace() && c != '\u{85}'))
+            .find(|part| !part.is_empty())
+            .unwrap_or("");
         let mut attrs = node.attrs().clone();
         let lang_prefix = context
             .options()
@@ -232,6 +235,54 @@ impl BlockRule for FenceScanner {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn language_names_follow_javascript_whitespace_after_unescaping() {
+        let mut md = crate::MarkdownIt::new();
+        for marker in ["```", "~~~"] {
+            for (info, language) in [
+                ("js\u{feff}extra", "js"),
+                ("\u{feff}js\u{feff}", "js"),
+                ("&#xfeff;js&#xfeff;extra", "js"),
+                ("js&#10;extra", "js"),
+                ("js&#13;extra", "js"),
+                ("js\u{85}extra", "js\u{85}extra"),
+                ("\u{85}js\u{85}", "\u{85}js\u{85}"),
+                ("js\u{200b}extra", "js\u{200b}extra"),
+                ("js\u{180e}extra", "js\u{180e}extra"),
+                ("\u{feff}", ""),
+                ("&#xfeff;", ""),
+                ("js&amp;x\u{feff}extra", "js&amp;x"),
+            ] {
+                let source = format!("{marker}{info}\ncode\u{feff}\n{marker}");
+                let class = if language.is_empty() {
+                    String::new()
+                } else {
+                    format!(" class=\"language-{language}\"")
+                };
+                assert_eq!(
+                    md.render(&source),
+                    format!("<pre><code{class}>code\u{feff}\n</code></pre>\n"),
+                    "source: {source:?}"
+                );
+            }
+        }
+        for space in [
+            '\t', '\u{b}', '\u{c}', ' ', '\u{a0}', '\u{1680}', '\u{2000}', '\u{200a}', '\u{2028}',
+            '\u{2029}', '\u{202f}', '\u{205f}', '\u{3000}', '\u{feff}',
+        ] {
+            let source = format!("```{space}js{space}extra\ncode\n```");
+            assert_eq!(
+                md.render(&source),
+                "<pre><code class=\"language-js\">code\n</code></pre>\n"
+            );
+        }
+        md.render_options.lang_prefix = Some("".to_owned());
+        assert_eq!(
+            md.render("```js\u{feff}extra\ncode\n```"),
+            "<pre><code class=\"js\">code\n</code></pre>\n"
+        );
+    }
+
     #[test]
     fn fences_after_tight_paragraphs_do_not_insert_a_line_break() {
         let mut md = crate::MarkdownIt::new();
