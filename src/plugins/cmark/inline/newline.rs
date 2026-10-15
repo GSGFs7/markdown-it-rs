@@ -28,7 +28,7 @@ impl DocumentNodeRenderer<Hardbreak> for HardbreakDocumentRenderer {
         output: &mut crate::DocumentWriter,
     ) {
         write_html_self_close(output, "br", &[], context.options().xhtml_out);
-        context.cr(output);
+        output.write_str("\n");
     }
 }
 
@@ -50,7 +50,9 @@ impl DocumentNodeRenderer<Softbreak> for SoftbreakDocumentRenderer {
         if context.options().breaks {
             write_html_self_close(output, "br", &[], context.options().xhtml_out);
         }
-        context.cr(output);
+        // A decoded entity may already end in a newline; write ours directly
+        // instead of `cr`, which would coalesce the two.
+        output.write_str("\n");
     }
 }
 
@@ -122,6 +124,26 @@ mod test {
         let md = parser();
         let ast = md.parse_document("hello\nworld");
         assert_eq!(md.render_document(&ast), "<p>hello\nworld</p>\n");
+    }
+
+    #[test]
+    fn softbreak_preserves_newlines_decoded_from_entities() {
+        let mut md = parser();
+        for (source, expected) in [
+            ("foo&#10;\nbar", "<p>foo\n\nbar</p>\n"),
+            (
+                "foo&#10;&#10;\n\\a~9中\rbar\n",
+                "<p>foo\n\n\n\\a~9中\nbar</p>\n",
+            ),
+            (
+                "foo&#10;\r*_ é*:`\t0|bar\n",
+                "<p>foo\n\n<em>_ é</em>:`\t0|bar</p>\n",
+            ),
+        ] {
+            assert_eq!(md.render(source), expected, "{source:?}");
+        }
+        md.render_options.breaks = true;
+        assert_eq!(md.render("foo&#10;\nbar"), "<p>foo\n<br>\nbar</p>\n");
     }
 
     #[test]
