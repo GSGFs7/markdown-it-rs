@@ -413,7 +413,7 @@ fn scan_reference(state: &mut DocumentBlockState<'_>) -> Option<(Definition, usi
         match str[pos..].chars().next() {
             Some(ch @ (' ' | '\t')) => pos += ch.len_utf8(),
             Some('\n') | None => break,
-            Some(_) if title.is_some() => {
+            Some(_) if title.as_ref().is_some_and(|title| !title.is_empty()) => {
                 // garbage at the end of the line after title,
                 // but it could still be a valid reference if we roll back
                 title = None;
