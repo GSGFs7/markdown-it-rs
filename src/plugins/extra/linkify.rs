@@ -9,7 +9,8 @@ use linkify::{LinkKind, Linkify};
 
 use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
-use crate::document::{NodeId, NodeRef, NodeValue, StructuralEvent, Text, TextSpecial};
+use crate::common::sourcemap::SourcePos;
+use crate::document::{Document, NodeId, NodeRef, NodeValue, StructuralEvent, Text, TextSpecial};
 use crate::links::LinkFormatter;
 use crate::parser::core::{CoreRule, DocumentCoreRule};
 use crate::parser::inline::builtin::InlineParserRule;
@@ -77,12 +78,6 @@ pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
 // URLs and emails after emphasis, and retry text hidden by an unmatched `<a>`
 // (which disables the inline scanners but does not protect text in JS).
 fn linkify_text(state: &mut DocumentInlineState<'_>) {
-    use crate::plugins::cmark::inline::autolink::Autolink;
-    use crate::plugins::cmark::inline::backticks::CodeInline;
-    use crate::plugins::cmark::inline::image::Image;
-    use crate::plugins::cmark::inline::link::Link;
-    use crate::plugins::html::html_inline::HtmlInline;
-
     if state
         .inline_ext
         .contains::<crate::parser::inline::helpers::full_link::MarkdownLinkLabel>()
@@ -94,36 +89,7 @@ fn linkify_text(state: &mut DocumentInlineState<'_>) {
         return;
     }
 
-    let mut leaves = Vec::new();
-    let mut protected_depth = 0;
-    let mut html_delta = 0;
-    for &root in state.nodes() {
-        for event in state.document.events(root) {
-            let node = event.node();
-            let protected = node.is::<CodeInline>()
-                || node.is::<Link>()
-                || node.is::<Autolink>()
-                || node.is::<Linkified>()
-                || node.is::<Image>();
-            match event {
-                StructuralEvent::Enter(_) if protected => protected_depth += 1,
-                StructuralEvent::Exit(_) if protected => protected_depth -= 1,
-                StructuralEvent::Leaf(_) if protected_depth == 0 && !protected => {
-                    if let Some(html) = node.cast::<HtmlInline>() {
-                        let delta = anchor_delta(&html.content);
-                        html_delta += delta;
-                        leaves.push((node.id(), delta));
-                    } else {
-                        leaves.push((node.id(), 0));
-                    }
-                }
-                StructuralEvent::Enter(_) | StructuralEvent::Exit(_) if protected_depth == 0 => {
-                    leaves.push((node.id(), 0));
-                }
-                _ => {}
-            }
-        }
-    }
+    let (events, html_delta) = collect_linkify_events(state.document, state.nodes());
 
     // Child sessions inside Markdown links inherit a positive link level.
     // An HTML closing tag can lower the final level to zero even inside a
@@ -132,9 +98,6 @@ fn linkify_text(state: &mut DocumentInlineState<'_>) {
         return;
     }
     let retry_html = state.link_level > 0 && html_delta > 0;
-
-    let mut reverse_level = 0;
-    let mut replacements: HashMap<Option<NodeId>, HashMap<NodeId, Vec<NodeId>>> = HashMap::new();
     let fuzzy = state
         .md
         .ext
@@ -152,8 +115,70 @@ fn linkify_text(state: &mut DocumentInlineState<'_>) {
         return;
     }
 
-    for index in (0..leaves.len()).rev() {
-        let (id, delta) = leaves[index];
+    let replacements = collect_linkify_replacements(
+        state.document,
+        &events,
+        state.md.link_formatter.as_ref(),
+        retry_html,
+        fuzzy,
+    );
+    apply_linkify_replacements(state, replacements);
+}
+
+fn collect_linkify_events(document: &Document, roots: &[NodeId]) -> (Vec<(NodeId, i32)>, i32) {
+    use crate::plugins::cmark::inline::autolink::Autolink;
+    use crate::plugins::cmark::inline::backticks::CodeInline;
+    use crate::plugins::cmark::inline::image::Image;
+    use crate::plugins::cmark::inline::link::Link;
+    use crate::plugins::html::html_inline::HtmlInline;
+
+    let mut events = Vec::new();
+    let mut protected_depth = 0;
+    let mut html_delta = 0;
+    for &root in roots {
+        for event in document.events(root) {
+            let node = event.node();
+            let protected = node.is::<CodeInline>()
+                || node.is::<Link>()
+                || node.is::<Autolink>()
+                || node.is::<Linkified>()
+                || node.is::<Image>();
+            match event {
+                StructuralEvent::Enter(_) if protected => protected_depth += 1,
+                StructuralEvent::Exit(_) if protected => protected_depth -= 1,
+                StructuralEvent::Leaf(_) if protected_depth == 0 && !protected => {
+                    if let Some(html) = node.cast::<HtmlInline>() {
+                        let delta = anchor_delta(&html.content);
+                        html_delta += delta;
+                        events.push((node.id(), delta));
+                    } else {
+                        events.push((node.id(), 0));
+                    }
+                }
+                StructuralEvent::Enter(_) | StructuralEvent::Exit(_) if protected_depth == 0 => {
+                    events.push((node.id(), 0));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    (events, html_delta)
+}
+
+type LinkifyReplacements = HashMap<Option<NodeId>, HashMap<NodeId, Vec<NodeId>>>;
+
+fn collect_linkify_replacements(
+    document: &mut Document,
+    events: &[(NodeId, i32)],
+    formatter: &dyn LinkFormatter,
+    retry_html: bool,
+    fuzzy: bool,
+) -> LinkifyReplacements {
+    let mut reverse_level = 0;
+    let mut replacements: LinkifyReplacements = HashMap::new();
+    for index in (0..events.len()).rev() {
+        let (id, delta) = events[index];
         if delta < 0 {
             reverse_level += 1;
         } else if delta > 0 && reverse_level > 0 {
@@ -164,100 +189,106 @@ fn linkify_text(state: &mut DocumentInlineState<'_>) {
             continue;
         }
 
-        let Some(text) = state.document.node(id).cast::<Text>() else {
+        let previous = index.checked_sub(1).map(|index| events[index].0);
+        if let Some(nodes) = linkify_text_node(document, id, previous, formatter, retry_html, fuzzy)
+        {
+            replacements
+                .entry(document.parent(id))
+                .or_default()
+                .insert(id, nodes);
+        }
+    }
+    replacements
+}
+
+fn linkify_text_node(
+    document: &mut Document,
+    id: NodeId,
+    previous: Option<NodeId>,
+    formatter: &dyn LinkFormatter,
+    retry_html: bool,
+    fuzzy: bool,
+) -> Option<Vec<NodeId>> {
+    let text = document.node(id).cast::<Text>()?;
+
+    if !fuzzy && !text.content.contains([':', '@', '/']) {
+        return None;
+    }
+
+    let links = Linkify::new().links_with_fuzzy(&text.content, fuzzy);
+    if links.is_empty() {
+        return None;
+    }
+
+    let content = text.content.clone();
+    let preceded_by_special = previous.is_some_and(|id| document.node(id).is::<TextSpecial>());
+    let source_map = document.node(id).srcmap();
+    let mut nodes = Vec::new();
+    let mut end = 0;
+    for found in links {
+        if found.start() == 0 && preceded_by_special {
+            continue;
+        }
+
+        let url = &content[found.start()..found.end()];
+        if !retry_html && found.kind() != LinkKind::Email && !url.starts_with("//") {
+            continue;
+        }
+
+        let mode = if found.kind() == LinkKind::Email {
+            LinkifyMode::Email
+        } else if url.contains("://") {
+            LinkifyMode::Scheme
+        } else {
+            LinkifyMode::Fuzzy
+        };
+        let Some(link) = prepare_link(formatter, mode, url) else {
             continue;
         };
 
-        // With fuzzy links disabled, every URL/email needs one of these
-        // markers. Avoid matching and copying ordinary text in the retry pass.
-        if !fuzzy && !text.content.contains([':', '@', '/']) {
-            continue;
-        }
-
-        let links = Linkify::new().links_with_fuzzy(&text.content, fuzzy);
-        if links.is_empty() {
-            continue;
-        }
-
-        let content = text.content.clone();
-        let source_map = state.document.node(id).srcmap();
-        let mut nodes = Vec::new();
-        let mut end = 0;
-        for found in links {
-            if found.start() == 0
-                && index > 0
-                && state.document.node(leaves[index - 1].0).is::<TextSpecial>()
-            {
-                continue;
-            }
-
-            let url = &content[found.start()..found.end()];
-            // Emails are deferred until this pass so the reverse HTML-anchor
-            // scan can suppress them even before an unmatched closing tag.
-            if !retry_html && found.kind() != LinkKind::Email && !url.starts_with("//") {
-                continue;
-            }
-
-            let mode = if found.kind() == LinkKind::Email {
-                LinkifyMode::Email
-            } else if url.contains("://") {
-                LinkifyMode::Scheme
-            } else {
-                LinkifyMode::Fuzzy
-            };
-            let Some(link) = prepare_link(state.md.link_formatter.as_ref(), mode, url) else {
-                continue;
-            };
-
-            if found.start() > end {
-                let node = state.document.create_node(Text {
-                    content: content[end..found.start()].to_owned(),
-                });
-                state.document.node_mut(node).set_srcmap(text_range_map(
-                    source_map,
-                    content.len(),
-                    end,
-                    found.start(),
-                ));
-                nodes.push(node);
-            }
-
-            let inner = state.document.create_node(TextSpecial {
-                content: link.content.clone(),
-                markup: link.content,
-                info: "autolink",
+        if found.start() > end {
+            let node = document.create_node(Text {
+                content: content[end..found.start()].to_owned(),
             });
-            let node = state.document.create_node(Linkified { url: link.href });
-            let map = text_range_map(source_map, content.len(), found.start(), found.end());
-            state.document.node_mut(inner).set_srcmap(map);
-            state.document.node_mut(node).set_srcmap(map);
-            state.document.push_child(node, inner);
-            nodes.push(node);
-            end = found.end();
-        }
-
-        if nodes.is_empty() {
-            continue;
-        }
-
-        if end < content.len() {
-            let node = state.document.create_node(Text {
-                content: content[end..].to_owned(),
-            });
-            state.document.node_mut(node).set_srcmap(text_range_map(
+            document.node_mut(node).set_srcmap(text_range_map(
                 source_map,
                 content.len(),
                 end,
-                content.len(),
+                found.start(),
             ));
             nodes.push(node);
         }
-        replacements
-            .entry(state.document.parent(id))
-            .or_default()
-            .insert(id, nodes);
+
+        let map = text_range_map(source_map, content.len(), found.start(), found.end());
+        let node = create_linkified(document, link, map);
+        document.node_mut(node).set_srcmap(map);
+        nodes.push(node);
+        end = found.end();
     }
 
+    if nodes.is_empty() {
+        return None;
+    }
+
+    if end < content.len() {
+        let node = document.create_node(Text {
+            content: content[end..].to_owned(),
+        });
+        document.node_mut(node).set_srcmap(text_range_map(
+            source_map,
+            content.len(),
+            end,
+            content.len(),
+        ));
+        nodes.push(node);
+    }
+    Some(nodes)
+}
+
+fn apply_linkify_replacements(
+    state: &mut DocumentInlineState<'_>,
+    replacements: LinkifyReplacements,
+) {
     for (parent, replacements) in replacements {
         if let Some(parent) = parent {
             state
@@ -276,7 +307,7 @@ fn linkify_text(state: &mut DocumentInlineState<'_>) {
 // As in JS core linkify, size the result once and copy each sibling once.
 // Arena nodes are grouped by parent because emphasis creates nested arrays.
 fn rebuild_linkified_children(
-    document: &mut crate::document::Document,
+    document: &mut Document,
     children: &mut Vec<NodeId>,
     mut replacements: HashMap<NodeId, Vec<NodeId>>,
 ) {
@@ -294,16 +325,16 @@ fn rebuild_linkified_children(
 }
 
 fn text_range_map(
-    map: Option<crate::common::sourcemap::SourcePos>,
+    map: Option<SourcePos>,
     text_len: usize,
     start: usize,
     end: usize,
-) -> Option<crate::common::sourcemap::SourcePos> {
+) -> Option<SourcePos> {
     let (source_start, source_end) = map?.get_byte_offsets();
     // Multiline container prefixes can make the original span noncontiguous.
     // Only derive subranges when text and source offsets correspond directly.
     (source_end - source_start == text_len)
-        .then(|| crate::common::sourcemap::SourcePos::new(source_start + start, source_start + end))
+        .then(|| SourcePos::new(source_start + start, source_start + end))
 }
 
 type LinkifyState = Vec<LinkifyPosition>;
@@ -561,6 +592,18 @@ fn prepare_link(
     Some(PreparedLink { href, content })
 }
 
+fn create_linkified(document: &mut Document, link: PreparedLink, map: Option<SourcePos>) -> NodeId {
+    let inner = document.create_node(TextSpecial {
+        content: link.content.clone(),
+        markup: link.content,
+        info: "autolink",
+    });
+    document.node_mut(inner).set_srcmap(map);
+    let node = document.create_node(Linkified { url: link.href });
+    document.push_child(node, inner);
+    node
+}
+
 fn run_document_candidate(
     state: &mut DocumentInlineState<'_>,
     mode: LinkifyMode,
@@ -602,16 +645,8 @@ fn run_document_candidate(
         &state.src[candidate.start..candidate.end],
     )?;
 
-    let inner = state.document.create_node(TextSpecial {
-        content: link.content.clone(),
-        markup: link.content,
-        info: "autolink",
-    });
     let srcmap = state.get_map(candidate.start, candidate.end);
-    state.document.node_mut(inner).set_srcmap(srcmap);
-
-    let node = state.document.create_node(Linkified { url: link.href });
-    state.document.push_child(node, inner);
+    let node = create_linkified(state.document, link, srcmap);
     state.pop_trailing_text(candidate.rewind);
     state.pos -= candidate.rewind;
 

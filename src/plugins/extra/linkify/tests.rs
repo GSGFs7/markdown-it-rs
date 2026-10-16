@@ -1,6 +1,44 @@
 use crate as markdown_it;
 
 #[test]
+fn inline_and_postpass_links_preserve_source_ranges() {
+    let mut md = crate::MarkdownIt::new();
+    super::add(&mut md);
+    for source in [
+        "雪 https://example.org *a@b.co* //example.net",
+        "> 雪 https://example.org\n> *a@b.co* //example.net",
+    ] {
+        let document = md.parse_document(source);
+        let mut ranges = Vec::new();
+        for event in document.events(document.root()) {
+            let node = event.node();
+            if !matches!(event, crate::StructuralEvent::Enter(_)) || !node.is::<super::Linkified>()
+            {
+                continue;
+            }
+            let map = node.srcmap().unwrap();
+            let (start, end) = map.get_byte_offsets();
+            ranges.push(&source[start..end]);
+            let children = document.children(node.id());
+            assert_eq!(children.len(), 1);
+            let inner = document.node(children[0]);
+            assert_eq!(inner.srcmap().unwrap().get_byte_offsets(), (start, end));
+            assert_eq!(
+                inner.cast::<crate::document::TextSpecial>().unwrap().info,
+                "autolink"
+            );
+        }
+        // Explicit schemes are built inline; emails and // URLs are replaced
+        // after emphasis. Container prefixes must not shift either path's map.
+        assert_eq!(
+            ranges,
+            ["https://example.org", "a@b.co", "//example.net"],
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn retry_batches_siblings_and_nested_emphasis() {
     let input = format!(
         "<a>{}",
