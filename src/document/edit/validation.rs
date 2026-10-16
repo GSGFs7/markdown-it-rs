@@ -355,28 +355,24 @@ impl EditBatch {
         }
 
         for &descendant in &self.structural_edits.removals {
-            let mut ancestor = checked_node(document, descendant)?.parent();
-            while let Some(node) = ancestor {
-                if removals.contains(&node) {
-                    return Err(ValidationError::OverlappingNodeRemovals {
-                        ancestor: node,
-                        descendant,
-                    });
-                }
-                ancestor = checked_node(document, node)?.parent();
+            if let Some(node) = find_ancestor(
+                document,
+                checked_node(document, descendant)?.parent(),
+                &removals,
+            )? {
+                return Err(ValidationError::OverlappingNodeRemovals {
+                    ancestor: node,
+                    descendant,
+                });
             }
         }
 
         for edited in self.node_patches.edited_nodes() {
-            let mut current = Some(edited);
-            while let Some(node) = current {
-                if removals.contains(&node) {
-                    return Err(ValidationError::EditTargetsRemovedNode {
-                        removed: node,
-                        edited,
-                    });
-                }
-                current = checked_node(document, node)?.parent();
+            if let Some(node) = find_ancestor(document, Some(edited), &removals)? {
+                return Err(ValidationError::EditTargetsRemovedNode {
+                    removed: node,
+                    edited,
+                });
             }
         }
         Ok(())
@@ -390,15 +386,11 @@ impl EditBatch {
                 return Err(ValidationError::CannotInsertSiblingOfRoot(insertion.target));
             }
 
-            let mut current = Some(insertion.target);
-            while let Some(node) = current {
-                if removals.contains(&node) {
-                    return Err(ValidationError::InsertionTargetsRemovedNode {
-                        removed: node,
-                        target: insertion.target,
-                    });
-                }
-                current = checked_node(document, node)?.parent();
+            if let Some(node) = find_ancestor(document, Some(insertion.target), &removals)? {
+                return Err(ValidationError::InsertionTargetsRemovedNode {
+                    removed: node,
+                    target: insertion.target,
+                });
             }
         }
         Ok(())
@@ -420,68 +412,52 @@ impl EditBatch {
 
         // not allow ancestor/descendant overlap
         for replacement in &self.structural_edits.replacements {
-            let mut ancestor = checked_node(document, replacement.target)?.parent();
-            while let Some(node) = ancestor {
-                if replacements.contains(&node) {
-                    return Err(ValidationError::OverlappingNodeReplacements {
-                        ancestor: node,
-                        descendant: replacement.target,
-                    });
-                }
-                ancestor = checked_node(document, node)?.parent();
+            if let Some(node) = find_ancestor(
+                document,
+                checked_node(document, replacement.target)?.parent(),
+                &replacements,
+            )? {
+                return Err(ValidationError::OverlappingNodeReplacements {
+                    ancestor: node,
+                    descendant: replacement.target,
+                });
             }
         }
 
         // bidirectional detection with delete
         let removals: HashSet<_> = self.structural_edits.removals.iter().copied().collect();
         for replacement in &self.structural_edits.replacements {
-            let mut current = Some(replacement.target);
-            while let Some(node) = current {
-                if removals.contains(&node) {
-                    return Err(ValidationError::ConflictingNodeRemovalAndReplacement {
-                        removed: node,
-                        replaced: replacement.target,
-                    });
-                }
-                current = checked_node(document, node)?.parent();
+            if let Some(node) = find_ancestor(document, Some(replacement.target), &removals)? {
+                return Err(ValidationError::ConflictingNodeRemovalAndReplacement {
+                    removed: node,
+                    replaced: replacement.target,
+                });
             }
         }
         for &removed in &self.structural_edits.removals {
-            let mut current = Some(removed);
-            while let Some(node) = current {
-                if replacements.contains(&node) {
-                    return Err(ValidationError::ConflictingNodeRemovalAndReplacement {
-                        removed,
-                        replaced: node,
-                    });
-                }
-                current = checked_node(document, node)?.parent();
+            if let Some(node) = find_ancestor(document, Some(removed), &replacements)? {
+                return Err(ValidationError::ConflictingNodeRemovalAndReplacement {
+                    removed,
+                    replaced: node,
+                });
             }
         }
 
         for edited in self.node_patches.edited_nodes() {
-            let mut current = Some(edited);
-            while let Some(node) = current {
-                if replacements.contains(&node) {
-                    return Err(ValidationError::EditTargetsReplacedNode {
-                        replaced: node,
-                        edited,
-                    });
-                }
-                current = checked_node(document, node)?.parent();
+            if let Some(node) = find_ancestor(document, Some(edited), &replacements)? {
+                return Err(ValidationError::EditTargetsReplacedNode {
+                    replaced: node,
+                    edited,
+                });
             }
         }
 
         for insertion in &self.structural_edits.insertions {
-            let mut current = Some(insertion.target);
-            while let Some(node) = current {
-                if replacements.contains(&node) {
-                    return Err(ValidationError::InsertionTargetsReplacedNode {
-                        replaced: node,
-                        target: insertion.target,
-                    });
-                }
-                current = checked_node(document, node)?.parent();
+            if let Some(node) = find_ancestor(document, Some(insertion.target), &replacements)? {
+                return Err(ValidationError::InsertionTargetsReplacedNode {
+                    replaced: node,
+                    target: insertion.target,
+                });
             }
         }
         Ok(())
@@ -600,4 +576,19 @@ fn checked_node(document: &Document, id: NodeId) -> Result<&DocumentNode, Valida
     document
         .get_node(id)
         .ok_or(ValidationError::InvalidNode(id))
+}
+
+// Search from `current` inclusively; pass the parent to exclude the target itself.
+fn find_ancestor(
+    document: &Document,
+    mut current: Option<NodeId>,
+    candidates: &HashSet<NodeId>,
+) -> Result<Option<NodeId>, ValidationError> {
+    while let Some(node) = current {
+        if candidates.contains(&node) {
+            return Ok(Some(node));
+        }
+        current = checked_node(document, node)?.parent();
+    }
+    Ok(None)
 }

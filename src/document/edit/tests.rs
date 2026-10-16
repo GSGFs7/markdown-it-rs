@@ -1315,4 +1315,44 @@ mod validation_tests {
         assert_eq!(content(&document, first), "abc");
         assert_eq!(content(&document, second), "雪");
     }
+
+    #[test]
+    fn structural_validation_finishes_before_any_edits_are_applied() {
+        for conflict in 0..4 {
+            let mut document = document(&["abc", "def", "ghi"]);
+            let root = document.root();
+            let children = document.children(root).to_vec();
+            let before = format!("{document:?}");
+            let mut batch = EditBatch::new();
+            batch.replace_text(children[0], 0..1, "A");
+            batch.set_attribute(root, "class", "changed");
+            batch.set_source_map(children[0], Some(SourcePos::new(0, 3)));
+            batch.replace_value(
+                children[1],
+                Text {
+                    content: "changed".into(),
+                },
+            );
+            batch.remove_node(children[2]);
+            batch.insert_before(children[0], text_draft("inserted"));
+            match conflict {
+                0 => batch.remove_node(root),
+                1 => batch.insert_before(root, text_draft("invalid")),
+                2 => batch.replace_node(root, text_draft("invalid")),
+                _ => batch.wrap_range(children[1], children[0], NodeDraft::new(Paragraph)),
+            }
+
+            let result = catch_unwind(AssertUnwindSafe(|| batch.commit(&mut document)));
+
+            assert!(
+                result.is_err(),
+                "structural conflict {conflict} was accepted"
+            );
+            assert_eq!(
+                format!("{document:?}"),
+                before,
+                "structural conflict {conflict}"
+            );
+        }
+    }
 }
