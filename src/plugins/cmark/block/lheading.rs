@@ -10,9 +10,8 @@ use crate::plugins::cmark::block::paragraph::{ParagraphScanner, test_paragraph_r
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
+    HtmlBlockElementDocumentRenderer,
     PlainTextBlockDocumentRenderer,
-    write_html_close,
-    write_html_open,
 };
 
 #[derive(Debug)]
@@ -36,11 +35,7 @@ impl DocumentNodeRenderer<SetextHeader> for SetextHeaderDocumentRenderer {
 
         let tag = TAG[heading.level as usize - 1];
 
-        context.cr(output);
-        write_html_open(output, tag, node.attrs());
-        context.render_children(node.id(), output);
-        write_html_close(output, tag);
-        context.cr(output);
+        HtmlBlockElementDocumentRenderer(tag).render(node, heading, context, output);
     }
 }
 

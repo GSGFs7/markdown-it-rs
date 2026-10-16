@@ -551,6 +551,23 @@ impl<T: NodeValue> DocumentNodeRenderer<T> for HtmlBlockElementDocumentRenderer 
     }
 }
 
+pub(crate) fn render_html_link(
+    node: NodeRef<'_>,
+    url: &str,
+    title: Option<&str>,
+    context: &mut DocumentRenderContext<'_>,
+    output: &mut DocumentWriter,
+) {
+    let mut attrs = node.attrs().clone();
+    attrs.push(("href".into(), url.to_owned()));
+    if let Some(title) = title.filter(|title| !title.is_empty()) {
+        attrs.push(("title".into(), title.to_owned()));
+    }
+    write_html_open(output, "a", &attrs);
+    context.render_children(node.id(), output);
+    write_html_close(output, "a");
+}
+
 pub(crate) fn write_html_attrs(output: &mut DocumentWriter, attrs: &[HtmlAttribute]) {
     const LINEAR_SCAN_LIMIT: usize = 8;
 

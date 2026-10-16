@@ -10,8 +10,7 @@ use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     TransparentDocumentRenderer,
-    write_html_close,
-    write_html_open,
+    render_html_link,
 };
 
 #[derive(Debug)]
@@ -30,15 +29,7 @@ impl DocumentNodeRenderer<Link> for LinkDocumentRenderer {
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
     ) {
-        let mut attrs = node.attrs().clone();
-        attrs.push(("href".into(), link.url.clone()));
-        if let Some(title) = link.title.as_ref().filter(|title| !title.is_empty()) {
-            attrs.push(("title".into(), title.clone()));
-        }
-
-        write_html_open(output, "a", &attrs);
-        context.render_children(node.id(), output);
-        write_html_close(output, "a");
+        render_html_link(node, &link.url, link.title.as_deref(), context, output);
     }
 }
 

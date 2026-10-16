@@ -15,8 +15,7 @@ use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
     TransparentDocumentRenderer,
-    write_html_close,
-    write_html_open,
+    render_html_link,
 };
 
 #[derive(Debug)]
@@ -34,11 +33,7 @@ impl DocumentNodeRenderer<Autolink> for AutolinkDocumentRenderer {
         context: &mut DocumentRenderContext<'_>,
         output: &mut crate::DocumentWriter,
     ) {
-        let mut attrs = node.attrs().clone();
-        attrs.push(("href".into(), link.url.clone()));
-        write_html_open(output, "a", &attrs);
-        context.render_children(node.id(), output);
-        write_html_close(output, "a");
+        render_html_link(node, &link.url, None, context, output);
     }
 }
 
