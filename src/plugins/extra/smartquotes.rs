@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use crate::common::utils::{is_markdown_whitespace, is_punct_char};
 use crate::document::{Text, TextSpecial};
+use crate::parser::inline::helpers::full_link::IndependentLabelSource;
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
 use crate::plugins::cmark::block::list::ListItem;
@@ -106,7 +107,32 @@ fn document_edits_with<
     let mut edits = EditBatch::new();
     let projection = TextProjection::new(document_smartquotes_projection);
     let mut protected_depth = 0;
+    let mut opaque_image = None;
     let events = document.text_events(projection).filter_map(|event| {
+        // JS sees one image token whose content is the original label, not
+        // the parsed alt children. Their breaks and nesting are local to alt.
+        if let Some(image) = opaque_image {
+            return match event {
+                TextEvent::Char { node, .. } if node == image => {
+                    document_relevant_event(document, event)
+                }
+                TextEvent::Exit { node, .. } if node == image => {
+                    opaque_image = None;
+                    None
+                }
+                _ => None,
+            };
+        }
+        if let TextEvent::Enter { node, .. } = event
+            && document.node(node).is::<Image>()
+            && document
+                .node(node)
+                .ext()
+                .contains::<IndependentLabelSource>()
+        {
+            opaque_image = Some(node);
+            return None;
+        }
         match event {
             TextEvent::Enter { node, .. } | TextEvent::Exit { node, .. }
                 if document.node(node).is::<CodeInline>() || document.node(node).is::<Image>() =>
@@ -429,7 +455,11 @@ fn document_relevant_event(document: &Document, event: TextEvent) -> Option<Rele
 }
 
 fn document_smartquotes_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> {
-    if let Some(text) = node.cast::<Text>() {
+    if node.is::<Image>()
+        && let Some(source) = node.ext().get::<IndependentLabelSource>()
+    {
+        TextProjectionKind::ReadOnly(&source.0)
+    } else if let Some(text) = node.cast::<Text>() {
         // normal text, editable
         TextProjectionKind::Writable(&text.content)
     } else if let Some(text) = node.cast::<TextSpecial>() {

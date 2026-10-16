@@ -1,4 +1,13 @@
 const regressions = [
+  // Smartquotes sees raw image labels, without traversing parsed alt children.
+  '"![&amp;&#10;](/img)"',
+  '"![&#32;x&#32;](/img)"',
+  '"![a\nb](/img)"',
+  '"![![x](/inner)](/outer)"',
+  '"![](/img)"',
+  '"![&amp;&#10;][img]"\n\n[img]: /img',
+  '| [| https://example.org/a_(b) | b |\n| --- | --- |\n| a b | x |][id]\n\n[id]: /url "![&amp;&#10;](中文é😀)" | b |\n| --- | --- |\n| - > &amp;&#10;\n  中文é😀\n\n  <a href="a b">\n  </a> | x |',
+
   // Delimiters and smartquotes use Markdown whitespace, not JS regex \s.
   ...['\u0085', '\u2028', '\u2029', '\uFEFF', '\u00A0', '\u2000'].flatMap((ch) => [
     `x${ch}_a_`, `*${ch}a*`, `*a${ch}*`, `_${ch}a_`,

@@ -70,6 +70,10 @@ struct DocumentLinkCfg<const PREFIX: char> {
 #[derive(Debug)]
 pub(crate) struct MarkdownLinkLabel;
 
+/// Original content of a label parsed in its own inline context (image alt).
+#[derive(Debug)]
+pub(crate) struct IndependentLabelSource(pub String);
+
 /// Register a link rule with an arena node factory.
 pub fn add<const ENABLE_NESTED: bool>(
     md: &mut MarkdownIt,
@@ -674,7 +678,7 @@ fn document_link_run(
     let label_range = candidate.label_start..candidate.label_end;
     // Parse the label directly (extensions survive) before allocating the node.
     let children = match options.label_context {
-        LabelContext::Independent => state.parse_child(label_range, 0, 0, |label| {
+        LabelContext::Independent => state.parse_child(label_range.clone(), 0, 0, |label| {
             label
                 .inline_ext
                 .insert(super::delimiters::EmphasisSourceStart(label.pos));
@@ -685,7 +689,7 @@ fn document_link_run(
                 .checked_add(1)
                 .expect("inline link nesting level overflow");
             state.parse_child(
-                label_range,
+                label_range.clone(),
                 state.depth.saturating_add(1),
                 child_link_level,
                 |label| {
@@ -694,7 +698,12 @@ fn document_link_run(
             )
         }
     }?;
+    let label_source = (options.label_context == LabelContext::Independent)
+        .then(|| IndependentLabelSource(state.remaining()[label_range].to_owned()));
     let node = factory(state.document, candidate.href, candidate.title);
+    if let Some(source) = label_source {
+        state.document.node_mut(node).ext_mut().insert(source);
+    }
     state.document.attach_children(node, children);
 
     Some((Some(node), candidate.end))

@@ -238,3 +238,33 @@ fn smartquotes_classifies_nul_as_the_replacement_character() {
         run(source, expected);
     }
 }
+
+#[test]
+fn smartquotes_uses_raw_image_labels_as_opaque_context() {
+    for (source, expected) in [
+        (
+            "\"![&amp;&#10;](/img)\"",
+            "<p>“<img src=\"/img\" alt=\"&amp;\n\">”</p>",
+        ),
+        (
+            "\"![&#32;x&#32;](/img)\"",
+            "<p>“<img src=\"/img\" alt=\" x \">”</p>",
+        ),
+        ("\"![*x*](/img)\"", "<p>“<img src=\"/img\" alt=\"x\">”</p>"),
+        (
+            "\"![a\nb](/img)\"",
+            "<p>“<img src=\"/img\" alt=\"a\nb\">”</p>",
+        ),
+        (
+            "\"![![x](/inner)](/outer)\"",
+            "<p>“<img src=\"/outer\" alt=\"x\">”</p>",
+        ),
+        ("\"![](/img)\"", "<p>“<img src=\"/img\" alt=\"\">”</p>"),
+        (
+            "\"![&amp;&#10;][img]\"\n\n[img]: /img",
+            "<p>“<img src=\"/img\" alt=\"&amp;\n\">”</p>",
+        ),
+    ] {
+        run(source, expected);
+    }
+}
