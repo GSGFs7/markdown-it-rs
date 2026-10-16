@@ -1834,8 +1834,8 @@ fn plain_brackets_have_a_linear_close_index() {
     crate::plugins::html::add(&mut md);
     crate::plugins::extra::add(&mut md);
     let rules = md.inline.document_rules();
-    let closes = plain_label_closes("![[]()", 6, rules)
-        .expect("plain cmark brackets support a close index");
+    let closes =
+        plain_label_closes("![[]()", 6, rules).expect("plain cmark brackets support a close index");
     assert!(!closes.contains_key(&1));
     assert_eq!(closes.get(&2), Some(&3));
     assert!(plain_label_closes("[[a]](x)", 8, rules).is_some());

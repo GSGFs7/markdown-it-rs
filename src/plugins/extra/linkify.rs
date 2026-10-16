@@ -14,6 +14,7 @@ use crate::links::LinkFormatter;
 use crate::parser::core::{CoreRule, DocumentCoreRule};
 use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::inline::{DocumentInlineState, InlineRule};
+use crate::plugins::html::anchor_delta;
 use crate::render::{
     DocumentNodeRenderer,
     DocumentRenderContext,
@@ -303,18 +304,6 @@ fn text_range_map(
     // Only derive subranges when text and source offsets correspond directly.
     (source_end - source_start == text_len)
         .then(|| crate::common::sourcemap::SourcePos::new(source_start + start, source_start + end))
-}
-
-fn anchor_delta(content: &str) -> i32 {
-    use crate::plugins::html::{HTML_LINK_CLOSE, HTML_LINK_OPEN};
-
-    if HTML_LINK_OPEN.is_match(content) {
-        1
-    } else if HTML_LINK_CLOSE.is_match(content) {
-        -1
-    } else {
-        0
-    }
 }
 
 type LinkifyState = Vec<LinkifyPosition>;

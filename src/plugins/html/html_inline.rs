@@ -1,7 +1,8 @@
 //! HTML inline syntax from CommonMark
 //!
 //! <https://spec.commonmark.org/0.30/#raw-html>
-use super::utils::regexps::*;
+use super::anchor_delta;
+use super::utils::regexps::HTML_TAG_RE;
 use crate::MarkdownIt;
 use crate::common::extset::InlineRootExtSet;
 use crate::document::{NodeRef, NodeValue};
@@ -10,8 +11,8 @@ use crate::render::{DocumentNodeRenderer, DocumentRenderContext};
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<HtmlInlineScanner>();
-    md.add_document_renderer::<HtmlInline, _>("html", HtmlInlineDocumentRenderer);
-    md.add_document_renderer::<HtmlInline, _>("text", HtmlInlineTextRenderer);
+    md.add_document_renderer::<HtmlInline, _>("html", HtmlInlineRenderer);
+    md.add_document_renderer::<HtmlInline, _>("text", HtmlInlineRenderer);
 }
 
 #[derive(Debug, Default)]
@@ -24,23 +25,9 @@ pub struct HtmlInline {
     pub content: String,
 }
 
-struct HtmlInlineDocumentRenderer;
+struct HtmlInlineRenderer;
 
-impl DocumentNodeRenderer<HtmlInline> for HtmlInlineDocumentRenderer {
-    fn render(
-        &self,
-        _: NodeRef<'_>,
-        value: &HtmlInline,
-        _: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
-    ) {
-        output.write_str(&value.content);
-    }
-}
-
-struct HtmlInlineTextRenderer;
-
-impl DocumentNodeRenderer<HtmlInline> for HtmlInlineTextRenderer {
+impl DocumentNodeRenderer<HtmlInline> for HtmlInlineRenderer {
     fn render(
         &self,
         _: NodeRef<'_>,
@@ -67,17 +54,12 @@ impl InlineRule for HtmlInlineScanner {
             context.pos,
             context.pos_max,
             &mut context.inline_ext,
-        );
-        match matched {
-            Some(matched) => {
-                context.link_level = context
-                    .link_level
-                    .checked_add(matched.link_level_delta)
-                    .expect("check link level overflow");
-                Some(matched.consumed)
-            }
-            None => None,
-        }
+        )?;
+        context.link_level = context
+            .link_level
+            .checked_add(matched.link_level_delta)
+            .expect("check link level overflow");
+        Some(matched.consumed)
     }
 
     fn run(state: &mut crate::DocumentInlineState<'_>) -> Option<(Option<crate::NodeId>, usize)> {
@@ -88,7 +70,7 @@ impl InlineRule for HtmlInlineScanner {
 
         Some((
             Some(state.document.create_node(HtmlInline {
-                content: matched.content,
+                content: state.src[state.pos..state.pos + matched.consumed].to_owned(),
             })),
             matched.consumed,
         ))
@@ -96,7 +78,6 @@ impl InlineRule for HtmlInlineScanner {
 }
 
 struct HtmlInlineMatch {
-    content: String,
     consumed: usize,
     link_level_delta: i32,
 }
@@ -142,20 +123,10 @@ fn scan_html_inline(
     }
 
     let capture = HTML_TAG_RE.captures(rest)?.get(0)?.as_str();
-    let content = capture.to_owned();
-
-    let link_level_delta = if HTML_LINK_OPEN.is_match(&content) {
-        1
-    } else if HTML_LINK_CLOSE.is_match(&content) {
-        -1
-    } else {
-        0
-    };
 
     Some(HtmlInlineMatch {
-        content,
         consumed: capture.len(),
-        link_level_delta,
+        link_level_delta: anchor_delta(capture),
     })
 }
 
