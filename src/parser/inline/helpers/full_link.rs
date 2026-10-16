@@ -671,34 +671,30 @@ fn document_link_run(
     )?;
     // We found the end of the link and know for a fact it's a valid link;
     // all that's left to do is to parse the label contents as inline children.
-    let node = factory(state.document, candidate.href, candidate.title);
     let label_range = candidate.label_start..candidate.label_end;
-    let children = if options.label_context == LabelContext::Independent {
-        let mut label = state.child_state(label_range, 0, 0)?;
-        label
-            .inline_ext
-            .insert(super::delimiters::EmphasisSourceStart(label.pos));
-        // Parse this state directly: another child session would discard the
-        // label-local extension. Nested labels retain their own syntax context.
-        stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
-            label.tokenize();
-            label.finish_nodes();
-        });
-        std::mem::take(label.nodes_mut())
-    } else {
-        let child_link_level = state
-            .link_level
-            .checked_add(1)
-            .expect("inline link nesting level overflow");
-        let mut label =
-            state.child_state(label_range, state.depth.saturating_add(1), child_link_level)?;
-        label.inline_ext.insert(MarkdownLinkLabel);
-        stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
-            label.tokenize();
-            label.finish_nodes();
-        });
-        std::mem::take(label.nodes_mut())
-    };
+    // Parse the label directly (extensions survive) before allocating the node.
+    let children = match options.label_context {
+        LabelContext::Independent => state.parse_child(label_range, 0, 0, |label| {
+            label
+                .inline_ext
+                .insert(super::delimiters::EmphasisSourceStart(label.pos));
+        }),
+        LabelContext::NestedLink => {
+            let child_link_level = state
+                .link_level
+                .checked_add(1)
+                .expect("inline link nesting level overflow");
+            state.parse_child(
+                label_range,
+                state.depth.saturating_add(1),
+                child_link_level,
+                |label| {
+                    label.inline_ext.insert(MarkdownLinkLabel);
+                },
+            )
+        }
+    }?;
+    let node = factory(state.document, candidate.href, candidate.title);
     state.document.attach_children(node, children);
 
     Some((Some(node), candidate.end))

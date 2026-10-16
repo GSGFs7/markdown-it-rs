@@ -175,13 +175,33 @@ impl<'a> DocumentInlineState<'a> {
         link_level: i32,
         depth: u32,
     ) -> Option<Vec<NodeId>> {
-        let mut child = self.child_state(range, depth, link_level)?;
+        self.parse_child(range, depth, link_level, |_| {})
+    }
 
+    /// Parse `range` as a child session after applying `configure`.
+    ///
+    /// Runs directly so extensions installed by `configure` survive.
+    pub(in crate::parser) fn parse_child(
+        &mut self,
+        range: Range<usize>,
+        depth: u32,
+        link_level: i32,
+        configure: impl FnOnce(&mut DocumentInlineState<'_>),
+    ) -> Option<Vec<NodeId>> {
+        let mut child = self.child_state(range, depth, link_level)?;
+        configure(&mut child);
+        Some(child.run_child_session())
+    }
+
+    /// Run this child session to completion and return its nodes.
+    ///
+    /// Uses `finish_nodes` and a fresh stack segment.
+    fn run_child_session(mut self) -> Vec<NodeId> {
         stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
-            child.tokenize();
-            child.finish_nodes();
+            self.tokenize();
+            self.finish_nodes();
         });
-        Some(child.nodes)
+        self.nodes
     }
 
     fn trim(&mut self) {
