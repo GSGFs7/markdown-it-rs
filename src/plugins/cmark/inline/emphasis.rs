@@ -4,33 +4,13 @@
 //!
 //! <https://spec.commonmark.org/0.30/#emphasis-and-strong-emphasis>
 use crate::MarkdownIt;
-use crate::document::{NodeRef, NodeValue};
+use crate::document::NodeValue;
 use crate::parser::inline::helpers::emph_pair;
-use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    TransparentDocumentRenderer,
-    write_html_close,
-    write_html_open,
-};
+use crate::render::{HtmlInlineElementDocumentRenderer, TransparentDocumentRenderer};
 
 #[derive(Debug)]
 pub struct Em {
     pub marker: char,
-}
-
-struct EmDocumentRenderer;
-
-impl DocumentNodeRenderer<Em> for EmDocumentRenderer {
-    fn render(
-        &self,
-        node: NodeRef<'_>,
-        _: &Em,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
-    ) {
-        render_inline_container(node, context, output, "em");
-    }
 }
 
 impl NodeValue for Em {}
@@ -38,31 +18,6 @@ impl NodeValue for Em {}
 #[derive(Debug)]
 pub struct Strong {
     pub marker: char,
-}
-
-struct StrongDocumentRenderer;
-
-impl DocumentNodeRenderer<Strong> for StrongDocumentRenderer {
-    fn render(
-        &self,
-        node: NodeRef<'_>,
-        _: &Strong,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
-    ) {
-        render_inline_container(node, context, output, "strong");
-    }
-}
-
-fn render_inline_container(
-    node: NodeRef<'_>,
-    context: &mut DocumentRenderContext<'_>,
-    output: &mut crate::DocumentWriter,
-    tag: &str,
-) {
-    write_html_open(output, tag, node.attrs());
-    context.render_children(node.id(), output);
-    write_html_close(output, tag);
 }
 
 impl NodeValue for Strong {}
@@ -76,8 +31,8 @@ pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'_', 2, false>(md, |document| {
         document.create_node(Strong { marker: '_' })
     });
-    md.add_document_renderer::<Em, _>("html", EmDocumentRenderer);
-    md.add_document_renderer::<Strong, _>("html", StrongDocumentRenderer);
+    md.add_document_renderer::<Em, _>("html", HtmlInlineElementDocumentRenderer("em"));
+    md.add_document_renderer::<Strong, _>("html", HtmlInlineElementDocumentRenderer("strong"));
     md.add_document_renderer::<Em, _>("text", TransparentDocumentRenderer);
     md.add_document_renderer::<Strong, _>("text", TransparentDocumentRenderer);
 }

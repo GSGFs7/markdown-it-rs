@@ -517,6 +517,22 @@ impl DocumentNodeRenderer<Root> for DebugTreeDocumentRenderer {
     }
 }
 
+pub(crate) struct HtmlInlineElementDocumentRenderer(pub(crate) &'static str);
+
+impl<T: NodeValue> DocumentNodeRenderer<T> for HtmlInlineElementDocumentRenderer {
+    fn render(
+        &self,
+        node: &DocumentNode,
+        _: &T,
+        context: &mut DocumentRenderContext<'_>,
+        output: &mut DocumentWriter,
+    ) {
+        write_html_open(output, self.0, node.attrs());
+        context.render_children(node.id(), output);
+        write_html_close(output, self.0);
+    }
+}
+
 pub(crate) struct HtmlBlockElementDocumentRenderer(pub(crate) &'static str);
 
 impl<T: NodeValue> DocumentNodeRenderer<T> for HtmlBlockElementDocumentRenderer {

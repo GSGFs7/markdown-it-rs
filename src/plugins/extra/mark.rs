@@ -1,40 +1,17 @@
 //! Highlight syntax (like `==this==`)
 
-use crate::document::NodeRef;
 use crate::parser::inline::helpers::emph_pair;
-use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    TransparentDocumentRenderer,
-    write_html_close,
-    write_html_open,
-};
+use crate::render::{HtmlInlineElementDocumentRenderer, TransparentDocumentRenderer};
 use crate::{MarkdownIt, NodeValue};
 
 #[derive(Debug)]
 pub struct Mark;
 
-struct MarkDocumentRenderer;
-
-impl DocumentNodeRenderer<Mark> for MarkDocumentRenderer {
-    fn render(
-        &self,
-        node: NodeRef<'_>,
-        _: &Mark,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
-    ) {
-        write_html_open(output, "mark", node.attrs());
-        context.render_children(node.id(), output);
-        write_html_close(output, "mark");
-    }
-}
-
 impl NodeValue for Mark {}
 
 pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'=', 2, true>(md, |document| document.create_node(Mark));
-    md.add_document_renderer::<Mark, _>("html", MarkDocumentRenderer);
+    md.add_document_renderer::<Mark, _>("html", HtmlInlineElementDocumentRenderer("mark"));
     md.add_document_renderer::<Mark, _>("text", TransparentDocumentRenderer);
 }
 
