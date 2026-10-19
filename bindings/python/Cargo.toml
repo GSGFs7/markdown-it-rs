@@ -16,4 +16,4 @@ katex = ["markdown-it-rs/katex"]
 
 [dependencies]
 pyo3 = { version = "0.29", features = ["extension-module"] }
-markdown-it-rs = { path = "../..", default-features = false }
+markdown-it-rs = { path = "../..", default-features = false, features = ["sourcemap"] }

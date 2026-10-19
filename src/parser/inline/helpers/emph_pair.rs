@@ -46,6 +46,7 @@
 use std::cmp::min;
 
 use crate::MarkdownIt;
+#[cfg(feature = "sourcemap")]
 use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId, NodeValue, Text};
 use crate::parser::inline::{InlineRule, InlineState};
@@ -199,7 +200,9 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
             open: scanned.can_open,
             close: scanned.can_close,
         });
+        #[cfg(feature = "sourcemap")]
         let srcmap = state.get_map(state.pos, state.pos + scanned_bytes);
+        #[cfg(feature = "sourcemap")]
         state.document.node_mut(closer).set_srcmap(srcmap);
 
         closer = scan_and_match::<MARKER>(state, closer);
@@ -284,7 +287,6 @@ fn scan_and_match<const MARKER: char>(state: &mut InlineState, closer_token: Nod
                 }
 
                 let (marker_len, marker_fn) = matched_rule.unwrap();
-                let mark_bytes = marker_len * MARKER.len_utf8(); // UTF-8 marker support
 
                 closer.remaining -= marker_len;
                 opener.remaining -= marker_len;
@@ -293,33 +295,32 @@ fn scan_and_match<const MARKER: char>(state: &mut InlineState, closer_token: Nod
                 let children = state.nodes_mut().split_off(idx + 1);
                 state.document.attach_children(new_token, children);
 
-                // cut marker_len chars from start, i.e. "12345" -> "345"
-                let mut end_map_pos = 0;
-                if let Some(map) = state.document.node(closer_token).srcmap() {
-                    let (start, end) = map.get_byte_offsets();
-                    state
-                        .document
-                        .node_mut(closer_token)
-                        .set_srcmap(Some(SourcePos::new(start + mark_bytes, end)));
-                    end_map_pos = start + mark_bytes;
+                #[cfg(feature = "sourcemap")]
+                {
+                    let opener_token = *state.nodes().last().unwrap();
+                    let opener_map = state.document.node(opener_token).srcmap();
+                    let closer_map = state.document.node(closer_token).srcmap();
+                    if let (Some(opener_map), Some(closer_map)) = (opener_map, closer_map) {
+                        let (open_start, open_end) = opener_map.get_byte_offsets();
+                        let (close_start, close_end) = closer_map.get_byte_offsets();
+                        let mark_bytes = marker_len * MARKER.len_utf8();
+                        state
+                            .document
+                            .node_mut(opener_token)
+                            .set_srcmap(Some(SourcePos::new(open_start, open_end - mark_bytes)));
+                        state
+                            .document
+                            .node_mut(closer_token)
+                            .set_srcmap(Some(SourcePos::new(close_start + mark_bytes, close_end)));
+                        state
+                            .document
+                            .node_mut(new_token)
+                            .set_srcmap(Some(SourcePos::new(
+                                open_end - mark_bytes,
+                                close_start + mark_bytes,
+                            )));
+                    }
                 }
-
-                // cut marker_len chars from end, i.e. "12345" -> "123"
-                let mut start_map_pos = 0;
-                let opener_token = *state.nodes().last().unwrap();
-                if let Some(map) = state.document.node(opener_token).srcmap() {
-                    let (start, end) = map.get_byte_offsets();
-                    state
-                        .document
-                        .node_mut(opener_token)
-                        .set_srcmap(Some(SourcePos::new(start, end - mark_bytes)));
-                    start_map_pos = end - mark_bytes;
-                }
-
-                state
-                    .document
-                    .node_mut(new_token)
-                    .set_srcmap(Some(SourcePos::new(start_map_pos, end_map_pos)));
 
                 // remove empty node as a small optimization so we can do less work later
                 if opener.remaining == 0 {
@@ -455,9 +456,11 @@ fn fragments_join_children(document: &mut Document, nodes: &mut Vec<NodeId>) {
             }
 
             // update source map
+            #[cfg(feature = "sourcemap")]
             if let (Some(first), Some(last)) =
                 (document.node(previous).srcmap(), document.node(id).srcmap())
             {
+                #[cfg(feature = "sourcemap")]
                 document.node_mut(previous).set_srcmap(Some(SourcePos::new(
                     first.get_byte_offsets().0,
                     last.get_byte_offsets().1,
@@ -514,6 +517,7 @@ mod tests {
             document.node(children[0]).cast::<Text>().unwrap().content,
             "a_ ".repeat(10_000)
         );
+        #[cfg(feature = "sourcemap")]
         assert_eq!(
             document
                 .node(children[0])
@@ -522,6 +526,7 @@ mod tests {
                 .get_byte_offsets(),
             (0, 30_000)
         );
+        #[cfg(feature = "sourcemap")]
         assert_eq!(
             document
                 .node(children[1])
@@ -624,6 +629,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "sourcemap")]
     fn joining_markers_preserves_first_node_metadata_and_source_maps() {
         let mut document = Document::new("", crate::document::Root::new(""));
         let first = document.create_node(EmphMarker {
@@ -694,6 +700,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "sourcemap")]
     fn joining_markers_keeps_missing_source_map_and_discards_empty_markers() {
         let mut document = Document::new("", crate::document::Root::new(""));
         let first = document.create_node(Text {
@@ -728,6 +735,7 @@ mod tests {
         let md = &mut MarkdownIt::with_preset(Preset::CommonMark);
         let node = md.parse(input);
 
+        #[cfg(feature = "sourcemap")]
         for event in node.events(node.root()) {
             assert!(event.node().srcmap().is_some());
         }
@@ -742,6 +750,7 @@ mod tests {
         crate::plugins::cmark::inline::emphasis::add(md);
 
         let node = md.parse(input);
+        #[cfg(feature = "sourcemap")]
         for event in node.events(node.root()) {
             assert!(event.node().srcmap().is_some());
         }
@@ -810,6 +819,7 @@ mod tests {
         }
     }
     #[test]
+    #[cfg(feature = "sourcemap")]
     fn unicode_marker_uses_byte_offsets_for_source_maps() {
         let mut md = MarkdownIt::empty();
         crate::plugins::cmark::block::paragraph::add(&mut md);
@@ -838,11 +848,17 @@ mod tests {
 
         assert_eq!(md.render_html(&root), "<p><x>雪</x></p>\n",);
 
-        let paragraph = root.children(root.root())[0];
-        let wrapper = root.node(root.children(paragraph)[0]);
-        assert_eq!(wrapper.srcmap().unwrap().get_byte_offsets(), (0, 19),);
+        #[cfg(feature = "sourcemap")]
+        {
+            let paragraph = root.children(root.root())[0];
+            let wrapper = root.node(root.children(paragraph)[0]);
+            #[cfg(feature = "sourcemap")]
+            assert_eq!(wrapper.srcmap().unwrap().get_byte_offsets(), (0, 19),);
 
-        let text = root.node(wrapper.children()[0]);
-        assert_eq!(text.srcmap().unwrap().get_byte_offsets(), (8, 11),);
+            #[cfg(feature = "sourcemap")]
+            let text = root.node(wrapper.children()[0]);
+            #[cfg(feature = "sourcemap")]
+            assert_eq!(text.srcmap().unwrap().get_byte_offsets(), (8, 11),);
+        }
     }
 }

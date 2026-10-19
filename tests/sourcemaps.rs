@@ -1,3 +1,5 @@
+#![cfg(feature = "sourcemap")]
+
 use markdown_it::common::sourcemap::SourceWithLineStarts;
 use markdown_it::{Document, NodeRef};
 

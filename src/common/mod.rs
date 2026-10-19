@@ -5,6 +5,7 @@
 
 pub mod extset;
 pub mod ruler;
+#[cfg(feature = "sourcemap")]
 pub mod sourcemap;
 pub mod typekey;
 pub mod utils;

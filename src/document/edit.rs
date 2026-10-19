@@ -2,7 +2,6 @@
 
 use std::ops::Range;
 
-use crate::common::sourcemap::SourcePos;
 use crate::document::data::NodeData;
 use crate::document::{Document, NodeDraft, NodeId, NodeValue, SiblingPosition, Text};
 
@@ -50,9 +49,10 @@ struct EditAttribute {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "sourcemap")]
 struct EditSourceMap {
     node: NodeId,
-    source_map: Option<SourcePos>,
+    source_map: Option<crate::common::sourcemap::SourcePos>,
 }
 
 #[derive(Debug)]
@@ -66,29 +66,35 @@ struct NodePatchSet {
     values: Vec<ReplaceValue>,
     text: Vec<ReplaceText>,
     attributes: Vec<EditAttribute>,
+    #[cfg(feature = "sourcemap")]
     source_maps: Vec<EditSourceMap>,
 }
 
 impl NodePatchSet {
     fn len(&self) -> usize {
-        self.values.len() + self.text.len() + self.attributes.len() + self.source_maps.len()
+        let len = self.values.len() + self.text.len() + self.attributes.len();
+        #[cfg(feature = "sourcemap")]
+        let len = len + self.source_maps.len();
+        len
     }
 
     fn is_empty(&self) -> bool {
-        self.values.is_empty()
-            && self.text.is_empty()
-            && self.attributes.is_empty()
-            && self.source_maps.is_empty()
+        let empty = self.values.is_empty() && self.text.is_empty() && self.attributes.is_empty();
+        #[cfg(feature = "sourcemap")]
+        let empty = empty && self.source_maps.is_empty();
+        empty
     }
 
     #[cfg(debug_assertions)]
     fn edited_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.text
+        let nodes = self
+            .text
             .iter()
             .map(|edit| edit.node)
-            .chain(self.attributes.iter().map(|edit| edit.node))
-            .chain(self.source_maps.iter().map(|edit| edit.node))
-            .chain(self.values.iter().map(|edit| edit.node))
+            .chain(self.attributes.iter().map(|edit| edit.node));
+        #[cfg(feature = "sourcemap")]
+        let nodes = nodes.chain(self.source_maps.iter().map(|edit| edit.node));
+        nodes.chain(self.values.iter().map(|edit| edit.node))
     }
 }
 
@@ -202,7 +208,12 @@ impl EditBatch {
     }
 
     /// Set or clear a node's source mapping.
-    pub fn set_source_map(&mut self, node: NodeId, source_map: Option<SourcePos>) {
+    #[cfg(feature = "sourcemap")]
+    pub fn set_source_map(
+        &mut self,
+        node: NodeId,
+        source_map: Option<crate::common::sourcemap::SourcePos>,
+    ) {
         self.node_patches
             .source_maps
             .push(EditSourceMap { node, source_map });
@@ -261,6 +272,7 @@ impl EditBatch {
     fn normalize(&mut self) {
         self.sort_text_edits();
         self.sort_attribute_edits();
+        #[cfg(feature = "sourcemap")]
         self.sort_source_map_edits();
         self.sort_removed_nodes();
         self.sort_node_replacements();
@@ -293,6 +305,7 @@ impl EditBatch {
         self.apply_replacements(document);
         self.apply_wrap_ranges(document);
         self.apply_insertions(document);
+        #[cfg(feature = "sourcemap")]
         self.apply_source_maps(document);
         self.apply_attributes(document);
     }
@@ -321,6 +334,7 @@ impl EditBatch {
             });
     }
 
+    #[cfg(feature = "sourcemap")]
     fn sort_source_map_edits(&mut self) {
         self.node_patches
             .source_maps
@@ -407,6 +421,7 @@ impl EditBatch {
         }
     }
 
+    #[cfg(feature = "sourcemap")]
     fn apply_source_maps(&mut self, document: &mut Document) {
         for edit in self.node_patches.source_maps.drain(..) {
             document.node_mut(edit.node).set_srcmap(edit.source_map);

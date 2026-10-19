@@ -97,6 +97,7 @@ fn nul_link_destination_uses_normalized_source_offsets() {
                 .then_some(node)
         })
         .unwrap();
+    #[cfg(feature = "sourcemap")]
     assert_eq!(
         link.srcmap().unwrap().get_byte_offsets(),
         (
@@ -169,7 +170,9 @@ fn emphasis_next_to_nul_uses_normalized_source_offsets() {
     let normalized = "雪 \u{fffd}_a_";
     let document = md.parse(source);
     assert_eq!(document.source(), normalized);
+    #[cfg(feature = "sourcemap")]
     let start = normalized.find('_').unwrap();
+    #[cfg(feature = "sourcemap")]
     let emphasis = document
         .events(document.root())
         .find_map(|event| {
@@ -178,6 +181,7 @@ fn emphasis_next_to_nul_uses_normalized_source_offsets() {
                 .then_some(node)
         })
         .unwrap();
+    #[cfg(feature = "sourcemap")]
     assert_eq!(
         emphasis.srcmap().unwrap().get_byte_offsets(),
         (start, normalized.len())
@@ -186,7 +190,9 @@ fn emphasis_next_to_nul_uses_normalized_source_offsets() {
 
 #[test]
 fn emphasis_across_normalized_lines_preserves_source_offsets() {
+    #[cfg(feature = "sourcemap")]
     use markdown_it::plugins::cmark::inline::emphasis::{Em, Strong};
+    #[cfg(feature = "sourcemap")]
     use markdown_it::plugins::extra::strikethrough::Strikethrough;
 
     let mut md = markdown_it::MarkdownIt::new();
@@ -209,6 +215,7 @@ fn emphasis_across_normalized_lines_preserves_source_offsets() {
                     format!("<p>&lt;div&gt;</p>\n<p>{open}te<br>\n!90xt{close} 尾</p>\n"),
                     "{source:?}"
                 );
+                #[cfg(feature = "sourcemap")]
                 let node = document
                     .events(document.root())
                     .find_map(|event| {
@@ -217,6 +224,7 @@ fn emphasis_across_normalized_lines_preserves_source_offsets() {
                             .then_some(node)
                     })
                     .unwrap();
+                #[cfg(feature = "sourcemap")]
                 assert_eq!(
                     node.srcmap().unwrap().get_byte_offsets(),
                     (source.find(marker).unwrap(), source.find(" 尾").unwrap()),

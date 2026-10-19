@@ -226,6 +226,7 @@ fn node_data_survives_draft_insertion() {
 
     fn draft() -> super::NodeDraft {
         let mut draft = super::NodeDraft::new(Payload("payload".into()));
+        #[cfg(feature = "sourcemap")]
         draft.set_srcmap(Some(crate::common::sourcemap::SourcePos::new(0, 3)));
         draft.attrs_mut().push(("class".into(), "kept".into()));
         draft.ext_mut().insert(Metadata("metadata".into()));
@@ -239,6 +240,7 @@ fn node_data_survives_draft_insertion() {
         let root = document.node(document.root());
         assert_eq!(root.cast::<Payload>().unwrap().0, "payload");
         assert!(root.cast::<Text>().is_none());
+        #[cfg(feature = "sourcemap")]
         assert_eq!(root.srcmap().unwrap().get_byte_offsets(), (0, 3));
         assert_eq!(root.attrs(), &vec![("class".into(), "kept".into())]);
         assert_eq!(root.ext().get::<Metadata>().unwrap().0, "metadata");
@@ -262,7 +264,9 @@ fn arena_builder_moves_ids_and_metadata_without_recreating_nodes() {
     let text = document.create_node(Text {
         content: "hello".into(),
     });
+    #[cfg(feature = "sourcemap")]
     let map = crate::common::sourcemap::SourcePos::new(0, 5);
+    #[cfg(feature = "sourcemap")]
     document.node_mut(text).set_srcmap(Some(map));
     document
         .node_mut(text)
@@ -277,6 +281,7 @@ fn arena_builder_moves_ids_and_metadata_without_recreating_nodes() {
     document.attach_children(right, children);
     assert_eq!(document.children(right), &[text]);
     assert_eq!(document.parent(text), Some(right));
+    #[cfg(feature = "sourcemap")]
     assert_eq!(document.node(text).srcmap(), Some(map));
     assert_eq!(document.node(text).attrs()[0].1, "kept");
 

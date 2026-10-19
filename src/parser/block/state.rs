@@ -3,7 +3,6 @@
 use super::{BlockRuleFns, LineOffset, build_line_offsets};
 use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
-use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId};
 use crate::parser::pipeline::PendingInline;
 
@@ -108,15 +107,25 @@ impl<'a> BlockState<'a> {
                 if let Some((node, len)) = matched {
                     self.line += len;
                     if let Some(node) = node {
-                        let srcmap = self.get_map(self.line - len, self.line - 1);
-                        self.document.node_mut(node).set_srcmap(srcmap);
+                        #[cfg(feature = "sourcemap")]
+                        {
+                            let srcmap = self.get_map(self.line - len, self.line - 1);
+                            self.document.node_mut(node).set_srcmap(srcmap);
+                        }
+
                         self.document.push_child(self.node, node);
                     }
                 } else {
+                    #[cfg(feature = "sourcemap")]
                     let start = self.line_offsets[self.line].first_nonspace;
                     let mut content = self.get_line(self.line).to_owned();
                     content.push('\n');
+
+                    #[cfg(feature = "sourcemap")]
                     let mapping = vec![(0, start)];
+                    #[cfg(not(feature = "sourcemap"))]
+                    let mapping = crate::parser::InlineMapping;
+
                     let pending = self.pending_inline(content, mapping);
                     self.document.push_child(self.node, pending);
                     self.line += 1;
@@ -210,9 +219,12 @@ impl<'a> BlockState<'a> {
         end: usize,
         indent: usize,
         keep_last_lf: bool,
-    ) -> (String, Vec<(usize, usize)>) {
+    ) -> (String, crate::parser::InlineMapping) {
         let mut result = String::new();
-        let mut mapping = Vec::new();
+        #[cfg(feature = "sourcemap")]
+        let mut mapping = crate::parser::InlineMapping::default();
+        #[cfg(not(feature = "sourcemap"))]
+        let mapping = crate::parser::InlineMapping;
 
         for line in begin..end {
             let offsets = &self.line_offsets[line];
@@ -235,7 +247,9 @@ impl<'a> BlockState<'a> {
                 first += 1;
             }
 
+            #[cfg(feature = "sourcemap")]
             mapping.push((result.len(), first));
+
             if line_indent > target {
                 result += &" ".repeat((line_indent - target) as usize);
             }
@@ -248,7 +262,11 @@ impl<'a> BlockState<'a> {
     }
 
     /// Create a placeholder node for inline content parsed after the block pass.
-    pub fn pending_inline(&mut self, source: String, mapping: Vec<(usize, usize)>) -> NodeId {
+    pub fn pending_inline(
+        &mut self,
+        source: String,
+        mapping: crate::parser::InlineMapping,
+    ) -> NodeId {
         self.document.create_node(PendingInline {
             content: source,
             mapping,
@@ -257,10 +275,15 @@ impl<'a> BlockState<'a> {
 
     /// Return the source span covering lines `start_line..=end_line`.
     #[must_use]
-    pub fn get_map(&self, start_line: usize, end_line: usize) -> Option<SourcePos> {
+    #[cfg(feature = "sourcemap")]
+    pub fn get_map(
+        &self,
+        start_line: usize,
+        end_line: usize,
+    ) -> Option<crate::common::sourcemap::SourcePos> {
         debug_assert!(start_line <= end_line);
 
-        Some(SourcePos::new(
+        Some(crate::common::sourcemap::SourcePos::new(
             self.line_offsets[start_line].first_nonspace,
             self.line_offsets[end_line].line_end,
         ))

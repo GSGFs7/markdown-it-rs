@@ -25,6 +25,7 @@ fn run(input: &str, output: &str) {
     let node = md.parse(&source);
 
     // make sure we have sourcemaps for everything
+    #[cfg(feature = "sourcemap")]
     for event in node.events(node.root()) {
         assert!(event.node().srcmap().is_some());
     }

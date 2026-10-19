@@ -634,6 +634,7 @@ fn direct_prefix_uses_utf8_byte_offsets() {
                 })
                 .count();
             assert_eq!(links, link_count, "{source}");
+            #[cfg(feature = "sourcemap")]
             if link_count > 0 {
                 let start = source.find("[雪]").unwrap() + 1;
                 let text_ranges: Vec<_> = document

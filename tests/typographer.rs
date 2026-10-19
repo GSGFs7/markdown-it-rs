@@ -12,6 +12,7 @@ fn run_with(input: &str, output: &str, configure: impl Fn(&mut markdown_it::Mark
     let node = md.parse(&(input.to_owned() + "\n"));
 
     // make sure we have sourcemaps for everything
+    #[cfg(feature = "sourcemap")]
     for event in node.events(node.root()) {
         assert!(event.node().srcmap().is_some());
     }

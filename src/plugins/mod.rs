@@ -12,6 +12,7 @@
 //! markdown_it::plugins::directives::add(md);
 //! markdown_it::plugins::extra::add(md);
 //! markdown_it::plugins::html::add(md);
+//! # #[cfg(feature = "sourcemap")]
 //! markdown_it::plugins::sourcepos::add(md);
 //! // ...
 //! ```
@@ -21,4 +22,5 @@ pub mod directives;
 pub mod extra;
 pub mod html;
 pub mod presets;
+#[cfg(feature = "sourcemap")]
 pub mod sourcepos;

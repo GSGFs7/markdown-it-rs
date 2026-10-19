@@ -437,15 +437,19 @@ impl NodeRenderer<Root> for DebugTreeRenderer {
             }
             write!(
                 output,
-                "{kind} type={} id={:?} srcmap=",
+                "{kind} type={} id={:?}",
                 current.name(),
                 current.id()
             );
-            if let Some(srcmap) = current.srcmap() {
-                let (start, end) = srcmap.get_byte_offsets();
-                write!(output, "{start}..{end}");
-            } else {
-                output.write_char('-');
+            #[cfg(feature = "sourcemap")]
+            {
+                output.write_str(" srcmap=");
+                if let Some(srcmap) = current.srcmap() {
+                    let (start, end) = srcmap.get_byte_offsets();
+                    write!(output, "{start}..{end}");
+                } else {
+                    output.write_char('-');
+                }
             }
             writeln!(output, " attrs={:?}", current.attrs());
 

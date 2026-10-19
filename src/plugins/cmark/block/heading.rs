@@ -112,7 +112,10 @@ impl BlockRule for HeadingScanner {
         let (level, text_pos, text_max) = scan_atx_heading(line)?;
 
         let content = line[text_pos..text_max].to_owned();
+        #[cfg(feature = "sourcemap")]
         let mapping = vec![(0, state.line_offsets[state.line].first_nonspace + text_pos)];
+        #[cfg(not(feature = "sourcemap"))]
+        let mapping = crate::parser::InlineMapping;
 
         let node = state.document.create_node(ATXHeading { level });
         let pending = state.pending_inline(content, mapping);

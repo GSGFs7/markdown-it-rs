@@ -46,20 +46,31 @@ fn scan_thematic_break(line: &str, line_indent: i32, max_indent: i32) -> Option<
         return None;
     }
 
-    let mut chars = line.chars();
-
-    // check hr marker
-    let marker = chars.next()?;
-    if marker != '*' && marker != '-' && marker != '_' {
+    // Markers, spaces, and tabs are ASCII, so scan bytes directly.
+    let bytes = line.as_bytes();
+    let marker = *bytes.first()?;
+    if marker != b'*' && marker != b'-' && marker != b'_' {
         return None;
     }
 
-    // markers can be mixed with spaces, but there should be at least 3 of them
+    // Fast path for long marker runs.
     let mut cnt = 1;
-    for ch in chars {
-        if ch == marker {
+    let mut index = 1;
+    let marker_word = u64::from_ne_bytes([marker; 8]);
+    while index + 8 <= bytes.len() {
+        let word = u64::from_ne_bytes(bytes[index..index + 8].try_into().unwrap());
+        if word != marker_word {
+            break;
+        }
+        cnt += 8;
+        index += 8;
+    }
+
+    // Count remaining bytes; spaces and tabs are allowed.
+    for &byte in &bytes[index..] {
+        if byte == marker {
             cnt += 1;
-        } else if ch != ' ' && ch != '\t' {
+        } else if byte != b' ' && byte != b'\t' {
             return None;
         }
     }
@@ -68,7 +79,7 @@ fn scan_thematic_break(line: &str, line_indent: i32, max_indent: i32) -> Option<
         return None;
     }
 
-    Some((marker, cnt))
+    Some((marker as char, cnt))
 }
 
 impl BlockRule for HrScanner {
@@ -86,5 +97,36 @@ impl BlockRule for HrScanner {
             .document
             .create_node(ThematicBreak { marker, marker_len });
         Some((Some(node), 1))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scan_thematic_break;
+
+    #[test]
+    fn long_marker_run_preserves_count() {
+        let line = "*".repeat(32 * 1024);
+        assert_eq!(
+            scan_thematic_break(&line, 0, 4),
+            Some(('*', line.len())),
+            "fast path must preserve marker count"
+        );
+    }
+
+    #[test]
+    fn markers_can_be_mixed_with_spaces_and_tabs() {
+        assert_eq!(scan_thematic_break("* * *", 0, 4), Some(('*', 3)));
+        assert_eq!(scan_thematic_break("---\t ", 0, 4), Some(('-', 3)));
+        assert_eq!(scan_thematic_break("___  ___", 0, 4), Some(('_', 6)));
+        assert_eq!(scan_thematic_break("**", 0, 4), None);
+        assert_eq!(scan_thematic_break("*x*", 0, 4), None);
+        assert_eq!(scan_thematic_break("*雪*", 0, 4), None);
+    }
+
+    #[test]
+    fn indentation_limit_is_applied_first() {
+        assert_eq!(scan_thematic_break("***", 4, 4), None);
+        assert_eq!(scan_thematic_break("***", 3, 4), Some(('*', 3)));
     }
 }

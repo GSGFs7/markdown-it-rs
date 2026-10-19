@@ -44,6 +44,7 @@ opt-level = "s"
 
 [features]
 default = ["linkify"]
+sourcemap = []
 cli = ["dep:clap"]
 katex = ["dep:katex-rs"]
 syntect = ["dep:syntect", "dep:two-face"]

@@ -39,6 +39,10 @@ jobs:
             args: ""
           - name: no default features
             args: --no-default-features
+          - name: source maps only
+            args: --no-default-features --features sourcemap
+          - name: linkify without source maps
+            args: --no-default-features --features linkify
           - name: all features
             args: --all-features
     steps:
@@ -73,6 +77,10 @@ jobs:
             args: ""
           - name: no default features
             args: --no-default-features
+          - name: source maps only
+            args: --no-default-features --features sourcemap
+          - name: linkify without source maps
+            args: --no-default-features --features linkify
           - name: all features
             args: --all-features
     steps:

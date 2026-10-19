@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::common::RuleMark;
 use crate::common::extset::MarkdownItExtSet;
 use crate::common::ruler::Ruler;
+#[cfg(feature = "sourcemap")]
 use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeValue, Root, Text, TextSpecial};
 use crate::links::{LinkFormatter, MDLinkFormatter};
@@ -119,6 +120,8 @@ impl MarkdownIt {
             .node_mut(document.root())
             .ext_mut()
             .insert(self.render_options.clone());
+
+        #[cfg(feature = "sourcemap")]
         document
             .node_mut(document.root())
             .set_srcmap(Some(SourcePos::new(0, source.len())));

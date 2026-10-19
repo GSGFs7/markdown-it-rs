@@ -25,9 +25,11 @@ pub(super) enum ValidationError {
         node: NodeId,
         name: String,
     },
+    #[cfg(feature = "sourcemap")]
     ConflictingSourceMapEdits {
         node: NodeId,
     },
+    #[cfg(feature = "sourcemap")]
     InvalidSourceMap {
         node: NodeId,
         start: usize,
@@ -130,9 +132,11 @@ impl std::fmt::Display for ValidationError {
                     "conflicting edits for attribute {name:?} on node {node:?}"
                 )
             }
+            #[cfg(feature = "sourcemap")]
             Self::ConflictingSourceMapEdits { node } => {
                 write!(f, "conflicting source map edits on node {node:?}")
             }
+            #[cfg(feature = "sourcemap")]
             Self::InvalidSourceMap { node, start, end } => {
                 write!(f, "invalid source map {start}..{end} for node {node:?}")
             }
@@ -246,6 +250,7 @@ impl EditBatch {
         }
         self.validate_text(document)?;
         self.validate_attributes(document)?;
+        #[cfg(feature = "sourcemap")]
         self.validate_source_maps(document)?;
         if !self.structural_edits.removals.is_empty() {
             self.validate_removals(document)?;
@@ -316,6 +321,7 @@ impl EditBatch {
         Ok(())
     }
 
+    #[cfg(feature = "sourcemap")]
     fn validate_source_maps(&self, document: &Document) -> Result<(), ValidationError> {
         let mut previous = None;
         for edit in &self.node_patches.source_maps {

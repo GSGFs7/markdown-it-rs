@@ -1,6 +1,10 @@
+#[cfg(feature = "sourcemap")]
+use markdown_it::Root;
 use markdown_it::parser::core::{CoreRule, CoreState};
-use markdown_it::plugins::{cmark, extra, sourcepos};
-use markdown_it::{Document, EditBatch, MarkdownIt, NodeDraft, Root, StructuralEvent, Text};
+#[cfg(feature = "sourcemap")]
+use markdown_it::plugins::sourcepos;
+use markdown_it::plugins::{cmark, extra};
+use markdown_it::{Document, EditBatch, MarkdownIt, NodeDraft, StructuralEvent, Text};
 
 #[test]
 fn typographer_precedes_custom_smartquotes_in_reverse_registration_order() {
@@ -11,6 +15,7 @@ fn typographer_precedes_custom_smartquotes_in_reverse_registration_order() {
 }
 
 #[test]
+#[cfg(feature = "sourcemap")]
 fn sourcepos_runs_after_tasklist_in_reverse_registration_order() {
     let mut md = MarkdownIt::new();
     sourcepos::add(&mut md);
@@ -40,6 +45,7 @@ fn sourcepos_runs_after_tasklist_in_reverse_registration_order() {
 }
 
 #[test]
+#[cfg(feature = "sourcemap")]
 fn sourcepos_deduplicates_existing_attributes_and_skips_generated_nodes() {
     let source = "# 雪";
     let mut root = NodeDraft::new(Root::new(source));

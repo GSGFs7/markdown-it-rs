@@ -132,6 +132,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "sourcemap")]
     fn independent_alt_source_preserves_multiline_source_maps() {
         use crate::plugins::cmark::inline::emphasis::Em;
 

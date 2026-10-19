@@ -1,7 +1,9 @@
 use markdown_it::parser::block::builtin::BlockParserRule;
 use markdown_it::parser::core::{CoreRule, CoreState};
 use markdown_it::parser::inline::builtin::InlineParserRule;
-use markdown_it::plugins::{cmark, extra, sourcepos};
+#[cfg(feature = "sourcemap")]
+use markdown_it::plugins::sourcepos;
+use markdown_it::plugins::{cmark, extra};
 use markdown_it::{EditBatch, MarkdownIt, Root, StructuralEvent, Text};
 
 #[derive(Default)]
@@ -78,6 +80,7 @@ fn builtin_transformations_follow_footnote_finalization_in_either_registration_o
         if !reverse {
             extra::footnote::add(&mut md);
         }
+        #[cfg(feature = "sourcemap")]
         sourcepos::add(&mut md);
         extra::heading_anchors::add(&mut md);
         extra::smartquotes::add(&mut md);
@@ -116,6 +119,8 @@ fn core_rules_receive_document_source_and_current_parser_configuration() {
     let mut md = MarkdownIt::empty();
     md.add_rule_instance(ContextRule(Arc::clone(&calls)));
     let document = md.parse("雪\0");
+    assert_eq!(document.source(), "雪\u{fffd}");
+    #[cfg(feature = "sourcemap")]
     assert!(document.node(document.root()).srcmap().is_some());
     md.render_options.xhtml_out = true;
     md.parse("雪\0");

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use linkify::{LinkKind, Linkify};
 
 use crate::MarkdownIt;
-use crate::common::extset::RootExtSet;
+#[cfg(feature = "sourcemap")]
 use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId, NodeRef, NodeValue, StructuralEvent, Text, TextSpecial};
 use crate::links::LinkFormatter;
@@ -212,6 +212,7 @@ fn linkify_text_node(
 
     let content = text.content.clone();
     let preceded_by_special = previous.is_some_and(|id| document.node(id).is::<TextSpecial>());
+    #[cfg(feature = "sourcemap")]
     let source_map = document.node(id).srcmap();
     let mut nodes = Vec::new();
     let mut end = 0;
@@ -240,6 +241,7 @@ fn linkify_text_node(
             let node = document.create_node(Text {
                 content: content[end..found.start()].to_owned(),
             });
+            #[cfg(feature = "sourcemap")]
             document.node_mut(node).set_srcmap(text_range_map(
                 source_map,
                 content.len(),
@@ -249,8 +251,15 @@ fn linkify_text_node(
             nodes.push(node);
         }
 
+        #[cfg(feature = "sourcemap")]
         let map = text_range_map(source_map, content.len(), found.start(), found.end());
-        let node = create_linkified(document, link, map);
+        let node = create_linkified(
+            document,
+            link,
+            #[cfg(feature = "sourcemap")]
+            map,
+        );
+        #[cfg(feature = "sourcemap")]
         document.node_mut(node).set_srcmap(map);
         nodes.push(node);
         end = found.end();
@@ -264,6 +273,7 @@ fn linkify_text_node(
         let node = document.create_node(Text {
             content: content[end..].to_owned(),
         });
+        #[cfg(feature = "sourcemap")]
         document.node_mut(node).set_srcmap(text_range_map(
             source_map,
             content.len(),
@@ -311,6 +321,7 @@ fn rebuild_linkified_children(
     debug_assert!(replacements.is_empty());
 }
 
+#[cfg(feature = "sourcemap")]
 fn text_range_map(
     map: Option<SourcePos>,
     text_len: usize,
@@ -324,10 +335,11 @@ fn text_range_map(
         .then(|| SourcePos::new(source_start + start, source_start + end))
 }
 
-type LinkifyState = Vec<LinkifyPosition>;
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LinkifyEnabled;
 
 #[derive(Debug, Clone, Copy)]
-struct LinkifyPosition {
+pub(crate) struct LinkifyPosition {
     start: usize,
     end: usize,
     email: bool,
@@ -340,17 +352,12 @@ impl CoreRule for LinkifyPrescan {
     const NAMES: &'static [&'static str] = &["linkify_prescan"];
 
     fn run(&self, state: &mut CoreState<'_>) {
-        Self::prepare(state.source, state.md, state.root_ext_mut());
+        // Gate the inline scanners; candidate positions are cached per inline source.
+        state.root_ext_mut().insert(LinkifyEnabled);
     }
 }
 
-impl LinkifyPrescan {
-    fn prepare(source: &str, md: &MarkdownIt, root_ext: &mut RootExtSet) {
-        root_ext.insert(scan_positions(source, md));
-    }
-}
-
-fn scan_positions(source: &str, md: &MarkdownIt) -> LinkifyState {
+fn scan_positions(source: &str, md: &MarkdownIt) -> Vec<LinkifyPosition> {
     let fuzzy_links = md
         .ext
         .get::<LinkifyOptions>()
@@ -580,13 +587,20 @@ fn prepare_link(
     Some(PreparedLink { href, content })
 }
 
-fn create_linkified(document: &mut Document, link: PreparedLink, map: Option<SourcePos>) -> NodeId {
+fn create_linkified(
+    document: &mut Document,
+    link: PreparedLink,
+    #[cfg(feature = "sourcemap")] map: Option<SourcePos>,
+) -> NodeId {
     let inner = document.create_node(TextSpecial {
         content: link.content.clone(),
         markup: link.content,
         info: "autolink",
     });
+
+    #[cfg(feature = "sourcemap")]
     document.node_mut(inner).set_srcmap(map);
+
     let node = document.create_node(Linkified { url: link.href });
     document.push_child(node, inner);
     node
@@ -596,19 +610,33 @@ fn run_candidate(
     state: &mut InlineState<'_>,
     mode: LinkifyMode,
 ) -> Option<(Option<NodeId>, usize)> {
-    let (source_start, _) = state.get_map(state.pos, state.pos_max)?.get_byte_offsets();
-    let candidate = scan_candidate(
-        CandidateInput {
-            src: &state.src,
-            pos: state.pos,
-            pos_max: state.pos_max,
-            trailing: state.trailing_text(),
-            link_level: state.link_level,
-            source_start,
-            positions: state.root_ext?.get::<LinkifyState>()?,
-        },
-        mode,
-    )?;
+    // Require the LinkifyPrescan gate; candidate positions are local to this inline source.
+    state.root_ext?.get::<LinkifyEnabled>()?;
+
+    let candidate = {
+        let mut cache = state.scan_limit_cache.borrow_mut();
+        // Scheme matching scans from the cursor; other modes share a cached prescan.
+        let positions = if matches!(mode, LinkifyMode::Scheme) {
+            &[][..]
+        } else {
+            cache
+                .linkify_positions
+                .get_or_insert_with(|| scan_positions(&state.src, state.md))
+                .as_slice()
+        };
+        scan_candidate(
+            CandidateInput {
+                src: &state.src,
+                pos: state.pos,
+                pos_max: state.pos_max,
+                trailing: state.trailing_text(),
+                link_level: state.link_level,
+                source_start: state.pos,
+                positions,
+            },
+            mode,
+        )
+    }?;
 
     if matches!(mode, LinkifyMode::Email) {
         // JS only links emails in its core postpass. At `@` we cannot yet
@@ -633,8 +661,14 @@ fn run_candidate(
         &state.src[candidate.start..candidate.end],
     )?;
 
+    #[cfg(feature = "sourcemap")]
     let srcmap = state.get_map(candidate.start, candidate.end);
-    let node = create_linkified(state.document, link, srcmap);
+    let node = create_linkified(
+        state.document,
+        link,
+        #[cfg(feature = "sourcemap")]
+        srcmap,
+    );
     state.pop_trailing_text(candidate.rewind);
     state.pos -= candidate.rewind;
 

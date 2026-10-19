@@ -65,6 +65,7 @@ fn run(input: &str, output: &str) {
     markdown_it::plugins::html::add(md);
     markdown_it::plugins::extra::beautify_links::add(md);
     let node = md.parse(&(input.to_owned() + "\n"));
+    #[cfg(feature = "sourcemap")]
     for event in node.events(node.root()) {
         assert!(event.node().srcmap().is_some());
     }

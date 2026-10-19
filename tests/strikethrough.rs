@@ -61,13 +61,16 @@ fn partially_matched_strikethrough_keeps_source_offsets() {
                 .then_some(node)
         })
         .unwrap();
+    #[cfg(feature = "sourcemap")]
     let content_start = source.find(';').unwrap();
+    #[cfg(feature = "sourcemap")]
     assert_eq!(
         strike.srcmap().unwrap().get_byte_offsets(),
         (content_start - 2, content_start + 3)
     );
     let text = document.node(strike.children()[0]);
     assert_eq!(text.cast::<markdown_it::Text>().unwrap().content, ";");
+    #[cfg(feature = "sourcemap")]
     assert_eq!(
         text.srcmap().unwrap().get_byte_offsets(),
         (content_start, content_start + 1)

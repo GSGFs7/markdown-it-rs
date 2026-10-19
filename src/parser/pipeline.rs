@@ -10,7 +10,7 @@ use crate::parser::inline::{InlineState, RuleSet};
 #[derive(Debug)]
 pub(super) struct PendingInline {
     pub(super) content: String,
-    pub(super) mapping: Vec<(usize, usize)>,
+    pub(super) mapping: crate::parser::InlineMapping,
 }
 
 impl NodeValue for PendingInline {}

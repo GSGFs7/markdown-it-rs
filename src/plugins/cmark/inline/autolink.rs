@@ -52,7 +52,9 @@ pub struct AutolinkScanner;
 
 struct AutolinkMatch {
     consumed: usize,
+    #[cfg(feature = "sourcemap")]
     label_start: usize,
+    #[cfg(feature = "sourcemap")]
     label_end: usize,
     destination: String,
     label: String,
@@ -78,6 +80,7 @@ impl InlineRule for AutolinkScanner {
             state.markdown_it().link_formatter.as_ref(),
         )?;
 
+        #[cfg(feature = "sourcemap")]
         let start = state.pos;
 
         let child = state.document.create_node(TextSpecial {
@@ -85,8 +88,12 @@ impl InlineRule for AutolinkScanner {
             markup: matched.label,
             info: "autolink",
         });
-        let srcmap = state.get_map(start + matched.label_start, start + matched.label_end);
-        state.document.node_mut(child).set_srcmap(srcmap);
+
+        #[cfg(feature = "sourcemap")]
+        {
+            let srcmap = state.get_map(start + matched.label_start, start + matched.label_end);
+            state.document.node_mut(child).set_srcmap(srcmap);
+        }
 
         let container = state.document.create_node(Autolink {
             url: matched.destination,
@@ -133,7 +140,9 @@ fn scan_autolink(src: &str, formatter: &dyn LinkFormatter) -> Option<AutolinkMat
 
     Some(AutolinkMatch {
         consumed: label_end + 1,
+        #[cfg(feature = "sourcemap")]
         label_start: 1,
+        #[cfg(feature = "sourcemap")]
         label_end,
         destination,
         label: formatter.normalize_link_text(raw),
@@ -245,6 +254,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "sourcemap")]
     fn nul_autolink_source_maps_use_normalized_byte_offsets() {
         let md = parser();
         let source = "雪 <ab:é\0x> 尾";
@@ -268,6 +278,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "sourcemap")]
     fn direct_autolink_source_maps() {
         use crate::StructuralEvent;
         use crate::document::TextSpecial;

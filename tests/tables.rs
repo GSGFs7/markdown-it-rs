@@ -13,6 +13,7 @@ fn run(input: &str, output: &str) {
     let node = md.parse(&source);
 
     // make sure we have sourcemaps for everything
+    #[cfg(feature = "sourcemap")]
     for event in node.events(node.root()) {
         assert!(event.node().srcmap().is_some());
     }
@@ -48,31 +49,35 @@ fn escaped_pipe_does_not_escape_the_next_cell_separator() {
         "<table>\n<thead>\n<tr>\n<th style=\"text-align:left\">a</th>\n<th style=\"text-align:right\">b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align:left\">`x|</td>\n<td style=\"text-align:right\">`x|y]aac😀!z**</td>\n</tr>\n</tbody>\n</table>",
     );
     let md = markdown_it::MarkdownIt::with_preset(markdown_it::Preset::MarkdownItDefault);
+    #[cfg(feature = "sourcemap")]
     let document = md.parse(source);
-    let spans: Vec<_> = document
-        .events(document.root())
-        .filter_map(|event| {
-            let node = event.node();
-            let text = node.cast::<markdown_it::Text>()?;
-            text.content.starts_with("`x").then(|| {
-                (
-                    text.content.as_str(),
-                    node.srcmap().unwrap().get_byte_offsets(),
-                )
+    #[cfg(feature = "sourcemap")]
+    {
+        let spans: Vec<_> = document
+            .events(document.root())
+            .filter_map(|event| {
+                let node = event.node();
+                let text = node.cast::<markdown_it::Text>()?;
+                text.content.starts_with("`x").then(|| {
+                    (
+                        text.content.as_str(),
+                        node.srcmap().unwrap().get_byte_offsets(),
+                    )
+                })
             })
-        })
-        .collect();
-    let row_start = source.rfind('\n').unwrap() + 1;
-    assert_eq!(
-        spans,
-        vec![
-            ("`x|", (row_start + 2, row_start + 6)),
-            (
-                "`x|y]aac😀!z**",
-                (row_start + 8, source.rfind(" |").unwrap())
-            ),
-        ]
-    );
+            .collect();
+        let row_start = source.rfind('\n').unwrap() + 1;
+        assert_eq!(
+            spans,
+            vec![
+                ("`x|", (row_start + 2, row_start + 6)),
+                (
+                    "`x|y]aac😀!z**",
+                    (row_start + 8, source.rfind(" |").unwrap())
+                ),
+            ]
+        );
+    }
     for (row, left, right) in [
         (r"| a\|| b |", "a|", "b"),
         (r"| a\|\||b|", "a||", "b"),

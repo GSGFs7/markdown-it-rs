@@ -100,8 +100,11 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
         let text = state.document.create_node(Text {
             content: matched.content,
         });
-        let srcmap = state.get_map(matched.content_start, matched.content_end);
-        state.document.node_mut(text).set_srcmap(srcmap);
+        #[cfg(feature = "sourcemap")]
+        {
+            let srcmap = state.get_map(matched.content_start, matched.content_end);
+            state.document.node_mut(text).set_srcmap(srcmap);
+        }
         state.document.push_child(node, text);
         Some((Some(node), matched.consumed))
     }
@@ -117,7 +120,9 @@ struct CodePairBounds {
 struct CodePairMatch {
     marker_len: usize,
     consumed: usize,
+    #[cfg(feature = "sourcemap")]
     content_start: usize,
+    #[cfg(feature = "sourcemap")]
     content_end: usize,
     content: String,
 }
@@ -131,19 +136,26 @@ fn scan_code_pair<const MARKER: char>(
 ) -> Option<CodePairMatch> {
     let bounds = scan_code_pair_bounds::<MARKER>(src, start, end, follows_marker, inline_ext)?;
 
+    #[cfg(feature = "sourcemap")]
     let mut mapped_start = bounds.content_start;
+    #[cfg(feature = "sourcemap")]
     let mut mapped_end = bounds.content_end;
     let mut content = src[bounds.content_start..bounds.content_end].replace('\n', " ");
     if content.starts_with(' ') && content.ends_with(' ') && content.chars().any(|ch| ch != ' ') {
         content = content[1..content.len() - 1].to_owned();
-        mapped_start += 1;
-        mapped_end -= 1;
+        #[cfg(feature = "sourcemap")]
+        {
+            mapped_start += 1;
+            mapped_end -= 1;
+        }
     }
 
     Some(CodePairMatch {
         marker_len: bounds.marker_len,
         consumed: bounds.consumed,
+        #[cfg(feature = "sourcemap")]
         content_start: mapped_start,
+        #[cfg(feature = "sourcemap")]
         content_end: mapped_end,
         content,
     })
@@ -222,7 +234,9 @@ mod tests {
 
         assert_eq!(matched.marker_len, 1);
         assert_eq!(matched.consumed, source.len());
+        #[cfg(feature = "sourcemap")]
         assert_eq!(matched.content_start, '雪'.len_utf8());
+        #[cfg(feature = "sourcemap")]
         assert_eq!(matched.content_end, source.len() - '雪'.len_utf8());
     }
 
@@ -277,7 +291,9 @@ mod adapter_tests {
         let matched = scan_code_pair::<'`'>(source, 0, source.len(), false, &mut scratch).unwrap();
 
         assert_eq!(matched.content, "hi");
+        #[cfg(feature = "sourcemap")]
         assert_eq!(matched.content_start, 2);
+        #[cfg(feature = "sourcemap")]
         assert_eq!(matched.content_end, 4);
         assert_eq!(matched.consumed, source.len());
     }
@@ -289,7 +305,9 @@ mod adapter_tests {
         let matched = scan_code_pair::<'`'>(source, 0, source.len(), false, &mut scratch).unwrap();
 
         assert_eq!(matched.content, "a b");
+        #[cfg(feature = "sourcemap")]
         assert_eq!(matched.content_start, 1);
+        #[cfg(feature = "sourcemap")]
         assert_eq!(matched.content_end, 4);
     }
 }

@@ -636,8 +636,11 @@ impl InlineRule for FootnoteInlineScanner {
         let paragraph = state
             .document
             .create_node(crate::plugins::cmark::block::paragraph::Paragraph);
-        let srcmap = state.get_map(state.pos + content_start, state.pos + content_end);
-        state.document.node_mut(paragraph).set_srcmap(srcmap);
+        #[cfg(feature = "sourcemap")]
+        {
+            let srcmap = state.get_map(state.pos + content_start, state.pos + content_end);
+            state.document.node_mut(paragraph).set_srcmap(srcmap);
+        }
         state.document.attach_children(paragraph, children);
 
         let definition = state

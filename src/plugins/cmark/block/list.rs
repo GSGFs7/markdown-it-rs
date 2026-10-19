@@ -425,10 +425,13 @@ impl BlockRule for ListScanner {
             state.line_offsets[next_line] = old_lineoffset;
             state.tight = old_tight;
 
-            let end_line = state.line;
             let node = std::mem::replace(&mut state.node, old_node);
-            let srcmap = state.get_map(next_line, end_line - 1);
-            state.document.node_mut(node).set_srcmap(srcmap);
+            #[cfg(feature = "sourcemap")]
+            {
+                let end_line = state.line;
+                let srcmap = state.get_map(next_line, end_line - 1);
+                state.document.node_mut(node).set_srcmap(srcmap);
+            }
             state.document.push_child(state.node, node);
             next_line = state.line;
 

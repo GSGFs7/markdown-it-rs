@@ -261,6 +261,10 @@ fn assert_document_valid_with_config(
         .zip(snapshot_outputs(md, &mut document))
         .zip(hashes)
     {
+        #[cfg(not(feature = "sourcemap"))]
+        if format == "debug" {
+            continue;
+        }
         assert_eq!(
             fingerprint(&actual),
             expected_hash,
@@ -309,6 +313,7 @@ fn direct_text_fallback_matches_snapshots() {
 
 #[test]
 fn consume_only_block_rule_preserves_surrounding_nodes_and_source_maps() {
+    #[cfg(feature = "sourcemap")]
     use markdown_it::common::sourcemap::SourcePos;
     use markdown_it::parser::block::BlockRule;
     use markdown_it::{BlockState, NodeId};
@@ -340,10 +345,12 @@ fn consume_only_block_rule_preserves_surrounding_nodes_and_source_maps() {
     let children = document.node(document.root()).children();
     assert_eq!(children.len(), 2);
     assert_eq!(document.len(), 5);
+    #[cfg(feature = "sourcemap")]
     assert_eq!(
         document.node(children[0]).srcmap(),
         Some(SourcePos::new(0, 5))
     );
+    #[cfg(feature = "sourcemap")]
     assert_eq!(
         document.node(children[1]).srcmap(),
         Some(SourcePos::new(9, 13))
@@ -628,25 +635,28 @@ fn direct_code_spans_preserve_output_structure_and_source_maps() {
         assert_document_valid(&md, source);
     }
 
-    let document = md.parse("foo ```bar``` baz");
-    let mut spans = document.events(document.root()).filter_map(|event| {
-        if matches!(event, StructuralEvent::Exit(_)) {
-            return None;
-        }
-        let node = event.node();
-        if node.is::<markdown_it::plugins::cmark::inline::backticks::CodeInline>()
-            || node.is::<markdown_it::Text>()
-        {
-            Some((node.name(), node.srcmap().unwrap().get_byte_offsets()))
-        } else {
-            None
-        }
-    });
-    assert_eq!(spans.next().unwrap().1, (0, 4));
-    assert_eq!(spans.next().unwrap().1, (4, 13));
-    assert_eq!(spans.next().unwrap().1, (7, 10));
-    assert_eq!(spans.next().unwrap().1, (13, 17));
-    assert!(spans.next().is_none());
+    #[cfg(feature = "sourcemap")]
+    {
+        let document = md.parse("foo ```bar``` baz");
+        let mut spans = document.events(document.root()).filter_map(|event| {
+            if matches!(event, StructuralEvent::Exit(_)) {
+                return None;
+            }
+            let node = event.node();
+            if node.is::<markdown_it::plugins::cmark::inline::backticks::CodeInline>()
+                || node.is::<markdown_it::Text>()
+            {
+                Some((node.name(), node.srcmap().unwrap().get_byte_offsets()))
+            } else {
+                None
+            }
+        });
+        assert_eq!(spans.next().unwrap().1, (0, 4));
+        assert_eq!(spans.next().unwrap().1, (4, 13));
+        assert_eq!(spans.next().unwrap().1, (7, 10));
+        assert_eq!(spans.next().unwrap().1, (13, 17));
+        assert!(spans.next().is_none());
+    }
 }
 
 #[test]
@@ -657,6 +667,7 @@ fn direct_zero_nesting_matches_expected_output() {
 }
 
 #[test]
+#[cfg(feature = "sourcemap")]
 fn trailing_space_removal_maps_inline_offsets_once() {
     use markdown_it::Text;
     let mut md = MarkdownIt::empty();
@@ -805,6 +816,7 @@ fn direct_emphasis_uses_cjk_delimiter_override() {
 }
 
 #[test]
+#[cfg(feature = "sourcemap")]
 fn direct_nested_emphasis_preserves_source_maps() {
     use markdown_it::Text;
     use markdown_it::plugins::cmark::inline::emphasis::{Em, Strong};
@@ -1577,6 +1589,7 @@ fn direct_linkify_matches_snapshots() {
             ] {
                 let document = assert_document_structure(&md, source);
                 assert_eq!(md.render_html(&document), expected);
+                #[cfg(feature = "sourcemap")]
                 for event in document.events(document.root()) {
                     let (start, end) = event.node().srcmap().unwrap().get_byte_offsets();
                     assert!(source.get(start..end).is_some());
@@ -1602,31 +1615,36 @@ fn direct_linkify_matches_snapshots() {
 #[cfg(feature = "linkify")]
 #[test]
 fn direct_linkify_configuration_and_source_maps() {
-    use markdown_it::plugins::extra::linkify::{self, Linkified, LinkifyOptions, LinkifyPrescan};
+    #[cfg(feature = "sourcemap")]
+    use markdown_it::plugins::extra::linkify::Linkified;
+    use markdown_it::plugins::extra::linkify::{self, LinkifyOptions, LinkifyPrescan};
     let mut md = MarkdownIt::new();
     linkify::add_with_options(&mut md, LinkifyOptions { fuzzy_links: true });
     let source = "雪 https://example.com 后 a@b.co www.example.org";
     assert_document_valid_with_config(&md, source, "prescan=initial");
     let direct = md.parse(source);
-    let ranges: Vec<_> = direct
-        .events(direct.root())
-        .filter_map(|event| {
-            if matches!(event, StructuralEvent::Exit(_)) {
-                return None;
-            }
-            let node = event.node();
-            node.is::<Linkified>()
-                .then(|| node.srcmap().unwrap().get_byte_offsets())
-        })
-        .collect();
-    assert_eq!(ranges.len(), 3);
-    assert_eq!(
-        ranges
-            .iter()
-            .map(|&(start, end)| &source[start..end])
-            .collect::<Vec<_>>(),
-        vec!["https://example.com", "a@b.co", "www.example.org"]
-    );
+    #[cfg(feature = "sourcemap")]
+    {
+        let ranges: Vec<_> = direct
+            .events(direct.root())
+            .filter_map(|event| {
+                if matches!(event, StructuralEvent::Exit(_)) {
+                    return None;
+                }
+                let node = event.node();
+                node.is::<Linkified>()
+                    .then(|| node.srcmap().unwrap().get_byte_offsets())
+            })
+            .collect();
+        assert_eq!(ranges.len(), 3);
+        assert_eq!(
+            ranges
+                .iter()
+                .map(|&(start, end)| &source[start..end])
+                .collect::<Vec<_>>(),
+            vec!["https://example.com", "a@b.co", "www.example.org"]
+        );
+    }
     assert_eq!(md.render_as(&direct, "text"), format!("{source}\n"));
     for limit in [0, 1, 2] {
         md.max_nesting = limit;
@@ -1834,6 +1852,7 @@ fn direct_directives_custom_renderers_match_expected_output() {
             node.cast::<directives::TextDirective>().unwrap().attrs,
             attrs
         );
+        #[cfg(feature = "sourcemap")]
         assert!(node.srcmap().is_some());
         assert!(!node.ext().is_empty());
         assert_eq!(node.children().len(), 0);
@@ -1869,6 +1888,7 @@ fn direct_directives_custom_renderers_match_expected_output() {
         assert_eq!(name, "callout");
         assert!(node.is::<directives::LeafDirective>());
         assert_eq!(node.children().len(), 0);
+        #[cfg(feature = "sourcemap")]
         assert!(node.srcmap().is_some());
         fmt.cr();
         fmt.open("aside", node.attrs());
@@ -1888,6 +1908,7 @@ fn direct_directives_custom_renderers_match_expected_output() {
         assert_eq!(kind, DirectiveKind::Container);
         assert_eq!(name, "panel");
         assert!(node.is::<directives::ContainerDirective>());
+        #[cfg(feature = "sourcemap")]
         assert!(node.srcmap().is_some());
         assert!(!node.ext().is_empty());
         assert!(node.children().len() > 0);

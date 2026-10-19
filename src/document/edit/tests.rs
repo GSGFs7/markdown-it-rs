@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(feature = "sourcemap")]
+use crate::common::sourcemap::SourcePos;
 use crate::document::Root;
 use crate::plugins::cmark::block::paragraph::Paragraph;
 
@@ -34,7 +36,10 @@ fn payload_replacement_preserves_identity_children_and_metadata() {
     struct Marker(u8);
     let mut root = NodeDraft::new(Root::new("abc".to_owned()));
     let mut paragraph = NodeDraft::new(Paragraph);
-    paragraph.data.srcmap = Some(SourcePos::new(0, 3));
+    #[cfg(feature = "sourcemap")]
+    {
+        paragraph.data.srcmap = Some(SourcePos::new(0, 3));
+    }
     paragraph.data.attrs.push(("id".into(), "keep".into()));
     paragraph.data.ext.insert(Marker(42));
     paragraph.push_child(NodeDraft::new(Text {
@@ -58,6 +63,7 @@ fn payload_replacement_preserves_identity_children_and_metadata() {
     assert_eq!(document.node(paragraph).parent(), Some(document.root()));
     assert_eq!(document.children(paragraph), &[child]);
     assert_eq!(document.node(child).parent(), Some(paragraph));
+    #[cfg(feature = "sourcemap")]
     assert_eq!(
         document.node(paragraph).srcmap(),
         Some(SourcePos::new(0, 3))
@@ -183,6 +189,7 @@ fn text_and_attribute_edits_commit_together() {
 }
 
 #[test]
+#[cfg(feature = "sourcemap")]
 fn text_attribute_and_source_map_edits_commit_together() {
     let mut document = document(&["abc"]);
     let text = document.children(document.root())[0];
@@ -330,6 +337,7 @@ fn inserts_siblings_in_stable_call_order() {
     assert_eq!(children[3], target);
     for &inserted in [&children[1], &children[2], &children[4], &children[5]] {
         assert_eq!(document.parent(inserted), Some(root));
+        #[cfg(feature = "sourcemap")]
         assert!(document.node(inserted).srcmap().is_none());
     }
 }
@@ -535,6 +543,7 @@ fn wraps_an_inclusive_sibling_range_without_changing_node_ids() {
     let wrapper = children[1];
     let wrapper_node = document.node(wrapper);
     assert!(wrapper_node.is::<Paragraph>());
+    #[cfg(feature = "sourcemap")]
     assert!(wrapper_node.srcmap().is_none());
     assert_eq!(
         wrapper_node.attrs(),
@@ -788,6 +797,7 @@ mod validation_tests {
     }
 
     #[test]
+    #[cfg(feature = "sourcemap")]
     fn rejects_conflicting_source_map_edits() {
         let document = document(&["abc"]);
         let text = document.children(document.root())[0];
@@ -804,6 +814,7 @@ mod validation_tests {
     }
 
     #[test]
+    #[cfg(feature = "sourcemap")]
     fn rejects_invalid_source_maps() {
         let document = document(&["雪"]);
         let text = document.children(document.root())[0];
@@ -928,17 +939,20 @@ mod validation_tests {
             },
         );
 
-        let mut source_map_conflict = EditBatch::new();
-        source_map_conflict.remove_node(branch);
-        source_map_conflict.set_source_map(text, None);
-        assert_invalid(
-            source_map_conflict,
-            &document,
-            ValidationError::EditTargetsRemovedNode {
-                removed: branch,
-                edited: text,
-            },
-        );
+        #[cfg(feature = "sourcemap")]
+        {
+            let mut source_map_conflict = EditBatch::new();
+            source_map_conflict.remove_node(branch);
+            source_map_conflict.set_source_map(text, None);
+            assert_invalid(
+                source_map_conflict,
+                &document,
+                ValidationError::EditTargetsRemovedNode {
+                    removed: branch,
+                    edited: text,
+                },
+            );
+        }
     }
 
     #[test]
@@ -1095,17 +1109,20 @@ mod validation_tests {
             },
         );
 
-        let mut source_map_conflict = EditBatch::new();
-        source_map_conflict.replace_node(branch, text_draft("replacement"));
-        source_map_conflict.set_source_map(text, None);
-        assert_invalid(
-            source_map_conflict,
-            &document,
-            ValidationError::EditTargetsReplacedNode {
-                replaced: branch,
-                edited: text,
-            },
-        );
+        #[cfg(feature = "sourcemap")]
+        {
+            let mut source_map_conflict = EditBatch::new();
+            source_map_conflict.replace_node(branch, text_draft("replacement"));
+            source_map_conflict.set_source_map(text, None);
+            assert_invalid(
+                source_map_conflict,
+                &document,
+                ValidationError::EditTargetsReplacedNode {
+                    replaced: branch,
+                    edited: text,
+                },
+            );
+        }
 
         let mut insertion_conflict = EditBatch::new();
         insertion_conflict.replace_node(branch, text_draft("replacement"));
@@ -1326,6 +1343,7 @@ mod validation_tests {
             let mut batch = EditBatch::new();
             batch.replace_text(children[0], 0..1, "A");
             batch.set_attribute(root, "class", "changed");
+            #[cfg(feature = "sourcemap")]
             batch.set_source_map(children[0], Some(SourcePos::new(0, 3)));
             batch.replace_value(
                 children[1],

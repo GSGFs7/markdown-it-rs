@@ -196,11 +196,13 @@ fn block_renderers_preserve_transform_attributes() {
 
     let mut parsed = MarkdownIt::empty();
     crate::plugins::cmark::add(&mut parsed);
+    #[cfg(feature = "sourcemap")]
     crate::plugins::sourcepos::add(&mut parsed);
     let expected = parsed.render(source);
 
     let mut direct = MarkdownIt::empty();
     crate::plugins::cmark::add(&mut direct);
+    #[cfg(feature = "sourcemap")]
     crate::plugins::sourcepos::add(&mut direct);
     let document = direct.parse(source);
 
@@ -246,11 +248,13 @@ fn inline_renderers_preserve_transform_attributes() {
 
     let mut parsed = MarkdownIt::empty();
     crate::plugins::cmark::add(&mut parsed);
+    #[cfg(feature = "sourcemap")]
     crate::plugins::sourcepos::add(&mut parsed);
     let expected = parsed.render(source);
 
     let mut direct = MarkdownIt::empty();
     crate::plugins::cmark::add(&mut direct);
+    #[cfg(feature = "sourcemap")]
     crate::plugins::sourcepos::add(&mut direct);
     let document = direct.parse(source);
 

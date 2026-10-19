@@ -23,6 +23,7 @@ impl<'a> InlineState<'a> {
             pos: start,
             pos_max: end,
             md,
+            #[cfg(feature = "sourcemap")]
             mapping: Cow::Borrowed(&[(0, 0)]),
             depth,
             inline_ext: InlineRootExtSet::new(),
@@ -93,6 +94,7 @@ fn parent_state<'a>(
         pos: 3,
         pos_max: 14,
         md,
+        #[cfg(feature = "sourcemap")]
         mapping: Cow::Owned(vec![(0, 10), (9, 30)]),
         depth: 0,
         inline_ext,
@@ -121,6 +123,7 @@ fn check_state<'a>(
         pos: 0,
         pos_max: source.len(),
         md,
+        #[cfg(feature = "sourcemap")]
         mapping: Cow::Owned(vec![(0, 0)]),
         depth: 0,
         inline_ext: InlineRootExtSet::new(),
@@ -140,6 +143,7 @@ struct CheckParentSnapshot {
     cursor: (usize, usize, u32, i32),
     pending_text: Option<(usize, usize)>,
     source: String,
+    #[cfg(feature = "sourcemap")]
     mapping: Vec<(usize, usize)>,
     inline_ext: String,
     root_ext: String,
@@ -151,6 +155,7 @@ fn check_parent_snapshot(state: &InlineState<'_>) -> CheckParentSnapshot {
         cursor: (state.pos, state.pos_max, state.depth, state.link_level),
         pending_text: state.pending_text,
         source: state.src.to_string(),
+        #[cfg(feature = "sourcemap")]
         mapping: state.mapping.to_vec(),
         inline_ext: format!("{:?}", state.inline_ext),
         root_ext: format!("{:?}", state.root_ext),
@@ -176,6 +181,7 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
         pos: 7,
         pos_max: 7,
         md: &md,
+        #[cfg(feature = "sourcemap")]
         mapping: Cow::Owned(vec![(0, 10)]),
         depth: 0,
         inline_ext: InlineRootExtSet::new(),
@@ -194,6 +200,7 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
     state.finish_nodes();
 
     assert_eq!(state.src, "前x雪尾");
+    #[cfg(feature = "sourcemap")]
     assert_eq!(state.mapping.as_ref(), &[(0, 10)]);
     assert_eq!((state.pos, state.pos_max, state.link_level), (7, 7, 1));
     assert_eq!(state.nodes.len(), 2);
@@ -206,6 +213,7 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
             .content,
         "雪"
     );
+    #[cfg(feature = "sourcemap")]
     assert_eq!(
         state.document.node(state.nodes[1]).srcmap(),
         Some(SourcePos::new(14, 17))
@@ -225,7 +233,7 @@ fn top_level_plain_text_still_skips_finalizers() {
     let nodes = InlineState::parse(
         &mut document,
         " plain ".to_owned(),
-        vec![(0, 0)],
+        test_mapping(&[(0, 0)]),
         &md,
         &ruleset,
         None,
@@ -235,6 +243,7 @@ fn top_level_plain_text_still_skips_finalizers() {
         document.node(nodes[0]).cast::<Text>().unwrap().content,
         "plain"
     );
+    #[cfg(feature = "sourcemap")]
     assert_eq!(document.node(nodes[0]).srcmap(), Some(SourcePos::new(1, 6)));
 }
 
@@ -268,7 +277,7 @@ fn text_only_rules_can_request_finalization_in_top_level_and_child_sessions() {
     let top = InlineState::parse(
         &mut document,
         " 雪plain ".to_owned(),
-        vec![(0, 10)],
+        test_mapping(&[(0, 10)]),
         &md,
         &ruleset,
         None,
@@ -278,6 +287,7 @@ fn text_only_rules_can_request_finalization_in_top_level_and_child_sessions() {
         document.node(top[0]).cast::<Text>().unwrap().content,
         "雪plain!"
     );
+    #[cfg(feature = "sourcemap")]
     assert_eq!(document.node(top[0]).srcmap(), Some(SourcePos::new(11, 19)));
 
     let mut parent = check_state(&mut document, &md, &ruleset, "[雪plain]");
@@ -293,6 +303,7 @@ fn text_only_rules_can_request_finalization_in_top_level_and_child_sessions() {
                 .content,
             "雪plain!"
         );
+        #[cfg(feature = "sourcemap")]
         assert_eq!(
             parent.document.node(child[0]).srcmap(),
             Some(SourcePos::new(1, 9))
@@ -327,6 +338,7 @@ fn child_session_does_not_inherit_parent_finalization_request() {
             .content,
         "plain"
     );
+    #[cfg(feature = "sourcemap")]
     assert_eq!(
         parent.document.node(child[0]).srcmap(),
         Some(SourcePos::new(1, 6))
@@ -355,11 +367,13 @@ fn subrange_preserves_parent_whitespace_and_multiline_mapping() {
             .content,
         " 雪\n次 "
     );
+    #[cfg(feature = "sourcemap")]
     assert_eq!(
         state.document.node(nodes[0]).srcmap(),
         Some(SourcePos::new(14, 34))
     );
     assert_eq!(state.src, "前{ 雪\n次 }尾");
+    #[cfg(feature = "sourcemap")]
     assert_eq!(state.mapping.as_ref(), &[(0, 10), (9, 30)]);
     assert_eq!(
         (state.pos, state.pos_max, state.depth, state.link_level),
@@ -493,7 +507,7 @@ fn normal_parse_does_not_call_check() {
     let nodes = InlineState::parse(
         &mut document,
         "x".to_owned(),
-        vec![(0, 0)],
+        test_mapping(&[(0, 0)]),
         &md,
         &ruleset,
         None,
@@ -533,7 +547,7 @@ fn run_dispatch_skips_non_matching_markers() {
         let nodes = InlineState::parse(
             &mut document,
             source.to_owned(),
-            vec![(0, 0)],
+            test_mapping(&[(0, 0)]),
             &md,
             &ruleset,
             None,
@@ -578,7 +592,7 @@ fn run_dispatch_matches_unicode_marker() {
     let nodes = InlineState::parse(
         &mut document,
         "雪x".to_owned(),
-        vec![(0, 0)],
+        test_mapping(&[(0, 0)]),
         &md,
         &ruleset,
         None,
@@ -593,7 +607,7 @@ fn run_dispatch_matches_unicode_marker() {
     let nodes = InlineState::parse(
         &mut document,
         "xx".to_owned(),
-        vec![(0, 0)],
+        test_mapping(&[(0, 0)]),
         &md,
         &ruleset,
         None,
@@ -640,7 +654,7 @@ fn run_dispatch_preserves_wildcard_order() {
     let nodes = InlineState::parse(
         &mut document,
         "xy".to_owned(),
-        vec![(0, 0)],
+        test_mapping(&[(0, 0)]),
         &md,
         &marker_first,
         None,
@@ -658,7 +672,7 @@ fn run_dispatch_preserves_wildcard_order() {
     let nodes = InlineState::parse(
         &mut document,
         "xy".to_owned(),
-        vec![(0, 0)],
+        test_mapping(&[(0, 0)]),
         &md,
         &wildcard_first,
         None,
@@ -960,6 +974,7 @@ fn check_matches_and_no_matches_keep_scratch_and_effects_private() {
     root_ext.insert(73u16);
     let mut state = parent_state(&mut document, &md, &ruleset);
     state.root_ext = Some(&root_ext);
+    #[cfg(feature = "sourcemap")]
     state
         .document
         .node_mut(state.nodes[0])
@@ -1763,6 +1778,7 @@ fn child_link_level_override_is_isolated() {
                 .content,
             level.to_string()
         );
+        #[cfg(feature = "sourcemap")]
         assert_eq!(
             state.document.node(children[0]).srcmap(),
             state.document.node(inherited[0]).srcmap()
@@ -1814,4 +1830,16 @@ fn child_link_level_override_keeps_range_and_depth_rules() {
         "{ 雪\n次 }"
     );
     assert_eq!(state.link_level, 2);
+}
+
+fn test_mapping(entries: &[(usize, usize)]) -> crate::parser::InlineMapping {
+    #[cfg(feature = "sourcemap")]
+    {
+        entries.to_vec()
+    }
+    #[cfg(not(feature = "sourcemap"))]
+    {
+        let _ = entries;
+        crate::parser::InlineMapping
+    }
 }

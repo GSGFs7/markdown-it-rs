@@ -3,7 +3,6 @@
 use super::{BlockState, build_line_offsets};
 use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
-use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, Text};
 
 pub(crate) fn parse_document(
@@ -32,10 +31,16 @@ fn parse_text_fallback(source: &str, document: &mut Document) {
         let mut content = source[line.first_nonspace..line.line_end].to_owned();
         content.push('\n');
         let text = document.create_node(Text { content });
-        let source_end = (line.line_end + 1).min(source.len());
-        document
-            .node_mut(text)
-            .set_srcmap(Some(SourcePos::new(line.first_nonspace, source_end)));
+        #[cfg(feature = "sourcemap")]
+        {
+            let source_end = (line.line_end + 1).min(source.len());
+            document
+                .node_mut(text)
+                .set_srcmap(Some(crate::common::sourcemap::SourcePos::new(
+                    line.first_nonspace,
+                    source_end,
+                )));
+        }
         document.push_child(document.root(), text);
     }
 }

@@ -2,6 +2,7 @@
 //!
 //! <https://github.github.com/gfm/#tables-extension->
 use crate::MarkdownIt;
+#[cfg(feature = "sourcemap")]
 use crate::common::sourcemap::SourcePos;
 use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, BlockState};
@@ -233,6 +234,7 @@ pub struct TableScanner;
 #[derive(Debug)]
 struct RowContent {
     str: String,
+    #[cfg(feature = "sourcemap")]
     srcmap: Vec<(usize, usize)>,
 }
 
@@ -249,6 +251,8 @@ impl TableScanner {
     fn scan_row(line: &str) -> Vec<RowContent> {
         let mut result = Vec::new();
         let mut str = String::new();
+        let mut segment_start = 0;
+        #[cfg(feature = "sourcemap")]
         let mut srcmap = vec![(0, 0)];
         let mut is_escaped = false;
         let mut is_leading = true;
@@ -256,21 +260,32 @@ impl TableScanner {
         for (pos, ch) in line.char_indices() {
             match ch {
                 ' ' | '\t' if is_leading => {
-                    srcmap[0].1 += 1;
+                    segment_start += 1;
+                    #[cfg(feature = "sourcemap")]
+                    {
+                        srcmap[0].1 += 1;
+                    }
                 }
                 '|' => {
                     is_leading = false;
                     if is_escaped {
-                        str.push_str(&line[srcmap.last().unwrap().1..pos - 1]);
+                        str.push_str(&line[segment_start..pos - 1]);
+                        segment_start = pos;
+                        #[cfg(feature = "sourcemap")]
                         srcmap.push((str.len(), pos));
                         is_escaped = false;
                     } else {
-                        str.push_str(&line[srcmap.last().unwrap().1..pos]);
+                        str.push_str(&line[segment_start..pos]);
                         result.push(RowContent {
                             str: std::mem::take(&mut str),
+                            #[cfg(feature = "sourcemap")]
                             srcmap: std::mem::take(&mut srcmap),
                         });
-                        srcmap = vec![(0, pos + 1)];
+                        segment_start = pos + 1;
+                        #[cfg(feature = "sourcemap")]
+                        {
+                            srcmap = vec![(0, pos + 1)];
+                        }
                         is_escaped = false;
                         is_leading = true;
                     }
@@ -286,8 +301,12 @@ impl TableScanner {
             }
         }
 
-        str.push_str(&line[srcmap.last().unwrap().1..]);
-        result.push(RowContent { str, srcmap });
+        str.push_str(&line[segment_start..]);
+        result.push(RowContent {
+            str,
+            #[cfg(feature = "sourcemap")]
+            srcmap,
+        });
 
         // trim trailing spaces
         for content in result.iter_mut() {
@@ -297,14 +316,14 @@ impl TableScanner {
         }
 
         // remove last cell if empty
-        if let Some(RowContent { str, srcmap: _ }) = result.last() {
+        if let Some(RowContent { str, .. }) = result.last() {
             if str.is_empty() {
                 result.pop();
             }
         }
 
         // remove first cell if empty
-        if let Some(RowContent { str, srcmap: _ }) = result.first() {
+        if let Some(RowContent { str, .. }) = result.first() {
             if str.is_empty() {
                 result.remove(0);
             }
@@ -334,7 +353,7 @@ impl TableScanner {
 
         let mut result = Vec::new();
 
-        for RowContent { str, srcmap: _ } in Self::scan_row(line) {
+        for RowContent { str, .. } in Self::scan_row(line) {
             let mut alignment: u8 = 0;
             let mut cell = str.as_str();
 
@@ -435,26 +454,30 @@ impl BlockRule for TableScanner {
         let table_node = state.document.create_node(Table { alignments });
 
         let thead_node = state.document.create_node(TableHead);
-        let srcmap = state.get_map(state.line, state.line + 1);
-        state.document.node_mut(thead_node).set_srcmap(srcmap);
+        #[cfg(feature = "sourcemap")]
+        {
+            let srcmap = state.get_map(state.line, state.line + 1);
+            state.document.node_mut(thead_node).set_srcmap(srcmap);
+        }
 
         let row_node = state.document.create_node(TableRow);
-        let srcmap = state.get_map(state.line, state.line);
-        state.document.node_mut(row_node).set_srcmap(srcmap);
+        #[cfg(feature = "sourcemap")]
+        {
+            let srcmap = state.get_map(state.line, state.line);
+            state.document.node_mut(row_node).set_srcmap(srcmap);
+        }
 
-        fn add_cell(
-            state: &mut BlockState<'_>,
-            row_node: NodeId,
-            cell: String,
-            srcmap: Vec<(usize, usize)>,
-        ) {
+        fn add_cell(state: &mut BlockState<'_>, row_node: NodeId, content: RowContent) {
+            let RowContent {
+                str: cell,
+                #[cfg(feature = "sourcemap")]
+                srcmap,
+            } = content;
             let cell_node = state.document.create_node(TableCell);
-            let (start, _) = state
-                .document
-                .node(row_node)
-                .srcmap()
-                .unwrap()
-                .get_byte_offsets();
+
+            #[cfg(feature = "sourcemap")]
+            let start = state.line_offsets[state.line].first_nonspace;
+            #[cfg(feature = "sourcemap")]
             state
                 .document
                 .node_mut(cell_node)
@@ -462,19 +485,24 @@ impl BlockRule for TableScanner {
                     start + srcmap.first().unwrap().1,
                     start + srcmap.last().unwrap().1 + cell.len() - srcmap.last().unwrap().0,
                 )));
+
             if !cell.is_empty() {
+                #[cfg(feature = "sourcemap")]
                 let mapping = srcmap
                     .into_iter()
-                    .map(|(dstpos, srcpos)| (dstpos, srcpos + start))
+                    .map(|(dst, src)| (dst, src + start))
                     .collect();
+                #[cfg(not(feature = "sourcemap"))]
+                let mapping = crate::parser::InlineMapping;
+
                 let pending = state.pending_inline(cell, mapping);
                 state.document.push_child(cell_node, pending);
             }
             state.document.push_child(row_node, cell_node);
         }
 
-        for RowContent { str: cell, srcmap } in header_row {
-            add_cell(state, row_node, cell, srcmap);
+        for content in header_row {
+            add_cell(state, row_node, content);
         }
 
         state.document.push_child(thead_node, row_node);
@@ -514,6 +542,7 @@ impl BlockRule for TableScanner {
             }
 
             let line = state.get_line(state.line);
+            #[cfg(feature = "sourcemap")]
             let line_len = line.len();
 
             let mut body_row = Self::scan_row(line);
@@ -528,17 +557,29 @@ impl BlockRule for TableScanner {
             autocompleted_cells = total_autocompleted_cells;
 
             let row_node = state.document.create_node(TableRow);
-            let srcmap = state.get_map(state.line, state.line);
-            state.document.node_mut(row_node).set_srcmap(srcmap);
+
+            #[cfg(feature = "sourcemap")]
+            {
+                let srcmap = state.get_map(state.line, state.line);
+                state.document.node_mut(row_node).set_srcmap(srcmap);
+            }
 
             let mut end_of_line = RowContent {
                 str: String::new(),
+                #[cfg(feature = "sourcemap")]
                 srcmap: vec![(0, line_len)],
             };
             for index in 0..table_cell_count {
-                let RowContent { str: cell, srcmap } =
-                    body_row.get_mut(index).unwrap_or(&mut end_of_line);
-                add_cell(state, row_node, cell.clone(), srcmap.clone());
+                let content = body_row.get_mut(index).unwrap_or(&mut end_of_line);
+                add_cell(
+                    state,
+                    row_node,
+                    RowContent {
+                        str: content.str.clone(),
+                        #[cfg(feature = "sourcemap")]
+                        srcmap: content.srcmap.clone(),
+                    },
+                );
             }
 
             state.document.push_child(state.node, row_node);
@@ -547,8 +588,12 @@ impl BlockRule for TableScanner {
 
         let tbody_node = std::mem::replace(&mut state.node, old_node);
         if !state.document.node(tbody_node).children().is_empty() {
-            let srcmap = state.get_map(start_line + 2, state.line - 1);
-            state.document.node_mut(tbody_node).set_srcmap(srcmap);
+            #[cfg(feature = "sourcemap")]
+            {
+                let srcmap = state.get_map(start_line + 2, state.line - 1);
+                state.document.node_mut(tbody_node).set_srcmap(srcmap);
+            }
+
             state.document.push_child(table_node, tbody_node);
         } else {
             state.document.discard_node(tbody_node);
@@ -654,6 +699,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "sourcemap")]
     fn should_trim_cell_content_srcmaps() {
         let row = TableScanner::scan_row("| foo | \tbar\t |");
         assert_eq!(row[0].str, "foo");
@@ -663,6 +709,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "sourcemap")]
     fn should_process_backslash_escapes_srcmaps() {
         let row = TableScanner::scan_row(r#"|  foo\\|bar\\\|baz\  |"#);
         assert_eq!(row[0].str, r#"foo\|bar\\|baz\"#);

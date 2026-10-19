@@ -79,6 +79,7 @@ struct BlockCheckSnapshot {
     child_count: usize,
     attrs: crate::HtmlAttributes,
     extension_count: usize,
+    #[cfg(feature = "sourcemap")]
     srcmap: Option<crate::common::sourcemap::SourcePos>,
 }
 
@@ -106,6 +107,7 @@ impl BlockCheckSnapshot {
             child_count: state.document.node(state.node).children().len(),
             attrs: state.document.node(state.node).attrs().clone(),
             extension_count: state.document.node(state.node).ext().len(),
+            #[cfg(feature = "sourcemap")]
             srcmap: state.document.node(state.node).srcmap(),
         }
     }

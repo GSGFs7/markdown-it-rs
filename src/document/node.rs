@@ -3,6 +3,7 @@ use std::any::TypeId;
 use super::NodeId;
 use super::data::NodeData;
 use crate::common::extset::NodeExtSet;
+#[cfg(feature = "sourcemap")]
 use crate::common::sourcemap::SourcePos;
 use crate::document::{HtmlAttributes, NodeEmpty, NodeValue};
 
@@ -31,10 +32,12 @@ impl Node {
         &self.children
     }
 
+    #[cfg(feature = "sourcemap")]
     pub fn srcmap(&self) -> Option<SourcePos> {
         self.data.srcmap
     }
 
+    #[cfg(feature = "sourcemap")]
     pub fn set_srcmap(&mut self, srcmap: Option<SourcePos>) {
         self.data.srcmap = srcmap;
     }
@@ -113,10 +116,12 @@ impl NodeDraft {
         self.children.push(child);
     }
 
+    #[cfg(feature = "sourcemap")]
     pub fn srcmap(&self) -> Option<SourcePos> {
         self.data.srcmap
     }
 
+    #[cfg(feature = "sourcemap")]
     pub fn set_srcmap(&mut self, srcmap: Option<SourcePos>) {
         self.data.srcmap = srcmap;
     }

@@ -9,6 +9,7 @@ use std::rc::Rc;
 use super::RuleSet;
 use crate::MarkdownIt;
 use crate::common::extset::{InlineRootExtSet, RootExtSet};
+#[cfg(feature = "sourcemap")]
 use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId, Text};
 
@@ -25,6 +26,9 @@ pub(crate) struct ScanLimitCache {
     truncated: HashSet<(usize, usize)>,
     skip_tokens: HashMap<(usize, usize, i32), (usize, bool)>,
     pub(crate) link_bounds: Option<super::helpers::full_link::LinkLabelBounds>,
+    /// Inline-local link candidates shared by child sessions over the same source.
+    #[cfg(feature = "linkify")]
+    pub(crate) linkify_positions: Option<Vec<crate::plugins::extra::linkify::LinkifyPosition>>,
 }
 
 impl ScanLimitCache {
@@ -53,6 +57,7 @@ pub struct InlineState<'a> {
 
     /// For each line, it holds offset of the start of the line in original
     /// markdown source and offset of the start of the line in `src`.
+    #[cfg(feature = "sourcemap")]
     mapping: Cow<'a, [(usize, usize)]>,
 
     /// Counter used to prevent recursion by image and link rules.
@@ -111,16 +116,19 @@ impl<'a> InlineState<'a> {
     pub(in crate::parser) fn parse(
         document: &'a mut Document,
         src: String,
-        mapping: Vec<(usize, usize)>,
+        mapping: crate::parser::InlineMapping,
         md: &'a MarkdownIt,
         ruleset: &'a RuleSet,
         root_ext: Option<&'a RootExtSet>,
     ) -> Vec<NodeId> {
+        #[cfg(not(feature = "sourcemap"))]
+        let _ = mapping;
         let mut state = Self {
             pos: 0,
             pos_max: src.len(),
             src: Cow::Owned(src),
             md,
+            #[cfg(feature = "sourcemap")]
             mapping: Cow::Owned(mapping),
             depth: 0,
             inline_ext: InlineRootExtSet::new(),
@@ -240,7 +248,9 @@ impl<'a> InlineState<'a> {
                 self.pos += len;
                 if let Some(node) = node {
                     self.flush_text();
+                    #[cfg(feature = "sourcemap")]
                     let srcmap = self.get_map(self.pos - len, self.pos);
+                    #[cfg(feature = "sourcemap")]
                     self.document.node_mut(node).set_srcmap(srcmap);
                     self.nodes.push(node);
                 }
@@ -369,6 +379,7 @@ impl<'a> InlineState<'a> {
             pos: start,
             pos_max: end,
             md: self.md,
+            #[cfg(feature = "sourcemap")]
             mapping: Cow::Borrowed(self.mapping.as_ref()),
             depth,
             inline_ext: InlineRootExtSet::new(),
@@ -411,6 +422,7 @@ impl<'a> InlineState<'a> {
     }
 
     /// Run finalizers for this session even if it only produced plain text.
+    #[cfg(any(feature = "linkify", test))]
     pub(crate) fn request_finalization(&mut self) {
         self.needs_finalization = true;
     }
@@ -422,7 +434,9 @@ impl<'a> InlineState<'a> {
         let text = self.document.create_node(Text {
             content: self.src[start..end].to_owned(),
         });
+        #[cfg(feature = "sourcemap")]
         let srcmap = self.get_map(start, end);
+        #[cfg(feature = "sourcemap")]
         self.document.node_mut(text).set_srcmap(srcmap);
         self.nodes.push(text);
     }
@@ -430,6 +444,7 @@ impl<'a> InlineState<'a> {
     fn finish(mut self) -> Vec<NodeId> {
         if self.nodes.is_empty() && !self.needs_finalization {
             if let Some((start, end)) = self.pending_text.take() {
+                #[cfg(feature = "sourcemap")]
                 let srcmap = self.get_map(start, end);
                 let mut content = self.src.into_owned();
                 content.truncate(end);
@@ -439,6 +454,7 @@ impl<'a> InlineState<'a> {
                 }
 
                 let text = self.document.create_node(Text { content });
+                #[cfg(feature = "sourcemap")]
                 self.document.node_mut(text).set_srcmap(srcmap);
                 self.nodes.push(text);
             }
@@ -460,6 +476,7 @@ impl<'a> InlineState<'a> {
         }
     }
 
+    #[cfg(feature = "sourcemap")]
     fn source_pos(&self, pos: usize) -> usize {
         let line = match self.mapping.binary_search_by(|entry| entry.0.cmp(&pos)) {
             Ok(index) => index,
@@ -468,6 +485,7 @@ impl<'a> InlineState<'a> {
         self.mapping[line].1 + (pos - self.mapping[line].0)
     }
 
+    #[cfg(feature = "sourcemap")]
     pub(crate) fn get_map(&self, start: usize, end: usize) -> Option<SourcePos> {
         Some(SourcePos::new(self.source_pos(start), self.source_pos(end)))
     }

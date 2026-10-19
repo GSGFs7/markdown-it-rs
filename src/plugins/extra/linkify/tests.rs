@@ -1,6 +1,7 @@
 use crate as markdown_it;
 
 #[test]
+#[cfg(feature = "sourcemap")]
 fn inline_and_postpass_links_preserve_source_ranges() {
     let mut md = crate::MarkdownIt::new();
     super::add(&mut md);
@@ -89,13 +90,13 @@ fn unmatched_html_anchor_retries_linkification() {
 }
 
 #[test]
-fn direct_prescan_persists_original_source_positions_without_scanners() {
+fn direct_prescan_marks_linkify_enabled_without_inline_scanners() {
     use super::{
         LinkifyEmailScanner,
+        LinkifyEnabled,
         LinkifyFuzzyScanner,
         LinkifyPrescan,
         LinkifyScanner,
-        LinkifyState,
     };
     use crate::document::Root;
     use crate::parser::block::builtin::BlockParserRule;
@@ -118,23 +119,9 @@ fn direct_prescan_persists_original_source_positions_without_scanners() {
             md.max_nesting = limit;
             for source in ["", "雪 https://example.com\r\na@b.co"] {
                 let document = md.parse(source);
-                let positions: Vec<_> = document
-                    .node(document.root())
-                    .cast::<Root>()
-                    .unwrap()
-                    .ext
-                    .get::<LinkifyState>()
-                    .unwrap()
-                    .iter()
-                    .map(|position| (position.start, position.end, position.email))
-                    .collect();
-                let expected = if source.is_empty() {
-                    vec![]
-                } else {
-                    vec![(4, 23, false), (25, 31, true)]
-                };
-                assert_eq!(
-                    positions, expected,
+                let root = document.node(document.root()).cast::<Root>().unwrap();
+                assert!(
+                    root.ext.contains::<LinkifyEnabled>(),
                     "{source:?}, before_blocks={before_blocks}, limit={limit}"
                 );
             }
@@ -169,6 +156,7 @@ fn run(input: &str, output: &str) {
     let node = md.parse(&(input.to_owned() + "\n"));
 
     // make sure we have sourcemaps for everything
+    #[cfg(feature = "sourcemap")]
     for event in node.events(node.root()) {
         assert!(event.node().srcmap().is_some());
     }
@@ -459,6 +447,7 @@ fn protocol_relative_links_without_emphasis_plugin() {
     ] {
         let document = md.parse(input);
         assert_eq!(md.render_html(&document), output);
+        #[cfg(feature = "sourcemap")]
         for event in document.events(document.root()) {
             let node = event.node();
             if let Some(link) = node.cast::<super::Linkified>() {

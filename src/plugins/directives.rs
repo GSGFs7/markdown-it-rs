@@ -69,6 +69,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use crate::common::extset::{NodeExtSet, RenderExtSet};
+#[cfg(feature = "sourcemap")]
 use crate::common::sourcemap::SourcePos;
 use crate::document::{HtmlAttribute, NodeId, NodeRef};
 use crate::parser::block::{BlockRule, BlockState};
@@ -361,6 +362,7 @@ impl<'a> DirectiveNode<'a> {
     pub fn attrs(self) -> &'a [HtmlAttribute] {
         self.node.attrs()
     }
+    #[cfg(feature = "sourcemap")]
     pub fn srcmap(self) -> Option<SourcePos> {
         self.node.srcmap()
     }
@@ -1020,6 +1022,7 @@ body
     }
 
     #[test]
+    #[cfg(feature = "sourcemap")]
     fn default_renderer_preserves_node_attributes() {
         let html = render_with(":name", markdown_it::plugins::sourcepos::add);
 

@@ -767,7 +767,7 @@ fn is_memoizable_check(type_id: TypeId) -> bool {
     use crate::plugins::extra::footnote::FootnoteReferenceScanner;
     use crate::plugins::html::html_inline::HtmlInlineScanner;
 
-    if [
+    [
         TypeId::of::<LinkScanner<false>>(),
         TypeId::of::<LinkPrefixScanner<'!', true>>(),
         TypeId::of::<LinkScannerEnd>(),
@@ -784,29 +784,16 @@ fn is_memoizable_check(type_id: TypeId) -> bool {
         TypeId::of::<AutolinkScanner>(),
         TypeId::of::<HtmlInlineScanner>(),
         TypeId::of::<TextDirective>(),
-    ]
-    .contains(&type_id)
-    {
-        return true;
-    }
-
-    #[cfg(feature = "linkify")]
-    if [
+        #[cfg(feature = "linkify")]
         TypeId::of::<crate::plugins::extra::linkify::LinkifyScanner>(),
+        #[cfg(feature = "linkify")]
         TypeId::of::<crate::plugins::extra::linkify::LinkifyFuzzyScanner>(),
+        #[cfg(feature = "linkify")]
         TypeId::of::<crate::plugins::extra::linkify::LinkifyEmailScanner>(),
+        #[cfg(feature = "katex")]
+        TypeId::of::<crate::plugins::extra::math::MathInlineScanner>(),
     ]
     .contains(&type_id)
-    {
-        return true;
-    }
-
-    #[cfg(feature = "katex")]
-    if type_id == TypeId::of::<crate::plugins::extra::math::MathInlineScanner>() {
-        return true;
-    }
-
-    false
 }
 
 /// Index label ends directly, bypassing check sessions for plain input.

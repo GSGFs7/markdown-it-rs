@@ -1,3 +1,4 @@
+#[cfg(feature = "sourcemap")]
 use markdown_it::common::sourcemap::SourcePos;
 use markdown_it::{Document, MarkdownIt, NodeDraft, NodeValue, Preset, Root};
 
@@ -10,6 +11,7 @@ struct CustomLeaf;
 impl NodeValue for CustomLeaf {}
 
 #[test]
+#[cfg(feature = "sourcemap")]
 fn debug_format_records_hierarchy_identity_source_and_attributes() {
     let mut root = NodeDraft::new(Root::new("abcdef"));
     root.set_srcmap(Some(SourcePos::new(0, 6)));
@@ -48,7 +50,28 @@ fn debug_format_covers_standard_presets_without_syntax_registrations() {
         assert!(output.contains("type=markdown_it::plugins::cmark::block::heading::ATXHeading"));
         assert!(output.contains("type=markdown_it::plugins::cmark::inline::emphasis::Em"));
         assert!(output.lines().all(|line| line.contains(" id=NodeId(")));
+        #[cfg(feature = "sourcemap")]
         assert!(output.lines().all(|line| line.contains(" srcmap=")));
+        #[cfg(not(feature = "sourcemap"))]
+        assert!(!output.contains(" srcmap="));
         assert!(output.lines().all(|line| line.contains(" attrs=")));
     }
+}
+
+#[cfg(not(feature = "sourcemap"))]
+#[test]
+fn debug_format_without_source_maps_preserves_generated_nodes() {
+    let mut root = NodeDraft::new(Root::new(""));
+    let mut container = NodeDraft::new(CustomContainer);
+    let mut leaf = NodeDraft::new(CustomLeaf);
+    leaf.attrs_mut().push(("id".into(), "generated".into()));
+    container.push_child(leaf);
+    root.push_child(container);
+    let document = Document::from_draft("", root);
+    let debug = MarkdownIt::empty().render_as(&document, "debug");
+    assert_eq!(debug.lines().count(), 3);
+    assert!(debug.contains(std::any::type_name::<CustomContainer>()));
+    assert!(debug.contains(std::any::type_name::<CustomLeaf>()));
+    assert!(debug.contains("generated"));
+    assert!(!debug.contains("srcmap="));
 }
