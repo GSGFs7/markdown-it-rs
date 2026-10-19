@@ -1,12 +1,15 @@
 //! Inline syntax rules and check sessions.
 #[doc(hidden)]
 pub mod builtin;
+mod document;
 pub mod helpers;
 mod rule;
 mod state;
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
+
+pub(crate) use document::parse_document;
 
 use self::builtin::skip_text::TextScannerImpl;
 pub use self::rule::*;

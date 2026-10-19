@@ -1,6 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use markdown_it::parser::core::{CoreRule, CoreState};
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use markdown_it::plugins::html::html_inline::HtmlInline;
@@ -16,27 +17,26 @@ use markdown_it::{
     TextProjection,
     TextProjectionKind,
 };
-use markdown_it::parser::core::{CoreRule, CoreStage, PostProcess};
 use markdown_it_benchmarks::corpus;
 
-macro_rules! empty_postprocessor {
+macro_rules! empty_core_rule {
     ($type:ident) => {
         #[derive(Default)]
         struct $type;
 
         impl CoreRule for $type {
-            fn stage(&self) -> CoreStage {
-                CoreStage::PostProcess(PostProcess::new(|_| EditBatch::new()))
+            fn run(&self, state: &mut CoreState<'_>) {
+                EditBatch::new().commit(state.document);
             }
         }
     };
 }
 
-empty_postprocessor!(EmptyPostProcess1);
-empty_postprocessor!(EmptyPostProcess2);
-empty_postprocessor!(EmptyPostProcess3);
-empty_postprocessor!(EmptyPostProcess4);
-empty_postprocessor!(EmptyPostProcess5);
+empty_core_rule!(EmptyCoreRule1);
+empty_core_rule!(EmptyCoreRule2);
+empty_core_rule!(EmptyCoreRule3);
+empty_core_rule!(EmptyCoreRule4);
+empty_core_rule!(EmptyCoreRule5);
 
 fn text_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> {
     if let Some(text) = node.cast::<Text>() {
@@ -137,29 +137,28 @@ fn parser() -> markdown_it::MarkdownIt {
 fn benchmark(c: &mut Criterion) {
     let md = parser();
 
-    let empty_plan = MarkdownIt::empty();
-    let mut one_postprocessor = MarkdownIt::empty();
-    one_postprocessor.add_rule::<EmptyPostProcess1>();
-    let mut five_postprocessors = MarkdownIt::empty();
-    five_postprocessors.add_rule::<EmptyPostProcess1>();
-    five_postprocessors.add_rule::<EmptyPostProcess2>();
-    five_postprocessors.add_rule::<EmptyPostProcess3>();
-    five_postprocessors.add_rule::<EmptyPostProcess4>();
-    five_postprocessors.add_rule::<EmptyPostProcess5>();
-    let mut empty_document = MarkdownIt::empty().parse("");
-    empty_plan.run_postprocessors(&mut empty_document);
-    one_postprocessor.run_postprocessors(&mut empty_document);
-    five_postprocessors.run_postprocessors(&mut empty_document);
+    let zero_rules = MarkdownIt::empty();
+    let mut one_rule = MarkdownIt::empty();
+    one_rule.add_rule::<EmptyCoreRule1>();
+    let mut five_rules = MarkdownIt::empty();
+    five_rules.add_rule::<EmptyCoreRule1>();
+    five_rules.add_rule::<EmptyCoreRule2>();
+    five_rules.add_rule::<EmptyCoreRule3>();
+    five_rules.add_rule::<EmptyCoreRule4>();
+    five_rules.add_rule::<EmptyCoreRule5>();
+    zero_rules.parse("");
+    one_rule.parse("");
+    five_rules.parse("");
 
-    let mut group = c.benchmark_group("document-postprocessor-runner/empty-document");
-    group.bench_function("zero-postprocessors", |b| {
-        b.iter(|| empty_plan.run_postprocessors(black_box(&mut empty_document)))
+    let mut group = c.benchmark_group("core-chain/empty-input");
+    group.bench_function("zero-custom-rules", |b| {
+        b.iter(|| zero_rules.parse(black_box("")))
     });
-    group.bench_function("one-empty-postprocessor", |b| {
-        b.iter(|| one_postprocessor.run_postprocessors(black_box(&mut empty_document)))
+    group.bench_function("one-empty-rule", |b| {
+        b.iter(|| one_rule.parse(black_box("")))
     });
-    group.bench_function("five-empty-postprocessors", |b| {
-        b.iter(|| five_postprocessors.run_postprocessors(black_box(&mut empty_document)))
+    group.bench_function("five-empty-rules", |b| {
+        b.iter(|| five_rules.parse(black_box("")))
     });
     group.finish();
 

@@ -1,5 +1,5 @@
 // Counts the crabs after inline parsing and appends a footer node.
-use markdown_it::parser::core::{CoreRule, CoreStage};
+use markdown_it::parser::core::{CoreRule, CoreState};
 use markdown_it::{MarkdownIt, NodeValue};
 
 use super::block_rule::BlockFerris;
@@ -13,25 +13,21 @@ impl NodeValue for FerrisCounter {}
 #[derive(Default)]
 struct FerrisCounterRule;
 impl CoreRule for FerrisCounterRule {
-    fn stage(&self) -> CoreStage {
-        // This is a custom function that will be invoked once per document.
-        // It has the document as an argument and may modify its contents.
-        CoreStage::Finalize(|root, _| {
-            // walk through the arena tree and count the custom nodes
-            // added by the other two rules
-            let mut counter = 0;
-            let mut stack = vec![root.root()];
-            while let Some(node) = stack.pop() {
-                if root.node(node).is::<InlineFerris>() || root.node(node).is::<BlockFerris>() {
-                    counter += 1;
-                }
-                stack.extend_from_slice(root.children(node));
+    fn run(&self, state: &mut CoreState<'_>) {
+        // Count custom nodes added by the other two rules.
+        let root = &mut *state.document;
+        let mut counter = 0;
+        let mut stack = vec![root.root()];
+        while let Some(node) = stack.pop() {
+            if root.node(node).is::<InlineFerris>() || root.node(node).is::<BlockFerris>() {
+                counter += 1;
             }
+            stack.extend_from_slice(root.children(node));
+        }
 
-            // append a counter to the root as a custom node
-            let footer = root.create_node(FerrisCounter(counter));
-            root.push_child(root.root(), footer);
-        })
+        // Append the count to the root.
+        let footer = root.create_node(FerrisCounter(counter));
+        root.push_child(root.root(), footer);
     }
 }
 

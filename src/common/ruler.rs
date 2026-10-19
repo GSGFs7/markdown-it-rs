@@ -142,12 +142,12 @@ impl<M: Eq + Hash + Clone + Debug, T: Clone> Ruler<M, T> {
             for constraint in &dep.cons {
                 match constraint {
                     RuleItemConstraint::Before(v) => {
-                        for depidx in idhash.entry(v.clone()).or_default().iter() {
+                        for depidx in idhash.get(v).into_iter().flatten() {
                             deps_graph.get_mut(*depidx).unwrap().insert(idx);
                         }
                     }
                     RuleItemConstraint::After(v) => {
-                        for depidx in idhash.entry(v.clone()).or_default().iter() {
+                        for depidx in idhash.get(v).into_iter().flatten() {
                             deps_graph.get_mut(idx).unwrap().insert(*depidx);
                         }
                     }

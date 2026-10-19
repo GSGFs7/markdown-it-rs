@@ -140,7 +140,7 @@ mod markdown_it_rs_extras {
     #[test]
     fn test_node_ext_propagation() {
         use markdown_it::parser::block::BlockRule;
-        use markdown_it::parser::core::{CoreRule, CoreStage};
+        use markdown_it::parser::core::{CoreRule, CoreState};
         use markdown_it::parser::inline::InlineRule;
         use markdown_it::{BlockState, InlineState, MarkdownIt, NodeId, Text};
 
@@ -183,14 +183,13 @@ mod markdown_it_rs_extras {
         #[derive(Default)]
         struct MyCoreRule;
         impl CoreRule for MyCoreRule {
-            fn stage(&self) -> CoreStage {
-                CoreStage::Finalize(|root, _| {
-                    root.node_mut(root.root())
-                        .ext_mut()
-                        .get_or_insert_default::<NodeErrors>()
-                        .0
-                        .push("core");
-                })
+            fn run(&self, state: &mut CoreState<'_>) {
+                let root = &mut *state.document;
+                root.node_mut(root.root())
+                    .ext_mut()
+                    .get_or_insert_default::<NodeErrors>()
+                    .0
+                    .push("core");
             }
         }
 

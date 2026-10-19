@@ -2,12 +2,8 @@ use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use markdown_it::plugins::extra::tasklist;
-use markdown_it::{Document, MarkdownIt};
+use markdown_it::MarkdownIt;
 use markdown_it_benchmarks::corpus;
-
-fn run_postprocessors(document: &mut Document, md: &MarkdownIt) {
-    md.run_postprocessors(document);
-}
 
 fn parser() -> MarkdownIt {
     let mut md = MarkdownIt::empty();
@@ -30,8 +26,6 @@ fn tasklist_heavy() -> String {
 
 fn benchmark(c: &mut Criterion) {
     let parser = parser();
-    let mut postprocessors = MarkdownIt::empty();
-    tasklist::add(&mut postprocessors);
     let standard = corpus::standard();
     let tasklist_heavy = tasklist_heavy();
 
@@ -42,11 +36,11 @@ fn benchmark(c: &mut Criterion) {
     {
         let mut group = c.benchmark_group(format!("tasklist-transform/corpus/{name}"));
         group.throughput(Throughput::Bytes(source.len() as u64));
-        group.bench_function("document-registry", |b| {
+        group.bench_function("build-and-commit-edits", |b| {
             b.iter_batched(
                 || parser.parse(source),
                 |mut document| {
-                    run_postprocessors(black_box(&mut document), black_box(&postprocessors));
+                    tasklist::edits(black_box(&document)).commit(black_box(&mut document));
                     black_box(document);
                 },
                 BatchSize::SmallInput,

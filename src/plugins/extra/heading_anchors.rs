@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::document::edit::EditBatch;
 use crate::document::{Document, NodeRef, Text, TextSpecial};
-use crate::parser::core::{CoreRule, CoreStage, PostProcess};
+use crate::parser::core::{CoreRule, CoreState};
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
 use crate::plugins::cmark::inline::newline::Softbreak;
@@ -28,7 +28,9 @@ pub fn add(md: &mut MarkdownIt) {
 
 /// Register heading anchors with per-parser configuration.
 pub fn add_with_options(md: &mut MarkdownIt, options: HeadingAnchorsOptions) {
-    md.add_rule_instance(HeadingAnchorsRule::new(options));
+    md.add_rule_instance(HeadingAnchorsRule::new(options))
+        .after_named("inline")
+        .after_named("footnote_tail");
 }
 
 // --- config ---
@@ -261,9 +263,10 @@ impl HeadingAnchorsRule {
 impl CoreRule for HeadingAnchorsRule {
     const NAMES: &'static [&'static str] = &["extra::heading_anchors"];
 
-    fn stage(&self) -> CoreStage {
-        let options = self.options.clone();
-        CoreStage::PostProcess(PostProcess::new(move |document| edits(document, &options)))
+    fn run(&self, state: &mut CoreState<'_>) {
+        let document = &mut *state.document;
+        let edits = edits(document, &self.options);
+        edits.commit(document);
     }
 }
 
@@ -356,30 +359,29 @@ fn append_text(node: NodeRef<'_>, active_headings: &[usize], headings: &mut [Hea
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::core::{CoreRule, CoreStage};
+    use crate::parser::core::{CoreRule, CoreState};
     use crate::parser::inline::builtin::InlineParserRule;
 
     #[derive(Default)]
     struct AddExistingHeadingId;
     impl CoreRule for AddExistingHeadingId {
-        fn stage(&self) -> CoreStage {
-            CoreStage::Finalize(|root, _| {
-                let mut stack = vec![root.root()];
-                while let Some(node) = stack.pop() {
-                    if (root.node(node).is::<ATXHeading>() || root.node(node).is::<SetextHeader>())
-                        && root.children(node).iter().any(|&child| {
-                            root.node(child)
-                                .cast::<Text>()
-                                .is_some_and(|text| text.content == "Existing")
-                        })
-                    {
-                        root.node_mut(node)
-                            .attrs_mut()
-                            .push(("id".into(), "generated".into()));
-                    }
-                    stack.extend_from_slice(root.children(node));
+        fn run(&self, state: &mut CoreState<'_>) {
+            let root = &mut *state.document;
+            let mut stack = vec![root.root()];
+            while let Some(node) = stack.pop() {
+                if (root.node(node).is::<ATXHeading>() || root.node(node).is::<SetextHeader>())
+                    && root.children(node).iter().any(|&child| {
+                        root.node(child)
+                            .cast::<Text>()
+                            .is_some_and(|text| text.content == "Existing")
+                    })
+                {
+                    root.node_mut(node)
+                        .attrs_mut()
+                        .push(("id".into(), "generated".into()));
                 }
-            })
+                stack.extend_from_slice(root.children(node));
+            }
         }
     }
 

@@ -11,10 +11,12 @@ use crate::MarkdownIt;
 use crate::common::sourcemap::{SourcePos, SourceWithLineStarts};
 use crate::document::edit::EditBatch;
 use crate::document::{Document, StructuralEvent};
-use crate::parser::core::{CoreRule, CoreStage, PostProcess};
+use crate::parser::core::{CoreRule, CoreState};
 
 pub fn add(md: &mut MarkdownIt) {
-    md.add_rule::<SourcePosRule>();
+    md.add_rule::<SourcePosRule>()
+        .after_named("inline")
+        .after_named("footnote_tail");
 }
 
 const SOURCEPOS_ATTRIBUTE: &str = "data-sourcepos";
@@ -24,15 +26,17 @@ fn sourcepos_value(map: SourcePos, mapping: &SourceWithLineStarts) -> String {
     format!("{startline}:{startcol}-{endline}:{endcol}")
 }
 
-/// Source-position postprocessor.
+/// Adds source positions to nodes.
 #[derive(Debug, Default)]
 pub struct SourcePosRule;
 
 impl CoreRule for SourcePosRule {
     const NAMES: &'static [&'static str] = &["sourcepos", "source_pos"];
 
-    fn stage(&self) -> CoreStage {
-        CoreStage::PostProcess(PostProcess::new(edits))
+    fn run(&self, state: &mut CoreState<'_>) {
+        let document = &mut *state.document;
+        let edits = edits(document);
+        edits.commit(document);
     }
 }
 

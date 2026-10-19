@@ -1,5 +1,5 @@
 use markdown_it::parser::block::BlockRule;
-use markdown_it::parser::core::{CoreRule, CoreStage};
+use markdown_it::parser::core::{CoreRule, CoreState};
 use markdown_it::parser::inline::InlineRule;
 use markdown_it::parser::inline::builtin::InlineParserRule;
 use markdown_it::{BlockState, InlineState, MarkdownIt, NodeId, Text};
@@ -40,14 +40,13 @@ fn finalize(state: &mut InlineState<'_>) {
 #[derive(Default)]
 struct CoreFinalize;
 impl CoreRule for CoreFinalize {
-    fn stage(&self) -> CoreStage {
-        CoreStage::Finalize(|document, _| {
-            let root = document.root();
-            document
-                .node_mut(root)
-                .attrs_mut()
-                .push(("core".into(), "yes".into()));
-        })
+    fn run(&self, state: &mut CoreState<'_>) {
+        let document = &mut *state.document;
+        let root = document.root();
+        document
+            .node_mut(root)
+            .attrs_mut()
+            .push(("core".into(), "yes".into()));
     }
 }
 
@@ -94,10 +93,12 @@ fn warmed_inline_rules_update_markers_order_and_finalizers() {
 }
 
 #[test]
-fn warmed_core_plan_revalidates_after_changes_and_recovers_after_failure() {
+fn warmed_core_ruler_revalidates_explicit_dependencies_after_changes() {
     let mut md = MarkdownIt::new();
     md.parse("text");
-    md.add_rule::<CoreFinalize>().after::<InlineParserRule>();
+    md.add_rule::<CoreFinalize>()
+        .after::<InlineParserRule>()
+        .require::<InlineParserRule>();
     let document = md.parse("text");
     assert_eq!(document.node(document.root()).attrs().len(), 1);
     md.remove_rule::<InlineParserRule>();

@@ -484,7 +484,7 @@ impl BlockRule for ListScanner {
             let items = state.document.children(state.node).to_vec();
             for child in items {
                 debug_assert!(state.document.node(child).is::<ListItem>());
-                Self::mark_tight_paragraphs(&mut state.document, child);
+                Self::mark_tight_paragraphs(state.document, child);
             }
         }
 

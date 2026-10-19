@@ -55,7 +55,7 @@ use crate::common::extset::RootExtSet;
 use crate::common::utils::normalize_reference;
 use crate::document::{Document, NodeId, NodeRef};
 use crate::parser::block::{BlockRule, BlockState};
-use crate::parser::core::{CoreRule, CoreStage};
+use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{
     EmptyRenderer,
@@ -126,8 +126,8 @@ struct FootnoteFinalizeRule;
 impl CoreRule for FootnoteFinalizeRule {
     const NAMES: &'static [&'static str] = &["footnote_tail"];
 
-    fn stage(&self) -> CoreStage {
-        CoreStage::Finalize(finalize_footnotes)
+    fn run(&self, state: &mut CoreState<'_>) {
+        state.with_root_ext(|document, ext| finalize_footnotes(document, ext));
     }
 }
 
@@ -137,10 +137,10 @@ impl CoreRule for FootnoteFinalizeRule {
 struct FootnotePreparation;
 
 impl CoreRule for FootnotePreparation {
-    fn stage(&self) -> CoreStage {
-        CoreStage::PrepareState(|_source, _md, root_ext| {
-            root_ext.get_or_insert_default::<SharedFootnoteEnv>();
-        })
+    fn run(&self, state: &mut CoreState<'_>) {
+        state
+            .root_ext_mut()
+            .get_or_insert_default::<SharedFootnoteEnv>();
     }
 }
 

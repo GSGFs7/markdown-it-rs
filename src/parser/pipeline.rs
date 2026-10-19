@@ -1,13 +1,8 @@
-//! Markdown parsing pipeline.
-
-use std::sync::Arc;
+//! Deferred inline parsing after the block pass.
 
 use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
-use crate::common::sourcemap::SourcePos;
-use crate::document::{Document, NodeId, NodeValue, Root, Text};
-use crate::parser::block::{BlockState, build_line_offsets};
-use crate::parser::core::{CoreStage, FinalizeFn, PostProcess, PrepareStateFn};
+use crate::document::{Document, NodeId, NodeValue};
 use crate::parser::inline::{InlineState, RuleSet};
 
 /// Inline content queued during the block pass, resolved once all reference
@@ -26,7 +21,7 @@ impl NodeValue for PendingInline {}
 /// their numbers during this walk.
 ///
 /// associated pathological test: `deferred_inline_siblings`
-fn resolve_pending_inline(
+pub(super) fn resolve_pending_inline(
     document: &mut Document,
     md: &MarkdownIt,
     ruleset: &RuleSet,
@@ -92,155 +87,5 @@ fn resolve_pending_inline(
         } else if !document.children(child).is_empty() {
             stack.push(Frame::new(child));
         }
-    }
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct ParsePlan {
-    preparations: Vec<PrepareStateFn>,
-    inline_preparations: Vec<PrepareStateFn>,
-    finalizers: Vec<FinalizeFn>,
-    pub(crate) postprocessors: Vec<PostProcess>,
-}
-
-impl ParsePlan {
-    pub(crate) fn compile(rules: impl Iterator<Item = CoreStage>) -> Self {
-        let mut plan = Self::default();
-        let mut seen_block = false;
-        let mut seen_inline = false;
-        let mut supported = true;
-        for rule in rules {
-            match rule {
-                CoreStage::ParseBlocks => {
-                    supported &= !seen_block && !seen_inline;
-                    seen_block = true;
-                }
-                CoreStage::ParseInlines => {
-                    supported &= seen_block && !seen_inline;
-                    seen_inline = true;
-                }
-                CoreStage::PrepareState(prepare) => {
-                    // Preserve whether source analysis runs before or after blocks.
-                    supported &= !seen_inline;
-                    if seen_block {
-                        plan.inline_preparations.push(prepare);
-                    } else {
-                        plan.preparations.push(prepare);
-                    }
-                }
-                CoreStage::Finalize(finalize) => {
-                    // Finalizers must follow the inline pass.
-                    supported &= seen_inline;
-                    plan.finalizers.push(finalize);
-                }
-                CoreStage::PostProcess(postprocess) => {
-                    // Postprocessors run after finalizers regardless of ruler
-                    // position; validation only preserves their relative order.
-                    plan.postprocessors.push(postprocess);
-                }
-            }
-        }
-
-        assert!(
-            supported && seen_block && seen_inline,
-            "direct parsing requires one block stage, then one inline stage, with correctly ordered core rules",
-        );
-
-        plan
-    }
-}
-
-pub(crate) struct ParseContext<'a> {
-    source: Arc<str>,
-    md: &'a MarkdownIt,
-    document: Document,
-    root_ext: RootExtSet,
-    plan: &'a ParsePlan,
-}
-
-impl<'a> ParseContext<'a> {
-    pub(crate) fn new(source: Arc<str>, md: &'a MarkdownIt, mut document: Document) -> Self {
-        document
-            .node_mut(document.root())
-            .set_srcmap(Some(SourcePos::new(0, source.len())));
-        Self {
-            source,
-            md,
-            document,
-            root_ext: RootExtSet::new(),
-            plan: md.parse_plan(),
-        }
-    }
-
-    pub(crate) fn parse(mut self) -> Document {
-        let block_rules = self.md.block.rules();
-        let inline_rules = self.md.inline.rules();
-
-        for prepare in &self.plan.preparations {
-            prepare(&self.source, self.md, &mut self.root_ext);
-        }
-        if block_rules.is_empty() && self.md.inline.has_only_text_rule() && self.md.max_nesting > 0
-        {
-            self.prepare_inlines();
-            return self.parse_text_fallback();
-        }
-
-        let mut state = BlockState::new(&self.source, self.md, block_rules, self.document);
-        state.root_ext = self.root_ext;
-        state.tokenize();
-        self.document = state.document;
-        self.root_ext = state.root_ext;
-        self.prepare_inlines();
-
-        resolve_pending_inline(&mut self.document, self.md, inline_rules, &self.root_ext);
-        self.finish()
-    }
-
-    fn prepare_inlines(&mut self) {
-        for prepare in &self.plan.inline_preparations {
-            prepare(&self.source, self.md, &mut self.root_ext);
-        }
-    }
-
-    fn finish(mut self) -> Document {
-        // Post-inline core rules may now reorder the resolved document.
-        for finalize in &self.plan.finalizers {
-            finalize(&mut self.document, &self.root_ext);
-        }
-
-        // Persist the cross-block extension set on the root payload.
-        if let Some(data) = self
-            .document
-            .node_mut(self.document.root())
-            .cast_mut::<Root>()
-        {
-            data.ext = self.root_ext;
-        }
-
-        let mut document = self.document;
-        document.trim_unused_tail();
-        for postprocess in &self.plan.postprocessors {
-            postprocess.run(&document).commit(&mut document);
-        }
-
-        document
-    }
-
-    fn parse_text_fallback(mut self) -> Document {
-        for line in build_line_offsets(&self.source) {
-            if line.first_nonspace >= line.line_end {
-                continue;
-            }
-
-            let mut content = self.source[line.first_nonspace..line.line_end].to_owned();
-            content.push('\n');
-            let text = self.document.create_node(Text { content });
-            self.document
-                .node_mut(text)
-                .set_srcmap(Some(SourcePos::new(line.first_nonspace, line.line_end + 1)));
-            self.document.push_child(self.document.root(), text);
-        }
-
-        self.finish()
     }
 }

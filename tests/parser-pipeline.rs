@@ -290,19 +290,6 @@ fn snapshot_keys_identify_a_single_configuration() {
     }
 }
 
-fn assert_direct_configuration_panics(md: &MarkdownIt, source: &str, expected: &str) {
-    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        md.parse(source);
-    }))
-    .expect_err("unsupported direct configuration must panic");
-    let message = payload
-        .downcast_ref::<String>()
-        .map(String::as_str)
-        .or_else(|| payload.downcast_ref::<&str>().copied())
-        .expect("configuration panic must carry a string message");
-    assert!(message.contains(expected), "{message}");
-}
-
 #[test]
 fn direct_text_fallback_matches_snapshots() {
     let md = MarkdownIt::empty();
@@ -527,88 +514,12 @@ fn direct_tables_match_snapshots() {
 }
 
 #[test]
-fn direct_parser_checks_core_configuration_before_parsing() {
+fn core_parsers_can_be_removed_without_stage_validation() {
     let mut md = MarkdownIt::empty();
     md.remove_rule::<markdown_it::parser::block::builtin::BlockParserRule>();
-    md.max_nesting = 0;
-    assert_direct_configuration_panics(
-        &md,
-        "",
-        "direct parsing requires one block stage, then one inline stage, with correctly ordered core rules",
-    );
-}
-
-#[test]
-fn direct_parser_rejects_invalid_core_stages_before_callbacks() {
-    use markdown_it::parser::block::builtin::BlockParserRule;
-    use markdown_it::parser::core::{CoreRule, CoreStage};
-    use markdown_it::parser::inline::builtin::InlineParserRule;
-
-    #[derive(Default)]
-    struct ExtraStage<const INLINE: bool>;
-    impl<const INLINE: bool> CoreRule for ExtraStage<INLINE> {
-        fn stage(&self) -> CoreStage {
-            if INLINE {
-                CoreStage::ParseInlines
-            } else {
-                CoreStage::ParseBlocks
-            }
-        }
-    }
-
-    #[derive(Default)]
-    struct EarlyFinalizer;
-    impl CoreRule for EarlyFinalizer {
-        fn stage(&self) -> CoreStage {
-            CoreStage::Finalize(|_, _| {
-                panic!("invalid configuration must be rejected before finalizing");
-            })
-        }
-    }
-
-    let mut missing_block = MarkdownIt::new();
-    missing_block.remove_rule::<BlockParserRule>();
-    let mut missing_inline = MarkdownIt::new();
-    missing_inline.remove_rule::<InlineParserRule>();
-    let mut duplicate_block = MarkdownIt::new();
-    duplicate_block
-        .add_rule::<ExtraStage<false>>()
-        .after::<BlockParserRule>()
-        .before::<InlineParserRule>();
-    let mut duplicate_inline = MarkdownIt::new();
-    duplicate_inline
-        .add_rule::<ExtraStage<true>>()
-        .after::<InlineParserRule>();
-    let mut reversed = MarkdownIt::new();
-    reversed.remove_rule::<InlineParserRule>();
-    reversed
-        .add_rule::<InlineParserRule>()
-        .before::<BlockParserRule>();
-    let mut early_finalizer = MarkdownIt::new();
-    early_finalizer
-        .add_rule::<EarlyFinalizer>()
-        .after::<BlockParserRule>()
-        .before::<InlineParserRule>();
-
-    for mut md in [
-        missing_block,
-        missing_inline,
-        duplicate_block,
-        duplicate_inline,
-        reversed,
-        early_finalizer,
-    ] {
-        for limit in [100, 0] {
-            md.max_nesting = limit;
-            for source in ["", "# 雪\n\ntext"] {
-                assert_direct_configuration_panics(
-                    &md,
-                    source,
-                    "direct parsing requires one block stage, then one inline stage, with correctly ordered core rules",
-                );
-            }
-        }
-    }
+    assert_eq!(md.render("text"), "");
+    md.remove_rule::<markdown_it::parser::inline::builtin::InlineParserRule>();
+    assert_eq!(md.render("text"), "");
 }
 
 #[test]
@@ -1739,13 +1650,12 @@ fn direct_linkify_configuration_and_source_maps() {
     md.remove_rule::<LinkifyPrescan>();
     md.add_rule::<LinkifyPrescan>()
         .after::<markdown_it::parser::inline::builtin::InlineParserRule>();
-    for source in ["", "https://example.com"] {
-        assert_direct_configuration_panics(
-            &md,
-            source,
-            "direct parsing requires one block stage, then one inline stage, with correctly ordered core rules",
-        );
-    }
+    // A prescan after inline parsing cannot linkify text.
+    assert_eq!(md.render(""), "");
+    assert_eq!(
+        md.render("https://example.com"),
+        "<p>https://example.com</p>\n"
+    );
 }
 
 #[cfg(feature = "linkify")]
@@ -1777,7 +1687,7 @@ fn direct_linkify_prescan_runs_before_document_postprocessors() {
 fn direct_core_preparations_share_rule_order_and_lifetime() {
     use markdown_it::common::extset::RootExtSet;
     use markdown_it::parser::block::builtin::BlockParserRule;
-    use markdown_it::parser::core::{CoreRule, CoreStage};
+    use markdown_it::parser::core::{CoreRule, CoreState};
     use markdown_it::parser::inline::builtin::InlineParserRule;
     use markdown_it::plugins::cmark::block::reference::ReferenceMap;
 
@@ -1792,8 +1702,8 @@ fn direct_core_preparations_share_rule_order_and_lifetime() {
         }
     }
     impl<const AFTER_BLOCK: bool> CoreRule for Preparation<AFTER_BLOCK> {
-        fn stage(&self) -> CoreStage {
-            CoreStage::PrepareState(Self::prepare)
+        fn run(&self, state: &mut CoreState<'_>) {
+            Self::prepare(state.source, state.md, state.root_ext_mut());
         }
     }
 
@@ -2068,22 +1978,21 @@ fn direct_directive_callbacks_render_current_document_children() {
 
 #[test]
 fn direct_draft_finalizers_run_in_order_on_all_parse_paths() {
-    use markdown_it::parser::core::{CoreRule, CoreStage};
+    use markdown_it::parser::core::{CoreRule, CoreState};
     use markdown_it::parser::inline::builtin::InlineParserRule;
 
     #[derive(Default)]
     struct Finalize<const SECOND: bool>;
     impl<const SECOND: bool> CoreRule for Finalize<SECOND> {
-        fn stage(&self) -> CoreStage {
-            CoreStage::Finalize(|root, _| {
-                assert_eq!(root.node(root.root()).attrs().len(), usize::from(SECOND));
-                if SECOND {
-                    assert_eq!(root.node(root.root()).attrs()[0].1, "false");
-                }
-                root.node_mut(root.root())
-                    .attrs_mut()
-                    .push(("finalizer".into(), SECOND.to_string()));
-            })
+        fn run(&self, state: &mut CoreState<'_>) {
+            let root = &mut *state.document;
+            assert_eq!(root.node(root.root()).attrs().len(), usize::from(SECOND));
+            if SECOND {
+                assert_eq!(root.node(root.root()).attrs()[0].1, "false");
+            }
+            root.node_mut(root.root())
+                .attrs_mut()
+                .push(("finalizer".into(), SECOND.to_string()));
         }
     }
 

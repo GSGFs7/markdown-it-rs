@@ -27,7 +27,7 @@ use crate::render::EmptyRenderer;
 /// ```rust
 /// use markdown_it::parser::block::builtin::BlockParserRule;
 /// use markdown_it::Root;
-/// use markdown_it::parser::core::{CoreRule, CoreStage};
+/// use markdown_it::parser::core::{CoreRule, CoreState};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap, CustomReferenceMap};
 /// use markdown_it::{MarkdownIt};
 ///
@@ -57,10 +57,8 @@ use crate::render::EmptyRenderer;
 /// #[derive(Default)]
 /// struct AddCustomReferences;
 /// impl CoreRule for AddCustomReferences {
-///     fn stage(&self) -> CoreStage {
-///         CoreStage::PrepareState(|_, _, ext| {
-///             ext.insert(ReferenceMap::new(RefMapOverride::default()));
-///         })
+///     fn run(&self, state: &mut CoreState<'_>) {
+///         state.root_ext_mut().insert(ReferenceMap::new(RefMapOverride::default()));
 ///     }
 /// }
 ///
@@ -78,7 +76,7 @@ use crate::render::EmptyRenderer;
 ///
 /// ```rust
 /// use markdown_it::Root;
-/// use markdown_it::parser::core::{CoreRule, CoreStage};
+/// use markdown_it::parser::core::{CoreRule, CoreState};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap};
 /// use markdown_it::{MarkdownIt};
 ///

@@ -46,6 +46,7 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
 
     let md = MarkdownIt::empty();
     let source = "%%\nhello";
+    let mut document = Document::new(source, Root::new(source));
     let mut state = BlockState::new(
         source,
         &md,
@@ -59,7 +60,7 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
                 LevelProbe::run,
             ),
         ],
-        Document::new(source, Root::new(source)),
+        &mut document,
     );
     state.tokenize();
 

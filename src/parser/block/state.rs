@@ -31,7 +31,7 @@ pub struct BlockState<'a> {
     pub node: NodeId,
 
     /// Arena receiving parsed nodes.
-    pub document: Document,
+    pub document: &'a mut Document,
 
     /// Whether there are no empty lines between paragraphs.
     pub tight: bool,
@@ -53,7 +53,7 @@ impl<'a> BlockState<'a> {
         src: &'a str,
         md: &'a MarkdownIt,
         rules: &'a [BlockRuleFns],
-        document: Document,
+        document: &'a mut Document,
     ) -> Self {
         let line_offsets = build_line_offsets(src);
         let line_max = line_offsets.len();

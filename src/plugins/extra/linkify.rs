@@ -12,7 +12,7 @@ use crate::common::extset::RootExtSet;
 use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId, NodeRef, NodeValue, StructuralEvent, Text, TextSpecial};
 use crate::links::LinkFormatter;
-use crate::parser::core::{CoreRule, CoreStage};
+use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::plugins::html::anchor_delta;
@@ -339,8 +339,8 @@ pub struct LinkifyPrescan;
 impl CoreRule for LinkifyPrescan {
     const NAMES: &'static [&'static str] = &["linkify_prescan"];
 
-    fn stage(&self) -> CoreStage {
-        CoreStage::PrepareState(Self::prepare)
+    fn run(&self, state: &mut CoreState<'_>) {
+        Self::prepare(state.source, state.md, state.root_ext_mut());
     }
 }
 

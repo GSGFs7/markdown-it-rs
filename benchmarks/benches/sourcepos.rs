@@ -5,10 +5,6 @@ use markdown_it::plugins::sourcepos;
 use markdown_it::{Document, EditBatch, MarkdownIt, StructuralEvent};
 use markdown_it_benchmarks::corpus;
 
-fn run_postprocessors(document: &mut Document, md: &MarkdownIt) {
-    md.run_postprocessors(document);
-}
-
 fn parser() -> MarkdownIt {
     let mut md = MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md);
@@ -18,8 +14,6 @@ fn parser() -> MarkdownIt {
 
 fn benchmark(c: &mut Criterion) {
     let parser = parser();
-    let mut postprocessors = MarkdownIt::empty();
-    sourcepos::add(&mut postprocessors);
     let standard = corpus::standard();
 
     for corpus in standard {
@@ -27,11 +21,11 @@ fn benchmark(c: &mut Criterion) {
         let source = corpus.source();
         let mut group = c.benchmark_group(format!("sourcepos-transform/corpus/{name}"));
         group.throughput(Throughput::Bytes(source.len() as u64));
-        group.bench_function("document-registry", |b| {
+        group.bench_function("build-and-commit-edits", |b| {
             b.iter_batched(
                 || parser.parse(source),
                 |mut document| {
-                    run_postprocessors(black_box(&mut document), black_box(&postprocessors));
+                    sourcepos::edits(black_box(&document)).commit(black_box(&mut document));
                     black_box(document);
                 },
                 BatchSize::SmallInput,

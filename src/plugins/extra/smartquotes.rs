@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::common::utils::{is_markdown_whitespace, is_punct_char};
 use crate::document::{Text, TextSpecial};
-use crate::parser::core::{CoreRule, CoreStage, PostProcess};
+use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::helpers::full_link::IndependentLabelSource;
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
@@ -55,7 +55,7 @@ pub fn add_with<
         CLOSE_SINGLE_QUOTE,
         OPEN_DOUBLE_QUOTE,
         CLOSE_DOUBLE_QUOTE,
-    >>();
+    >>().after_named("inline").after_named("footnote_tail");
 }
 
 /// The classic smartquotes rule used by [`add`].
@@ -85,15 +85,15 @@ impl<
 {
     const NAMES: &'static [&'static str] = &["extra::smartquotes", "smartquotes"];
 
-    fn stage(&self) -> CoreStage {
-        CoreStage::PostProcess(PostProcess::new(
-            edits_with::<
-                OPEN_SINGLE_QUOTE,
-                CLOSE_SINGLE_QUOTE,
-                OPEN_DOUBLE_QUOTE,
-                CLOSE_DOUBLE_QUOTE,
-            >,
-        ))
+    fn run(&self, state: &mut CoreState<'_>) {
+        let document = &mut *state.document;
+        let edits = edits_with::<
+            OPEN_SINGLE_QUOTE,
+            CLOSE_SINGLE_QUOTE,
+            OPEN_DOUBLE_QUOTE,
+            CLOSE_DOUBLE_QUOTE,
+        >(document);
+        edits.commit(document);
     }
 }
 

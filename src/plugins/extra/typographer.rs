@@ -36,7 +36,7 @@ use regex::Regex;
 use crate::MarkdownIt;
 use crate::document::edit::EditBatch;
 use crate::document::{Document, StructuralEvent, Text};
-use crate::parser::core::{CoreRule, CoreStage, PostProcess};
+use crate::parser::core::{CoreRule, CoreState};
 use crate::plugins::cmark::inline::backticks::CodeInline;
 use crate::plugins::cmark::inline::image::Image;
 
@@ -78,18 +78,23 @@ fn replace_abbreviation(input: &str) -> &'static str {
 
 pub fn add(md: &mut MarkdownIt) {
     // Alias, not type: custom `add_with` variants share only this alias.
-    md.add_rule::<TypographerRule>().before_named("smartquotes");
+    md.add_rule::<TypographerRule>()
+        .after_named("inline")
+        .after_named("footnote_tail")
+        .before_named("smartquotes");
 }
 
-/// Typographer postprocessor.
+/// Applies typographic replacements.
 #[derive(Default)]
 pub struct TypographerRule;
 
 impl CoreRule for TypographerRule {
     const NAMES: &'static [&'static str] = &["extra::typographer"];
 
-    fn stage(&self) -> CoreStage {
-        CoreStage::PostProcess(PostProcess::new(edits))
+    fn run(&self, state: &mut CoreState<'_>) {
+        let document = &mut *state.document;
+        let edits = edits(document);
+        edits.commit(document);
     }
 }
 

@@ -1,9 +1,11 @@
 //! Block rule chain
 #[doc(hidden)]
 pub mod builtin;
+mod document;
 mod lines;
 mod rule;
 mod state;
+pub(crate) use document::parse_document;
 pub use lines::*;
 pub use rule::*;
 pub use state::BlockState;

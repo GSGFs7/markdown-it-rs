@@ -1,13 +1,10 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use markdown_it::plugins::extra::heading_anchors::{self, HeadingAnchorsOptions};
-use markdown_it::{Document, MarkdownIt};
+use markdown_it::parser::core::{CoreRule, CoreState};
+use markdown_it::plugins::extra::heading_anchors::HeadingAnchorsRule;
+use markdown_it::MarkdownIt;
 use markdown_it_benchmarks::corpus;
-
-fn run_postprocessors(document: &mut Document, md: &MarkdownIt) {
-    md.run_postprocessors(document);
-}
 
 fn parser() -> MarkdownIt {
     let mut md = MarkdownIt::empty();
@@ -32,10 +29,8 @@ fn heading_heavy() -> String {
 }
 
 fn benchmark(c: &mut Criterion) {
-    let mut parser = parser();
-    parser.ext.insert(HeadingAnchorsOptions::default());
-    let mut postprocessors = MarkdownIt::empty();
-    heading_anchors::add(&mut postprocessors);
+    let parser = parser();
+    let rule = HeadingAnchorsRule::default();
     let standard = corpus::standard();
     let heading_heavy = heading_heavy();
 
@@ -46,11 +41,15 @@ fn benchmark(c: &mut Criterion) {
     {
         let mut group = c.benchmark_group(format!("heading-anchors-transform/corpus/{name}"));
         group.throughput(Throughput::Bytes(source.len() as u64));
-        group.bench_function("document-registry", |b| {
+        group.bench_function("core-rule", |b| {
             b.iter_batched(
                 || parser.parse(source),
                 |mut document| {
-                    run_postprocessors(black_box(&mut document), black_box(&postprocessors));
+                    rule.run(&mut CoreState {
+                        source,
+                        md: &parser,
+                        document: black_box(&mut document),
+                    });
                     black_box(document);
                 },
                 BatchSize::SmallInput,

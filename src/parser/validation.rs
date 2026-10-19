@@ -188,12 +188,8 @@ mod tests {
     fn block_check_rejects_state_mutation_even_on_no_match() {
         let md = MarkdownIt::empty();
         let source = "hello";
-        let mut state = BlockState::new(
-            source,
-            &md,
-            &[],
-            crate::Document::new(source, Root::new(source)),
-        );
+        let mut document = crate::Document::new(source, Root::new(source));
+        let mut state = BlockState::new(source, &md, &[], &mut document);
         check_block(&mut state, 0, |state| {
             state.blk_indent += 1;
             None

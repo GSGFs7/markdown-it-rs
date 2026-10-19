@@ -1,4 +1,4 @@
-use markdown_it::parser::core::{CoreRule, CoreStage, PostProcess};
+use markdown_it::parser::core::{CoreRule, CoreState};
 use markdown_it::plugins::{cmark, extra, sourcepos};
 use markdown_it::{Document, EditBatch, MarkdownIt, NodeDraft, Root, StructuralEvent, Text};
 
@@ -41,8 +41,6 @@ fn sourcepos_runs_after_tasklist_in_reverse_registration_order() {
 
 #[test]
 fn sourcepos_deduplicates_existing_attributes_and_skips_generated_nodes() {
-    let mut md = MarkdownIt::new();
-    sourcepos::add(&mut md);
     let source = "# 雪";
     let mut root = NodeDraft::new(Root::new(source));
     let mut heading = NodeDraft::new(cmark::block::heading::ATXHeading { level: 1 });
@@ -59,7 +57,7 @@ fn sourcepos_deduplicates_existing_attributes_and_skips_generated_nodes() {
     }));
     root.push_child(heading);
     let mut doc = Document::from_draft(source, root);
-    md.run_postprocessors(&mut doc);
+    sourcepos::edits(&doc).commit(&mut doc);
     let heading = doc.node(doc.children(doc.root())[0]);
     assert_eq!(
         heading.attrs(),
@@ -125,30 +123,22 @@ struct ConfiguredPostProcess {
 }
 
 impl CoreRule for ConfiguredPostProcess {
-    fn stage(&self) -> CoreStage {
-        let value = self.value.clone();
-        CoreStage::PostProcess(PostProcess::new(move |document: &Document| {
-            let mut edits = EditBatch::new();
-            edits.set_attribute(document.root(), "configured", value.clone());
-            edits
-        }))
+    fn run(&self, state: &mut CoreState<'_>) {
+        let document = &mut *state.document;
+        let mut edits = EditBatch::new();
+        edits.set_attribute(document.root(), "configured", self.value.clone());
+        edits.commit(document);
     }
 }
 
 #[test]
-fn configured_core_rule_instance_runs_as_a_postprocessor() {
+fn configured_core_rule_instance_modifies_the_document() {
     let mut md = MarkdownIt::empty();
     md.add_rule_instance(ConfiguredPostProcess {
         value: "runtime value".into(),
     });
 
-    let mut document = md.parse("");
-    assert_eq!(
-        document.node(document.root()).attrs(),
-        &[("configured".into(), "runtime value".into())]
-    );
-
-    md.run_postprocessors(&mut document);
+    let document = md.parse("");
     assert_eq!(
         document.node(document.root()).attrs(),
         &[("configured".into(), "runtime value".into())]
@@ -161,16 +151,15 @@ struct AppendStep<const STEP: u8>;
 impl<const STEP: u8> CoreRule for AppendStep<STEP> {
     const NAMES: &'static [&'static str] = if STEP == 1 { &["opening"] } else { &[] };
 
-    fn stage(&self) -> CoreStage {
-        CoreStage::PostProcess(PostProcess::new(|document| {
-            let mut edits = EditBatch::new();
-            edits.set_attribute(
-                document.root(),
-                "steps",
-                format!("{}{STEP}", steps(document)),
-            );
-            edits
-        }))
+    fn run(&self, state: &mut CoreState<'_>) {
+        let document = &mut *state.document;
+        let mut edits = EditBatch::new();
+        edits.set_attribute(
+            document.root(),
+            "steps",
+            format!("{}{STEP}", steps(document)),
+        );
+        edits.commit(document);
     }
 }
 
@@ -184,7 +173,7 @@ fn steps(document: &Document) -> &str {
 }
 
 #[test]
-fn parsing_runs_postprocessors_once_and_reruns_are_explicit() {
+fn core_rules_run_once_per_parse_and_rendering_does_not_repeat_them() {
     let mut md = MarkdownIt::empty();
     md.add_rule::<AppendStep<1>>();
     for commonmark in [false, true] {
@@ -192,18 +181,17 @@ fn parsing_runs_postprocessors_once_and_reruns_are_explicit() {
             cmark::add(&mut md);
         }
         for source in ["", "text"] {
-            let mut document = md.parse(source);
+            let document = md.parse(source);
             assert_eq!(steps(&document), "1");
             md.render_html(&document);
             assert_eq!(steps(&document), "1");
-            md.run_postprocessors(&mut document);
-            assert_eq!(steps(&document), "11");
+            assert_eq!(steps(&md.parse(source)), "1");
         }
     }
 }
 
 #[test]
-fn postprocessors_observe_preceding_edits_in_type_and_named_order() {
+fn core_rules_observe_preceding_edits_in_type_and_named_order() {
     let mut md = MarkdownIt::empty();
     md.add_rule::<AppendStep<2>>().after::<AppendStep<1>>();
     md.add_rule::<AppendStep<3>>().after_named("opening");
@@ -215,18 +203,17 @@ fn postprocessors_observe_preceding_edits_in_type_and_named_order() {
 struct FinalizeSteps;
 
 impl CoreRule for FinalizeSteps {
-    fn stage(&self) -> CoreStage {
-        CoreStage::Finalize(|document, _| {
-            document
-                .node_mut(document.root())
-                .attrs_mut()
-                .push(("steps".into(), "F".into()));
-        })
+    fn run(&self, state: &mut CoreState<'_>) {
+        let document = &mut *state.document;
+        let value = format!("{}F", steps(document));
+        let mut edits = EditBatch::new();
+        edits.set_attribute(document.root(), "steps", value);
+        edits.commit(document);
     }
 }
 
 #[test]
-fn postprocessors_run_after_finalizers_regardless_of_ruler_position() {
+fn document_transformations_execute_in_ruler_order() {
     use markdown_it::parser::block::builtin::BlockParserRule;
     use markdown_it::parser::inline::builtin::InlineParserRule;
 
@@ -241,17 +228,17 @@ fn postprocessors_run_after_finalizers_regardless_of_ruler_position() {
             cmark::add(&mut md);
         }
         for source in ["", "text"] {
-            assert_eq!(steps(&md.parse(source)), "F12");
+            assert_eq!(steps(&md.parse(source)), "12F");
         }
     }
 }
 
 #[test]
-fn warmed_postprocessor_plan_observes_addition_ordering_and_removal() {
+fn warmed_core_ruler_observes_addition_ordering_and_removal() {
     let mut md = MarkdownIt::empty();
-    let mut document = md.parse("");
+    md.parse("");
     md.add_rule::<AppendStep<1>>();
-    md.run_postprocessors(&mut document);
+    let document = md.parse("");
     assert_eq!(steps(&document), "1");
 
     md.add_rule::<AppendStep<2>>().before_named("opening");
@@ -260,7 +247,6 @@ fn warmed_postprocessor_plan_observes_addition_ordering_and_removal() {
     assert!(!md.has_rule::<AppendStep<1>>());
     assert_eq!(steps(&md.parse("text")), "2");
     md.remove_rule::<AppendStep<2>>();
-    md.run_postprocessors(&mut document);
     assert_eq!(steps(&document), "1");
     assert_eq!(steps(&md.parse("text")), "");
 }
@@ -271,7 +257,7 @@ fn duplicate_configured_rule_is_rejected_and_can_be_explicitly_replaced() {
     md.add_rule_instance(ConfiguredPostProcess {
         value: "first".into(),
     });
-    md.parse(""); // Warm both the ruler and parse-plan caches.
+    md.parse(""); // Warm the ruler cache.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         md.add_rule_instance(ConfiguredPostProcess {
             value: "second".into(),

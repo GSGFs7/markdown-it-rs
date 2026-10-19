@@ -1,15 +1,15 @@
 use std::borrow::Cow;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use crate::common::RuleMark;
 use crate::common::extset::MarkdownItExtSet;
 use crate::common::ruler::Ruler;
+use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeValue, Root, Text, TextSpecial};
 use crate::links::{LinkFormatter, MDLinkFormatter};
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::*;
 use crate::parser::inline::{self, InlineParser};
-use crate::parser::pipeline::{ParseContext, ParsePlan};
 use crate::plugins::presets::{Preset, PresetConfig};
 use crate::render::{
     DebugTreeRenderer,
@@ -51,9 +51,7 @@ pub struct MarkdownIt {
     /// Format-specific renderers for documents.
     pub renderers: RendererRegistry,
 
-    ruler: Ruler<RuleMark, CoreStage>,
-
-    parse_plan: OnceLock<ParsePlan>,
+    ruler: Ruler<RuleMark, CoreRuleRunner>,
 }
 
 impl std::fmt::Debug for MarkdownIt {
@@ -98,7 +96,6 @@ impl MarkdownIt {
             render_options: RenderOptions::default(),
             renderers,
             ruler: Ruler::new(),
-            parse_plan: OnceLock::new(),
         };
 
         // infrastructure
@@ -108,17 +105,13 @@ impl MarkdownIt {
         md
     }
 
-    /// Parse Markdown into a document and run the compiled core rule plan.
+    /// Parse Markdown into a document by executing core rules in ruler order.
     ///
     /// NUL is replaced with U+FFFD first, so [`Document::source`] and byte source
     /// maps refer to the normalized text.
     ///
     /// At low `max_nesting` values links and images may remain literal; a zero
     /// limit stops block parsing.
-    ///
-    /// # Panics
-    ///
-    /// Panics if core-rule stages are missing, repeated, or out of order.
     pub fn parse(&self, src: &str) -> Document {
         let source: Arc<str> = Arc::from(normalize_input(src).as_ref());
         let mut document = Document::new(Arc::clone(&source), Root::new(Arc::clone(&source)));
@@ -126,24 +119,17 @@ impl MarkdownIt {
             .node_mut(document.root())
             .ext_mut()
             .insert(self.render_options.clone());
-        ParseContext::new(source, self, document).parse()
-    }
+        document
+            .node_mut(document.root())
+            .set_srcmap(Some(SourcePos::new(0, source.len())));
 
-    pub(super) fn core_rules(&self) -> impl Iterator<Item = CoreStage> + '_ {
-        self.ruler.iter().cloned()
-    }
-
-    pub(crate) fn parse_plan(&self) -> &ParsePlan {
-        self.parse_plan
-            .get_or_init(|| ParsePlan::compile(self.core_rules()))
-    }
-
-    /// Run document postprocessors again after manually editing a document.
-    /// Parsing already runs them once automatically.
-    pub fn run_postprocessors(&self, document: &mut Document) {
-        for postprocess in &self.parse_plan().postprocessors {
-            postprocess.run(document).commit(document);
+        let mut state = CoreState::new(&source, self, &mut document);
+        for rule in self.ruler.iter() {
+            rule.run(&mut state);
         }
+
+        document.trim_unused_tail();
+        document
     }
 
     /// Register or replace a renderer for one payload type and output format.
@@ -180,8 +166,7 @@ impl MarkdownIt {
         self.render_as(document, "html")
     }
 
-    /// Parse `src`, apply postprocessing, and render HTML using
-    /// [`MarkdownIt::render_options`].
+    /// Parse `src` and render it as HTML using [`MarkdownIt::render_options`].
     pub fn render(&self, src: &str) -> String {
         self.render_html(&self.parse(src))
     }
@@ -192,7 +177,7 @@ impl MarkdownIt {
     /// # Panics
     ///
     /// Panics if `T` is already registered, directly or via an alias.
-    pub fn add_rule<T: CoreRule + Default>(&mut self) -> RuleBuilder<'_, CoreStage> {
+    pub fn add_rule<T: CoreRule + Default>(&mut self) -> RuleBuilder<'_, CoreRuleRunner> {
         self.add_rule_instance(T::default())
     }
 
@@ -203,15 +188,15 @@ impl MarkdownIt {
     /// # Panics
     ///
     /// Panics if `T` is already registered, directly or via an alias.
-    pub fn add_rule_instance<T: CoreRule>(&mut self, rule: T) -> RuleBuilder<'_, CoreStage> {
+    pub fn add_rule_instance<T: CoreRule>(&mut self, rule: T) -> RuleBuilder<'_, CoreRuleRunner> {
         assert!(
             !self.has_rule::<T>(),
             "core rule type is already registered: {:?}",
             std::any::type_name::<T>()
         );
-        let stage = rule.stage();
-        self.parse_plan.take();
-        let item = self.ruler.add(RuleMark::of::<T>(), stage);
+        let item = self
+            .ruler
+            .add(RuleMark::of::<T>(), CoreRuleRunner::new(rule));
         for name in T::NAMES {
             item.alias(RuleMark::named(*name));
         }
@@ -225,7 +210,6 @@ impl MarkdownIt {
 
     /// Remove the rule of type `T` from the ruler.
     pub fn remove_rule<T: CoreRule>(&mut self) {
-        self.parse_plan.take();
         self.ruler.remove(RuleMark::of::<T>());
     }
 

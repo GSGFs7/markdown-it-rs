@@ -12,7 +12,7 @@ use crate::document::{
     StructuralEvent,
     Text,
 };
-use crate::parser::core::{CoreRule, CoreStage, PostProcess};
+use crate::parser::core::{CoreRule, CoreState};
 use crate::plugins::cmark::block::list::{BulletList, ListItem, OrderedList};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 
@@ -22,6 +22,8 @@ pub fn add(md: &mut MarkdownIt) {
     md.add_renderer::<TaskListMarker, _>("html", TaskListMarkerRenderer);
     md.add_renderer::<TaskListMarker, _>("text", crate::render::EmptyRenderer);
     md.add_rule::<TaskListRule>()
+        .after_named("inline")
+        .after_named("footnote_tail")
         .before::<crate::plugins::sourcepos::SourcePosRule>();
 }
 
@@ -68,15 +70,17 @@ struct TaskItemPlan {
     source_map: Option<SourcePos>,
 }
 
-/// Task-list postprocessor.
+/// Converts task-list markers.
 #[derive(Debug, Default)]
 pub struct TaskListRule;
 
 impl CoreRule for TaskListRule {
     const NAMES: &'static [&'static str] = &["extra::tasklist", "tasklist", "task_list"];
 
-    fn stage(&self) -> CoreStage {
-        CoreStage::PostProcess(PostProcess::new(edits))
+    fn run(&self, state: &mut CoreState<'_>) {
+        let document = &mut *state.document;
+        let edits = edits(document);
+        edits.commit(document);
     }
 }
 
