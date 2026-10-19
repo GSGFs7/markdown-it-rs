@@ -1,6 +1,70 @@
 use markdown_it::common::sourcemap::SourceWithLineStarts;
 use markdown_it::{Document, NodeRef};
 
+#[test]
+fn text_fallback_maps_only_existing_source_bytes() {
+    use markdown_it::{EditBatch, MarkdownIt, StructuralEvent};
+
+    let md = MarkdownIt::empty();
+    type Case = (&'static str, &'static [(usize, usize)], &'static str);
+    let cases: &[Case] = &[
+        ("", &[], ""),
+        ("   ", &[], ""),
+        ("hello", &[(0, 5)], "hello\n"),
+        ("hello\n", &[(0, 6)], "hello\n"),
+        ("雪", &[(0, 3)], "雪\n"),
+        ("  雪", &[(2, 5)], "雪\n"),
+        ("first\n雪", &[(0, 6), (6, 9)], "first\n雪\n"),
+        ("a\r\n雪", &[(0, 2), (3, 6)], "a\n雪\n"),
+        ("a\r雪", &[(0, 2), (2, 5)], "a\n雪\n"),
+        ("\0", &[(0, 3)], "�\n"),
+        ("text", &[(0, 4)], "text\n"),
+        (
+            "  leading\n\nsecond  ",
+            &[(2, 10), (11, 19)],
+            "leading\nsecond  \n",
+        ),
+        (
+            "first\r\n\tsecond\rthird",
+            &[(0, 6), (8, 15), (15, 20)],
+            "first\nsecond\nthird\n",
+        ),
+        ("nul \0 byte", &[(0, 12)], "nul � byte\n"),
+        ("# 雪\n\n*inline*", &[(0, 6), (7, 15)], "# 雪\n*inline*\n"),
+    ];
+
+    for &(source, expected_maps, expected_html) in cases {
+        let mut document = md.parse(source);
+        let maps: Vec<_> = document
+            .children(document.root())
+            .iter()
+            .map(|&id| document.node(id).srcmap().unwrap().get_byte_offsets())
+            .collect();
+        assert_eq!(maps, expected_maps, "source={source:?}");
+
+        let mut edits = EditBatch::new();
+        for event in document.events(document.root()) {
+            if matches!(event, StructuralEvent::Exit(_)) {
+                continue;
+            }
+            let node = event.node();
+            let map = node.srcmap().unwrap();
+            let (start, end) = map.get_byte_offsets();
+            assert!(
+                document.source().get(start..end).is_some(),
+                "source={source:?}"
+            );
+            edits.set_source_map(node.id(), Some(map));
+        }
+        edits.commit(&mut document);
+        assert_eq!(
+            md.render_html(&document),
+            expected_html,
+            "source={source:?}"
+        );
+    }
+}
+
 fn run(input: &str, f: fn(&Document, SourceWithLineStarts)) {
     let mut md = markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md);

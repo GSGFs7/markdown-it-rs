@@ -32,9 +32,10 @@ fn parse_text_fallback(source: &str, document: &mut Document) {
         let mut content = source[line.first_nonspace..line.line_end].to_owned();
         content.push('\n');
         let text = document.create_node(Text { content });
+        let source_end = (line.line_end + 1).min(source.len());
         document
             .node_mut(text)
-            .set_srcmap(Some(SourcePos::new(line.first_nonspace, line.line_end + 1)));
+            .set_srcmap(Some(SourcePos::new(line.first_nonspace, source_end)));
         document.push_child(document.root(), text);
     }
 }
