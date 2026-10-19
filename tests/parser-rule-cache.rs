@@ -37,9 +37,10 @@ fn finalize(state: &mut InlineState<'_>) {
         .push(("finalized".into(), "yes".into()));
 }
 
+#[derive(Default)]
 struct CoreFinalize;
 impl CoreRule for CoreFinalize {
-    fn stage() -> CoreStage {
+    fn stage(&self) -> CoreStage {
         CoreStage::Finalize(|document, _| {
             let root = document.root();
             document

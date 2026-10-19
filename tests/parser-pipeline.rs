@@ -544,9 +544,10 @@ fn direct_parser_rejects_invalid_core_stages_before_callbacks() {
     use markdown_it::parser::core::{CoreRule, CoreStage};
     use markdown_it::parser::inline::builtin::InlineParserRule;
 
+    #[derive(Default)]
     struct ExtraStage<const INLINE: bool>;
     impl<const INLINE: bool> CoreRule for ExtraStage<INLINE> {
-        fn stage() -> CoreStage {
+        fn stage(&self) -> CoreStage {
             if INLINE {
                 CoreStage::ParseInlines
             } else {
@@ -555,9 +556,10 @@ fn direct_parser_rejects_invalid_core_stages_before_callbacks() {
         }
     }
 
+    #[derive(Default)]
     struct EarlyFinalizer;
     impl CoreRule for EarlyFinalizer {
-        fn stage() -> CoreStage {
+        fn stage(&self) -> CoreStage {
             CoreStage::Finalize(|_, _| {
                 panic!("invalid configuration must be rejected before finalizing");
             })
@@ -1779,6 +1781,7 @@ fn direct_core_preparations_share_rule_order_and_lifetime() {
     use markdown_it::parser::inline::builtin::InlineParserRule;
     use markdown_it::plugins::cmark::block::reference::ReferenceMap;
 
+    #[derive(Default)]
     struct Preparation<const AFTER_BLOCK: bool>;
     impl<const AFTER_BLOCK: bool> Preparation<AFTER_BLOCK> {
         fn prepare(_: &str, _: &MarkdownIt, root_ext: &mut RootExtSet) {
@@ -1789,7 +1792,7 @@ fn direct_core_preparations_share_rule_order_and_lifetime() {
         }
     }
     impl<const AFTER_BLOCK: bool> CoreRule for Preparation<AFTER_BLOCK> {
-        fn stage() -> CoreStage {
+        fn stage(&self) -> CoreStage {
             CoreStage::PrepareState(Self::prepare)
         }
     }
@@ -2068,9 +2071,10 @@ fn direct_draft_finalizers_run_in_order_on_all_parse_paths() {
     use markdown_it::parser::core::{CoreRule, CoreStage};
     use markdown_it::parser::inline::builtin::InlineParserRule;
 
+    #[derive(Default)]
     struct Finalize<const SECOND: bool>;
     impl<const SECOND: bool> CoreRule for Finalize<SECOND> {
-        fn stage() -> CoreStage {
+        fn stage(&self) -> CoreStage {
             CoreStage::Finalize(|root, _| {
                 assert_eq!(root.node(root.root()).attrs().len(), usize::from(SECOND));
                 if SECOND {

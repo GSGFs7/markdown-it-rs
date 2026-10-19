@@ -5,8 +5,8 @@ use markdown_it::plugins::extra::heading_anchors::{self, HeadingAnchorsOptions};
 use markdown_it::{Document, MarkdownIt};
 use markdown_it_benchmarks::corpus;
 
-fn transform_registered(document: &mut Document, md: &MarkdownIt) {
-    md.run_transforms(document);
+fn run_postprocessors(document: &mut Document, md: &MarkdownIt) {
+    md.run_postprocessors(document);
 }
 
 fn parser() -> MarkdownIt {
@@ -34,8 +34,8 @@ fn heading_heavy() -> String {
 fn benchmark(c: &mut Criterion) {
     let mut parser = parser();
     parser.ext.insert(HeadingAnchorsOptions::default());
-    let mut transforms = MarkdownIt::empty();
-    heading_anchors::add(&mut transforms);
+    let mut postprocessors = MarkdownIt::empty();
+    heading_anchors::add(&mut postprocessors);
     let standard = corpus::standard();
     let heading_heavy = heading_heavy();
 
@@ -50,7 +50,7 @@ fn benchmark(c: &mut Criterion) {
             b.iter_batched(
                 || parser.parse(source),
                 |mut document| {
-                    transform_registered(black_box(&mut document), black_box(&transforms));
+                    run_postprocessors(black_box(&mut document), black_box(&postprocessors));
                     black_box(document);
                 },
                 BatchSize::SmallInput,

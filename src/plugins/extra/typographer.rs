@@ -35,8 +35,8 @@ use regex::Regex;
 
 use crate::MarkdownIt;
 use crate::document::edit::EditBatch;
-use crate::document::transform::Transform;
 use crate::document::{Document, StructuralEvent, Text};
+use crate::parser::core::{CoreRule, CoreStage, PostProcess};
 use crate::plugins::cmark::inline::backticks::CodeInline;
 use crate::plugins::cmark::inline::image::Image;
 
@@ -78,46 +78,49 @@ fn replace_abbreviation(input: &str) -> &'static str {
 
 pub fn add(md: &mut MarkdownIt) {
     // Alias, not type: custom `add_with` variants share only this alias.
-    md.add_transform::<TypographerTransform>()
-        .before_named("smartquotes");
+    md.add_rule::<TypographerRule>().before_named("smartquotes");
 }
 
-/// Typographer transform.
+/// Typographer postprocessor.
 #[derive(Default)]
-pub struct TypographerTransform;
+pub struct TypographerRule;
 
-impl Transform for TypographerTransform {
-    const KEY: &'static str = "extra::typographer";
+impl CoreRule for TypographerRule {
+    const NAMES: &'static [&'static str] = &["extra::typographer"];
 
-    fn run(&self, document: &Document) -> EditBatch {
-        let mut edits = EditBatch::new();
-        let mut protected_depth = 0;
-        for event in document.events(document.root()) {
-            let node = match event {
-                StructuralEvent::Enter(node) if node.is::<CodeInline>() || node.is::<Image>() => {
-                    protected_depth += 1;
-                    continue;
-                }
-                StructuralEvent::Exit(node) if node.is::<CodeInline>() || node.is::<Image>() => {
-                    protected_depth -= 1;
-                    continue;
-                }
-                StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => node,
-                StructuralEvent::Exit(_) => continue,
-            };
-
-            if protected_depth > 0 {
-                continue;
-            }
-            let Some(text) = node.cast::<Text>() else {
-                continue;
-            };
-            if let Some(replacement) = replace_text(&text.content) {
-                edits.replace_text(node.id(), 0..text.content.len(), replacement);
-            }
-        }
-        edits
+    fn stage(&self) -> CoreStage {
+        CoreStage::PostProcess(PostProcess::new(edits))
     }
+}
+
+fn edits(document: &Document) -> EditBatch {
+    let mut edits = EditBatch::new();
+    let mut protected_depth = 0;
+    for event in document.events(document.root()) {
+        let node = match event {
+            StructuralEvent::Enter(node) if node.is::<CodeInline>() || node.is::<Image>() => {
+                protected_depth += 1;
+                continue;
+            }
+            StructuralEvent::Exit(node) if node.is::<CodeInline>() || node.is::<Image>() => {
+                protected_depth -= 1;
+                continue;
+            }
+            StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => node,
+            StructuralEvent::Exit(_) => continue,
+        };
+
+        if protected_depth > 0 {
+            continue;
+        }
+        let Some(text) = node.cast::<Text>() else {
+            continue;
+        };
+        if let Some(replacement) = replace_text(&text.content) {
+            edits.replace_text(node.id(), 0..text.content.len(), replacement);
+        }
+    }
+    edits
 }
 
 fn replace_text(input: &str) -> Option<String> {

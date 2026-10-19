@@ -1,12 +1,12 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use markdown_it::plugins::sourcepos::{self, SourcePosTransform};
-use markdown_it::{Document, EditBatch, MarkdownIt, StructuralEvent, Transform};
+use markdown_it::plugins::sourcepos;
+use markdown_it::{Document, EditBatch, MarkdownIt, StructuralEvent};
 use markdown_it_benchmarks::corpus;
 
-fn transform_registered(document: &mut Document, md: &MarkdownIt) {
-    md.run_transforms(document);
+fn run_postprocessors(document: &mut Document, md: &MarkdownIt) {
+    md.run_postprocessors(document);
 }
 
 fn parser() -> MarkdownIt {
@@ -18,9 +18,8 @@ fn parser() -> MarkdownIt {
 
 fn benchmark(c: &mut Criterion) {
     let parser = parser();
-    let transform = SourcePosTransform;
-    let mut transforms = MarkdownIt::empty();
-    sourcepos::add(&mut transforms);
+    let mut postprocessors = MarkdownIt::empty();
+    sourcepos::add(&mut postprocessors);
     let standard = corpus::standard();
 
     for corpus in standard {
@@ -32,7 +31,7 @@ fn benchmark(c: &mut Criterion) {
             b.iter_batched(
                 || parser.parse(source),
                 |mut document| {
-                    transform_registered(black_box(&mut document), black_box(&transforms));
+                    run_postprocessors(black_box(&mut document), black_box(&postprocessors));
                     black_box(document);
                 },
                 BatchSize::SmallInput,
@@ -42,13 +41,13 @@ fn benchmark(c: &mut Criterion) {
             let document = parser.parse(source);
             // Diagnostic phase only: its timing includes dropping the
             // uncommitted batch, so it is not additive with document-commit.
-            b.iter(|| black_box(transform.run(black_box(&document))))
+            b.iter(|| black_box(sourcepos::edits(black_box(&document))))
         });
         group.bench_function("document-commit", |b| {
             b.iter_batched(
                 || {
                     let document = parser.parse(source);
-                    let edits = transform.run(&document);
+                    let edits = sourcepos::edits(&document);
                     (document, edits)
                 },
                 |(mut document, edits)| {

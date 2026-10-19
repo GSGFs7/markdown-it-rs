@@ -28,7 +28,6 @@ pub use document::text::{
     TextProjection,
     TextProjectionKind,
 };
-pub use document::transform::{Transform, TransformRegistry, TransformRuleBuilder};
 pub use document::{
     Document,
     HtmlAttribute,

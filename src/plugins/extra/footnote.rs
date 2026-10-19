@@ -120,22 +120,24 @@ pub(crate) struct FootnoteReferenceScanner;
 // ^[inline note]
 pub(crate) struct FootnoteInlineScanner;
 
+#[derive(Default)]
 struct FootnoteFinalizeRule;
 
 impl CoreRule for FootnoteFinalizeRule {
     const NAMES: &'static [&'static str] = &["footnote_tail"];
 
-    fn stage() -> CoreStage {
+    fn stage(&self) -> CoreStage {
         CoreStage::Finalize(finalize_footnotes)
     }
 }
 
 /// Ensures [`SharedFootnoteEnv`] exists even for inline-only documents, where
 /// the block rule never creates it.
+#[derive(Default)]
 struct FootnotePreparation;
 
 impl CoreRule for FootnotePreparation {
-    fn stage() -> CoreStage {
+    fn stage(&self) -> CoreStage {
         CoreStage::PrepareState(|_source, _md, root_ext| {
             root_ext.get_or_insert_default::<SharedFootnoteEnv>();
         })

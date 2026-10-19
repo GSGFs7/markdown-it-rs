@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use crate::common::utils::{is_markdown_whitespace, is_punct_char};
 use crate::document::{Text, TextSpecial};
+use crate::parser::core::{CoreRule, CoreStage, PostProcess};
 use crate::parser::inline::helpers::full_link::IndependentLabelSource;
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
@@ -28,7 +29,6 @@ use crate::{
     TextEvent,
     TextProjection,
     TextProjectionKind,
-    Transform,
 };
 
 const APOSTROPHE: char = '\u{2019}';
@@ -50,7 +50,7 @@ pub fn add_with<
 >(
     md: &mut MarkdownIt,
 ) {
-    md.add_transform::<SmartQuotesTransform<
+    md.add_rule::<SmartQuotesRule<
         OPEN_SINGLE_QUOTE,
         CLOSE_SINGLE_QUOTE,
         OPEN_DOUBLE_QUOTE,
@@ -58,12 +58,12 @@ pub fn add_with<
     >>();
 }
 
-/// The classic smartquotes transform used by [`add`].
-pub type ClassicSmartQuotesTransform = SmartQuotesTransform<'‘', '’', '“', '”'>;
+/// The classic smartquotes rule used by [`add`].
+pub type ClassicSmartQuotesRule = SmartQuotesRule<'‘', '’', '“', '”'>;
 
 /// Smartquotes with a compile-time quote set.
 #[derive(Default)]
-pub struct SmartQuotesTransform<
+pub struct SmartQuotesRule<
     const OPEN_SINGLE_QUOTE: char,
     const CLOSE_SINGLE_QUOTE: char,
     const OPEN_DOUBLE_QUOTE: char,
@@ -75,21 +75,25 @@ impl<
     const CLOSE_SINGLE_QUOTE: char,
     const OPEN_DOUBLE_QUOTE: char,
     const CLOSE_DOUBLE_QUOTE: char,
-> Transform
-    for SmartQuotesTransform<
+> CoreRule
+    for SmartQuotesRule<
         OPEN_SINGLE_QUOTE,
         CLOSE_SINGLE_QUOTE,
         OPEN_DOUBLE_QUOTE,
         CLOSE_DOUBLE_QUOTE,
     >
 {
-    const KEY: &'static str = "extra::smartquotes";
-    const ALIASES: &'static [&'static str] = &["smartquotes"];
+    const NAMES: &'static [&'static str] = &["extra::smartquotes", "smartquotes"];
 
-    fn run(&self, document: &Document) -> EditBatch {
-        edits_with::<OPEN_SINGLE_QUOTE, CLOSE_SINGLE_QUOTE, OPEN_DOUBLE_QUOTE, CLOSE_DOUBLE_QUOTE>(
-            document,
-        )
+    fn stage(&self) -> CoreStage {
+        CoreStage::PostProcess(PostProcess::new(
+            edits_with::<
+                OPEN_SINGLE_QUOTE,
+                CLOSE_SINGLE_QUOTE,
+                OPEN_DOUBLE_QUOTE,
+                CLOSE_DOUBLE_QUOTE,
+            >,
+        ))
     }
 }
 

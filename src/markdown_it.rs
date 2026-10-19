@@ -4,7 +4,6 @@ use std::sync::{Arc, OnceLock};
 use crate::common::RuleMark;
 use crate::common::extset::MarkdownItExtSet;
 use crate::common::ruler::Ruler;
-use crate::document::transform::{Transform, TransformRegistry, TransformRuleBuilder};
 use crate::document::{Document, NodeValue, Root, Text, TextSpecial};
 use crate::links::{LinkFormatter, MDLinkFormatter};
 use crate::parser::block::{self, BlockParser};
@@ -49,9 +48,6 @@ pub struct MarkdownIt {
     /// Default rendering options.
     pub render_options: RenderOptions,
 
-    /// Ordered transforms for documents.
-    pub transforms: TransformRegistry,
-
     /// Format-specific renderers for documents.
     pub renderers: RendererRegistry,
 
@@ -71,7 +67,6 @@ impl std::fmt::Debug for MarkdownIt {
             .field("max_indent", &self.max_indent)
             .field("ruler", &self.ruler)
             .field("render_options", &self.render_options)
-            .field("transforms", &self.transforms)
             .field("renderers", &self.renderers)
             .finish()
     }
@@ -101,7 +96,6 @@ impl MarkdownIt {
             max_nesting: 100,
             max_indent: i32::MAX,
             render_options: RenderOptions::default(),
-            transforms: TransformRegistry::new(),
             renderers,
             ruler: Ruler::new(),
             parse_plan: OnceLock::new(),
@@ -114,7 +108,7 @@ impl MarkdownIt {
         md
     }
 
-    /// Parse Markdown into a document and run registered transforms.
+    /// Parse Markdown into a document and run the compiled core rule plan.
     ///
     /// NUL is replaced with U+FFFD first, so [`Document::source`] and byte source
     /// maps refer to the normalized text.
@@ -136,7 +130,7 @@ impl MarkdownIt {
     }
 
     pub(super) fn core_rules(&self) -> impl Iterator<Item = CoreStage> + '_ {
-        self.ruler.iter().copied()
+        self.ruler.iter().cloned()
     }
 
     pub(crate) fn parse_plan(&self) -> &ParsePlan {
@@ -144,23 +138,12 @@ impl MarkdownIt {
             .get_or_init(|| ParsePlan::compile(self.core_rules()))
     }
 
-    /// Register a transform.
-    pub fn add_transform<T: Transform + Default>(&mut self) -> TransformRuleBuilder<'_> {
-        self.transforms.add::<T>()
-    }
-
-    /// Register an owned transform instance.
-    pub fn add_transform_instance<T: Transform>(
-        &mut self,
-        transform: T,
-    ) -> TransformRuleBuilder<'_> {
-        self.transforms.add_instance(transform)
-    }
-
-    /// Run registered transforms again after manually editing a document.
-    /// Parsing already runs this pipeline once automatically.
-    pub fn run_transforms(&self, document: &mut Document) {
-        self.transforms.run(document);
+    /// Run document postprocessors again after manually editing a document.
+    /// Parsing already runs them once automatically.
+    pub fn run_postprocessors(&self, document: &mut Document) {
+        for postprocess in &self.parse_plan().postprocessors {
+            postprocess.run(document).commit(document);
+        }
     }
 
     /// Register or replace a renderer for one payload type and output format.
@@ -203,11 +186,32 @@ impl MarkdownIt {
         self.render_html(&self.parse(src))
     }
 
-    /// Register a new core rule for type `T`, returning a builder to
-    /// position it relative to other rules (before/after/alias/...).
-    pub fn add_rule<T: CoreRule>(&mut self) -> RuleBuilder<'_, CoreStage> {
+    /// Register a new core rule for type `T`, returning a builder to position
+    /// it relative to other rules.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `T` is already registered, directly or via an alias.
+    pub fn add_rule<T: CoreRule + Default>(&mut self) -> RuleBuilder<'_, CoreStage> {
+        self.add_rule_instance(T::default())
+    }
+
+    /// Register an owned core rule instance, e.g. for rules with runtime
+    /// configuration. To replace a rule, remove it first. Named aliases may be
+    /// shared for group ordering.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `T` is already registered, directly or via an alias.
+    pub fn add_rule_instance<T: CoreRule>(&mut self, rule: T) -> RuleBuilder<'_, CoreStage> {
+        assert!(
+            !self.has_rule::<T>(),
+            "core rule type is already registered: {:?}",
+            std::any::type_name::<T>()
+        );
+        let stage = rule.stage();
         self.parse_plan.take();
-        let item = self.ruler.add(RuleMark::of::<T>(), T::stage());
+        let item = self.ruler.add(RuleMark::of::<T>(), stage);
         for name in T::NAMES {
             item.alias(RuleMark::named(*name));
         }

@@ -7,10 +7,11 @@ pub fn add(md: &mut MarkdownIt) {
         .before_all();
 }
 
+#[derive(Default)]
 pub struct InlineParserRule;
 impl CoreRule for InlineParserRule {
     const NAMES: &'static [&'static str] = &["inline"];
-    fn stage() -> CoreStage {
+    fn stage(&self) -> CoreStage {
         CoreStage::ParseInlines
     }
 }

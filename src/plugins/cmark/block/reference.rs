@@ -54,9 +54,10 @@ use crate::render::EmptyRenderer;
 ///     }
 /// }
 ///
+/// #[derive(Default)]
 /// struct AddCustomReferences;
 /// impl CoreRule for AddCustomReferences {
-///     fn stage() -> CoreStage {
+///     fn stage(&self) -> CoreStage {
 ///         CoreStage::PrepareState(|_, _, ext| {
 ///             ext.insert(ReferenceMap::new(RefMapOverride::default()));
 ///         })

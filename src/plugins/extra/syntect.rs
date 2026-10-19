@@ -57,8 +57,8 @@ use two_face::theme::LazyThemeSet;
 
 use crate::common::utils::unescape_all;
 use crate::document::edit::EditBatch;
-use crate::document::transform::Transform;
-use crate::document::{Document, NodeRef, StructuralEvent};
+use crate::document::{NodeRef, StructuralEvent};
+use crate::parser::core::{CoreRule, CoreStage, PostProcess};
 use crate::plugins::cmark::block::code::CodeBlock;
 use crate::plugins::cmark::block::fence::CodeFence;
 use crate::render::{NodeRenderer, RenderContext, write_html_close, write_html_open};
@@ -318,30 +318,33 @@ struct SharedSyntectSettings(Arc<RwLock<SyntectSettings>>);
 
 /// Highlights code blocks during document postprocessing.
 #[derive(Debug, Default)]
-pub struct SyntectTransform {
+pub struct SyntectRule {
     settings: SharedSyntectSettings,
 }
 
-impl Transform for SyntectTransform {
-    const KEY: &'static str = "syntect";
+impl CoreRule for SyntectRule {
+    const NAMES: &'static [&'static str] = &["syntect"];
 
-    fn run(&self, document: &Document) -> EditBatch {
-        let settings = self.settings.0.read().unwrap().clone();
-        let mut edits = EditBatch::new();
-        for event in document.events(document.root()) {
-            let node = match event {
-                StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => node,
-                StructuralEvent::Exit(_) => continue,
-            };
-            if let Some(snippet) = highlight_node(
-                node.cast::<CodeBlock>(),
-                node.cast::<CodeFence>(),
-                &settings,
-            ) {
-                edits.replace_value(node.id(), snippet);
+    fn stage(&self) -> CoreStage {
+        let settings = self.settings.clone();
+        CoreStage::PostProcess(PostProcess::new(move |document| {
+            let settings = settings.0.read().unwrap().clone();
+            let mut edits = EditBatch::new();
+            for event in document.events(document.root()) {
+                let node = match event {
+                    StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => node,
+                    StructuralEvent::Exit(_) => continue,
+                };
+                if let Some(snippet) = highlight_node(
+                    node.cast::<CodeBlock>(),
+                    node.cast::<CodeFence>(),
+                    &settings,
+                ) {
+                    edits.replace_value(node.id(), snippet);
+                }
             }
-        }
-        edits
+            edits
+        }))
     }
 }
 
@@ -355,7 +358,7 @@ pub fn add(md: &mut MarkdownIt) {
         .ext
         .get_or_insert_default::<SharedSyntectSettings>()
         .clone();
-    md.add_transform_instance(SyntectTransform { settings });
+    md.add_rule_instance(SyntectRule { settings });
     register_renderers(md);
 }
 

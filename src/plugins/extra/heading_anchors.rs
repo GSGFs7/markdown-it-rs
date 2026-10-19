@@ -13,8 +13,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::document::edit::EditBatch;
-use crate::document::transform::Transform;
 use crate::document::{Document, NodeRef, Text, TextSpecial};
+use crate::parser::core::{CoreRule, CoreStage, PostProcess};
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
 use crate::plugins::cmark::inline::newline::Softbreak;
@@ -28,7 +28,7 @@ pub fn add(md: &mut MarkdownIt) {
 
 /// Register heading anchors with per-parser configuration.
 pub fn add_with_options(md: &mut MarkdownIt, options: HeadingAnchorsOptions) {
-    md.add_transform_instance(HeadingAnchorsTransform::new(options));
+    md.add_rule_instance(HeadingAnchorsRule::new(options));
 }
 
 // --- config ---
@@ -244,11 +244,11 @@ impl<'a> HeadingAnchorState<'a> {
 
 /// Heading anchors with owned runtime configuration.
 #[derive(Debug, Default)]
-pub struct HeadingAnchorsTransform {
+pub struct HeadingAnchorsRule {
     options: HeadingAnchorsOptions,
 }
 
-impl HeadingAnchorsTransform {
+impl HeadingAnchorsRule {
     pub fn new(options: HeadingAnchorsOptions) -> Self {
         Self { options }
     }
@@ -258,61 +258,66 @@ impl HeadingAnchorsTransform {
     }
 }
 
-impl Transform for HeadingAnchorsTransform {
-    const KEY: &'static str = "extra::heading_anchors";
+impl CoreRule for HeadingAnchorsRule {
+    const NAMES: &'static [&'static str] = &["extra::heading_anchors"];
 
-    fn run(&self, document: &Document) -> EditBatch {
-        let mut state = HeadingAnchorState::new(&self.options);
-        let mut headings = Vec::<Heading>::new(); // regustration list
-        let mut active_headings = Vec::<usize>::new(); // stack
-        // Enter(heading)             -> preemption id
-        //   Enter(inlineRoot)        -> `append_text` do none thing
-        //     Leaf(Text "Hello ")    -> append "Hello " to active heading
-        //     Enter(emphasis)        -> preemption id
-        //       Leaf(Text "world")   -> append "world" (headings[0].text = "Hello world")
-        //     Exit(emphasis)
-        //   Exit(inlineRoot)
-        // Exit(heading)              -> pop active heading
-        for event in document.events(document.root()) {
-            let node = event.node();
-            match event {
-                StructuralEvent::Enter(node) => {
-                    state.reserve_ids(is_heading(node), node.attrs());
-                    if is_heading(node) {
-                        active_headings.push(headings.len());
-                        headings.push(Heading::new(node));
-                    }
+    fn stage(&self) -> CoreStage {
+        let options = self.options.clone();
+        CoreStage::PostProcess(PostProcess::new(move |document| edits(document, &options)))
+    }
+}
+
+fn edits(document: &Document, options: &HeadingAnchorsOptions) -> EditBatch {
+    let mut state = HeadingAnchorState::new(options);
+    let mut headings = Vec::<Heading>::new(); // regustration list
+    let mut active_headings = Vec::<usize>::new(); // stack
+    // Enter(heading)             -> preemption id
+    //   Enter(inlineRoot)        -> `append_text` do none thing
+    //     Leaf(Text "Hello ")    -> append "Hello " to active heading
+    //     Enter(emphasis)        -> preemption id
+    //       Leaf(Text "world")   -> append "world" (headings[0].text = "Hello world")
+    //     Exit(emphasis)
+    //   Exit(inlineRoot)
+    // Exit(heading)              -> pop active heading
+    for event in document.events(document.root()) {
+        let node = event.node();
+        match event {
+            StructuralEvent::Enter(node) => {
+                state.reserve_ids(is_heading(node), node.attrs());
+                if is_heading(node) {
+                    active_headings.push(headings.len());
+                    headings.push(Heading::new(node));
+                }
+                append_text(node, &active_headings, &mut headings);
+            }
+            StructuralEvent::Leaf(node) => {
+                state.reserve_ids(is_heading(node), node.attrs());
+                if is_heading(node) {
+                    headings.push(Heading::new(node));
+                } else {
                     append_text(node, &active_headings, &mut headings);
                 }
-                StructuralEvent::Leaf(node) => {
-                    state.reserve_ids(is_heading(node), node.attrs());
-                    if is_heading(node) {
-                        headings.push(Heading::new(node));
-                    } else {
-                        append_text(node, &active_headings, &mut headings);
-                    }
-                }
-                StructuralEvent::Exit(_) => {
-                    if is_heading(node) {
-                        let heading = active_headings
-                            .pop()
-                            .expect("balanced heading events have an active heading");
-                        debug_assert_eq!(headings[heading].id, node.id());
-                    }
+            }
+            StructuralEvent::Exit(_) => {
+                if is_heading(node) {
+                    let heading = active_headings
+                        .pop()
+                        .expect("balanced heading events have an active heading");
+                    debug_assert_eq!(headings[heading].id, node.id());
                 }
             }
         }
-
-        let mut edits = EditBatch::new();
-        for heading in headings {
-            match state.edit_for_heading(heading.has_id, &heading.text) {
-                HeadingIdEdit::Keep => {}
-                HeadingIdEdit::Remove => edits.remove_attribute(heading.id, "id"),
-                HeadingIdEdit::Set(slug) => edits.set_attribute(heading.id, "id", slug),
-            }
-        }
-        edits
     }
+
+    let mut edits = EditBatch::new();
+    for heading in headings {
+        match state.edit_for_heading(heading.has_id, &heading.text) {
+            HeadingIdEdit::Keep => {}
+            HeadingIdEdit::Remove => edits.remove_attribute(heading.id, "id"),
+            HeadingIdEdit::Set(slug) => edits.set_attribute(heading.id, "id", slug),
+        }
+    }
+    edits
 }
 
 struct Heading {
@@ -354,9 +359,10 @@ mod tests {
     use crate::parser::core::{CoreRule, CoreStage};
     use crate::parser::inline::builtin::InlineParserRule;
 
+    #[derive(Default)]
     struct AddExistingHeadingId;
     impl CoreRule for AddExistingHeadingId {
-        fn stage() -> CoreStage {
+        fn stage(&self) -> CoreStage {
             CoreStage::Finalize(|root, _| {
                 let mut stack = vec![root.root()];
                 while let Some(node) = stack.pop() {
@@ -630,10 +636,10 @@ mod tests {
     }
 
     #[test]
-    fn registration_populates_transform_registry() {
+    fn registration_populates_core_rules() {
         let mut md = MarkdownIt::empty();
         add(&mut md);
 
-        assert!(md.transforms.contains::<HeadingAnchorsTransform>());
+        assert!(md.has_rule::<HeadingAnchorsRule>());
     }
 }

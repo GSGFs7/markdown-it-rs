@@ -7,7 +7,7 @@ use crate::common::extset::RootExtSet;
 use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId, NodeValue, Root, Text};
 use crate::parser::block::{BlockState, build_line_offsets};
-use crate::parser::core::{CoreStage, FinalizeFn, PrepareStateFn};
+use crate::parser::core::{CoreStage, FinalizeFn, PostProcess, PrepareStateFn};
 use crate::parser::inline::{InlineState, RuleSet};
 
 /// Inline content queued during the block pass, resolved once all reference
@@ -100,6 +100,7 @@ pub(crate) struct ParsePlan {
     preparations: Vec<PrepareStateFn>,
     inline_preparations: Vec<PrepareStateFn>,
     finalizers: Vec<FinalizeFn>,
+    pub(crate) postprocessors: Vec<PostProcess>,
 }
 
 impl ParsePlan {
@@ -131,6 +132,11 @@ impl ParsePlan {
                     // Finalizers must follow the inline pass.
                     supported &= seen_inline;
                     plan.finalizers.push(finalize);
+                }
+                CoreStage::PostProcess(postprocess) => {
+                    // Postprocessors run after finalizers regardless of ruler
+                    // position; validation only preserves their relative order.
+                    plan.postprocessors.push(postprocess);
                 }
             }
         }
@@ -213,7 +219,9 @@ impl<'a> ParseContext<'a> {
 
         let mut document = self.document;
         document.trim_unused_tail();
-        self.md.run_transforms(&mut document);
+        for postprocess in &self.plan.postprocessors {
+            postprocess.run(&document).commit(&mut document);
+        }
 
         document
     }

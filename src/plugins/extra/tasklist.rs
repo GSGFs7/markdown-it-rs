@@ -3,7 +3,6 @@
 use crate::MarkdownIt;
 use crate::common::sourcemap::SourcePos;
 use crate::document::edit::EditBatch;
-use crate::document::transform::Transform;
 use crate::document::{
     Document,
     HtmlAttributes,
@@ -13,6 +12,7 @@ use crate::document::{
     StructuralEvent,
     Text,
 };
+use crate::parser::core::{CoreRule, CoreStage, PostProcess};
 use crate::plugins::cmark::block::list::{BulletList, ListItem, OrderedList};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 
@@ -21,8 +21,8 @@ use crate::plugins::cmark::block::paragraph::Paragraph;
 pub fn add(md: &mut MarkdownIt) {
     md.add_renderer::<TaskListMarker, _>("html", TaskListMarkerRenderer);
     md.add_renderer::<TaskListMarker, _>("text", crate::render::EmptyRenderer);
-    md.add_transform::<TaskListTransform>()
-        .before::<crate::plugins::sourcepos::SourcePosTransform>();
+    md.add_rule::<TaskListRule>()
+        .before::<crate::plugins::sourcepos::SourcePosRule>();
 }
 
 #[derive(Debug)]
@@ -68,75 +68,77 @@ struct TaskItemPlan {
     source_map: Option<SourcePos>,
 }
 
-/// Task-list transform.
+/// Task-list postprocessor.
 #[derive(Debug, Default)]
-pub struct TaskListTransform;
+pub struct TaskListRule;
 
-impl Transform for TaskListTransform {
-    const KEY: &'static str = "extra::tasklist";
-    const ALIASES: &'static [&'static str] = &["tasklist", "task_list"];
+impl CoreRule for TaskListRule {
+    const NAMES: &'static [&'static str] = &["extra::tasklist", "tasklist", "task_list"];
 
-    fn run(&self, document: &Document) -> EditBatch {
-        let mut edits = EditBatch::new();
+    fn stage(&self) -> CoreStage {
+        CoreStage::PostProcess(PostProcess::new(edits))
+    }
+}
 
-        for event in document.events(document.root()) {
-            let list = match event {
-                StructuralEvent::Enter(node)
-                    if node.is::<BulletList>() || node.is::<OrderedList>() =>
-                {
-                    node
-                }
-                _ => continue,
+/// Build task-list edits for a finished document.
+pub fn edits(document: &Document) -> EditBatch {
+    let mut edits = EditBatch::new();
+
+    for event in document.events(document.root()) {
+        let list = match event {
+            StructuralEvent::Enter(node) if node.is::<BulletList>() || node.is::<OrderedList>() => {
+                node
+            }
+            _ => continue,
+        };
+
+        let mut contains_task = false;
+        for &item in list.children() {
+            let Some(plan) = task_item_plan(document, item) else {
+                continue;
             };
+            contains_task = true;
 
-            let mut contains_task = false;
-            for &item in list.children() {
-                let Some(plan) = task_item_plan(document, item) else {
-                    continue;
-                };
-                contains_task = true;
-
-                if plan.marker_len == plan.text_len {
-                    if plan.marker_target == plan.text {
-                        edits.replace_node(plan.text, marker_draft(plan.checked));
-                    } else {
-                        edits.remove_node(plan.text);
-                        edits.insert_before(plan.marker_target, marker_draft(plan.checked));
-                    }
+            if plan.marker_len == plan.text_len {
+                if plan.marker_target == plan.text {
+                    edits.replace_node(plan.text, marker_draft(plan.checked));
                 } else {
-                    // remove task list marker text; it is replaced by a checkbox
-                    // at render time
-                    edits.replace_text(plan.text, 0..plan.marker_len, "");
-                    if let Some(source_map) = plan.source_map {
-                        let (start, end) = source_map.get_byte_offsets();
-                        // update source map
-                        edits.set_source_map(
-                            plan.text,
-                            Some(SourcePos::new(start + plan.marker_len, end)),
-                        );
-                    }
+                    edits.remove_node(plan.text);
                     edits.insert_before(plan.marker_target, marker_draft(plan.checked));
                 }
-
-                let item_node = document.node(plan.item);
-                edits.set_attribute(
-                    plan.item,
-                    "class",
-                    merged_class(item_node.attrs(), "task-list-item"),
-                );
+            } else {
+                // remove task list marker text; it is replaced by a checkbox
+                // at render time
+                edits.replace_text(plan.text, 0..plan.marker_len, "");
+                if let Some(source_map) = plan.source_map {
+                    let (start, end) = source_map.get_byte_offsets();
+                    // update source map
+                    edits.set_source_map(
+                        plan.text,
+                        Some(SourcePos::new(start + plan.marker_len, end)),
+                    );
+                }
+                edits.insert_before(plan.marker_target, marker_draft(plan.checked));
             }
 
-            if contains_task {
-                edits.set_attribute(
-                    list.id(),
-                    "class",
-                    merged_class(list.attrs(), "contains-task-list"),
-                );
-            }
+            let item_node = document.node(plan.item);
+            edits.set_attribute(
+                plan.item,
+                "class",
+                merged_class(item_node.attrs(), "task-list-item"),
+            );
         }
 
-        edits
+        if contains_task {
+            edits.set_attribute(
+                list.id(),
+                "class",
+                merged_class(list.attrs(), "contains-task-list"),
+            );
+        }
     }
+
+    edits
 }
 
 // --- helper ---

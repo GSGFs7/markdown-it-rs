@@ -5,7 +5,6 @@ use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use markdown_it::plugins::html::html_inline::HtmlInline;
 use markdown_it::{
-    Document,
     EditBatch,
     MarkdownIt,
     NodeDraft,
@@ -16,31 +15,28 @@ use markdown_it::{
     TextEvent,
     TextProjection,
     TextProjectionKind,
-    Transform,
-    TransformRegistry,
 };
+use markdown_it::parser::core::{CoreRule, CoreStage, PostProcess};
 use markdown_it_benchmarks::corpus;
 
-macro_rules! empty_transform {
-    ($type:ident, $key:literal) => {
+macro_rules! empty_postprocessor {
+    ($type:ident) => {
         #[derive(Default)]
         struct $type;
 
-        impl Transform for $type {
-            const KEY: &'static str = $key;
-
-            fn run(&self, _: &Document) -> EditBatch {
-                EditBatch::new()
+        impl CoreRule for $type {
+            fn stage(&self) -> CoreStage {
+                CoreStage::PostProcess(PostProcess::new(|_| EditBatch::new()))
             }
         }
     };
 }
 
-empty_transform!(EmptyTransform1, "empty-1");
-empty_transform!(EmptyTransform2, "empty-2");
-empty_transform!(EmptyTransform3, "empty-3");
-empty_transform!(EmptyTransform4, "empty-4");
-empty_transform!(EmptyTransform5, "empty-5");
+empty_postprocessor!(EmptyPostProcess1);
+empty_postprocessor!(EmptyPostProcess2);
+empty_postprocessor!(EmptyPostProcess3);
+empty_postprocessor!(EmptyPostProcess4);
+empty_postprocessor!(EmptyPostProcess5);
 
 fn text_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> {
     if let Some(text) = node.cast::<Text>() {
@@ -141,29 +137,29 @@ fn parser() -> markdown_it::MarkdownIt {
 fn benchmark(c: &mut Criterion) {
     let md = parser();
 
-    let empty_registry = TransformRegistry::new();
-    let mut one_transform = TransformRegistry::new();
-    one_transform.add::<EmptyTransform1>();
-    let mut five_transforms = TransformRegistry::new();
-    five_transforms.add::<EmptyTransform1>();
-    five_transforms.add::<EmptyTransform2>();
-    five_transforms.add::<EmptyTransform3>();
-    five_transforms.add::<EmptyTransform4>();
-    five_transforms.add::<EmptyTransform5>();
+    let empty_plan = MarkdownIt::empty();
+    let mut one_postprocessor = MarkdownIt::empty();
+    one_postprocessor.add_rule::<EmptyPostProcess1>();
+    let mut five_postprocessors = MarkdownIt::empty();
+    five_postprocessors.add_rule::<EmptyPostProcess1>();
+    five_postprocessors.add_rule::<EmptyPostProcess2>();
+    five_postprocessors.add_rule::<EmptyPostProcess3>();
+    five_postprocessors.add_rule::<EmptyPostProcess4>();
+    five_postprocessors.add_rule::<EmptyPostProcess5>();
     let mut empty_document = MarkdownIt::empty().parse("");
-    empty_registry.run(&mut empty_document);
-    one_transform.run(&mut empty_document);
-    five_transforms.run(&mut empty_document);
+    empty_plan.run_postprocessors(&mut empty_document);
+    one_postprocessor.run_postprocessors(&mut empty_document);
+    five_postprocessors.run_postprocessors(&mut empty_document);
 
-    let mut group = c.benchmark_group("document-transform-runner/empty-document");
-    group.bench_function("zero-transforms", |b| {
-        b.iter(|| empty_registry.run(black_box(&mut empty_document)))
+    let mut group = c.benchmark_group("document-postprocessor-runner/empty-document");
+    group.bench_function("zero-postprocessors", |b| {
+        b.iter(|| empty_plan.run_postprocessors(black_box(&mut empty_document)))
     });
-    group.bench_function("one-empty-transform", |b| {
-        b.iter(|| one_transform.run(black_box(&mut empty_document)))
+    group.bench_function("one-empty-postprocessor", |b| {
+        b.iter(|| one_postprocessor.run_postprocessors(black_box(&mut empty_document)))
     });
-    group.bench_function("five-empty-transforms", |b| {
-        b.iter(|| five_transforms.run(black_box(&mut empty_document)))
+    group.bench_function("five-empty-postprocessors", |b| {
+        b.iter(|| five_postprocessors.run_postprocessors(black_box(&mut empty_document)))
     });
     group.finish();
 

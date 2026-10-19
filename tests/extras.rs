@@ -180,9 +180,10 @@ mod markdown_it_rs_extras {
             }
         }
 
+        #[derive(Default)]
         struct MyCoreRule;
         impl CoreRule for MyCoreRule {
-            fn stage() -> CoreStage {
+            fn stage(&self) -> CoreStage {
                 CoreStage::Finalize(|root, _| {
                     root.node_mut(root.root())
                         .ext_mut()

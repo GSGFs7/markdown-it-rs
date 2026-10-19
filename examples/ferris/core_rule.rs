@@ -10,9 +10,10 @@ pub struct FerrisCounter(usize);
 impl NodeValue for FerrisCounter {}
 
 // This is an extension for the markdown parser.
+#[derive(Default)]
 struct FerrisCounterRule;
 impl CoreRule for FerrisCounterRule {
-    fn stage() -> CoreStage {
+    fn stage(&self) -> CoreStage {
         // This is a custom function that will be invoked once per document.
         // It has the document as an argument and may modify its contents.
         CoreStage::Finalize(|root, _| {

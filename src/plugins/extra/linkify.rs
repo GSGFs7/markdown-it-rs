@@ -334,11 +334,12 @@ struct LinkifyPosition {
 }
 
 #[doc(hidden)]
+#[derive(Default)]
 pub struct LinkifyPrescan;
 impl CoreRule for LinkifyPrescan {
     const NAMES: &'static [&'static str] = &["linkify_prescan"];
 
-    fn stage() -> CoreStage {
+    fn stage(&self) -> CoreStage {
         CoreStage::PrepareState(Self::prepare)
     }
 }

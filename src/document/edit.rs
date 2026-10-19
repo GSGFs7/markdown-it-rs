@@ -172,7 +172,7 @@ impl EditBatch {
     }
 
     /// Replace one byte range without allocating a temporary replacement
-    /// string. This is useful for character-oriented transforms.
+    /// string. This is useful for character-oriented edits.
     pub fn replace_char(&mut self, node: NodeId, range: Range<usize>, replacement: char) {
         self.push(node, range, TextReplacement::Char(replacement));
     }

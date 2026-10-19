@@ -31,7 +31,7 @@ fn benchmark(c: &mut Criterion) {
                 b.iter_batched(
                     || synthetic(count, split),
                     |mut doc| {
-                        md.run_transforms(black_box(&mut doc));
+                        md.run_postprocessors(black_box(&mut doc));
                         black_box(doc);
                     },
                     BatchSize::SmallInput,

@@ -8,7 +8,6 @@ mod node;
 mod root;
 mod structure;
 pub mod text;
-pub mod transform;
 mod value;
 
 use std::sync::Arc;

@@ -1,12 +1,12 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use markdown_it::plugins::extra::tasklist::{self, TaskListTransform};
-use markdown_it::{Document, MarkdownIt, Transform};
+use markdown_it::plugins::extra::tasklist;
+use markdown_it::{Document, MarkdownIt};
 use markdown_it_benchmarks::corpus;
 
-fn transform_registered(document: &mut Document, md: &MarkdownIt) {
-    md.run_transforms(document);
+fn run_postprocessors(document: &mut Document, md: &MarkdownIt) {
+    md.run_postprocessors(document);
 }
 
 fn parser() -> MarkdownIt {
@@ -30,9 +30,8 @@ fn tasklist_heavy() -> String {
 
 fn benchmark(c: &mut Criterion) {
     let parser = parser();
-    let transform = TaskListTransform;
-    let mut transforms = MarkdownIt::empty();
-    tasklist::add(&mut transforms);
+    let mut postprocessors = MarkdownIt::empty();
+    tasklist::add(&mut postprocessors);
     let standard = corpus::standard();
     let tasklist_heavy = tasklist_heavy();
 
@@ -47,7 +46,7 @@ fn benchmark(c: &mut Criterion) {
             b.iter_batched(
                 || parser.parse(source),
                 |mut document| {
-                    transform_registered(black_box(&mut document), black_box(&transforms));
+                    run_postprocessors(black_box(&mut document), black_box(&postprocessors));
                     black_box(document);
                 },
                 BatchSize::SmallInput,
@@ -55,13 +54,13 @@ fn benchmark(c: &mut Criterion) {
         });
         group.bench_function("document-build-edits", |b| {
             let document = parser.parse(source);
-            b.iter(|| black_box(transform.run(black_box(&document))))
+            b.iter(|| black_box(tasklist::edits(black_box(&document))))
         });
         group.bench_function("document-commit", |b| {
             b.iter_batched(
                 || {
                     let document = parser.parse(source);
-                    let edits = transform.run(&document);
+                    let edits = tasklist::edits(&document);
                     (document, edits)
                 },
                 |(mut document, edits)| {
