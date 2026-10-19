@@ -5,10 +5,10 @@
 //! <https://spec.commonmark.org/0.30/#indented-code-block>
 use crate::MarkdownIt;
 use crate::document::{NodeId, NodeRef, NodeValue};
-use crate::parser::block::{BlockRule, DocumentBlockState};
+use crate::parser::block::{BlockRule, BlockState};
 use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
+    NodeRenderer,
+    RenderContext,
     write_html_close,
     write_html_open,
     write_html_text,
@@ -21,15 +21,15 @@ pub struct CodeBlock {
     pub content: String,
 }
 
-struct CodeBlockDocumentRenderer;
+struct CodeBlockRenderer;
 
-impl DocumentNodeRenderer<CodeBlock> for CodeBlockDocumentRenderer {
+impl NodeRenderer<CodeBlock> for CodeBlockRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         code: &CodeBlock,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         context.cr(output);
         write_html_open(output, "pre", &[]);
@@ -43,13 +43,13 @@ impl DocumentNodeRenderer<CodeBlock> for CodeBlockDocumentRenderer {
 
 struct CodeBlockTextRenderer;
 
-impl DocumentNodeRenderer<CodeBlock> for CodeBlockTextRenderer {
+impl NodeRenderer<CodeBlock> for CodeBlockTextRenderer {
     fn render(
         &self,
         _: NodeRef<'_>,
         code: &CodeBlock,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         context.cr(output);
         output.write_str(&code.content);
@@ -61,8 +61,8 @@ impl NodeValue for CodeBlock {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<CodeScanner>();
-    md.add_document_renderer::<CodeBlock, _>("html", CodeBlockDocumentRenderer);
-    md.add_document_renderer::<CodeBlock, _>("text", CodeBlockTextRenderer);
+    md.add_renderer::<CodeBlock, _>("html", CodeBlockRenderer);
+    md.add_renderer::<CodeBlock, _>("text", CodeBlockTextRenderer);
     md.max_indent = CODE_INDENT;
 }
 
@@ -72,11 +72,11 @@ pub struct CodeScanner;
 impl BlockRule for CodeScanner {
     const NAMES: &'static [&'static str] = &["code"];
 
-    fn check(_: &mut DocumentBlockState<'_>) -> Option<()> {
+    fn check(_: &mut BlockState<'_>) -> Option<()> {
         None
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         if state.line_indent(state.line) < CODE_INDENT {
             return None;
         }

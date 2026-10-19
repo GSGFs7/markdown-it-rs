@@ -10,28 +10,23 @@ use regex::Regex;
 use crate::MarkdownIt;
 use crate::document::{NodeRef, NodeValue, TextSpecial};
 use crate::links::LinkFormatter;
-use crate::parser::inline::{DocumentInlineState, InlineRule};
-use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    TransparentDocumentRenderer,
-    render_html_link,
-};
+use crate::parser::inline::{InlineRule, InlineState};
+use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, render_html_link};
 
 #[derive(Debug)]
 pub struct Autolink {
     pub url: String,
 }
 
-struct AutolinkDocumentRenderer;
+struct AutolinkRenderer;
 
-impl DocumentNodeRenderer<Autolink> for AutolinkDocumentRenderer {
+impl NodeRenderer<Autolink> for AutolinkRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         link: &Autolink,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         render_html_link(node, &link.url, None, context, output);
     }
@@ -41,8 +36,8 @@ impl NodeValue for Autolink {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<AutolinkScanner>();
-    md.add_document_renderer::<Autolink, _>("html", AutolinkDocumentRenderer);
-    md.add_document_renderer::<Autolink, _>("text", TransparentDocumentRenderer);
+    md.add_renderer::<Autolink, _>("html", AutolinkRenderer);
+    md.add_renderer::<Autolink, _>("text", TransparentRenderer);
 }
 
 static AUTOLINK_RE: LazyLock<Regex> =
@@ -67,7 +62,7 @@ impl InlineRule for AutolinkScanner {
     const MARKER: char = '<';
     const NAMES: &'static [&'static str] = &["autolink"];
 
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
         match scan_autolink(
             context.remaining(),
             context.markdown_it().link_formatter.as_ref(),
@@ -77,7 +72,7 @@ impl InlineRule for AutolinkScanner {
         }
     }
 
-    fn run(state: &mut crate::DocumentInlineState<'_>) -> Option<(Option<crate::NodeId>, usize)> {
+    fn run(state: &mut crate::InlineState<'_>) -> Option<(Option<crate::NodeId>, usize)> {
         let matched = scan_autolink(
             state.remaining(),
             state.markdown_it().link_formatter.as_ref(),
@@ -254,7 +249,7 @@ mod tests {
         let md = parser();
         let source = "雪 <ab:é\0x> 尾";
         let normalized = "雪 <ab:é\u{fffd}x> 尾";
-        let document = md.parse_document(source);
+        let document = md.parse(source);
         assert_eq!(document.source(), normalized);
         let start = normalized.find('<').unwrap();
         let end = normalized.find('>').unwrap();
@@ -278,7 +273,7 @@ mod tests {
         use crate::document::TextSpecial;
 
         let md = parser();
-        let document = md.parse_document("x <https://example.test> y");
+        let document = md.parse("x <https://example.test> y");
 
         let spans: Vec<_> = document
             .events(document.root())

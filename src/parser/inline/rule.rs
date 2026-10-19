@@ -1,7 +1,7 @@
 use crate::document::NodeId;
-use crate::parser::inline::DocumentInlineState;
+use crate::parser::inline::InlineState;
 
-pub type DocumentFinalizeFn = for<'a> fn(&mut crate::parser::inline::DocumentInlineState<'a>);
+pub type InlineFinalizeFn = for<'a> fn(&mut crate::parser::inline::InlineState<'a>);
 
 /// An inline-level syntax rule.
 ///
@@ -31,7 +31,7 @@ pub trait InlineRule: 'static {
     /// The default reuses [`run`](InlineRule::run) and discards its node, which
     /// is fine for simple matches; override it when `run` has side effects or
     /// when matching conditions differ.
-    fn check(state: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(state: &mut InlineState<'_>) -> Option<usize> {
         let (node, len) = Self::run(state)?;
         if let Some(node) = node {
             state.document.discard_node(node);
@@ -44,7 +44,7 @@ pub trait InlineRule: 'static {
     /// Returns the node to insert (if any) and the number of UTF-8 bytes
     /// consumed. Return `Some((None, n))` to consume `n` bytes without adding a
     /// node, or `None` if the construct does not match.
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)>;
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)>;
 }
 
 crate::parser::rule::rule_builder!(InlineRule);

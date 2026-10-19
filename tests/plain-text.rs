@@ -2,8 +2,8 @@ use markdown_it::{MarkdownIt, Preset};
 
 fn render(preset: Preset, source: &str) -> String {
     let md = MarkdownIt::with_preset(preset);
-    let document = md.parse_document(source);
-    md.render_document_as(&document, "text")
+    let document = md.parse(source);
+    md.render_as(&document, "text")
 }
 
 #[test]

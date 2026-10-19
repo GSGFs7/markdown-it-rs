@@ -1,5 +1,5 @@
 use crate::MarkdownIt;
-use crate::parser::core::{CoreRule, DocumentCoreRule};
+use crate::parser::core::{CoreRule, CoreStage};
 
 pub fn add(md: &mut MarkdownIt) {
     md.add_rule::<InlineParserRule>()
@@ -10,7 +10,7 @@ pub fn add(md: &mut MarkdownIt) {
 pub struct InlineParserRule;
 impl CoreRule for InlineParserRule {
     const NAMES: &'static [&'static str] = &["inline"];
-    fn document_rule() -> DocumentCoreRule {
-        DocumentCoreRule::ParseInlines
+    fn stage() -> CoreStage {
+        CoreStage::ParseInlines
     }
 }

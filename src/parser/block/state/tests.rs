@@ -14,7 +14,7 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
 
     struct WrapperScanner;
     impl BlockRule for WrapperScanner {
-        fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+        fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
             if !state.get_line(state.line).starts_with("%%") {
                 return None;
             }
@@ -35,7 +35,7 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
 
     struct LevelProbe;
     impl BlockRule for LevelProbe {
-        fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+        fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
             if state.get_line(state.line) != "hello" {
                 return None;
             }
@@ -46,16 +46,16 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
 
     let md = MarkdownIt::empty();
     let source = "%%\nhello";
-    let mut state = DocumentBlockState::new(
+    let mut state = BlockState::new(
         source,
         &md,
         &[
             (
-                WrapperScanner::check as fn(&mut DocumentBlockState<'_>) -> Option<()>,
+                WrapperScanner::check as fn(&mut BlockState<'_>) -> Option<()>,
                 WrapperScanner::run,
             ),
             (
-                LevelProbe::check as fn(&mut DocumentBlockState<'_>) -> Option<()>,
+                LevelProbe::check as fn(&mut BlockState<'_>) -> Option<()>,
                 LevelProbe::run,
             ),
         ],
@@ -63,7 +63,7 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
     );
     state.tokenize();
 
-    let DocumentBlockState {
+    let BlockState {
         node: root,
         root_ext,
         document,

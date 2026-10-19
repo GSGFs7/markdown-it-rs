@@ -12,7 +12,7 @@ fn plain_brackets_have_a_linear_close_index() {
     let mut md = MarkdownIt::new();
     crate::plugins::html::add(&mut md);
     crate::plugins::extra::add(&mut md);
-    let rules = md.inline.document_rules();
+    let rules = md.inline.rules();
     let closes =
         plain_label_closes("![[]()", 6, rules).expect("plain cmark brackets support a close index");
     assert!(!closes.contains_key(&1));
@@ -46,7 +46,7 @@ fn indexed_labels_preserve_nested_link_and_image_rendering() {
 #[test]
 fn memoizable_checks_cover_shipped_presets() {
     fn assert_all_memoizable(md: &MarkdownIt, preset: &str) {
-        for rule in &md.inline.document_rules().checks {
+        for rule in &md.inline.rules().checks {
             assert!(
                 is_memoizable_check(rule.type_id) || is_known_uncached_check(rule.type_id),
                 "{preset}: check rule for marker {:?} is neither memoizable nor a known \
@@ -70,7 +70,7 @@ fn memoized_labels_match_uncached_checks_across_nesting_limits() {
     struct Uncached;
     impl InlineRule for Uncached {
         const MARKER: char = '\0';
-        fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+        fn run(_: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
             None
         }
     }

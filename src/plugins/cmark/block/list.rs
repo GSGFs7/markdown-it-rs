@@ -9,13 +9,13 @@
 use crate::MarkdownIt;
 use crate::common::utils::find_indent_of_from_column;
 use crate::document::{Document, NodeId, NodeRef, NodeValue};
-use crate::parser::block::{BlockRule, DocumentBlockState};
+use crate::parser::block::{BlockRule, BlockState};
 use crate::plugins::cmark::block::hr::HrScanner;
 use crate::plugins::cmark::block::paragraph::{Paragraph, ParagraphInterrupt};
 use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    PlainTextBlockDocumentRenderer,
+    NodeRenderer,
+    PlainTextBlockRenderer,
+    RenderContext,
     write_html_close,
     write_html_open,
 };
@@ -26,15 +26,15 @@ pub struct OrderedList {
     pub marker: char,
 }
 
-struct OrderedListDocumentRenderer;
+struct OrderedListRenderer;
 
-impl DocumentNodeRenderer<OrderedList> for OrderedListDocumentRenderer {
+impl NodeRenderer<OrderedList> for OrderedListRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         list: &OrderedList,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         let mut attrs = node.attrs().clone();
         if list.start != 1 {
@@ -51,15 +51,15 @@ pub struct BulletList {
     pub marker: char,
 }
 
-struct BulletListDocumentRenderer;
+struct BulletListRenderer;
 
-impl DocumentNodeRenderer<BulletList> for BulletListDocumentRenderer {
+impl NodeRenderer<BulletList> for BulletListRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         _: &BulletList,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         render_list_container(node, context, output, "ul", node.attrs());
     }
@@ -70,15 +70,15 @@ impl NodeValue for BulletList {}
 #[derive(Debug)]
 pub struct ListItem;
 
-struct ListItemDocumentRenderer;
+struct ListItemRenderer;
 
-impl DocumentNodeRenderer<ListItem> for ListItemDocumentRenderer {
+impl NodeRenderer<ListItem> for ListItemRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         _: &ListItem,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         write_html_open(output, "li", node.attrs());
         // A fence writes no leading newline: the list item's opening tag
@@ -104,8 +104,8 @@ impl DocumentNodeRenderer<ListItem> for ListItemDocumentRenderer {
 
 fn render_list_container(
     node: NodeRef<'_>,
-    context: &mut DocumentRenderContext<'_>,
-    output: &mut crate::DocumentWriter,
+    context: &mut RenderContext<'_>,
+    output: &mut crate::Writer,
     tag: &str,
     attrs: &[crate::HtmlAttribute],
 ) {
@@ -122,12 +122,12 @@ impl NodeValue for ListItem {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<ListScanner>().after::<HrScanner>();
-    md.add_document_renderer::<OrderedList, _>("html", OrderedListDocumentRenderer);
-    md.add_document_renderer::<BulletList, _>("html", BulletListDocumentRenderer);
-    md.add_document_renderer::<ListItem, _>("html", ListItemDocumentRenderer);
-    md.add_document_renderer::<OrderedList, _>("text", PlainTextBlockDocumentRenderer);
-    md.add_document_renderer::<BulletList, _>("text", PlainTextBlockDocumentRenderer);
-    md.add_document_renderer::<ListItem, _>("text", PlainTextBlockDocumentRenderer);
+    md.add_renderer::<OrderedList, _>("html", OrderedListRenderer);
+    md.add_renderer::<BulletList, _>("html", BulletListRenderer);
+    md.add_renderer::<ListItem, _>("html", ListItemRenderer);
+    md.add_renderer::<OrderedList, _>("text", PlainTextBlockRenderer);
+    md.add_renderer::<BulletList, _>("text", PlainTextBlockRenderer);
+    md.add_renderer::<ListItem, _>("text", PlainTextBlockRenderer);
 }
 
 #[doc(hidden)]
@@ -184,7 +184,7 @@ impl ListScanner {
         }
     }
 
-    fn mark_tight_paragraphs_document(document: &mut Document, item: NodeId) {
+    fn mark_tight_paragraphs(document: &mut Document, item: NodeId) {
         document.rewrite_children(item, |document, nodes| {
             let mut index = 0;
             while index < nodes.len() {
@@ -286,10 +286,7 @@ fn scan_list_marker(
     Some((pos_after_marker, marker_value, marker_char))
 }
 
-fn find_document_marker(
-    state: &mut DocumentBlockState<'_>,
-    silent: bool,
-) -> Option<(usize, Option<u32>, char)> {
+fn find_marker(state: &mut BlockState<'_>, silent: bool) -> Option<(usize, Option<u32>, char)> {
     let line = state.line;
     scan_list_marker(
         state.get_line(line),
@@ -308,18 +305,18 @@ impl BlockRule for ListScanner {
     ];
     const NAMES: &'static [&'static str] = &["list"];
 
-    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+    fn check(state: &mut BlockState<'_>) -> Option<()> {
         if state.document.node(state.node).is::<BulletList>()
             || state.document.node(state.node).is::<OrderedList>()
         {
             return None;
         }
 
-        find_document_marker(state, true).map(|_| ())
+        find_marker(state, true).map(|_| ())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
-        let (mut pos_after_marker, marker_value, marker_char) = find_document_marker(state, false)?;
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+        let (mut pos_after_marker, marker_value, marker_char) = find_marker(state, false)?;
 
         let new_node = if let Some(int) = marker_value {
             state.document.create_node(OrderedList {
@@ -487,7 +484,7 @@ impl BlockRule for ListScanner {
             let items = state.document.children(state.node).to_vec();
             for child in items {
                 debug_assert!(state.document.node(child).is::<ListItem>());
-                Self::mark_tight_paragraphs_document(&mut state.document, child);
+                Self::mark_tight_paragraphs(&mut state.document, child);
             }
         }
 

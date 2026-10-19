@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::ops::Range;
 
 use super::{EditBatch, ReplaceText, attribute_groups, text_groups};
-use crate::DocumentNode;
+use crate::Node;
 use crate::document::{Document, NodeId, Text};
 
 /// A validation failure that leaves the document unchanged.
@@ -572,7 +572,7 @@ impl EditBatch {
 }
 
 // helper
-fn checked_node(document: &Document, id: NodeId) -> Result<&DocumentNode, ValidationError> {
+fn checked_node(document: &Document, id: NodeId) -> Result<&Node, ValidationError> {
     document
         .get_node(id)
         .ok_or(ValidationError::InvalidNode(id))

@@ -1,12 +1,12 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use markdown_it::plugins::extra::tasklist::{self, TaskListDocumentTransform};
-use markdown_it::{Document, DocumentTransform, MarkdownIt};
+use markdown_it::plugins::extra::tasklist::{self, TaskListTransform};
+use markdown_it::{Document, MarkdownIt, Transform};
 use markdown_it_benchmarks::corpus;
 
 fn transform_registered(document: &mut Document, md: &MarkdownIt) {
-    md.run_document_transforms(document);
+    md.run_transforms(document);
 }
 
 fn parser() -> MarkdownIt {
@@ -30,9 +30,9 @@ fn tasklist_heavy() -> String {
 
 fn benchmark(c: &mut Criterion) {
     let parser = parser();
-    let transform = TaskListDocumentTransform;
-    let mut document_transforms = MarkdownIt::empty();
-    tasklist::add(&mut document_transforms);
+    let transform = TaskListTransform;
+    let mut transforms = MarkdownIt::empty();
+    tasklist::add(&mut transforms);
     let standard = corpus::standard();
     let tasklist_heavy = tasklist_heavy();
 
@@ -45,22 +45,22 @@ fn benchmark(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(source.len() as u64));
         group.bench_function("document-registry", |b| {
             b.iter_batched(
-                || parser.parse_document(source),
+                || parser.parse(source),
                 |mut document| {
-                    transform_registered(black_box(&mut document), black_box(&document_transforms));
+                    transform_registered(black_box(&mut document), black_box(&transforms));
                     black_box(document);
                 },
                 BatchSize::SmallInput,
             )
         });
         group.bench_function("document-build-edits", |b| {
-            let document = parser.parse_document(source);
+            let document = parser.parse(source);
             b.iter(|| black_box(transform.run(black_box(&document))))
         });
         group.bench_function("document-commit", |b| {
             b.iter_batched(
                 || {
-                    let document = parser.parse_document(source);
+                    let document = parser.parse(source);
                     let edits = transform.run(&document);
                     (document, edits)
                 },

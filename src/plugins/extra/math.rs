@@ -1,11 +1,11 @@
 // reference to exist CodeFence & CodeSpan rule in the code base
 
 use crate::document::{NodeId, NodeRef};
-use crate::parser::block::{BlockRule, DocumentBlockState};
-use crate::parser::inline::{DocumentInlineState, InlineRule};
+use crate::parser::block::{BlockRule, BlockState};
+use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
+    NodeRenderer,
+    RenderContext,
     write_html_close,
     write_html_open,
     write_html_text,
@@ -49,7 +49,7 @@ impl BlockRule for MathBlockScanner {
     const MARKERS: &'static [char] = &['$'];
     const NAMES: &'static [&'static str] = &["math_block"];
 
-    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+    fn check(state: &mut BlockState<'_>) -> Option<()> {
         math_block_header(
             state.get_line(state.line),
             state.line_indent(state.line),
@@ -57,7 +57,7 @@ impl BlockRule for MathBlockScanner {
         )
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         <Self as BlockRule>::check(state)?;
         let (end, consumed) = scan_math_block(state.line, state.line_max, |line| {
             (state.get_line(line), state.line_indent(line))
@@ -108,11 +108,11 @@ impl InlineRule for MathInlineScanner {
     const MARKER: char = '$';
     const NAMES: &'static [&'static str] = &["math_inline"];
 
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
         scan_math_inline(context.remaining()).map(|(_, len)| len)
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (content, consumed) = scan_math_inline(state.remaining())?;
         Some((
             Some(state.document.create_node(MathInline {
@@ -135,18 +135,18 @@ impl AsRef<str> for MathInline {
     }
 }
 
-struct MathDocumentRenderer {
+struct MathRenderer {
     block: bool,
     text: bool,
 }
 
-impl<T: NodeValue + AsRef<str>> DocumentNodeRenderer<T> for MathDocumentRenderer {
+impl<T: NodeValue + AsRef<str>> NodeRenderer<T> for MathRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         value: &T,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         if self.block {
             context.cr(output);
@@ -190,14 +190,8 @@ pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<MathBlockScanner>();
     md.inline.add_rule::<MathInlineScanner>();
     for (format, text) in [("html", false), ("text", true)] {
-        md.add_document_renderer::<MathBlock, _>(
-            format,
-            MathDocumentRenderer { block: true, text },
-        );
-        md.add_document_renderer::<MathInline, _>(
-            format,
-            MathDocumentRenderer { block: false, text },
-        );
+        md.add_renderer::<MathBlock, _>(format, MathRenderer { block: true, text });
+        md.add_renderer::<MathInline, _>(format, MathRenderer { block: false, text });
     }
 }
 
@@ -217,7 +211,7 @@ mod tests {
         markdown_it::plugins::html::add(md);
         markdown_it::plugins::extra::math::add(md);
 
-        let node = md.parse_document(&(input.to_owned() + "\n"));
+        let node = md.parse(&(input.to_owned() + "\n"));
         for event in node.events(node.root()) {
             assert!(event.node().srcmap().is_some());
         }
@@ -247,11 +241,11 @@ mod tests {
                 .into_owned()
         }
 
-        let actual = normalize_katex_attrs(&md.render_document(&node));
+        let actual = normalize_katex_attrs(&md.render_html(&node));
         let expected = normalize_katex_attrs(&output);
         assert_eq!(actual, expected);
 
-        let _ = md.parse_document(input.trim_end());
+        let _ = md.parse(input.trim_end());
     }
 
     #[test]

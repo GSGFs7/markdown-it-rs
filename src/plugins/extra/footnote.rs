@@ -54,15 +54,15 @@ use std::sync::{Arc, Mutex};
 use crate::common::extset::RootExtSet;
 use crate::common::utils::normalize_reference;
 use crate::document::{Document, NodeId, NodeRef};
-use crate::parser::block::{BlockRule, DocumentBlockState};
-use crate::parser::core::{CoreRule, DocumentCoreRule};
-use crate::parser::inline::{DocumentInlineState, InlineRule};
+use crate::parser::block::{BlockRule, BlockState};
+use crate::parser::core::{CoreRule, CoreStage};
+use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    DocumentWriter,
-    EmptyDocumentRenderer,
-    PlainTextBlockDocumentRenderer,
+    EmptyRenderer,
+    NodeRenderer,
+    PlainTextBlockRenderer,
+    RenderContext,
+    Writer,
     write_html_close,
     write_html_open,
     write_html_self_close,
@@ -125,19 +125,19 @@ struct FootnoteFinalizeRule;
 impl CoreRule for FootnoteFinalizeRule {
     const NAMES: &'static [&'static str] = &["footnote_tail"];
 
-    fn document_rule() -> DocumentCoreRule {
-        DocumentCoreRule::FinalizeDocument(footnote_document_finalize)
+    fn stage() -> CoreStage {
+        CoreStage::Finalize(finalize_footnotes)
     }
 }
 
-/// Ensures [`DocumentFootnoteEnv`] exists even for inline-only documents, where
+/// Ensures [`SharedFootnoteEnv`] exists even for inline-only documents, where
 /// the block rule never creates it.
 struct FootnotePreparation;
 
 impl CoreRule for FootnotePreparation {
-    fn document_rule() -> DocumentCoreRule {
-        DocumentCoreRule::PrepareState(|_source, _md, root_ext| {
-            root_ext.get_or_insert_default::<DocumentFootnoteEnv>();
+    fn stage() -> CoreStage {
+        CoreStage::PrepareState(|_source, _md, root_ext| {
+            root_ext.get_or_insert_default::<SharedFootnoteEnv>();
         })
     }
 }
@@ -296,7 +296,7 @@ impl FootnoteScans {
 /// shared `&RootExtSet`, so numbering state sits behind a mutex; the lock is
 /// never held while parsing children.
 #[derive(Debug, Default)]
-struct DocumentFootnoteEnv(Mutex<FootnoteEnv>);
+struct SharedFootnoteEnv(Mutex<FootnoteEnv>);
 
 fn allocate_reference(env: &mut FootnoteEnv, normalized: &str) -> (usize, usize) {
     let number = match env.numbers.get(normalized).copied() {
@@ -444,7 +444,7 @@ fn footnote_ref_id(number: usize, sub_id: usize) -> String {
 
 // --- direct parser implementation ---
 
-fn scan_document_definition(state: &DocumentBlockState<'_>) -> Option<(String, String, usize)> {
+fn scan_definition(state: &BlockState<'_>) -> Option<(String, String, usize)> {
     if state.line_indent(state.line) >= state.md.max_indent {
         return None;
     }
@@ -459,17 +459,17 @@ fn scan_document_definition(state: &DocumentBlockState<'_>) -> Option<(String, S
 impl BlockRule for FootnoteDefinitionScanner {
     const MARKERS: &'static [char] = &['['];
     const NAMES: &'static [&'static str] = &["footnote_definition"];
-    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+    fn check(state: &mut BlockState<'_>) -> Option<()> {
         // Runs during paragraph-interruption tests, so it must stay pure.
-        scan_document_definition(state).map(|_| ())
+        scan_definition(state).map(|_| ())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
-        let (_label, normalized, content_source_offset) = scan_document_definition(state)?;
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+        let (_label, normalized, content_source_offset) = scan_definition(state)?;
 
         state
             .root_ext
-            .get_or_insert_default::<DocumentFootnoteEnv>()
+            .get_or_insert_default::<SharedFootnoteEnv>()
             .0
             .lock()
             .unwrap()
@@ -518,8 +518,8 @@ impl InlineRule for FootnoteReferenceScanner {
     const MARKER: char = '[';
     const NAMES: &'static [&'static str] = &["footnote_reference"];
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
-        let env = state.root_ext?.get::<DocumentFootnoteEnv>()?;
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+        let env = state.root_ext?.get::<SharedFootnoteEnv>()?;
         let mut env = env.0.lock().unwrap();
         let (_, normalized, len) = parse_reference_label(state.remaining(), &env.defined)?;
         let (number, sub_id) = allocate_reference(&mut env, &normalized);
@@ -533,8 +533,8 @@ impl InlineRule for FootnoteReferenceScanner {
         ))
     }
 
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
-        let env = context.root_ext?.get::<DocumentFootnoteEnv>()?;
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
+        let env = context.root_ext?.get::<SharedFootnoteEnv>()?;
         let env = env.0.lock().unwrap();
         parse_reference_label(context.remaining(), &env.defined).map(|(_, _, len)| len)
     }
@@ -542,10 +542,10 @@ impl InlineRule for FootnoteReferenceScanner {
 
 /// Find the matching `]` for an inline footnote, returning its offset from
 /// the content start.
-fn scan_inline_footnote_end(mut context: DocumentInlineState<'_>) -> Option<usize> {
+fn scan_inline_footnote_end(mut context: InlineState<'_>) -> Option<usize> {
     let scans = context
         .root_ext?
-        .get::<DocumentFootnoteEnv>()?
+        .get::<SharedFootnoteEnv>()?
         .0
         .lock()
         .unwrap()
@@ -562,10 +562,7 @@ fn scan_inline_footnote_end(mut context: DocumentInlineState<'_>) -> Option<usiz
     }
 }
 
-fn scan_footnote_end(
-    context: &mut DocumentInlineState<'_>,
-    scans: &FootnoteScans,
-) -> Option<usize> {
+fn scan_footnote_end(context: &mut InlineState<'_>, scans: &FootnoteScans) -> Option<usize> {
     let initial_len = context.remaining().len();
     // square brackets nest level
     let mut level = 1usize;
@@ -597,7 +594,7 @@ impl InlineRule for FootnoteInlineScanner {
     const MARKER: char = '^';
     const NAMES: &'static [&'static str] = &["footnote_inline"];
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         // something^[note]
         // ---------^^
         if !state.remaining().starts_with("^[") {
@@ -608,7 +605,7 @@ impl InlineRule for FootnoteInlineScanner {
             state.depth,
             state.link_level,
         )?);
-        let env = state.root_ext?.get::<DocumentFootnoteEnv>()?;
+        let env = state.root_ext?.get::<SharedFootnoteEnv>()?;
         let scans = env.0.lock().unwrap().scans.clone();
         if scans.exhausted() {
             return Some((
@@ -653,7 +650,7 @@ impl InlineRule for FootnoteInlineScanner {
         Some((Some(reference), len))
     }
 
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
         if !context.remaining().starts_with("^[") {
             return None;
         }
@@ -664,7 +661,7 @@ impl InlineRule for FootnoteInlineScanner {
         )?);
         let exhausted = context
             .root_ext
-            .and_then(|root| root.get::<DocumentFootnoteEnv>())
+            .and_then(|root| root.get::<SharedFootnoteEnv>())
             .is_some_and(|env| env.0.lock().unwrap().scans.exhausted());
         if exhausted {
             return Some(context.remaining().len());
@@ -748,8 +745,8 @@ fn add_backrefs(document: &mut Document, item: NodeId, number: usize, refs: usiz
 }
 
 /// Move referenced definitions using stable arena IDs, and delete unused content.
-fn footnote_document_finalize(document: &mut Document, root_ext: &RootExtSet) {
-    let Some(env) = root_ext.get::<DocumentFootnoteEnv>() else {
+fn finalize_footnotes(document: &mut Document, root_ext: &RootExtSet) {
+    let Some(env) = root_ext.get::<SharedFootnoteEnv>() else {
         return;
     };
 
@@ -799,17 +796,17 @@ fn footnote_document_finalize(document: &mut Document, root_ext: &RootExtSet) {
     }
 }
 
-// --- document renderers ---
+// --- renderers ---
 
-struct FootnoteReferenceDocumentRenderer;
+struct FootnoteReferenceRenderer;
 
-impl DocumentNodeRenderer<FootnoteReference> for FootnoteReferenceDocumentRenderer {
+impl NodeRenderer<FootnoteReference> for FootnoteReferenceRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         value: &FootnoteReference,
-        _context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
+        _context: &mut RenderContext<'_>,
+        output: &mut Writer,
     ) {
         let mut attrs = node.attrs().to_vec();
         attrs.push(("class".into(), "footnote-ref".into()));
@@ -829,15 +826,15 @@ impl DocumentNodeRenderer<FootnoteReference> for FootnoteReferenceDocumentRender
     }
 }
 
-struct FootnoteSectionDocumentRenderer;
+struct FootnoteSectionRenderer;
 
-impl DocumentNodeRenderer<FootnoteSection> for FootnoteSectionDocumentRenderer {
+impl NodeRenderer<FootnoteSection> for FootnoteSectionRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         _value: &FootnoteSection,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut Writer,
     ) {
         context.cr(output);
         write_html_self_close(
@@ -860,15 +857,15 @@ impl DocumentNodeRenderer<FootnoteSection> for FootnoteSectionDocumentRenderer {
     }
 }
 
-struct FootnoteItemDocumentRenderer;
+struct FootnoteItemRenderer;
 
-impl DocumentNodeRenderer<FootnoteItem> for FootnoteItemDocumentRenderer {
+impl NodeRenderer<FootnoteItem> for FootnoteItemRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         value: &FootnoteItem,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut Writer,
     ) {
         let attrs = [
             ("id".into(), footnote_id(value.number)),
@@ -882,15 +879,15 @@ impl DocumentNodeRenderer<FootnoteItem> for FootnoteItemDocumentRenderer {
     }
 }
 
-struct FootnoteBackrefDocumentRenderer;
+struct FootnoteBackrefRenderer;
 
-impl DocumentNodeRenderer<FootnoteBackref> for FootnoteBackrefDocumentRenderer {
+impl NodeRenderer<FootnoteBackref> for FootnoteBackrefRenderer {
     fn render(
         &self,
         _node: NodeRef<'_>,
         value: &FootnoteBackref,
-        _context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
+        _context: &mut RenderContext<'_>,
+        output: &mut Writer,
     ) {
         write_html_text(output, " ");
         write_html_open(
@@ -929,21 +926,21 @@ pub fn add(md: &mut MarkdownIt) {
     md.add_rule::<FootnoteFinalizeRule>()
         .after::<crate::parser::inline::builtin::InlineParserRule>()
         .before_named("sourcepos");
-    md.add_document_renderer::<FootnoteDefinition, _>("html", EmptyDocumentRenderer);
-    md.add_document_renderer::<FootnoteDefinition, _>("text", EmptyDocumentRenderer);
-    md.add_document_renderer::<FootnoteReference, _>("html", FootnoteReferenceDocumentRenderer);
-    md.add_document_renderer::<FootnoteReference, _>("text", EmptyDocumentRenderer);
-    md.add_document_renderer::<FootnoteSection, _>("html", FootnoteSectionDocumentRenderer);
-    md.add_document_renderer::<FootnoteSection, _>("text", PlainTextBlockDocumentRenderer);
-    md.add_document_renderer::<FootnoteItem, _>("html", FootnoteItemDocumentRenderer);
-    md.add_document_renderer::<FootnoteItem, _>("text", PlainTextBlockDocumentRenderer);
-    md.add_document_renderer::<FootnoteBackref, _>("html", FootnoteBackrefDocumentRenderer);
-    md.add_document_renderer::<FootnoteBackref, _>("text", EmptyDocumentRenderer);
+    md.add_renderer::<FootnoteDefinition, _>("html", EmptyRenderer);
+    md.add_renderer::<FootnoteDefinition, _>("text", EmptyRenderer);
+    md.add_renderer::<FootnoteReference, _>("html", FootnoteReferenceRenderer);
+    md.add_renderer::<FootnoteReference, _>("text", EmptyRenderer);
+    md.add_renderer::<FootnoteSection, _>("html", FootnoteSectionRenderer);
+    md.add_renderer::<FootnoteSection, _>("text", PlainTextBlockRenderer);
+    md.add_renderer::<FootnoteItem, _>("html", FootnoteItemRenderer);
+    md.add_renderer::<FootnoteItem, _>("text", PlainTextBlockRenderer);
+    md.add_renderer::<FootnoteBackref, _>("html", FootnoteBackrefRenderer);
+    md.add_renderer::<FootnoteBackref, _>("text", EmptyRenderer);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{DocumentFootnoteEnv, FootnoteScans};
+    use super::{FootnoteScans, SharedFootnoteEnv};
     use crate as markdown_it;
     use crate::MarkdownIt;
 
@@ -981,14 +978,14 @@ mod tests {
             md.max_nesting = limit;
             for n in [32, 128, 512] {
                 let source = format!("{}x", "^[".repeat(n));
-                let direct = md.parse_document(&source);
-                assert_eq!(md.render_document(&direct), format!("<p>{source}</p>\n"));
+                let direct = md.parse(&source);
+                assert_eq!(md.render_html(&direct), format!("<p>{source}</p>\n"));
                 let root = direct.node(direct.root());
                 let env = root
                     .cast::<crate::document::Root>()
                     .unwrap()
                     .ext
-                    .get::<DocumentFootnoteEnv>()
+                    .get::<SharedFootnoteEnv>()
                     .unwrap()
                     .0
                     .lock()
@@ -1017,8 +1014,8 @@ mod tests {
             markdown_it::plugins::extra::footnote::add(&mut md);
             md.max_nesting = limit;
             let source = format!("{}x{}", "^[".repeat(256), "]".repeat(256));
-            let direct = md.parse_document(&source);
-            assert!(md.render_document(&direct).contains('x'));
+            let direct = md.parse(&source);
+            assert!(md.render_html(&direct).contains('x'));
         }
     }
 

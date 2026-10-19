@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
 use crate::document::{Document, NodeId};
-use crate::parser::inline::{DocumentInlineState, InlineRule};
+use crate::parser::inline::{InlineRule, InlineState};
 use crate::plugins::cmark::block::reference::ReferenceMap;
 
 #[derive(Debug)]
@@ -60,7 +60,7 @@ pub(crate) struct LinkOptions {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct DocumentLinkCfg<const PREFIX: char> {
+struct LinkCfg<const PREFIX: char> {
     factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
     options: LinkOptions,
 }
@@ -79,7 +79,7 @@ pub fn add<const ENABLE_NESTED: bool>(
     md: &mut MarkdownIt,
     factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
 ) {
-    md.ext.insert(DocumentLinkCfg::<'\0'> {
+    md.ext.insert(LinkCfg::<'\0'> {
         factory,
         options: LinkOptions::default(),
     });
@@ -104,8 +104,7 @@ pub(crate) fn add_prefix_with_options<const PREFIX: char, const ENABLE_NESTED: b
     options: LinkOptions,
     factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
 ) -> crate::parser::inline::RuleBuilder<'_, crate::parser::inline::RuleEntry> {
-    md.ext
-        .insert(DocumentLinkCfg::<PREFIX> { factory, options });
+    md.ext.insert(LinkCfg::<PREFIX> { factory, options });
     if !md.inline.has_rule::<LinkScannerEnd>() {
         md.inline.add_rule::<LinkScannerEnd>();
     }
@@ -120,22 +119,18 @@ impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
     const MARKER: char = '[';
     const NAMES: &'static [&'static str] = &["link"];
 
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
-        let options = context
-            .markdown_it()
-            .ext
-            .get::<DocumentLinkCfg<'\0'>>()?
-            .options;
-        document_link_check(context, ENABLE_NESTED, 0, options.inline_target_fallback)
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
+        let options = context.markdown_it().ext.get::<LinkCfg<'\0'>>()?.options;
+        link_check(context, ENABLE_NESTED, 0, options.inline_target_fallback)
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let config = *state
             .markdown_it()
             .ext
-            .get::<DocumentLinkCfg<'\0'>>()
+            .get::<LinkCfg<'\0'>>()
             .expect("direct link rule requires an arena node factory");
-        document_link_run(state, ENABLE_NESTED, 0, config.options, config.factory)
+        link_run(state, ENABLE_NESTED, 0, config.options, config.factory)
     }
 }
 
@@ -148,17 +143,13 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
     const MARKER: char = PREFIX;
     const NAMES: &'static [&'static str] = &["link_prefix"];
 
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
         if !context.remaining().starts_with(PREFIX) {
             return None;
         }
 
-        let options = context
-            .markdown_it()
-            .ext
-            .get::<DocumentLinkCfg<PREFIX>>()?
-            .options;
-        document_link_check(
+        let options = context.markdown_it().ext.get::<LinkCfg<PREFIX>>()?.options;
+        link_check(
             context,
             ENABLE_NESTED,
             PREFIX.len_utf8(),
@@ -166,7 +157,7 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
         )
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         if !state.remaining().starts_with(PREFIX) {
             return None;
         }
@@ -174,9 +165,9 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
         let config = *state
             .markdown_it()
             .ext
-            .get::<DocumentLinkCfg<PREFIX>>()
+            .get::<LinkCfg<PREFIX>>()
             .expect("direct prefix rule requires an arena node factory");
-        document_link_run(
+        link_run(
             state,
             ENABLE_NESTED,
             PREFIX.len_utf8(),
@@ -195,7 +186,7 @@ impl InlineRule for LinkScannerEnd {
     const MARKER: char = ']';
     const NAMES: &'static [&'static str] = &["link_end"];
 
-    fn run(_state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(_state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         None
     }
 }
@@ -204,7 +195,7 @@ impl InlineRule for LinkScannerEnd {
 //
 // This function assumes that the first character ("[") already matches;
 // it returns the byte length of the label including the closing "]".
-fn scan_link_label(mut context: DocumentInlineState<'_>, enable_nested: bool) -> Option<usize> {
+fn scan_link_label(mut context: InlineState<'_>, enable_nested: bool) -> Option<usize> {
     // Empty labels close immediately, even at the nesting limit; no cache needed.
     if context.remaining().starts_with(']') {
         return Some(0);
@@ -313,7 +304,7 @@ struct LabelScanKey {
     enable_nested: bool,
 }
 
-fn cache_label_scan(context: &DocumentInlineState<'_>, key: LabelScanKey, close: Option<usize>) {
+fn cache_label_scan(context: &InlineState<'_>, key: LabelScanKey, close: Option<usize>) {
     let mut shared = context.scan_limit_cache.borrow_mut();
     let epoch = shared.epoch();
     // Only reached while `memoize` is set, which requires `link_bounds`.
@@ -580,7 +571,7 @@ fn resolve_reference_link(
 }
 
 fn scan_link_candidate(
-    context: &mut DocumentInlineState<'_>,
+    context: &mut InlineState<'_>,
     pos: usize,
     enable_nested: bool,
     references: Option<&ReferenceMap>,
@@ -645,8 +636,8 @@ fn scan_link_candidate(
     resolve_reference_link(source, label_start, label_end, reference_end, references?)
 }
 
-fn document_link_check(
-    context: &mut DocumentInlineState<'_>,
+fn link_check(
+    context: &mut InlineState<'_>,
     enable_nested: bool,
     offset: usize,
     fallback: InlineTargetFallback,
@@ -656,8 +647,8 @@ fn document_link_check(
         .map(|candidate| candidate.end)
 }
 
-fn document_link_run(
-    state: &mut DocumentInlineState<'_>,
+fn link_run(
+    state: &mut InlineState<'_>,
     enable_nested: bool,
     offset: usize,
     options: LinkOptions,
@@ -730,7 +721,7 @@ impl LinkLabelBounds {
 }
 
 /// Index markers that prevent memoization within a label scan's window.
-fn non_memoizable_positions(source: &str, state: &DocumentInlineState<'_>) -> Option<Vec<usize>> {
+fn non_memoizable_positions(source: &str, state: &InlineState<'_>) -> Option<Vec<usize>> {
     use crate::plugins::cmark::block::reference::DefaultReferenceMap;
 
     if state
@@ -825,7 +816,7 @@ fn is_memoizable_check(type_id: TypeId) -> bool {
 fn plain_label_closes(
     source: &str,
     end: usize,
-    rules: &crate::parser::inline::DocumentRuleSet,
+    rules: &crate::parser::inline::RuleSet,
 ) -> Option<HashMap<usize, usize>> {
     let source = &source[..end];
     if !is_plain_label_source(source) || !has_only_supported_checks(source, rules) {
@@ -860,7 +851,7 @@ fn is_plain_label_source(source: &str) -> bool {
 }
 
 /// Whether every check rule triggered by this source is handled by the index pass.
-fn has_only_supported_checks(source: &str, rules: &crate::parser::inline::DocumentRuleSet) -> bool {
+fn has_only_supported_checks(source: &str, rules: &crate::parser::inline::RuleSet) -> bool {
     rules.checks.iter().all(|rule| {
         !source.chars().any(|ch| rule.matches_marker(ch)) || is_index_supported(rule.type_id)
     })
@@ -897,7 +888,7 @@ fn index_bracket_closes(source: &str) -> HashMap<usize, usize> {
 }
 
 fn has_possible_link_label_close(
-    state: &mut DocumentInlineState<'_>,
+    state: &mut InlineState<'_>,
     offset: usize,
     references: Option<&ReferenceMap>,
 ) -> bool {

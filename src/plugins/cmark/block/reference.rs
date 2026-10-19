@@ -16,9 +16,9 @@ use downcast_rs::{Downcast, impl_downcast};
 use crate::MarkdownIt;
 use crate::common::utils::{normalize_reference, unescape_all};
 use crate::document::{NodeId, NodeValue};
-use crate::parser::block::{BlockRule, DocumentBlockState};
+use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::inline::helpers::full_link;
-use crate::render::EmptyDocumentRenderer;
+use crate::render::EmptyRenderer;
 
 /// Storage for parsed references
 ///
@@ -27,7 +27,7 @@ use crate::render::EmptyDocumentRenderer;
 /// ```rust
 /// use markdown_it::parser::block::builtin::BlockParserRule;
 /// use markdown_it::Root;
-/// use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
+/// use markdown_it::parser::core::{CoreRule, CoreStage};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap, CustomReferenceMap};
 /// use markdown_it::{MarkdownIt};
 ///
@@ -56,8 +56,8 @@ use crate::render::EmptyDocumentRenderer;
 ///
 /// struct AddCustomReferences;
 /// impl CoreRule for AddCustomReferences {
-///     fn document_rule() -> DocumentCoreRule {
-///         DocumentCoreRule::PrepareState(|_, _, ext| {
+///     fn stage() -> CoreStage {
+///         CoreStage::PrepareState(|_, _, ext| {
 ///             ext.insert(ReferenceMap::new(RefMapOverride::default()));
 ///         })
 ///     }
@@ -77,14 +77,14 @@ use crate::render::EmptyDocumentRenderer;
 ///
 /// ```rust
 /// use markdown_it::Root;
-/// use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
+/// use markdown_it::parser::core::{CoreRule, CoreStage};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap};
 /// use markdown_it::{MarkdownIt};
 ///
 /// let md = &mut MarkdownIt::empty();
 /// markdown_it::plugins::cmark::add(md);
 ///
-/// let ast = md.parse_document("[hello]: world");
+/// let ast = md.parse("[hello]: world");
 /// let root = ast.node(ast.root()).cast::<Root>().unwrap();
 /// let refmap = root.ext.get::<ReferenceMap>()
 ///     .map(|m| m.downcast_ref::<DefaultReferenceMap>().expect("expect references to be handled by default map"));
@@ -226,8 +226,8 @@ impl ReferenceMapEntry {
 /// Add plugin that parses markdown link references
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<ReferenceScanner>();
-    md.add_document_renderer::<Definition, _>("html", EmptyDocumentRenderer);
-    md.add_document_renderer::<Definition, _>("text", EmptyDocumentRenderer);
+    md.add_renderer::<Definition, _>("html", EmptyRenderer);
+    md.add_renderer::<Definition, _>("text", EmptyRenderer);
 }
 
 #[derive(Debug)]
@@ -242,7 +242,7 @@ impl NodeValue for Definition {}
 #[doc(hidden)]
 pub struct ReferenceScanner;
 
-impl DocumentBlockState<'_> {
+impl BlockState<'_> {
     fn markdown_it(&self) -> &MarkdownIt {
         self.md
     }
@@ -285,17 +285,17 @@ impl BlockRule for ReferenceScanner {
     const MARKERS: &'static [char] = &['['];
     const NAMES: &'static [&'static str] = &["reference"];
 
-    fn check(_: &mut DocumentBlockState<'_>) -> Option<()> {
+    fn check(_: &mut BlockState<'_>) -> Option<()> {
         None // can't interrupt anything
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (definition, lines) = scan_reference(state)?;
         Some((Some(state.document.create_node(definition)), lines))
     }
 }
 
-fn scan_reference(state: &mut DocumentBlockState<'_>) -> Option<(Definition, usize)> {
+fn scan_reference(state: &mut BlockState<'_>) -> Option<(Definition, usize)> {
     let (start_line, first_line) = state.start_line()?;
     let mut chars = first_line.chars();
 
@@ -443,7 +443,7 @@ fn scan_reference(state: &mut DocumentBlockState<'_>) -> Option<(Definition, usi
 }
 
 fn append_next_reference_line(
-    state: &mut DocumentBlockState<'_>,
+    state: &mut BlockState<'_>,
     next_line: &mut usize,
     str: &mut String,
 ) -> bool {
@@ -456,7 +456,7 @@ fn append_next_reference_line(
 }
 
 fn skip_reference_whitespace(
-    state: &mut DocumentBlockState<'_>,
+    state: &mut BlockState<'_>,
     next_line: &mut usize,
     str: &mut String,
     pos: &mut usize,
@@ -476,7 +476,7 @@ fn skip_reference_whitespace(
 }
 
 fn parse_reference_title(
-    state: &mut DocumentBlockState<'_>,
+    state: &mut BlockState<'_>,
     next_line: &mut usize,
     str: &mut String,
     start: usize,

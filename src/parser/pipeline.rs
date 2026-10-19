@@ -1,4 +1,4 @@
-//! Markdown parsing directly into arena-backed documents.
+//! Markdown parsing pipeline.
 
 use std::sync::Arc;
 
@@ -6,9 +6,9 @@ use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
 use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId, NodeValue, Root, Text};
-use crate::parser::block::{DocumentBlockState, build_line_offsets};
-use crate::parser::core::{DocumentCoreRule, DocumentFinalizeDocumentFn, DocumentPrepareStateFn};
-use crate::parser::inline::{DocumentInlineState, DocumentRuleSet};
+use crate::parser::block::{BlockState, build_line_offsets};
+use crate::parser::core::{CoreStage, FinalizeFn, PrepareStateFn};
+use crate::parser::inline::{InlineState, RuleSet};
 
 /// Inline content queued during the block pass, resolved once all reference
 /// definitions have been collected.
@@ -29,7 +29,7 @@ impl NodeValue for PendingInline {}
 fn resolve_pending_inline(
     document: &mut Document,
     md: &MarkdownIt,
-    ruleset: &DocumentRuleSet,
+    ruleset: &RuleSet,
     root_ext: &RootExtSet,
 ) {
     /// A parent on the traversal stack and the replacements collected for it.
@@ -87,8 +87,7 @@ fn resolve_pending_inline(
         if let Some(inline) = document.node_mut(child).cast_mut::<PendingInline>() {
             let content = std::mem::take(&mut inline.content);
             let mapping = std::mem::take(&mut inline.mapping);
-            let nodes =
-                DocumentInlineState::parse(document, content, mapping, md, ruleset, Some(root_ext));
+            let nodes = InlineState::parse(document, content, mapping, md, ruleset, Some(root_ext));
             frame.replacements.push((index, nodes));
         } else if !document.children(child).is_empty() {
             stack.push(Frame::new(child));
@@ -97,29 +96,29 @@ fn resolve_pending_inline(
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct DocumentParsePlan {
-    preparations: Vec<DocumentPrepareStateFn>,
-    inline_preparations: Vec<DocumentPrepareStateFn>,
-    document_finalizers: Vec<DocumentFinalizeDocumentFn>,
+pub(crate) struct ParsePlan {
+    preparations: Vec<PrepareStateFn>,
+    inline_preparations: Vec<PrepareStateFn>,
+    finalizers: Vec<FinalizeFn>,
 }
 
-impl DocumentParsePlan {
-    pub(crate) fn compile(rules: impl Iterator<Item = DocumentCoreRule>) -> Self {
+impl ParsePlan {
+    pub(crate) fn compile(rules: impl Iterator<Item = CoreStage>) -> Self {
         let mut plan = Self::default();
         let mut seen_block = false;
         let mut seen_inline = false;
         let mut supported = true;
         for rule in rules {
             match rule {
-                DocumentCoreRule::ParseBlocks => {
+                CoreStage::ParseBlocks => {
                     supported &= !seen_block && !seen_inline;
                     seen_block = true;
                 }
-                DocumentCoreRule::ParseInlines => {
+                CoreStage::ParseInlines => {
                     supported &= seen_block && !seen_inline;
                     seen_inline = true;
                 }
-                DocumentCoreRule::PrepareState(prepare) => {
+                CoreStage::PrepareState(prepare) => {
                     // Preserve whether source analysis runs before or after blocks.
                     supported &= !seen_inline;
                     if seen_block {
@@ -128,10 +127,10 @@ impl DocumentParsePlan {
                         plan.preparations.push(prepare);
                     }
                 }
-                DocumentCoreRule::FinalizeDocument(finalize) => {
+                CoreStage::Finalize(finalize) => {
                     // Finalizers must follow the inline pass.
                     supported &= seen_inline;
-                    plan.document_finalizers.push(finalize);
+                    plan.finalizers.push(finalize);
                 }
             }
         }
@@ -145,15 +144,15 @@ impl DocumentParsePlan {
     }
 }
 
-pub(crate) struct DocumentParseContext<'a> {
+pub(crate) struct ParseContext<'a> {
     source: Arc<str>,
     md: &'a MarkdownIt,
     document: Document,
     root_ext: RootExtSet,
-    plan: &'a DocumentParsePlan,
+    plan: &'a ParsePlan,
 }
 
-impl<'a> DocumentParseContext<'a> {
+impl<'a> ParseContext<'a> {
     pub(crate) fn new(source: Arc<str>, md: &'a MarkdownIt, mut document: Document) -> Self {
         document
             .node_mut(document.root())
@@ -163,13 +162,13 @@ impl<'a> DocumentParseContext<'a> {
             md,
             document,
             root_ext: RootExtSet::new(),
-            plan: md.document_parse_plan(),
+            plan: md.parse_plan(),
         }
     }
 
     pub(crate) fn parse(mut self) -> Document {
-        let block_rules = self.md.block.document_rules();
-        let inline_rules = self.md.inline.document_rules();
+        let block_rules = self.md.block.rules();
+        let inline_rules = self.md.inline.rules();
 
         for prepare in &self.plan.preparations {
             prepare(&self.source, self.md, &mut self.root_ext);
@@ -180,7 +179,7 @@ impl<'a> DocumentParseContext<'a> {
             return self.parse_text_fallback();
         }
 
-        let mut state = DocumentBlockState::new(&self.source, self.md, block_rules, self.document);
+        let mut state = BlockState::new(&self.source, self.md, block_rules, self.document);
         state.root_ext = self.root_ext;
         state.tokenize();
         self.document = state.document;
@@ -199,7 +198,7 @@ impl<'a> DocumentParseContext<'a> {
 
     fn finish(mut self) -> Document {
         // Post-inline core rules may now reorder the resolved document.
-        for finalize in &self.plan.document_finalizers {
+        for finalize in &self.plan.finalizers {
             finalize(&mut self.document, &self.root_ext);
         }
 
@@ -214,7 +213,7 @@ impl<'a> DocumentParseContext<'a> {
 
         let mut document = self.document;
         document.trim_unused_tail();
-        self.md.run_document_transforms(&mut document);
+        self.md.run_transforms(&mut document);
 
         document
     }

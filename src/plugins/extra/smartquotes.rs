@@ -20,7 +20,6 @@ use crate::plugins::extra::tables::TableCell;
 use crate::plugins::html::html_inline::HtmlInline;
 use crate::{
     Document,
-    DocumentTransform,
     EditBatch,
     MarkdownIt,
     NodeId,
@@ -29,6 +28,7 @@ use crate::{
     TextEvent,
     TextProjection,
     TextProjectionKind,
+    Transform,
 };
 
 const APOSTROPHE: char = '\u{2019}';
@@ -50,7 +50,7 @@ pub fn add_with<
 >(
     md: &mut MarkdownIt,
 ) {
-    md.add_document_transform::<SmartQuotesDocumentTransform<
+    md.add_transform::<SmartQuotesTransform<
         OPEN_SINGLE_QUOTE,
         CLOSE_SINGLE_QUOTE,
         OPEN_DOUBLE_QUOTE,
@@ -59,11 +59,11 @@ pub fn add_with<
 }
 
 /// The classic smartquotes transform used by [`add`].
-pub type ClassicSmartQuotesDocumentTransform = SmartQuotesDocumentTransform<'‘', '’', '“', '”'>;
+pub type ClassicSmartQuotesTransform = SmartQuotesTransform<'‘', '’', '“', '”'>;
 
-/// Arena-backed smartquotes with a compile-time quote set.
+/// Smartquotes with a compile-time quote set.
 #[derive(Default)]
-pub struct SmartQuotesDocumentTransform<
+pub struct SmartQuotesTransform<
     const OPEN_SINGLE_QUOTE: char,
     const CLOSE_SINGLE_QUOTE: char,
     const OPEN_DOUBLE_QUOTE: char,
@@ -75,8 +75,8 @@ impl<
     const CLOSE_SINGLE_QUOTE: char,
     const OPEN_DOUBLE_QUOTE: char,
     const CLOSE_DOUBLE_QUOTE: char,
-> DocumentTransform
-    for SmartQuotesDocumentTransform<
+> Transform
+    for SmartQuotesTransform<
         OPEN_SINGLE_QUOTE,
         CLOSE_SINGLE_QUOTE,
         OPEN_DOUBLE_QUOTE,
@@ -87,16 +87,13 @@ impl<
     const ALIASES: &'static [&'static str] = &["smartquotes"];
 
     fn run(&self, document: &Document) -> EditBatch {
-        document_edits_with::<
-            OPEN_SINGLE_QUOTE,
-            CLOSE_SINGLE_QUOTE,
-            OPEN_DOUBLE_QUOTE,
-            CLOSE_DOUBLE_QUOTE,
-        >(document)
+        edits_with::<OPEN_SINGLE_QUOTE, CLOSE_SINGLE_QUOTE, OPEN_DOUBLE_QUOTE, CLOSE_DOUBLE_QUOTE>(
+            document,
+        )
     }
 }
 
-fn document_edits_with<
+fn edits_with<
     const OPEN_SINGLE_QUOTE: char,
     const CLOSE_SINGLE_QUOTE: char,
     const OPEN_DOUBLE_QUOTE: char,
@@ -105,7 +102,7 @@ fn document_edits_with<
     document: &Document,
 ) -> EditBatch {
     let mut edits = EditBatch::new();
-    let projection = TextProjection::new(document_smartquotes_projection);
+    let projection = TextProjection::new(smartquotes_projection);
     let mut protected_depth = 0;
     let mut opaque_image = None;
     let events = document.text_events(projection).filter_map(|event| {
@@ -113,9 +110,7 @@ fn document_edits_with<
         // the parsed alt children. Their breaks and nesting are local to alt.
         if let Some(image) = opaque_image {
             return match event {
-                TextEvent::Char { node, .. } if node == image => {
-                    document_relevant_event(document, event)
-                }
+                TextEvent::Char { node, .. } if node == image => relevant_event(document, event),
                 TextEvent::Exit { node, .. } if node == image => {
                     opaque_image = None;
                     None
@@ -147,7 +142,7 @@ fn document_edits_with<
             _ => {}
         }
 
-        let mut event = document_relevant_event(document, event)?;
+        let mut event = relevant_event(document, event)?;
         // Code and alt text provide context but cannot be edited.
         if protected_depth > 0
             && let RelevantEvent::Char { writable, .. } = &mut event
@@ -424,7 +419,7 @@ fn transform_events<
     }
 }
 
-fn document_relevant_event(document: &Document, event: TextEvent) -> Option<RelevantEvent<NodeId>> {
+fn relevant_event(document: &Document, event: TextEvent) -> Option<RelevantEvent<NodeId>> {
     match event {
         TextEvent::Char {
             node,
@@ -443,7 +438,7 @@ fn document_relevant_event(document: &Document, event: TextEvent) -> Option<Rele
         TextEvent::Boundary(TextBoundary::Hard) => Some(RelevantEvent::HardBoundary),
         TextEvent::Exit { node, .. }
             if matches!(
-                document_smartquotes_projection(document.node(node)),
+                smartquotes_projection(document.node(node)),
                 TextProjectionKind::Boundary(TextBoundary::Hard)
             ) =>
         {
@@ -454,7 +449,7 @@ fn document_relevant_event(document: &Document, event: TextEvent) -> Option<Rele
     }
 }
 
-fn document_smartquotes_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> {
+fn smartquotes_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> {
     if node.is::<Image>()
         && let Some(source) = node.ext().get::<IndependentLabelSource>()
     {

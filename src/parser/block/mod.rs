@@ -6,15 +6,15 @@ mod rule;
 mod state;
 pub use lines::*;
 pub use rule::*;
-pub use state::DocumentBlockState;
+pub use state::BlockState;
 
 use crate::NodeId;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 
 pub(crate) type BlockRuleFns = (
-    fn(&mut DocumentBlockState<'_>) -> Option<()>,
-    fn(&mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)>,
+    fn(&mut BlockState<'_>) -> Option<()>,
+    fn(&mut BlockState<'_>) -> Option<(Option<NodeId>, usize)>,
 );
 
 #[derive(Debug, Default)]
@@ -27,7 +27,7 @@ impl BlockParser {
         Self::default()
     }
 
-    pub(crate) fn document_rules(&self) -> &[BlockRuleFns] {
+    pub(crate) fn rules(&self) -> &[BlockRuleFns] {
         self.ruler.as_slice()
     }
 

@@ -1,7 +1,7 @@
 //! Highlight syntax (like `==this==`)
 
 use crate::parser::inline::helpers::emph_pair;
-use crate::render::{HtmlInlineElementDocumentRenderer, TransparentDocumentRenderer};
+use crate::render::{HtmlInlineElementRenderer, TransparentRenderer};
 use crate::{MarkdownIt, NodeValue};
 
 #[derive(Debug)]
@@ -11,8 +11,8 @@ impl NodeValue for Mark {}
 
 pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'=', 2, true>(md, |document| document.create_node(Mark));
-    md.add_document_renderer::<Mark, _>("html", HtmlInlineElementDocumentRenderer("mark"));
-    md.add_document_renderer::<Mark, _>("text", TransparentDocumentRenderer);
+    md.add_renderer::<Mark, _>("html", HtmlInlineElementRenderer("mark"));
+    md.add_renderer::<Mark, _>("text", TransparentRenderer);
 }
 
 #[cfg(test)]

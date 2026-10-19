@@ -1,4 +1,4 @@
-//! Ordered transforms for arena-backed documents.
+//! Ordered transforms for documents.
 
 use std::fmt;
 use std::sync::Arc;
@@ -8,20 +8,20 @@ use crate::common::ruler::{RuleItem, Ruler};
 use crate::document::Document;
 use crate::document::edit::EditBatch;
 
-trait ErasedDocumentTransform: Send + Sync {
+trait ErasedTransform: Send + Sync {
     fn run(&self, document: &Document) -> EditBatch;
 }
 
-impl<T: DocumentTransform> ErasedDocumentTransform for T {
+impl<T: Transform> ErasedTransform for T {
     fn run(&self, document: &Document) -> EditBatch {
-        DocumentTransform::run(self, document)
+        Transform::run(self, document)
     }
 }
 
 #[derive(Clone)]
 struct RegisteredTransform {
     key: &'static str,
-    transform: Arc<dyn ErasedDocumentTransform>,
+    transform: Arc<dyn ErasedTransform>,
 }
 
 impl fmt::Debug for RegisteredTransform {
@@ -36,49 +36,46 @@ impl fmt::Debug for RegisteredTransform {
 ///
 /// `KEY` is the stable, user-facing identity used for registration and ordering.
 /// It must be non-empty and unique within a registry.
-pub trait DocumentTransform: Send + Sync + 'static {
+pub trait Transform: Send + Sync + 'static {
     const KEY: &'static str;
     const ALIASES: &'static [&'static str] = &[];
 
     fn run(&self, document: &Document) -> EditBatch;
 }
 
-/// An ordered registry of [`DocumentTransform`] implementations.
+/// An ordered registry of [`Transform`] implementations.
 ///
 /// Each transform observes the document left by the preceding transform.
 /// Plugins must produce valid edit batches. Panics are not caught here;
 /// preceding changes are not rolled back. Invalid batches provide no recovery guarantee.
 #[derive(Debug, Default)]
-pub struct DocumentTransformRegistry {
+pub struct TransformRegistry {
     ruler: Ruler<RuleMark, RegisteredTransform>,
 }
 
-impl DocumentTransformRegistry {
+impl TransformRegistry {
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Register the default instance of `T`, returning a builder for
     /// ruler-style ordering constraints.
-    pub fn add<T: DocumentTransform + Default>(&mut self) -> TransformRuleBuilder<'_> {
+    pub fn add<T: Transform + Default>(&mut self) -> TransformRuleBuilder<'_> {
         self.add_instance(T::default())
     }
 
     /// Register an owned transform instance, returning a builder for
     /// ruler-style ordering constraints.
-    pub fn add_instance<T: DocumentTransform>(&mut self, transform: T) -> TransformRuleBuilder<'_> {
-        assert!(
-            !T::KEY.is_empty(),
-            "document transform key must not be empty"
-        );
+    pub fn add_instance<T: Transform>(&mut self, transform: T) -> TransformRuleBuilder<'_> {
+        assert!(!T::KEY.is_empty(), "transform key must not be empty");
         assert!(
             !self.ruler.contains(RuleMark::named(T::KEY)),
-            "duplicate document transform key: {:?}",
+            "duplicate transform key: {:?}",
             T::KEY
         );
         assert!(
             !self.ruler.contains(RuleMark::of::<T>()),
-            "document transform type is already registered: {:?}",
+            "transform type is already registered: {:?}",
             std::any::type_name::<T>()
         );
 
@@ -96,11 +93,11 @@ impl DocumentTransformRegistry {
         TransformRuleBuilder::new(item)
     }
 
-    pub fn contains<T: DocumentTransform>(&self) -> bool {
+    pub fn contains<T: Transform>(&self) -> bool {
         self.ruler.contains(RuleMark::of::<T>())
     }
 
-    pub fn remove<T: DocumentTransform>(&mut self) {
+    pub fn remove<T: Transform>(&mut self) {
         self.ruler.remove(RuleMark::of::<T>());
     }
 
@@ -112,7 +109,7 @@ impl DocumentTransformRegistry {
     }
 }
 
-/// Adjust the position and aliases of a newly registered document transform.
+/// Adjust the position and aliases of a newly registered transform.
 pub struct TransformRuleBuilder<'a> {
     item: &'a mut RuleItem<RuleMark, RegisteredTransform>,
 }
@@ -122,7 +119,7 @@ impl<'a> TransformRuleBuilder<'a> {
         Self { item }
     }
 
-    pub fn before<T: DocumentTransform>(self) -> Self {
+    pub fn before<T: Transform>(self) -> Self {
         self.item.before(RuleMark::of::<T>());
         self
     }
@@ -132,7 +129,7 @@ impl<'a> TransformRuleBuilder<'a> {
         self
     }
 
-    pub fn after<T: DocumentTransform>(self) -> Self {
+    pub fn after<T: Transform>(self) -> Self {
         self.item.after(RuleMark::of::<T>());
         self
     }
@@ -152,7 +149,7 @@ impl<'a> TransformRuleBuilder<'a> {
         self
     }
 
-    pub fn alias<T: DocumentTransform>(self) -> Self {
+    pub fn alias<T: Transform>(self) -> Self {
         self.item.alias(RuleMark::of::<T>());
         self
     }
@@ -162,7 +159,7 @@ impl<'a> TransformRuleBuilder<'a> {
         self
     }
 
-    pub fn require<T: DocumentTransform>(self) -> Self {
+    pub fn require<T: Transform>(self) -> Self {
         self.item.require(RuleMark::of::<T>());
         self
     }

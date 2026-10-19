@@ -35,8 +35,8 @@
 //! let mut md = markdown_it::MarkdownIt::empty();
 //! markdown_it::plugins::cmark::add(&mut md);
 //! markdown_it::plugins::extra::syntect::add(&mut md);
-//! let mut document = md.parse_document("```rust\nfn main() {}\n```");
-//! assert!(md.render_document(&document).contains("language-rust"));
+//! let mut document = md.parse("```rust\nfn main() {}\n```");
+//! assert!(md.render_html(&document).contains("language-rust"));
 //! ```
 
 use std::collections::HashSet;
@@ -57,17 +57,12 @@ use two_face::theme::LazyThemeSet;
 
 use crate::common::utils::unescape_all;
 use crate::document::edit::EditBatch;
-use crate::document::transform::DocumentTransform;
+use crate::document::transform::Transform;
 use crate::document::{Document, NodeRef, StructuralEvent};
 use crate::plugins::cmark::block::code::CodeBlock;
 use crate::plugins::cmark::block::fence::CodeFence;
-use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    write_html_close,
-    write_html_open,
-};
-use crate::{DocumentWriter, MarkdownIt, NodeValue};
+use crate::render::{NodeRenderer, RenderContext, write_html_close, write_html_open};
+use crate::{MarkdownIt, NodeValue, Writer};
 
 // lazy load themes. it wast a lot of performance
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(two_face::syntax::extra_newlines);
@@ -117,13 +112,13 @@ impl SyntectSnippet {
 
 struct SyntectHtmlRenderer;
 
-impl DocumentNodeRenderer<SyntectSnippet> for SyntectHtmlRenderer {
+impl NodeRenderer<SyntectSnippet> for SyntectHtmlRenderer {
     fn render(
         &self,
         _: NodeRef<'_>,
         value: &SyntectSnippet,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut Writer,
     ) {
         write_html_open(output, "pre", &[]);
         write_html_open(
@@ -139,13 +134,13 @@ impl DocumentNodeRenderer<SyntectSnippet> for SyntectHtmlRenderer {
 
 struct SyntectTextRenderer;
 
-impl DocumentNodeRenderer<SyntectSnippet> for SyntectTextRenderer {
+impl NodeRenderer<SyntectSnippet> for SyntectTextRenderer {
     fn render(
         &self,
         _: NodeRef<'_>,
         value: &SyntectSnippet,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut Writer,
     ) {
         context.cr(output);
         output.write_str(&value.content);
@@ -323,11 +318,11 @@ struct SharedSyntectSettings(Arc<RwLock<SyntectSettings>>);
 
 /// Highlights code blocks during document postprocessing.
 #[derive(Debug, Default)]
-pub struct SyntectDocumentTransform {
+pub struct SyntectTransform {
     settings: SharedSyntectSettings,
 }
 
-impl DocumentTransform for SyntectDocumentTransform {
+impl Transform for SyntectTransform {
     const KEY: &'static str = "syntect";
 
     fn run(&self, document: &Document) -> EditBatch {
@@ -360,13 +355,13 @@ pub fn add(md: &mut MarkdownIt) {
         .ext
         .get_or_insert_default::<SharedSyntectSettings>()
         .clone();
-    md.add_document_transform_instance(SyntectDocumentTransform { settings });
-    register_document_renderers(md);
+    md.add_transform_instance(SyntectTransform { settings });
+    register_renderers(md);
 }
 
-fn register_document_renderers(md: &mut MarkdownIt) {
-    md.add_document_renderer::<SyntectSnippet, _>("html", SyntectHtmlRenderer);
-    md.add_document_renderer::<SyntectSnippet, _>("text", SyntectTextRenderer);
+fn register_renderers(md: &mut MarkdownIt) {
+    md.add_renderer::<SyntectSnippet, _>("html", SyntectHtmlRenderer);
+    md.add_renderer::<SyntectSnippet, _>("text", SyntectTextRenderer);
 }
 
 /// Return the names of all built-in themes available to this plugin.
@@ -598,8 +593,8 @@ mod test {
     #[test]
     fn render_options_override_syntect_lang_prefix() {
         let md = parser();
-        let ast = md.parse_document("```rust\nfn main() {}\n```");
-        let html = md.document_renderers.render(
+        let ast = md.parse("```rust\nfn main() {}\n```");
+        let html = md.renderers.render(
             &ast,
             "html",
             &RenderOptions {

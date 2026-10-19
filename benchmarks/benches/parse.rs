@@ -4,7 +4,7 @@ use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criteri
 use markdown_it_benchmarks::{corpus, parser};
 
 fn benchmark(c: &mut Criterion) {
-    for configuration in parser::document_parse_configurations() {
+    for configuration in parser::parse_configurations() {
         let configuration_name = configuration.name;
         let md = configuration.parser;
         for corpus in corpus::parser_emphasis_checkpoint().into_iter().chain(
@@ -13,13 +13,11 @@ fn benchmark(c: &mut Criterion) {
                 .filter(|input| input.kind == corpus::CorpusKind::PathologicalSmoke),
         ) {
             let source = corpus.source();
-            let mut group = c.benchmark_group(format!(
-                "document-parse/{configuration_name}/{}",
-                corpus.name
-            ));
+            let mut group =
+                c.benchmark_group(format!("parse/{configuration_name}/{}", corpus.name));
             group.throughput(Throughput::Bytes(corpus.len() as u64));
-            group.bench_function("arena-direct", |b| {
-                b.iter(|| black_box(md.parse_document(black_box(source))))
+            group.bench_function("markdown-it-rs", |b| {
+                b.iter(|| black_box(md.parse(black_box(source))))
             });
             group.finish();
         }
@@ -29,12 +27,12 @@ fn benchmark(c: &mut Criterion) {
 fn deferred_inline_siblings(c: &mut Criterion) {
     let mut md = markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
-    let mut group = c.benchmark_group("document-parse/deferred-inline-siblings");
+    let mut group = c.benchmark_group("parse/deferred-inline-siblings");
     for lines in [4_000, 8_000, 16_000] {
         let source = "*a*\n".repeat(lines);
         group.throughput(Throughput::Bytes(source.len() as u64));
         group.bench_with_input(BenchmarkId::from_parameter(lines), &source, |b, source| {
-            b.iter(|| black_box(md.parse_document(black_box(source))))
+            b.iter(|| black_box(md.parse(black_box(source))))
         });
     }
     group.finish();
@@ -42,7 +40,7 @@ fn deferred_inline_siblings(c: &mut Criterion) {
 
 // Keep construction, cold first parse, and warmed repeated parse separate.
 fn parser_lifecycle(c: &mut Criterion) {
-    let mut group = c.benchmark_group("document-parse/lifecycle");
+    let mut group = c.benchmark_group("parse/lifecycle");
     group.bench_function("construct-default", |b| {
         b.iter(|| black_box(markdown_it::MarkdownIt::new()))
     });
@@ -54,14 +52,14 @@ fn parser_lifecycle(c: &mut Criterion) {
         group.bench_function(format!("first-parse/{name}"), |b| {
             b.iter_batched(
                 markdown_it::MarkdownIt::new,
-                |md| black_box(md.parse_document(black_box(source))),
+                |md| black_box(md.parse(black_box(source))),
                 BatchSize::SmallInput,
             )
         });
         let md = markdown_it::MarkdownIt::new();
-        black_box(md.parse_document(source));
+        black_box(md.parse(source));
         group.bench_function(format!("repeated-parse/{name}"), |b| {
-            b.iter(|| black_box(md.parse_document(black_box(source))))
+            b.iter(|| black_box(md.parse(black_box(source))))
         });
     }
     group.finish();

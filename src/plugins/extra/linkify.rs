@@ -12,16 +12,11 @@ use crate::common::extset::RootExtSet;
 use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId, NodeRef, NodeValue, StructuralEvent, Text, TextSpecial};
 use crate::links::LinkFormatter;
-use crate::parser::core::{CoreRule, DocumentCoreRule};
+use crate::parser::core::{CoreRule, CoreStage};
 use crate::parser::inline::builtin::InlineParserRule;
-use crate::parser::inline::{DocumentInlineState, InlineRule};
+use crate::parser::inline::{InlineRule, InlineState};
 use crate::plugins::html::anchor_delta;
-use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    TransparentDocumentRenderer,
-    render_html_link,
-};
+use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, render_html_link};
 
 #[derive(Debug)]
 pub struct Linkified {
@@ -30,15 +25,15 @@ pub struct Linkified {
 
 impl NodeValue for Linkified {}
 
-struct LinkifiedDocumentRenderer;
+struct LinkifiedRenderer;
 
-impl DocumentNodeRenderer<Linkified> for LinkifiedDocumentRenderer {
+impl NodeRenderer<Linkified> for LinkifiedRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         link: &Linkified,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         render_html_link(node, &link.url, None, context, output);
     }
@@ -65,14 +60,14 @@ pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
         .add_rule_with_finalize::<LinkifyScanner>(linkify_text);
     md.inline.add_rule::<LinkifyFuzzyScanner>();
     md.inline.add_rule::<LinkifyEmailScanner>();
-    md.add_document_renderer::<Linkified, _>("html", LinkifiedDocumentRenderer);
-    md.add_document_renderer::<Linkified, _>("text", TransparentDocumentRenderer);
+    md.add_renderer::<Linkified, _>("html", LinkifiedRenderer);
+    md.add_renderer::<Linkified, _>("text", TransparentRenderer);
 }
 
 // Second linkify pass, mirroring JS core linkify: match protocol-relative
 // URLs and emails after emphasis, and retry text hidden by an unmatched `<a>`
 // (which disables the inline scanners but does not protect text in JS).
-fn linkify_text(state: &mut DocumentInlineState<'_>) {
+fn linkify_text(state: &mut InlineState<'_>) {
     if state
         .inline_ext
         .contains::<crate::parser::inline::helpers::full_link::MarkdownLinkLabel>()
@@ -280,10 +275,7 @@ fn linkify_text_node(
     Some(nodes)
 }
 
-fn apply_linkify_replacements(
-    state: &mut DocumentInlineState<'_>,
-    replacements: LinkifyReplacements,
-) {
+fn apply_linkify_replacements(state: &mut InlineState<'_>, replacements: LinkifyReplacements) {
     for (parent, replacements) in replacements {
         if let Some(parent) = parent {
             state
@@ -346,8 +338,8 @@ pub struct LinkifyPrescan;
 impl CoreRule for LinkifyPrescan {
     const NAMES: &'static [&'static str] = &["linkify_prescan"];
 
-    fn document_rule() -> DocumentCoreRule {
-        DocumentCoreRule::PrepareState(Self::prepare)
+    fn stage() -> CoreStage {
+        CoreStage::PrepareState(Self::prepare)
     }
 }
 
@@ -416,12 +408,12 @@ impl InlineRule for LinkifyScanner {
     const MARKER: char = ':';
     const NAMES: &'static [&'static str] = &["linkify"];
 
-    fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(_: &mut InlineState<'_>) -> Option<usize> {
         None
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
-        run_document_candidate(state, LinkifyMode::Scheme)
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+        run_candidate(state, LinkifyMode::Scheme)
     }
 }
 
@@ -429,12 +421,12 @@ impl InlineRule for LinkifyFuzzyScanner {
     const MARKER: char = '.';
     const NAMES: &'static [&'static str] = &["linkify_fuzzy"];
 
-    fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(_: &mut InlineState<'_>) -> Option<usize> {
         None
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
-        run_document_candidate(state, LinkifyMode::Fuzzy)
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+        run_candidate(state, LinkifyMode::Fuzzy)
     }
 }
 
@@ -442,12 +434,12 @@ impl InlineRule for LinkifyEmailScanner {
     const MARKER: char = '@';
     const NAMES: &'static [&'static str] = &["linkify_email"];
 
-    fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(_: &mut InlineState<'_>) -> Option<usize> {
         None
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
-        run_document_candidate(state, LinkifyMode::Email)
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+        run_candidate(state, LinkifyMode::Email)
     }
 }
 
@@ -599,8 +591,8 @@ fn create_linkified(document: &mut Document, link: PreparedLink, map: Option<Sou
     node
 }
 
-fn run_document_candidate(
-    state: &mut DocumentInlineState<'_>,
+fn run_candidate(
+    state: &mut InlineState<'_>,
     mode: LinkifyMode,
 ) -> Option<(Option<NodeId>, usize)> {
     let (source_start, _) = state.get_map(state.pos, state.pos_max)?.get_byte_offsets();

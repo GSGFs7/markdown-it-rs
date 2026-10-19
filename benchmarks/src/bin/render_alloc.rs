@@ -89,14 +89,14 @@ fn main() {
 
     for corpus in corpus::standard() {
         let source = corpus.source();
-        let document = md.parse_document(source);
+        let document = md.parse(source);
         // Warm lazy parser/renderer state before enabling the counter.
-        let expected = md.render_document(&document);
-        let (html, stats) = measure(|| md.render_document(black_box(&document)));
+        let expected = md.render_html(&document);
+        let (html, stats) = measure(|| md.render_html(black_box(&document)));
         assert_eq!(html, expected);
-        print_row(corpus.name, "render", "arena-direct", stats, &html);
+        print_row(corpus.name, "render", "markdown-it-rs", stats, &html);
         let (html, stats) = measure(|| md.render(black_box(source)));
         assert_eq!(html, expected);
-        print_row(corpus.name, "end-to-end", "arena-direct", stats, &html);
+        print_row(corpus.name, "end-to-end", "markdown-it-rs", stats, &html);
     }
 }

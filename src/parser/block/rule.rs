@@ -1,5 +1,5 @@
 use crate::document::NodeId;
-use crate::parser::block::DocumentBlockState;
+use crate::parser::block::BlockState;
 use crate::parser::rule::rule_builder;
 
 /// A block-level syntax rule.
@@ -29,7 +29,7 @@ pub trait BlockRule: 'static {
     /// The default reuses [`run`](BlockRule::run) and discards its node, which
     /// is fine for pass-through constructs; override it when `run` has side
     /// effects or a match cannot interrupt a paragraph.
-    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+    fn check(state: &mut BlockState<'_>) -> Option<()> {
         let (node, _) = Self::run(state)?;
         if let Some(node) = node {
             state.document.discard_node(node);
@@ -43,7 +43,7 @@ pub trait BlockRule: 'static {
     /// Return `Some((None, n))` to consume `n` lines without adding a node, or
     /// `None` if the line does not match, in which case the parser position is
     /// left unchanged.
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)>;
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)>;
 }
 
 rule_builder!(BlockRule);

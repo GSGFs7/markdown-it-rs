@@ -2,14 +2,14 @@
 
 use markdown_it::parser::inline::InlineRule;
 use markdown_it::{
-    DocumentInlineState,
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    DocumentWriter,
+    InlineState,
     MarkdownIt,
     NodeId,
     NodeRef,
+    NodeRenderer,
     NodeValue,
+    RenderContext,
+    Writer,
 };
 
 const CRAB_CLAW: &str = r#"(\/)"#;
@@ -21,15 +21,15 @@ pub struct InlineFerris;
 impl NodeValue for InlineFerris {}
 
 // This defines how your custom node should be rendered.
-struct InlineFerrisDocumentRenderer;
+struct InlineFerrisRenderer;
 
-impl DocumentNodeRenderer<InlineFerris> for InlineFerrisDocumentRenderer {
+impl NodeRenderer<InlineFerris> for InlineFerrisRenderer {
     fn render(
         &self,
         _: NodeRef<'_>,
         _: &InlineFerris,
-        _: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
+        _: &mut RenderContext<'_>,
+        output: &mut Writer,
     ) {
         output.write_str("<span class=\"ferris-inline\">🦀</span>");
     }
@@ -53,7 +53,7 @@ impl InlineRule for FerrisInlineScanner {
     //  - creates a new `NodeDraft`
     //  - returns length of it
     //
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         if !state.remaining().starts_with(CRAB_CLAW) {
             return None;
         }
@@ -69,5 +69,5 @@ impl InlineRule for FerrisInlineScanner {
 pub fn add(md: &mut MarkdownIt) {
     // insert this rule into inline subparser
     md.inline.add_rule::<FerrisInlineScanner>();
-    md.add_document_renderer::<InlineFerris, _>("html", InlineFerrisDocumentRenderer);
+    md.add_renderer::<InlineFerris, _>("html", InlineFerrisRenderer);
 }

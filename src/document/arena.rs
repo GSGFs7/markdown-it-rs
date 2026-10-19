@@ -165,7 +165,7 @@ impl<T> Arena<T> {
 mod tests {
     use std::mem::size_of;
 
-    use super::super::DocumentNode;
+    use super::super::Node;
     use super::*;
 
     #[test]
@@ -274,10 +274,10 @@ mod tests {
         // Keep this measurement close to the storage definition so future
         // layout changes cannot happen without an explicit review point.
         eprintln!(
-            "DocumentNode={} Slot<DocumentNode>={}",
-            size_of::<DocumentNode>(),
-            size_of::<Slot<DocumentNode>>()
+            "Node={} Slot<Node>={}",
+            size_of::<Node>(),
+            size_of::<Slot<Node>>()
         );
-        assert!(size_of::<Slot<DocumentNode>>() <= 256);
+        assert!(size_of::<Slot<Node>>() <= 256);
     }
 }

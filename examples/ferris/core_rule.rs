@@ -1,5 +1,5 @@
 // Counts the crabs after inline parsing and appends a footer node.
-use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
+use markdown_it::parser::core::{CoreRule, CoreStage};
 use markdown_it::{MarkdownIt, NodeValue};
 
 use super::block_rule::BlockFerris;
@@ -12,10 +12,10 @@ impl NodeValue for FerrisCounter {}
 // This is an extension for the markdown parser.
 struct FerrisCounterRule;
 impl CoreRule for FerrisCounterRule {
-    fn document_rule() -> DocumentCoreRule {
+    fn stage() -> CoreStage {
         // This is a custom function that will be invoked once per document.
         // It has the document as an argument and may modify its contents.
-        DocumentCoreRule::FinalizeDocument(|root, _| {
+        CoreStage::Finalize(|root, _| {
             // walk through the arena tree and count the custom nodes
             // added by the other two rules
             let mut counter = 0;
@@ -35,13 +35,13 @@ impl CoreRule for FerrisCounterRule {
 }
 
 struct CounterRenderer;
-impl markdown_it::DocumentNodeRenderer<FerrisCounter> for CounterRenderer {
+impl markdown_it::NodeRenderer<FerrisCounter> for CounterRenderer {
     fn render(
         &self,
         _: markdown_it::NodeRef<'_>,
         counter: &FerrisCounter,
-        ctx: &mut markdown_it::DocumentRenderContext<'_>,
-        out: &mut markdown_it::DocumentWriter,
+        ctx: &mut markdown_it::RenderContext<'_>,
+        out: &mut markdown_it::Writer,
     ) {
         ctx.cr(out);
         out.write_str("<footer class=\"ferris-counter\">");
@@ -58,5 +58,5 @@ impl markdown_it::DocumentNodeRenderer<FerrisCounter> for CounterRenderer {
 // insert this rule into parser
 pub fn add(md: &mut MarkdownIt) {
     md.add_rule::<FerrisCounterRule>().after_named("inline");
-    md.add_document_renderer::<FerrisCounter, _>("html", CounterRenderer);
+    md.add_renderer::<FerrisCounter, _>("html", CounterRenderer);
 }

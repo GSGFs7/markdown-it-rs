@@ -6,26 +6,21 @@
 //!  - <https://spec.commonmark.org/0.30/#soft-line-breaks>
 use crate::MarkdownIt;
 use crate::document::{NodeId, NodeRef, NodeValue};
-use crate::parser::inline::{DocumentInlineState, InlineRule};
-use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    PlainTextBreakDocumentRenderer,
-    write_html_self_close,
-};
+use crate::parser::inline::{InlineRule, InlineState};
+use crate::render::{NodeRenderer, PlainTextBreakRenderer, RenderContext, write_html_self_close};
 
 #[derive(Debug)]
 pub struct Hardbreak;
 
-struct HardbreakDocumentRenderer;
+struct HardbreakRenderer;
 
-impl DocumentNodeRenderer<Hardbreak> for HardbreakDocumentRenderer {
+impl NodeRenderer<Hardbreak> for HardbreakRenderer {
     fn render(
         &self,
         _: NodeRef<'_>,
         _: &Hardbreak,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         write_html_self_close(output, "br", &[], context.options().xhtml_out);
         output.write_str("\n");
@@ -37,15 +32,15 @@ impl NodeValue for Hardbreak {}
 #[derive(Debug)]
 pub struct Softbreak;
 
-struct SoftbreakDocumentRenderer;
+struct SoftbreakRenderer;
 
-impl DocumentNodeRenderer<Softbreak> for SoftbreakDocumentRenderer {
+impl NodeRenderer<Softbreak> for SoftbreakRenderer {
     fn render(
         &self,
         _: NodeRef<'_>,
         _: &Softbreak,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         if context.options().breaks {
             write_html_self_close(output, "br", &[], context.options().xhtml_out);
@@ -60,10 +55,10 @@ impl NodeValue for Softbreak {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<NewlineScanner>();
-    md.add_document_renderer::<Hardbreak, _>("html", HardbreakDocumentRenderer);
-    md.add_document_renderer::<Softbreak, _>("html", SoftbreakDocumentRenderer);
-    md.add_document_renderer::<Hardbreak, _>("text", PlainTextBreakDocumentRenderer);
-    md.add_document_renderer::<Softbreak, _>("text", PlainTextBreakDocumentRenderer);
+    md.add_renderer::<Hardbreak, _>("html", HardbreakRenderer);
+    md.add_renderer::<Softbreak, _>("html", SoftbreakRenderer);
+    md.add_renderer::<Hardbreak, _>("text", PlainTextBreakRenderer);
+    md.add_renderer::<Softbreak, _>("text", PlainTextBreakRenderer);
 }
 
 #[doc(hidden)]
@@ -73,7 +68,7 @@ impl InlineRule for NewlineScanner {
     const MARKER: char = '\n';
     const NAMES: &'static [&'static str] = &["newline"];
 
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
         // check rule is required because run() modifies trailing text
         if context.remaining().starts_with('\n') {
             Some(1)
@@ -82,7 +77,7 @@ impl InlineRule for NewlineScanner {
         }
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let mut chars = state.src[state.pos..state.pos_max].chars();
         if chars.next()? != '\n' {
             return None;
@@ -122,8 +117,8 @@ mod test {
     #[test]
     fn renders_softbreak_as_newline_by_default() {
         let md = parser();
-        let ast = md.parse_document("hello\nworld");
-        assert_eq!(md.render_document(&ast), "<p>hello\nworld</p>\n");
+        let ast = md.parse("hello\nworld");
+        assert_eq!(md.render_html(&ast), "<p>hello\nworld</p>\n");
     }
 
     #[test]
@@ -149,10 +144,10 @@ mod test {
     #[test]
     fn breaks_respects_xhtml_out() {
         let md = parser();
-        let ast = md.parse_document("hello\nworld");
+        let ast = md.parse("hello\nworld");
 
         assert_eq!(
-            md.document_renderers.render(
+            md.renderers.render(
                 &ast,
                 "html",
                 &RenderOptions {
@@ -166,7 +161,7 @@ mod test {
     }
 
     #[test]
-    fn document_breaks_match_expected_output() {
+    fn breaks_match_expected_output() {
         let mut md = MarkdownIt::empty();
         plugins::cmark::block::paragraph::add(&mut md);
         plugins::cmark::inline::newline::add(&mut md);

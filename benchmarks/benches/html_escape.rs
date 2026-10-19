@@ -3,26 +3,20 @@ use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use markdown_it::{
     Document,
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    DocumentWriter,
     MarkdownIt,
     NodeDraft,
     NodeRef,
+    NodeRenderer,
+    RenderContext,
     Text,
+    Writer,
 };
 
 // Preserve the previous rendering operation as a same-process control.
 struct LegacyHtmlTextRenderer;
 
-impl DocumentNodeRenderer<Text> for LegacyHtmlTextRenderer {
-    fn render(
-        &self,
-        _: NodeRef<'_>,
-        value: &Text,
-        _: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
-    ) {
+impl NodeRenderer<Text> for LegacyHtmlTextRenderer {
+    fn render(&self, _: NodeRef<'_>, value: &Text, _: &mut RenderContext<'_>, output: &mut Writer) {
         output.write_str(&markdown_it::common::utils::escape_html(&value.content));
     }
 }
@@ -30,7 +24,7 @@ impl DocumentNodeRenderer<Text> for LegacyHtmlTextRenderer {
 fn benchmark(c: &mut Criterion) {
     let md = MarkdownIt::empty();
     let mut legacy = MarkdownIt::empty();
-    legacy.add_document_renderer::<Text, _>("html", LegacyHtmlTextRenderer);
+    legacy.add_renderer::<Text, _>("html", LegacyHtmlTextRenderer);
     for (name, pattern) in [
         ("ascii-clean", "ordinary words without HTML punctuation "),
         ("unicode-clean", "中文日本語한글 café e\u{301} 🦀🚀 "),
@@ -46,15 +40,15 @@ fn benchmark(c: &mut Criterion) {
             .content;
         // Verify the full output independently before timing document rendering.
         let expected = markdown_it::common::utils::escape_html(text);
-        assert_eq!(md.render_document(&document), expected);
-        assert_eq!(legacy.render_document(&document), expected);
+        assert_eq!(md.render_html(&document), expected);
+        assert_eq!(legacy.render_html(&document), expected);
         let mut group = c.benchmark_group(format!("html-escape/{name}"));
         group.throughput(Throughput::Bytes(text.len() as u64));
         group.bench_function("legacy-html", |b| {
-            b.iter(|| black_box(legacy.render_document(black_box(&document))))
+            b.iter(|| black_box(legacy.render_html(black_box(&document))))
         });
         group.bench_function("document-html", |b| {
-            b.iter(|| black_box(md.render_document(black_box(&document))))
+            b.iter(|| black_box(md.render_html(black_box(&document))))
         });
         group.finish();
     }
@@ -63,7 +57,7 @@ fn benchmark(c: &mut Criterion) {
 fn benchmark_sizes(c: &mut Criterion) {
     let md = MarkdownIt::empty();
     let mut legacy = MarkdownIt::empty();
-    legacy.add_document_renderer::<Text, _>("html", LegacyHtmlTextRenderer);
+    legacy.add_renderer::<Text, _>("html", LegacyHtmlTextRenderer);
     for name in [
         "ascii-clean",
         "unicode-clean",
@@ -85,18 +79,18 @@ fn benchmark_sizes(c: &mut Criterion) {
             assert_eq!(source.len(), len);
             let expected = markdown_it::common::utils::escape_html(&source).into_owned();
             let document = Document::from_draft("", NodeDraft::new(Text { content: source }));
-            assert_eq!(md.render_document(&document), expected);
-            assert_eq!(legacy.render_document(&document), expected);
+            assert_eq!(md.render_html(&document), expected);
+            assert_eq!(legacy.render_html(&document), expected);
             group.throughput(Throughput::Bytes(len as u64));
             group.bench_with_input(
                 BenchmarkId::new("legacy-html", len),
                 &document,
-                |b, document| b.iter(|| black_box(legacy.render_document(black_box(document)))),
+                |b, document| b.iter(|| black_box(legacy.render_html(black_box(document)))),
             );
             group.bench_with_input(
                 BenchmarkId::new("document-html", len),
                 &document,
-                |b, document| b.iter(|| black_box(md.render_document(black_box(document)))),
+                |b, document| b.iter(|| black_box(md.render_html(black_box(document)))),
             );
         }
         group.finish();

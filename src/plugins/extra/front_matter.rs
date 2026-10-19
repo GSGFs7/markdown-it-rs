@@ -1,4 +1,4 @@
-use crate::parser::block::{BlockRule, DocumentBlockState};
+use crate::parser::block::{BlockRule, BlockState};
 use crate::{MarkdownIt, NodeId};
 
 /// Default maximum number of document lines searched for the closing delimiter.
@@ -38,7 +38,7 @@ impl BlockRule for FrontMatterScanner {
     const MARKERS: &'static [char] = &['-', '+'];
     const NAMES: &'static [&'static str] = &["front_matter", "frontmatter"];
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (kind, end_line) = scan_front_matter(state.md, state.line, state.line_max, |line| {
             (state.get_line(line), state.line_indent(line))
         })?;
@@ -106,7 +106,7 @@ mod tests {
         markdown_it::plugins::extra::front_matter::add(md);
         markdown_it::plugins::cmark::add(md);
 
-        let ast = md.parse_document("---\ntitle: Hello\ntags:\n  - rust\n---\n# Post\n");
+        let ast = md.parse("---\ntitle: Hello\ntags:\n  - rust\n---\n# Post\n");
         let root = ast.node(ast.root()).cast::<Root>().unwrap();
         let front_matter = root.ext.get::<FrontMatter>().unwrap();
 
@@ -114,7 +114,7 @@ mod tests {
         assert_eq!(front_matter.raw, "title: Hello\ntags:\n  - rust");
         assert_eq!(front_matter.start_line, 0);
         assert_eq!(front_matter.end_line, 4);
-        assert_eq!(md.render_document(&ast), "<h1>Post</h1>\n");
+        assert_eq!(md.render_html(&ast), "<h1>Post</h1>\n");
     }
 
     #[test]
@@ -126,13 +126,13 @@ mod tests {
         markdown_it::plugins::extra::front_matter::add(md);
         markdown_it::plugins::cmark::add(md);
 
-        let ast = md.parse_document("+++\ntitle = \"Hello\"\n+++\nBody");
+        let ast = md.parse("+++\ntitle = \"Hello\"\n+++\nBody");
         let root = ast.node(ast.root()).cast::<Root>().unwrap();
         let front_matter = root.ext.get::<FrontMatter>().unwrap();
 
         assert_eq!(front_matter.kind, FrontMatterKind::Toml);
         assert_eq!(front_matter.raw, "title = \"Hello\"");
-        assert_eq!(md.render_document(&ast), "<p>Body</p>\n");
+        assert_eq!(md.render_html(&ast), "<p>Body</p>\n");
     }
 
     #[test]
@@ -149,7 +149,7 @@ mod tests {
         markdown_it::plugins::extra::front_matter::add(md);
         markdown_it::plugins::cmark::add(md);
 
-        let ast = md.parse_document("---\ntitle: Hello\n---\nBody");
+        let ast = md.parse("---\ntitle: Hello\n---\nBody");
         let root = ast.node(ast.root()).cast::<Root>().unwrap();
         let front_matter = root.ext.get::<FrontMatter>().unwrap();
 
@@ -182,12 +182,12 @@ mod tests {
         markdown_it::plugins::extra::front_matter::add_with_max_lines(md, 3);
         markdown_it::plugins::cmark::add(md);
 
-        let ast = md.parse_document("---\ntitle: Hello\nstill: metadata\n---\nBody");
+        let ast = md.parse("---\ntitle: Hello\nstill: metadata\n---\nBody");
         let root = ast.node(ast.root()).cast::<Root>().unwrap();
 
         assert!(root.ext.get::<FrontMatter>().is_none());
         assert_eq!(
-            md.render_document(&ast),
+            md.render_html(&ast),
             "<hr>\n<h2>title: Hello\nstill: metadata</h2>\n<p>Body</p>\n"
         );
     }

@@ -16,9 +16,6 @@ PHASE_ORDER = {
     "parse": 0,
     "render": 1,
     "parse-render": 2,
-    "document-parse": 3,
-    "document-render": 4,
-    "document-end-to-end": 5,
 }
 CORPUS_ORDER = {
     "small-real-world": 0,
@@ -37,7 +34,6 @@ ENGINE_ORDER = {
     "markdown-rs-1.0": 5,
     "legacy-tree": 6,
     "legacy-arena-bridge": 7,
-    "arena-direct": 8,
     "arena-bridge": 9,
 }
 
@@ -83,7 +79,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--configuration",
-        help="only include one document-parse configuration",
+        help="only include one parse configuration",
     )
     parser.add_argument(
         "--format",
@@ -127,7 +123,7 @@ def load_results(root: Path, dataset: str) -> list[Result]:
         if len(parts) == 3 and parts[0] in PHASE_ORDER:
             phase, corpus, engine = parts
             configuration = None
-        elif len(parts) == 4 and parts[0] == "document-parse":
+        elif len(parts) == 4 and parts[0] == "parse":
             phase, configuration, corpus, engine = parts
         else:
             # Ignore old flat benchmark IDs and unrelated Criterion data.

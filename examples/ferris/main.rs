@@ -1,4 +1,4 @@
-// Runs arena-backed custom block, inline and core plugins.
+// Runs custom block, inline and core plugins.
 mod block_rule;
 mod core_rule;
 mod inline_rule;
@@ -11,8 +11,8 @@ fn main() {
     // add the custom inline rule
     inline_rule::add(inline_md);
 
-    let document = inline_md.parse_document("(\\/) hello world (\\/)");
-    let inline_html = inline_md.render_document(&document);
+    let document = inline_md.parse("(\\/) hello world (\\/)");
+    let inline_html = inline_md.render_html(&document);
 
     let block_md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(block_md);

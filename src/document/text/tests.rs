@@ -157,7 +157,7 @@ fn real_markdown_preserves_text_html_and_linebreak_semantics() {
     let mut md = MarkdownIt::empty();
     plugins::cmark::add(&mut md);
     plugins::html::add(&mut md);
-    let document = md.parse_document("A *雪*\n<b title=\"q\">B</b>  \nC");
+    let document = md.parse("A *雪*\n<b title=\"q\">B</b>  \nC");
     let events: Vec<_> = document
         .text_events(TextProjection::new(smartquotes_like))
         .collect();

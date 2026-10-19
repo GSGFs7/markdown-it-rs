@@ -18,7 +18,7 @@ fn append_step(document: &Document, step: &str) -> EditBatch {
 
 #[derive(Default)]
 struct First;
-impl DocumentTransform for First {
+impl Transform for First {
     const KEY: &'static str = "first";
     const ALIASES: &'static [&'static str] = &["opening"];
 
@@ -29,7 +29,7 @@ impl DocumentTransform for First {
 
 #[derive(Default)]
 struct Second;
-impl DocumentTransform for Second {
+impl Transform for Second {
     const KEY: &'static str = "second";
 
     fn run(&self, document: &Document) -> EditBatch {
@@ -39,7 +39,7 @@ impl DocumentTransform for Second {
 
 #[derive(Default)]
 struct Third;
-impl DocumentTransform for Third {
+impl Transform for Third {
     const KEY: &'static str = "third";
 
     fn run(&self, document: &Document) -> EditBatch {
@@ -51,7 +51,7 @@ impl DocumentTransform for Third {
 #[derive(Default)]
 struct Failing;
 #[cfg(debug_assertions)]
-impl DocumentTransform for Failing {
+impl Transform for Failing {
     const KEY: &'static str = "failing";
 
     fn run(&self, document: &Document) -> EditBatch {
@@ -72,12 +72,12 @@ fn steps(document: &Document) -> Option<&str> {
 
 #[test]
 fn runs_in_resolved_type_and_named_order() {
-    let mut registry = DocumentTransformRegistry::new();
+    let mut registry = TransformRegistry::new();
     registry.add::<Second>().after::<First>();
     registry.add::<Third>().after_named("opening");
     registry.add::<First>().before_all();
 
-    let mut document = MarkdownIt::empty().parse_document("");
+    let mut document = MarkdownIt::empty().parse("");
     registry.run(&mut document);
 
     assert_eq!(steps(&document), Some("123"));
@@ -86,11 +86,11 @@ fn runs_in_resolved_type_and_named_order() {
 #[cfg(debug_assertions)]
 #[test]
 fn invalid_transform_panics_during_debug_validation() {
-    let mut registry = DocumentTransformRegistry::new();
+    let mut registry = TransformRegistry::new();
     registry.add::<First>();
     registry.add::<Failing>();
     registry.add::<Third>();
-    let mut document = MarkdownIt::empty().parse_document("");
+    let mut document = MarkdownIt::empty().parse("");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         registry.run(&mut document);
@@ -107,8 +107,8 @@ fn invalid_transform_panics_during_debug_validation() {
 
 #[test]
 fn empty_registry_is_a_noop() {
-    let registry = DocumentTransformRegistry::new();
-    let mut document = MarkdownIt::empty().parse_document("hello");
+    let registry = TransformRegistry::new();
+    let mut document = MarkdownIt::empty().parse("hello");
     let root = document.root();
     let len = document.len();
 
@@ -120,16 +120,16 @@ fn empty_registry_is_a_noop() {
 
 #[test]
 fn remove_invalidates_resolved_order() {
-    let mut registry = DocumentTransformRegistry::new();
+    let mut registry = TransformRegistry::new();
     registry.add::<First>();
     registry.add::<Second>();
-    let mut first_run = MarkdownIt::empty().parse_document("");
+    let mut first_run = MarkdownIt::empty().parse("");
     registry.run(&mut first_run);
     assert_eq!(steps(&first_run), Some("12"));
 
     registry.remove::<First>();
     assert!(!registry.contains::<First>());
-    let mut second_run = MarkdownIt::empty().parse_document("");
+    let mut second_run = MarkdownIt::empty().parse("");
     registry.run(&mut second_run);
     assert_eq!(steps(&second_run), Some("2"));
 }
@@ -137,20 +137,20 @@ fn remove_invalidates_resolved_order() {
 #[test]
 fn parser_runs_transforms_once_and_explicit_reruns_are_opt_in() {
     let mut md = MarkdownIt::empty();
-    md.add_document_transform::<First>();
+    md.add_transform::<First>();
 
-    let mut document = md.parse_document("");
+    let mut document = md.parse("");
     assert_eq!(steps(&document), Some("1"));
 
-    md.run_document_transforms(&mut document);
+    md.run_transforms(&mut document);
     assert_eq!(steps(&document), Some("11"));
     crate::plugins::cmark::add(&mut md);
-    assert_eq!(steps(&md.parse_document("text")), Some("1"));
+    assert_eq!(steps(&md.parse("text")), Some("1"));
 }
 
 #[derive(Default)]
 struct RewriteText;
-impl DocumentTransform for RewriteText {
+impl Transform for RewriteText {
     const KEY: &'static str = "rewrite-text";
 
     fn run(&self, document: &Document) -> EditBatch {
@@ -170,17 +170,17 @@ impl DocumentTransform for RewriteText {
 fn transform_can_build_edits_from_an_immutable_document() {
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::add(&mut md);
-    md.add_document_transform::<RewriteText>();
-    let mut document = md.parse_document("original");
+    md.add_transform::<RewriteText>();
+    let mut document = md.parse("original");
 
-    md.run_document_transforms(&mut document);
+    md.run_transforms(&mut document);
 
-    assert_eq!(md.render_document(&document), "<p>rewritten</p>\n");
+    assert_eq!(md.render_html(&document), "<p>rewritten</p>\n");
 }
 
 #[derive(Default)]
 struct DuplicateKey;
-impl DocumentTransform for DuplicateKey {
+impl Transform for DuplicateKey {
     const KEY: &'static str = "first";
 
     fn run(&self, _: &Document) -> EditBatch {
@@ -189,9 +189,9 @@ impl DocumentTransform for DuplicateKey {
 }
 
 #[test]
-#[should_panic(expected = "duplicate document transform key")]
+#[should_panic(expected = "duplicate transform key")]
 fn rejects_duplicate_stable_keys() {
-    let mut registry = DocumentTransformRegistry::new();
+    let mut registry = TransformRegistry::new();
     registry.add::<First>();
     registry.add::<DuplicateKey>();
 }
@@ -200,7 +200,7 @@ struct ConfiguredTransform {
     value: String,
 }
 
-impl DocumentTransform for ConfiguredTransform {
+impl Transform for ConfiguredTransform {
     const KEY: &'static str = "configured";
 
     fn run(&self, document: &Document) -> EditBatch {
@@ -213,12 +213,12 @@ impl DocumentTransform for ConfiguredTransform {
 #[test]
 fn markdown_it_registers_an_owned_configured_instance() {
     let mut md = MarkdownIt::empty();
-    md.add_document_transform_instance(ConfiguredTransform {
+    md.add_transform_instance(ConfiguredTransform {
         value: "runtime value".into(),
     });
-    let mut document = md.parse_document("");
+    let mut document = md.parse("");
 
-    md.run_document_transforms(&mut document);
+    md.run_transforms(&mut document);
 
     assert_eq!(
         document.node(document.root()).attrs(),
@@ -236,7 +236,7 @@ impl Drop for DropProbe {
     }
 }
 
-impl DocumentTransform for DropProbe {
+impl Transform for DropProbe {
     const KEY: &'static str = "drop-probe";
 
     fn run(&self, _: &Document) -> EditBatch {
@@ -247,11 +247,11 @@ impl DocumentTransform for DropProbe {
 #[test]
 fn remove_invalidates_the_cache_and_drops_the_instance_once() {
     let drops = Arc::new(AtomicUsize::new(0));
-    let mut registry = DocumentTransformRegistry::new();
+    let mut registry = TransformRegistry::new();
     registry.add_instance(DropProbe {
         drops: Arc::clone(&drops),
     });
-    let mut document = MarkdownIt::empty().parse_document("");
+    let mut document = MarkdownIt::empty().parse("");
     registry.run(&mut document);
 
     registry.remove::<DropProbe>();
@@ -261,7 +261,7 @@ fn remove_invalidates_the_cache_and_drops_the_instance_once() {
 
 struct TypeAliasCollision;
 
-impl DocumentTransform for TypeAliasCollision {
+impl Transform for TypeAliasCollision {
     const KEY: &'static str = "type-alias-collision";
 
     fn run(&self, _: &Document) -> EditBatch {
@@ -270,16 +270,16 @@ impl DocumentTransform for TypeAliasCollision {
 }
 
 #[test]
-#[should_panic(expected = "document transform type is already registered")]
+#[should_panic(expected = "transform type is already registered")]
 fn rejects_a_type_already_used_as_an_alias() {
-    let mut registry = DocumentTransformRegistry::new();
+    let mut registry = TransformRegistry::new();
     registry.add::<First>().alias::<TypeAliasCollision>();
     registry.add_instance(TypeAliasCollision);
 }
 
 #[test]
 fn registry_debug_does_not_require_transform_debug() {
-    let mut registry = DocumentTransformRegistry::new();
+    let mut registry = TransformRegistry::new();
     registry.add_instance(ConfiguredTransform {
         value: "secret configuration".into(),
     });

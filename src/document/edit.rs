@@ -1,4 +1,4 @@
-//! Plugin-supplied edits for arena-backed documents.
+//! Plugin-supplied edits for documents.
 
 use std::ops::Range;
 

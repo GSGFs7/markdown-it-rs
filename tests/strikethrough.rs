@@ -12,9 +12,9 @@ fn run(input: &str, output: &str) {
     let actual = md.render(&source);
     assert_eq!(actual, expected);
 
-    let document = md.parse_document(&source);
-    assert_eq!(md.render_document(&document), actual);
-    md.render_document_as(&document, "text");
+    let document = md.parse(&source);
+    assert_eq!(md.render_html(&document), actual);
+    md.render_as(&document, "text");
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn strikethrough_does_not_apply_the_emphasis_rule_of_three() {
 fn partially_matched_strikethrough_keeps_source_offsets() {
     let md = markdown_it::MarkdownIt::with_preset(markdown_it::Preset::MarkdownItDefault);
     let source = "雪 -~~~~;~~ 尾";
-    let document = md.parse_document(source);
+    let document = md.parse(source);
     let strike = document
         .events(document.root())
         .find_map(|event| {
@@ -72,5 +72,5 @@ fn partially_matched_strikethrough_keeps_source_offsets() {
         text.srcmap().unwrap().get_byte_offsets(),
         (content_start, content_start + 1)
     );
-    assert_eq!(md.render_document(&document), "<p>雪 -~~<s>;</s> 尾</p>\n");
+    assert_eq!(md.render_html(&document), "<p>雪 -~~<s>;</s> 尾</p>\n");
 }

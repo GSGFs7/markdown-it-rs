@@ -1,4 +1,4 @@
-//! Arena-backed document storage.
+//! Document storage.
 
 mod arena;
 mod data;
@@ -16,19 +16,19 @@ use std::sync::Arc;
 use self::arena::Arena;
 pub use self::arena::NodeId;
 pub use self::events::{StructuralEvent, StructuralEvents};
-pub use self::node::{DocumentNode, NodeDraft, NodeRef};
+pub use self::node::{Node, NodeDraft, NodeRef};
 pub use self::root::Root;
 pub(crate) use self::structure::SiblingPosition;
 pub use self::text::{Text, TextSpecial};
 pub(crate) use self::value::NodeEmpty;
 pub use self::value::{HtmlAttribute, HtmlAttributes, NodeValue};
 
-/// Arena-backed representation of one parsed Markdown document.
+/// A parsed Markdown document and its source text.
 ///
 #[derive(Debug)]
 pub struct Document {
     source: Arc<str>,
-    arena: Arena<DocumentNode>,
+    arena: Arena<Node>,
     root: NodeId,
 }
 
@@ -36,7 +36,7 @@ impl Document {
     /// Create a document with its root allocated directly in the arena.
     pub(crate) fn new<T: NodeValue>(source: impl Into<Arc<str>>, value: T) -> Self {
         let mut arena = Arena::new();
-        let root = arena.insert_with(|id| DocumentNode {
+        let root = arena.insert_with(|id| Node {
             id,
             parent: None,
             children: Vec::new(),
@@ -51,7 +51,7 @@ impl Document {
 
     /// Allocate a detached node. Attach it with `push_child` before exposing the document.
     pub fn create_node<T: NodeValue>(&mut self, value: T) -> NodeId {
-        self.arena.insert_with(|id| DocumentNode {
+        self.arena.insert_with(|id| Node {
             id,
             parent: None,
             children: Vec::new(),
@@ -119,7 +119,7 @@ impl Document {
         result
     }
 
-    /// Build an arena-backed document from a draft tree and its source text.
+    /// Build a document from a draft tree and its source text.
     ///
     /// The source is kept for source mapping and access via [`Document::source`].
     pub fn from_draft(source: impl Into<Arc<str>>, root: NodeDraft) -> Self {
@@ -151,7 +151,7 @@ impl Document {
 
     /// Markdown source owned by this document, used for byte source maps.
     ///
-    /// [`crate::MarkdownIt::parse_document`] stores it with NUL replaced by
+    /// [`crate::MarkdownIt::parse`] stores it with NUL replaced by
     /// U+FFFD; [`Document::from_draft`] stores it verbatim.
     pub fn source(&self) -> &str {
         &self.source
@@ -173,7 +173,7 @@ impl Document {
 
     /// Return a node if its slot and generation are still valid.
     /// The ID must originate from this document.
-    pub fn get_node(&self, id: NodeId) -> Option<&DocumentNode> {
+    pub fn get_node(&self, id: NodeId) -> Option<&Node> {
         self.arena.get(id)
     }
 
@@ -182,7 +182,7 @@ impl Document {
     /// # Panics
     /// Panics if the slot is unknown or the generation is stale.
     #[track_caller]
-    pub fn node(&self, id: NodeId) -> &DocumentNode {
+    pub fn node(&self, id: NodeId) -> &Node {
         match self.arena.get(id) {
             Some(node) => node,
             None => panic!("invalid or stale node ID: {id:?}"),
@@ -190,7 +190,7 @@ impl Document {
     }
 
     #[track_caller]
-    pub fn node_mut(&mut self, id: NodeId) -> &mut DocumentNode {
+    pub fn node_mut(&mut self, id: NodeId) -> &mut Node {
         match self.arena.get_mut(id) {
             Some(node) => node,
             None => {

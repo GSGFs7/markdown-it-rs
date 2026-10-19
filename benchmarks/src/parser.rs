@@ -5,7 +5,7 @@ pub struct ParserConfiguration {
     pub parser: MarkdownIt,
 }
 
-pub fn document_parse_configurations() -> Vec<ParserConfiguration> {
+pub fn parse_configurations() -> Vec<ParserConfiguration> {
     let empty = MarkdownIt::empty();
 
     let mut paragraph = MarkdownIt::empty();

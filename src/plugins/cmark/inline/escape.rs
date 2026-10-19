@@ -6,7 +6,7 @@
 //! <https://spec.commonmark.org/0.30/#backslash-escapes>
 use crate::MarkdownIt;
 use crate::document::{NodeId, TextSpecial};
-use crate::parser::inline::{DocumentInlineState, InlineRule};
+use crate::parser::inline::{InlineRule, InlineState};
 use crate::plugins::cmark::inline::newline::Hardbreak;
 
 pub fn add(md: &mut MarkdownIt) {
@@ -54,11 +54,11 @@ impl InlineRule for EscapeScanner {
     const MARKER: char = '\\';
     const NAMES: &'static [&'static str] = &["escape"];
 
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
         scan_escape(context.remaining()).map(|matched| matched.len())
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let matched = scan_escape(state.remaining())?;
         let len = matched.len();
         match matched {

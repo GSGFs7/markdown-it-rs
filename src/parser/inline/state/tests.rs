@@ -4,7 +4,7 @@ use super::*;
 use crate::links::LinkFormatter;
 use crate::parser::inline::{InlineCheckFn, InlineRule, InlineRuleFn, InlineRuleFns};
 
-impl<'a> DocumentInlineState<'a> {
+impl<'a> InlineState<'a> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         document: &'a mut Document,
@@ -12,7 +12,7 @@ impl<'a> DocumentInlineState<'a> {
         start: usize,
         end: usize,
         md: &'a MarkdownIt,
-        ruleset: &'a DocumentRuleSet,
+        ruleset: &'a RuleSet,
         depth: u32,
         link_level: i32,
     ) -> Self {
@@ -39,10 +39,7 @@ impl<'a> DocumentInlineState<'a> {
 }
 
 // Test shorthand for a nested boundary scan; production uses child_state directly.
-fn scan<'s>(
-    state: &'s mut DocumentInlineState<'_>,
-    range: Range<usize>,
-) -> Option<DocumentInlineState<'s>> {
+fn scan<'s>(state: &'s mut InlineState<'_>, range: Range<usize>) -> Option<InlineState<'s>> {
     state.child_state(range, state.depth.checked_add(1)?, state.link_level)
 }
 
@@ -68,18 +65,18 @@ fn run_rule(run: InlineRuleFn) -> InlineRuleFns {
     run_rule_with_marker(run, '\0')
 }
 
-fn panic_check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+fn panic_check(_: &mut InlineState<'_>) -> Option<usize> {
     unreachable!("rule check must not be called")
 }
 
-fn panic_run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+fn panic_run(_: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
     unreachable!("rule run must not be called")
 }
 
 #[derive(Debug, Default)]
 struct FinalizerCalls(usize);
 
-fn count_finalizer(state: &mut DocumentInlineState<'_>) {
+fn count_finalizer(state: &mut InlineState<'_>) {
     assert!(state.pending_text.is_none());
     state.inline_ext.get_or_insert_default::<FinalizerCalls>().0 += 1;
 }
@@ -87,11 +84,11 @@ fn count_finalizer(state: &mut DocumentInlineState<'_>) {
 fn parent_state<'a>(
     document: &'a mut Document,
     md: &'a MarkdownIt,
-    ruleset: &'a DocumentRuleSet,
-) -> DocumentInlineState<'a> {
+    ruleset: &'a RuleSet,
+) -> InlineState<'a> {
     let mut inline_ext = InlineRootExtSet::new();
     inline_ext.insert(FinalizerCalls(41));
-    DocumentInlineState {
+    InlineState {
         src: Cow::Owned("前{ 雪\n次 }尾".to_owned()),
         pos: 3,
         pos_max: 14,
@@ -116,10 +113,10 @@ fn parent_state<'a>(
 fn check_state<'a>(
     document: &'a mut Document,
     md: &'a MarkdownIt,
-    ruleset: &'a DocumentRuleSet,
+    ruleset: &'a RuleSet,
     source: &str,
-) -> DocumentInlineState<'a> {
-    DocumentInlineState {
+) -> InlineState<'a> {
+    InlineState {
         src: Cow::Owned(source.to_owned()),
         pos: 0,
         pos_max: source.len(),
@@ -149,7 +146,7 @@ struct CheckParentSnapshot {
     nodes: String,
 }
 
-fn check_parent_snapshot(state: &DocumentInlineState<'_>) -> CheckParentSnapshot {
+fn check_parent_snapshot(state: &InlineState<'_>) -> CheckParentSnapshot {
     CheckParentSnapshot {
         cursor: (state.pos, state.pos_max, state.depth, state.link_level),
         pending_text: state.pending_text,
@@ -169,12 +166,12 @@ fn check_parent_snapshot(state: &DocumentInlineState<'_>) -> CheckParentSnapshot
 fn finishing_nodes_preserves_source_and_byte_mapping() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
         finalizers: vec![count_finalizer],
     };
-    let mut state = DocumentInlineState {
+    let mut state = InlineState {
         src: Cow::Owned("前x雪尾".to_owned()),
         pos: 7,
         pos_max: 7,
@@ -220,12 +217,12 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
 fn top_level_plain_text_still_skips_finalizers() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
         finalizers: vec![|_| panic!("plain pending text must skip finalizers")],
     };
-    let nodes = DocumentInlineState::parse(
+    let nodes = InlineState::parse(
         &mut document,
         " plain ".to_owned(),
         vec![(0, 0)],
@@ -245,7 +242,7 @@ fn top_level_plain_text_still_skips_finalizers() {
 fn text_only_rules_can_request_finalization_in_top_level_and_child_sessions() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![run_rule(|state| {
             let end = state.pos_max;
             state.push_text(state.pos, end);
@@ -268,7 +265,7 @@ fn text_only_rules_can_request_finalization_in_top_level_and_child_sessions() {
                 .push('!');
         }],
     };
-    let top = DocumentInlineState::parse(
+    let top = InlineState::parse(
         &mut document,
         " 雪plain ".to_owned(),
         vec![(0, 10)],
@@ -312,7 +309,7 @@ fn text_only_rules_can_request_finalization_in_top_level_and_child_sessions() {
 fn child_session_does_not_inherit_parent_finalization_request() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
         finalizers: vec![|_| panic!("child without a request must skip finalizers")],
@@ -341,7 +338,7 @@ fn child_session_does_not_inherit_parent_finalization_request() {
 fn subrange_preserves_parent_whitespace_and_multiline_mapping() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
         finalizers: vec![count_finalizer],
@@ -386,7 +383,7 @@ fn subrange_preserves_parent_whitespace_and_multiline_mapping() {
 fn subrange_validates_ranges_and_empty_output() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
         finalizers: vec![|_| panic!("empty/plain range")],
@@ -406,7 +403,7 @@ fn subrange_validates_ranges_and_empty_output() {
 #[test]
 fn child_finalizer_sees_only_child_nodes_and_scratch() {
     let mut document = Document::new("", crate::Root::new(""));
-    fn emit(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn emit(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         assert_eq!(state.depth, 1);
         assert_eq!(state.link_level, 2);
         assert!(state.inline_ext.get::<FinalizerCalls>().is_none());
@@ -417,7 +414,7 @@ fn child_finalizer_sees_only_child_nodes_and_scratch() {
             state.remaining().len(),
         ))
     }
-    fn finalize(state: &mut DocumentInlineState<'_>) {
+    fn finalize(state: &mut InlineState<'_>) {
         assert!(state.pending_text.is_none());
         assert_eq!(state.nodes.len(), 1);
         assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 0);
@@ -432,7 +429,7 @@ fn child_finalizer_sees_only_child_nodes_and_scratch() {
         state.link_level = 99;
     }
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![run_rule(emit)],
         checks: vec![],
         finalizers: vec![finalize],
@@ -459,7 +456,7 @@ fn subrange_at_nesting_limit_emits_literal_text() {
     let mut document = Document::new("", crate::Root::new(""));
     let mut md = MarkdownIt::empty();
     md.max_nesting = 1;
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![run_rule(|_| panic!("nesting limit must skip rules"))],
         checks: vec![],
         finalizers: vec![|_| panic!("literal text must skip finalizers")],
@@ -480,7 +477,7 @@ fn subrange_at_nesting_limit_emits_literal_text() {
 #[test]
 fn normal_parse_does_not_call_check() {
     let mut document = Document::new("", crate::Root::new(""));
-    fn emit(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn emit(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let content = state.remaining().to_owned();
         Some((
             Some(state.document.create_node(Text { content })),
@@ -488,12 +485,12 @@ fn normal_parse_does_not_call_check() {
         ))
     }
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![run_rule(emit)],
         checks: vec![check_rule(|_| panic!("normal parsing must not call check"))],
         finalizers: vec![],
     };
-    let nodes = DocumentInlineState::parse(
+    let nodes = InlineState::parse(
         &mut document,
         "x".to_owned(),
         vec![(0, 0)],
@@ -508,13 +505,13 @@ fn normal_parse_does_not_call_check() {
 #[test]
 fn run_dispatch_skips_non_matching_markers() {
     let mut document = Document::new("", crate::Root::new(""));
-    fn panic_run_with(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn panic_run_with(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         panic!(
             "rule for another marker must not run on {:?}",
             state.remaining()
         )
     }
-    fn consume_all(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn consume_all(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let content = state.remaining().to_owned();
         Some((
             Some(state.document.create_node(Text { content })),
@@ -523,7 +520,7 @@ fn run_dispatch_skips_non_matching_markers() {
     }
 
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![
             run_rule_with_marker(panic_run_with, '!'),
             run_rule(consume_all),
@@ -533,7 +530,7 @@ fn run_dispatch_skips_non_matching_markers() {
     };
 
     for source in ["abc", "雪x"] {
-        let nodes = DocumentInlineState::parse(
+        let nodes = InlineState::parse(
             &mut document,
             source.to_owned(),
             vec![(0, 0)],
@@ -552,7 +549,7 @@ fn run_dispatch_skips_non_matching_markers() {
 #[test]
 fn run_dispatch_matches_unicode_marker() {
     let mut document = Document::new("", crate::Root::new(""));
-    fn consume_snow(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn consume_snow(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         assert!(state.remaining().starts_with('雪'));
         Some((
             Some(state.document.create_node(Text {
@@ -561,7 +558,7 @@ fn run_dispatch_matches_unicode_marker() {
             '雪'.len_utf8(),
         ))
     }
-    fn consume_all(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn consume_all(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let content = state.remaining().to_owned();
         Some((
             Some(state.document.create_node(Text { content })),
@@ -570,7 +567,7 @@ fn run_dispatch_matches_unicode_marker() {
     }
 
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![
             run_rule_with_marker(consume_snow, '雪'),
             run_rule(consume_all),
@@ -578,7 +575,7 @@ fn run_dispatch_matches_unicode_marker() {
         checks: vec![],
         finalizers: vec![],
     };
-    let nodes = DocumentInlineState::parse(
+    let nodes = InlineState::parse(
         &mut document,
         "雪x".to_owned(),
         vec![(0, 0)],
@@ -593,7 +590,7 @@ fn run_dispatch_matches_unicode_marker() {
     );
     assert_eq!(document.node(nodes[1]).cast::<Text>().unwrap().content, "x");
 
-    let nodes = DocumentInlineState::parse(
+    let nodes = InlineState::parse(
         &mut document,
         "xx".to_owned(),
         vec![(0, 0)],
@@ -611,7 +608,7 @@ fn run_dispatch_matches_unicode_marker() {
 #[test]
 fn run_dispatch_preserves_wildcard_order() {
     let mut document = Document::new("", crate::Root::new(""));
-    fn consume_x(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn consume_x(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         if !state.remaining().starts_with('x') {
             return None;
         }
@@ -622,25 +619,25 @@ fn run_dispatch_preserves_wildcard_order() {
             1,
         ))
     }
-    fn consume_all(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn consume_all(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let content = state.remaining().to_owned();
         Some((
             Some(state.document.create_node(Text { content })),
             state.remaining().len(),
         ))
     }
-    fn panic_run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn panic_run(_: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         panic!("later rule must not run after an earlier wildcard match")
     }
 
     let md = MarkdownIt::empty();
     // The marker rule is registered first and must win over the wildcard.
-    let marker_first = DocumentRuleSet {
+    let marker_first = RuleSet {
         runs: vec![run_rule_with_marker(consume_x, 'x'), run_rule(consume_all)],
         checks: vec![],
         finalizers: vec![],
     };
-    let nodes = DocumentInlineState::parse(
+    let nodes = InlineState::parse(
         &mut document,
         "xy".to_owned(),
         vec![(0, 0)],
@@ -653,12 +650,12 @@ fn run_dispatch_preserves_wildcard_order() {
     assert_eq!(document.node(nodes[1]).cast::<Text>().unwrap().content, "y");
 
     // A wildcard registered first must keep its position and win.
-    let wildcard_first = DocumentRuleSet {
+    let wildcard_first = RuleSet {
         runs: vec![run_rule(consume_all), run_rule_with_marker(panic_run, 'x')],
         checks: vec![],
         finalizers: vec![],
     };
-    let nodes = DocumentInlineState::parse(
+    let nodes = InlineState::parse(
         &mut document,
         "xy".to_owned(),
         vec![(0, 0)],
@@ -676,7 +673,7 @@ fn run_dispatch_preserves_wildcard_order() {
 #[test]
 fn check_advances_pending_text_between_tokens() {
     let mut document = Document::new("", crate::Root::new(""));
-    fn check_sequence(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check_sequence(context: &mut InlineState<'_>) -> Option<usize> {
         let remaining = context.remaining();
         if remaining.starts_with('a') {
             None
@@ -692,7 +689,7 @@ fn check_advances_pending_text_between_tokens() {
         }
     }
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(check_sequence)],
         finalizers: vec![],
@@ -715,7 +712,7 @@ fn check_stops_at_nesting_limit() {
     let mut document = Document::new("", crate::Root::new(""));
     let mut md = MarkdownIt::empty();
     md.max_nesting = 1;
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(|_| panic!("nesting limit must skip checks"))],
         finalizers: vec![],
@@ -733,7 +730,7 @@ fn nesting_limit_decision_is_shared_with_shallower_scans() {
     let mut document = Document::new("", crate::Root::new(""));
     let mut md = MarkdownIt::empty();
     md.max_nesting = 1;
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(|_| panic!("cached cutoff must skip checks"))],
         finalizers: vec![],
@@ -757,7 +754,7 @@ fn nesting_limit_decisions_are_isolated_by_range_end() {
     let mut document = Document::new("", crate::Root::new(""));
     let mut md = MarkdownIt::empty();
     md.max_nesting = 1;
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
         finalizers: vec![],
@@ -779,7 +776,7 @@ fn nesting_limit_decisions_are_isolated_by_range_end() {
 fn check_no_match_falls_through_to_lower_priority_rules() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![
             InlineRuleFns {
@@ -809,7 +806,7 @@ fn check_no_match_falls_through_to_lower_priority_rules() {
 fn check_dispatch_skips_non_matching_markers() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![InlineRuleFns {
             type_id: std::any::TypeId::of::<()>(),
@@ -832,7 +829,7 @@ fn check_dispatch_skips_non_matching_markers() {
 fn check_rejects_zero_length() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(|_| Some(0))],
         finalizers: vec![],
@@ -848,7 +845,7 @@ fn check_rejects_zero_length() {
 fn check_rejects_out_of_bounds_length() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(|_| Some(2))],
         finalizers: vec![],
@@ -864,7 +861,7 @@ fn check_rejects_out_of_bounds_length() {
 fn check_rejects_non_utf8_length() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(|_| Some(1))],
         finalizers: vec![],
@@ -878,7 +875,7 @@ fn check_rejects_non_utf8_length() {
 fn child_state_validates_ranges_and_empty_output() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
         finalizers: vec![],
@@ -905,7 +902,7 @@ fn child_state_validates_ranges_and_empty_output() {
 fn child_state_keeps_parent_state() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
         finalizers: vec![],
@@ -934,7 +931,7 @@ fn child_state_keeps_parent_state() {
 #[test]
 fn check_matches_and_no_matches_keep_scratch_and_effects_private() {
     let mut document = Document::new("", crate::Root::new(""));
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
         assert_eq!(context.root_ext.unwrap().get::<u16>(), Some(&73));
         context
             .inline_ext
@@ -954,7 +951,7 @@ fn check_matches_and_no_matches_keep_scratch_and_effects_private() {
     }
 
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![run_rule(panic_run)],
         checks: vec![check_rule(check)],
         finalizers: vec![|_| panic!("check must not run finalizers")],
@@ -1023,7 +1020,7 @@ fn check_matches_and_no_matches_keep_scratch_and_effects_private() {
 fn recursive_check_validates_ranges_and_empty_suffixes() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
         finalizers: vec![],
@@ -1049,7 +1046,7 @@ fn recursive_check_validates_ranges_and_empty_suffixes() {
     assert_eq!(full.skip_token(), None);
 
     // A rule reporting no match does not poison later child sessions.
-    let no_match = DocumentRuleSet {
+    let no_match = RuleSet {
         runs: vec![],
         checks: vec![InlineRuleFns {
             type_id: std::any::TypeId::of::<()>(),
@@ -1072,7 +1069,7 @@ fn recursive_check_depth_limit_is_exact() {
     let mut document = Document::new("", crate::Root::new(""));
     let mut md = MarkdownIt::empty();
     md.max_nesting = 3;
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
         finalizers: vec![],
@@ -1101,7 +1098,7 @@ fn recursive_check_depth_limit_is_exact() {
 fn recursive_check_relative_ranges_keep_child_state_isolated() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
         finalizers: vec![],
@@ -1131,7 +1128,7 @@ fn recursive_check_inherits_current_link_level_and_isolates_effects() {
     let mut document = Document::new("", crate::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let source = "<a><a>";
     let mut state = check_state(&mut document, &md, ruleset, source);
     let mut parent = scan(&mut state, 0..source.len()).unwrap();
@@ -1156,7 +1153,7 @@ fn recursive_check_child_scratch_is_private() {
 
     let mut md = MarkdownIt::empty();
     md.inline.add_rule::<CodePairScanner<'`'>>();
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let mut state = check_state(&mut document, &md, ruleset, "`x`");
     let mut parent = scan(&mut state, 0..3).unwrap();
 
@@ -1184,7 +1181,7 @@ fn recursive_check_same_range_terminates_at_depth_limit() {
         static CALLS: Cell<usize> = const { Cell::new(0) };
     }
 
-    fn same_range(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn same_range(context: &mut InlineState<'_>) -> Option<usize> {
         CALLS.with(|calls| calls.set(calls.get() + 1));
         let len = context.remaining().len();
         match scan(context, 0..len) {
@@ -1195,7 +1192,7 @@ fn recursive_check_same_range_terminates_at_depth_limit() {
 
     let mut md = MarkdownIt::empty();
     md.max_nesting = 5;
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![InlineRuleFns {
             type_id: std::any::TypeId::of::<()>(),
@@ -1223,7 +1220,7 @@ fn recursive_check_long_chain_is_linear_and_stack_safe() {
 
     static CALLS: AtomicUsize = AtomicUsize::new(0);
 
-    fn nested(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn nested(context: &mut InlineState<'_>) -> Option<usize> {
         CALLS.fetch_add(1, Ordering::SeqCst);
         if !context.remaining().starts_with('^') {
             return None;
@@ -1237,7 +1234,7 @@ fn recursive_check_long_chain_is_linear_and_stack_safe() {
     const CHAIN: usize = 10_000;
     let mut md = MarkdownIt::empty();
     md.max_nesting = 65_536;
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![InlineRuleFns {
             type_id: std::any::TypeId::of::<()>(),
@@ -1264,7 +1261,7 @@ fn recursive_check_long_chain_is_linear_and_stack_safe() {
 fn check_dispatch_keeps_wildcard_position() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![
             check_rule(|_| Some(1)),
@@ -1289,7 +1286,7 @@ fn check_html_effects_stay_in_the_session() {
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::block::paragraph::add(&mut md);
     crate::plugins::html::html_inline::add(&mut md);
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let source = "<a title=']'>x</a>";
     let mut state = check_state(&mut document, &md, ruleset, source);
     let mut context = scan(&mut state, 0..source.len()).unwrap();
@@ -1310,7 +1307,7 @@ fn check_html_effects_stay_in_the_session() {
 fn invalid_check_effect_panics_and_preserves_context() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(|context| {
             context.link_level = context
@@ -1339,11 +1336,11 @@ struct LaterMarkerCheck;
 impl InlineRule for LaterMarkerCheck {
     const MARKER: char = '*';
 
-    fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(_: &mut InlineState<'_>) -> Option<usize> {
         Some(1)
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         panic_run(state)
     }
 }
@@ -1353,11 +1350,11 @@ struct LaterUnderscoreCheck;
 impl InlineRule for LaterUnderscoreCheck {
     const MARKER: char = '_';
 
-    fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(_: &mut InlineState<'_>) -> Option<usize> {
         Some(1)
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         panic_run(state)
     }
 }
@@ -1367,11 +1364,11 @@ struct LaterUnicodeMarkerCheck;
 impl InlineRule for LaterUnicodeMarkerCheck {
     const MARKER: char = '雪';
 
-    fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(_: &mut InlineState<'_>) -> Option<usize> {
         Some('雪'.len_utf8())
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         panic_run(state)
     }
 }
@@ -1381,12 +1378,12 @@ struct ExpectLinkLevelOne;
 impl InlineRule for ExpectLinkLevelOne {
     const MARKER: char = '[';
 
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
         assert_eq!(context.link_level, 1);
         Some(1)
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         panic_run(state)
     }
 }
@@ -1419,7 +1416,7 @@ fn check_newline_consumes_one_byte_and_resets_pending() {
     let mut document = Document::new("", crate::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::newline::add(&mut md);
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let mut state = check_state(&mut document, &md, ruleset, "a  \n \tb");
     let scan_end = state.pos_max;
     let mut context = scan(&mut state, 0..scan_end).unwrap();
@@ -1441,7 +1438,7 @@ fn check_entity_uses_raw_byte_length() {
     let mut document = Document::new("", crate::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::entity::add(&mut md);
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
 
     for (source, len) in [
         ("&#91;", 5),
@@ -1462,7 +1459,7 @@ fn check_unknown_and_truncated_entities_fall_back_to_text() {
     let mut document = Document::new("", crate::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::entity::add(&mut md);
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
 
     for source in ["&notanentity;", "&#x;", "&amp"] {
         let mut state = check_state(&mut document, &md, ruleset, source);
@@ -1489,7 +1486,7 @@ fn check_emphasis_defers_to_later_same_marker_rule() {
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::emphasis::add(&mut md);
     md.inline.add_rule::<LaterMarkerCheck>();
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
 
     let mut state = check_state(&mut document, &md, ruleset, "*");
     let mut context = scan(&mut state, 0..1).unwrap();
@@ -1498,7 +1495,7 @@ fn check_emphasis_defers_to_later_same_marker_rule() {
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::emphasis::add(&mut md);
     md.inline.add_rule::<LaterUnderscoreCheck>();
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
 
     let mut state = check_state(&mut document, &md, ruleset, "_");
     let mut context = scan(&mut state, 0..1).unwrap();
@@ -1517,7 +1514,7 @@ fn check_emphasis_defers_for_unicode_marker() {
     let mut md = MarkdownIt::empty();
     crate::parser::inline::helpers::emph_pair::add_with::<'雪', 1, true>(&mut md, node);
     md.inline.add_rule::<LaterUnicodeMarkerCheck>();
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
 
     let mut state = check_state(&mut document, &md, ruleset, "雪");
     let mut context = scan(&mut state, 0..3).unwrap();
@@ -1529,7 +1526,7 @@ fn check_html_comment_cache_is_private_to_each_session() {
     let mut document = Document::new("", crate::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let mut state = check_state(&mut document, &md, ruleset, "<!-- [ -->");
     state.inline_ext.insert(FinalizerCalls(41));
     let node = state.document.create_node(Text {
@@ -1559,7 +1556,7 @@ fn check_html_comment_cache_is_private_to_each_session() {
 fn invalid_check_length_panics_and_preserves_pending() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![
             InlineRuleFns {
@@ -1612,7 +1609,7 @@ fn invalid_check_length_panics_and_preserves_pending() {
 fn invalid_check_effect_underflow_panics_and_preserves_context() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(|context| {
             context.link_level = context
@@ -1642,7 +1639,7 @@ fn check_html_level_is_read_by_later_rules_and_inherited_from_parent() {
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
     md.inline.add_rule::<ExpectLinkLevelOne>();
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let source = "<a>[";
     let mut state = check_state(&mut document, &md, ruleset, source);
     let mut context = scan(&mut state, 0..source.len()).unwrap();
@@ -1663,7 +1660,7 @@ fn check_html_lone_closing_tag_keeps_negative_level() {
     let mut document = Document::new("", crate::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let source = "</a></A>";
     let mut state = check_state(&mut document, &md, ruleset, source);
     let mut context = scan(&mut state, 0..source.len()).unwrap();
@@ -1686,7 +1683,7 @@ fn check_autolink_email_normalizes_mailto_before_validate() {
         calls: calls.clone(),
         reject: false,
     });
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let source = "<foo@example.com>";
     let mut state = check_state(&mut document, &md, ruleset, source);
     let mut context = scan(&mut state, 0..source.len()).unwrap();
@@ -1706,10 +1703,10 @@ fn check_autolink_email_normalizes_mailto_before_validate() {
 fn check_state_with_level<'a>(
     document: &'a mut Document,
     md: &'a MarkdownIt,
-    ruleset: &'a DocumentRuleSet,
+    ruleset: &'a RuleSet,
     source: &str,
     link_level: i32,
-) -> DocumentInlineState<'a> {
+) -> InlineState<'a> {
     let mut state = check_state(document, md, ruleset, source);
     state.link_level = link_level;
     state
@@ -1718,7 +1715,7 @@ fn check_state_with_level<'a>(
 #[test]
 fn child_link_level_override_is_isolated() {
     let mut document = Document::new("", crate::Root::new(""));
-    fn emit(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn emit(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let initial = state.link_level;
         let len = state.remaining().len();
         let check = scan(state, 0..len).unwrap();
@@ -1736,7 +1733,7 @@ fn child_link_level_override_is_isolated() {
     }
 
     let md = MarkdownIt::empty();
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![run_rule(emit)],
         checks: vec![],
         finalizers: vec![count_finalizer],
@@ -1792,7 +1789,7 @@ fn child_link_level_override_keeps_range_and_depth_rules() {
     let mut document = Document::new("", crate::Root::new(""));
     let mut md = MarkdownIt::empty();
     md.max_nesting = 1;
-    let ruleset = DocumentRuleSet {
+    let ruleset = RuleSet {
         runs: vec![run_rule(|_| panic!("depth limit must skip rules"))],
         checks: vec![],
         finalizers: vec![|_| panic!("literal children must skip finalizers")],

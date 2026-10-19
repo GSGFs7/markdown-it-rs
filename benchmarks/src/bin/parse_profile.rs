@@ -4,9 +4,9 @@ use markdown_it_benchmarks::{corpus, parser};
 
 fn usage() -> ! {
     eprintln!(
-        "usage: document_parse_profile \
+        "usage: parse_profile \
          <configuration> <corpus> \
-         <arena-direct> \
+         <markdown-it-rs> \
          [iterations]"
     );
     std::process::exit(2);
@@ -26,7 +26,7 @@ fn main() {
         usage();
     }
 
-    let configuration = parser::document_parse_configurations()
+    let configuration = parser::parse_configurations()
         .into_iter()
         .find(|configuration| configuration.name == configuration_name)
         .unwrap_or_else(|| usage());
@@ -43,9 +43,9 @@ fn main() {
     md.render(source);
 
     match path.as_str() {
-        "arena-direct" => {
+        "markdown-it-rs" => {
             for _ in 0..iterations {
-                black_box(md.parse_document(black_box(source)));
+                black_box(md.parse(black_box(source)));
             }
         }
         _ => usage(),

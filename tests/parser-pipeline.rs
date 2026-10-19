@@ -70,7 +70,7 @@ fn snapshot_outputs(md: &MarkdownIt, document: &mut markdown_it::Document) -> [S
         .ext
         .get::<markdown_it::plugins::extra::front_matter::FrontMatter>()
         .map(|value| (value.kind, &value.raw, value.start_line, value.end_line));
-    let mut html = normalize_math_html(&md.render_document(document));
+    let mut html = normalize_math_html(&md.render_html(document));
     // Preserve legacy whitespace in snapshots; unit tests check compact output.
     if document.events(document.root()).any(|event| {
         let node = event.node();
@@ -81,8 +81,8 @@ fn snapshot_outputs(md: &MarkdownIt, document: &mut markdown_it::Document) -> [S
     }
     let outputs = [
         html,
-        md.render_document_as(document, "text"),
-        normalize_legacy_debug_tree(md.render_document_as(document, "debug")),
+        md.render_as(document, "text"),
+        normalize_legacy_debug_tree(md.render_as(document, "debug")),
         format!("{metadata:?}"),
     ];
     for id in html_without_newline {
@@ -180,9 +180,9 @@ fn relocated_payload_paths_are_rewritten_in_debug_trees() {
     }
 }
 fn assert_document_structure(md: &MarkdownIt, source: &str) -> markdown_it::Document {
-    // parse_document replaces NUL with U+FFFD.
+    // parse replaces NUL with U+FFFD.
     let normalized = source.replace('\0', "\u{FFFD}");
-    let document = md.parse_document(source);
+    let document = md.parse(source);
     assert_eq!(document.source(), normalized);
     assert_eq!(
         document
@@ -292,7 +292,7 @@ fn snapshot_keys_identify_a_single_configuration() {
 
 fn assert_direct_configuration_panics(md: &MarkdownIt, source: &str, expected: &str) {
     let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        md.parse_document(source);
+        md.parse(source);
     }))
     .expect_err("unsupported direct configuration must panic");
     let message = payload
@@ -324,15 +324,15 @@ fn direct_text_fallback_matches_snapshots() {
 fn consume_only_block_rule_preserves_surrounding_nodes_and_source_maps() {
     use markdown_it::common::sourcemap::SourcePos;
     use markdown_it::parser::block::BlockRule;
-    use markdown_it::{DocumentBlockState, NodeId};
+    use markdown_it::{BlockState, NodeId};
 
     struct ConsumeLine;
     impl BlockRule for ConsumeLine {
-        fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+        fn check(state: &mut BlockState<'_>) -> Option<()> {
             (state.get_line(state.line) == "%%").then_some(())
         }
 
-        fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+        fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
             Self::check(state)?;
             Some((None, 1))
         }
@@ -346,7 +346,7 @@ fn consume_only_block_rule_preserves_surrounding_nodes_and_source_maps() {
         let document = assert_document_structure(&md, source);
         assert_eq!(document.len(), 1);
         assert!(document.node(document.root()).children().is_empty());
-        assert_eq!(md.render_document(&document), "");
+        assert_eq!(md.render_html(&document), "");
     }
 
     let document = assert_document_structure(&md, "first\n%%\nlast");
@@ -361,8 +361,8 @@ fn consume_only_block_rule_preserves_surrounding_nodes_and_source_maps() {
         document.node(children[1]).srcmap(),
         Some(SourcePos::new(9, 13))
     );
-    assert_eq!(md.render_document(&document), "<p>first</p>\n<p>last</p>\n");
-    assert_eq!(md.render_document_as(&document, "text"), "first\nlast\n");
+    assert_eq!(md.render_html(&document), "<p>first</p>\n<p>last</p>\n");
+    assert_eq!(md.render_as(&document, "text"), "first\nlast\n");
 }
 
 #[test]
@@ -422,7 +422,7 @@ fn direct_front_matter_matches_snapshots() {
     }
 
     let source = "---\ntitle: 雪\n---\n# Post";
-    let document = md.parse_document(source);
+    let document = md.parse(source);
     let root = document.node(document.root());
     let value = root
         .cast::<Root>()
@@ -440,13 +440,13 @@ fn direct_front_matter_matches_snapshots() {
             .ok_or("missing title")),
         Ok("雪".to_owned())
     );
-    assert_eq!(md.render_document(&document), "<h1>Post</h1>\n");
+    assert_eq!(md.render_html(&document), "<h1>Post</h1>\n");
 
     // The closing delimiter must be strictly inside the scan limit.
     for end_line in [255, 256] {
         let source = format!("---\n{}---\nBody", "key: value\n".repeat(end_line - 1));
         assert_document_valid(&md, &source);
-        let document = md.parse_document(&source);
+        let document = md.parse(&source);
         assert_eq!(
             document
                 .node(document.root())
@@ -465,7 +465,7 @@ fn direct_front_matter_matches_snapshots() {
     markdown_it::plugins::cmark::add(&mut front_first);
     assert_document_valid_with_config(&front_first, source, "front_matter_first");
     assert_eq!(
-        front_first.render_document(&front_first.parse_document(source)),
+        front_first.render_html(&front_first.parse(source)),
         "<h1>Post</h1>\n"
     );
 
@@ -541,24 +541,24 @@ fn direct_parser_checks_core_configuration_before_parsing() {
 #[test]
 fn direct_parser_rejects_invalid_core_stages_before_callbacks() {
     use markdown_it::parser::block::builtin::BlockParserRule;
-    use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
+    use markdown_it::parser::core::{CoreRule, CoreStage};
     use markdown_it::parser::inline::builtin::InlineParserRule;
 
     struct ExtraStage<const INLINE: bool>;
     impl<const INLINE: bool> CoreRule for ExtraStage<INLINE> {
-        fn document_rule() -> DocumentCoreRule {
+        fn stage() -> CoreStage {
             if INLINE {
-                DocumentCoreRule::ParseInlines
+                CoreStage::ParseInlines
             } else {
-                DocumentCoreRule::ParseBlocks
+                CoreStage::ParseBlocks
             }
         }
     }
 
     struct EarlyFinalizer;
     impl CoreRule for EarlyFinalizer {
-        fn document_rule() -> DocumentCoreRule {
-            DocumentCoreRule::FinalizeDocument(|_, _| {
+        fn stage() -> CoreStage {
+            CoreStage::Finalize(|_, _| {
                 panic!("invalid configuration must be rejected before finalizing");
             })
         }
@@ -615,10 +615,10 @@ fn direct_parser_accepts_migrated_emphasis_rules() {
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
     markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
 
-    let direct = md.parse_document("*em* and **strong**");
+    let direct = md.parse("*em* and **strong**");
 
     assert_eq!(
-        md.render_document(&direct),
+        md.render_html(&direct),
         "<p><em>em</em> and <strong>strong</strong></p>\n",
     );
 }
@@ -715,7 +715,7 @@ fn direct_code_spans_preserve_output_structure_and_source_maps() {
         assert_document_valid(&md, source);
     }
 
-    let document = md.parse_document("foo ```bar``` baz");
+    let document = md.parse("foo ```bar``` baz");
     let mut spans = document.events(document.root()).filter_map(|event| {
         if matches!(event, StructuralEvent::Exit(_)) {
             return None;
@@ -750,7 +750,7 @@ fn trailing_space_removal_maps_inline_offsets_once() {
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
     markdown_it::plugins::cmark::inline::newline::add(&mut md);
     let source = "雪\r\n次  \r\n行";
-    for document in [md.parse_document(source), md.parse_document(source)] {
+    for document in [md.parse(source), md.parse(source)] {
         let spans: Vec<_> = document
             .events(document.root())
             .filter_map(|event| {
@@ -900,7 +900,7 @@ fn direct_nested_emphasis_preserves_source_maps() {
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
     markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
 
-    let document = md.parse_document("***foo***");
+    let document = md.parse("***foo***");
 
     let spans: Vec<_> = document
         .events(document.root())
@@ -967,11 +967,8 @@ fn direct_links_use_real_registration() {
     ] {
         assert_document_valid_with_config(&md, source, "references=absent");
     }
-    let document = md.parse_document("[x](/url)");
-    assert_eq!(
-        md.render_document(&document),
-        "<p><a href=\"/url\">x</a></p>\n",
-    );
+    let document = md.parse("[x](/url)");
+    assert_eq!(md.render_html(&document), "<p><a href=\"/url\">x</a></p>\n",);
 
     // A current-position probe must not spend an extra child depth.
     md.max_nesting = 2;
@@ -1035,9 +1032,9 @@ fn direct_references_match_snapshots() {
         assert_document_valid(&md, source);
     }
 
-    let document = md.parse_document("[id]: /url\n\n[id]\n\n[id]: /other");
+    let document = md.parse("[id]: /url\n\n[id]\n\n[id]: /other");
     assert_eq!(
-        md.render_document(&document),
+        md.render_html(&document),
         "<p><a href=\"/url\">id</a></p>\n",
     );
 }
@@ -1075,13 +1072,13 @@ fn deferred_inline_fallback_preserves_sibling_order() {
 #[test]
 fn deferred_inline_fallback_handles_empty_and_multiple_replacements() {
     use markdown_it::parser::inline::InlineRule;
-    use markdown_it::{DocumentInlineState, NodeId};
+    use markdown_it::{InlineState, NodeId};
 
     struct ConsumeLine;
     impl InlineRule for ConsumeLine {
         const MARKER: char = '@';
 
-        fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+        fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
             state
                 .remaining()
                 .starts_with('@')
@@ -1093,10 +1090,7 @@ fn deferred_inline_fallback_handles_empty_and_multiple_replacements() {
     markdown_it::plugins::cmark::inline::emphasis::add(&mut md);
     md.inline.add_rule::<ConsumeLine>();
     let document = assert_document_structure(&md, "@\n*a* b\n@\n*c* d\n@");
-    assert_eq!(
-        md.render_document(&document),
-        "<em>a</em> b\n<em>c</em> d\n"
-    );
+    assert_eq!(md.render_html(&document), "<em>a</em> b\n<em>c</em> d\n");
 }
 
 #[test]
@@ -1106,7 +1100,7 @@ fn deferred_inline_fallback_numbers_footnotes_across_nested_blocks_in_source_ord
     markdown_it::plugins::cmark::inline::link::add(&mut md);
     markdown_it::plugins::extra::footnote::add(&mut md);
     let document = assert_document_structure(&md, "^[first]\n\n> ^[second]\n\n^[third]");
-    let html = md.render_document(&document);
+    let html = md.render_html(&document);
     for pattern in [r#"id="fnref(\d+)""#, r#"id="fn(\d+)""#] {
         let numbers: Vec<_> = regex::Regex::new(pattern)
             .unwrap()
@@ -1116,7 +1110,7 @@ fn deferred_inline_fallback_numbers_footnotes_across_nested_blocks_in_source_ord
         assert_eq!(numbers, [1, 2, 3]);
     }
     assert!(
-        md.render_document_as(&document, "text")
+        md.render_as(&document, "text")
             .ends_with("first\nsecond\nthird\n")
     );
 }
@@ -1162,9 +1156,9 @@ fn direct_images_and_links_match_expected_output_in_both_registration_orders() {
         ] {
             assert_document_valid_with_config(&md, source, &format!("image_first={image_first}"));
         }
-        let document = md.parse_document("![x](/img)");
+        let document = md.parse("![x](/img)");
         assert_eq!(
-            md.render_document(&document),
+            md.render_html(&document),
             "<p><img src=\"/img\" alt=\"x\"></p>\n"
         );
         md.max_nesting = 2;
@@ -1218,13 +1212,13 @@ fn direct_link_and_image_nesting_thresholds_are_explicit() {
     for limit in [0, 1, 2, 32] {
         md.max_nesting = limit;
         for (source, parsed) in cases {
-            let document = md.parse_document(source);
+            let document = md.parse(source);
             let expected = match limit {
                 0 => "",
                 _ => parsed,
             };
             assert_eq!(
-                md.render_document(&document),
+                md.render_html(&document),
                 expected,
                 "limit={limit}, source={source:?}",
             );
@@ -1244,9 +1238,9 @@ fn direct_unclosed_link_labels_remain_literal() {
     for size in [64, 1024, 4096] {
         for part in ["[", "![", "雪["] {
             let source = part.repeat(size);
-            let document = md.parse_document(&source);
+            let document = md.parse(&source);
             assert_eq!(
-                md.render_document(&document),
+                md.render_html(&document),
                 format!("<p>{source}</p>\n"),
                 "size={size}, part={part:?}",
             );
@@ -1291,8 +1285,8 @@ fn direct_thematic_breaks_match_snapshots() {
         assert_document_valid(&md, source);
     }
 
-    let document = md.parse_document("a\n---\nb");
-    assert_eq!(md.render_document(&document), "<p>a</p>\n<hr>\n<p>b</p>\n",);
+    let document = md.parse("a\n---\nb");
+    assert_eq!(md.render_html(&document), "<p>a</p>\n<hr>\n<p>b</p>\n",);
 }
 
 #[test]
@@ -1322,8 +1316,8 @@ fn direct_atx_headings_match_snapshots() {
         assert_document_valid(&md, source);
     }
 
-    let document = md.parse_document("## *雪* 标题");
-    assert_eq!(md.render_document(&document), "<h2><em>雪</em> 标题</h2>\n",);
+    let document = md.parse("## *雪* 标题");
+    assert_eq!(md.render_html(&document), "<h2><em>雪</em> 标题</h2>\n",);
 }
 
 #[test]
@@ -1350,8 +1344,8 @@ fn direct_setext_headings_match_snapshots() {
         assert_document_valid(&md, source);
     }
 
-    let document = md.parse_document("foo *bar*\n===");
-    assert_eq!(md.render_document(&document), "<h1>foo <em>bar</em></h1>\n");
+    let document = md.parse("foo *bar*\n===");
+    assert_eq!(md.render_html(&document), "<h1>foo <em>bar</em></h1>\n");
 }
 
 #[test]
@@ -1375,9 +1369,9 @@ fn direct_indented_code_blocks_match_snapshots() {
         assert_document_valid(&md, source);
     }
 
-    let document = md.parse_document("    foo\n    bar");
+    let document = md.parse("    foo\n    bar");
     assert_eq!(
-        md.render_document(&document),
+        md.render_html(&document),
         "<pre><code>foo\nbar\n</code></pre>\n",
     );
 }
@@ -1412,12 +1406,12 @@ fn direct_code_fences_match_snapshots() {
         ("```\nfoo\n~~~~", "<pre><code>foo\n~~~~</code></pre>\n"),
     ] {
         let document = assert_document_structure(&md, source);
-        assert_eq!(md.render_document(&document), expected);
+        assert_eq!(md.render_html(&document), expected);
     }
 
-    let document = md.parse_document("```rust\nlet x = 1;\n```");
+    let document = md.parse("```rust\nlet x = 1;\n```");
     assert_eq!(
-        md.render_document(&document),
+        md.render_html(&document),
         "<pre><code class=\"language-rust\">let x = 1;\n</code></pre>\n",
     );
 }
@@ -1449,9 +1443,9 @@ fn direct_blockquotes_match_snapshots() {
         assert_document_valid(&md, source);
     }
 
-    let document = md.parse_document("> *雪*");
+    let document = md.parse("> *雪*");
     assert_eq!(
-        md.render_document(&document),
+        md.render_html(&document),
         "<blockquote>\n<p><em>雪</em></p>\n</blockquote>\n",
     );
 }
@@ -1491,21 +1485,21 @@ fn direct_lists_match_snapshots() {
         assert_document_valid(&md, source);
     }
 
-    let document = md.parse_document("- foo\n- bar");
+    let document = md.parse("- foo\n- bar");
     assert_eq!(
-        md.render_document(&document),
+        md.render_html(&document),
         "<ul>\n<li>foo</li>\n<li>bar</li>\n</ul>\n",
     );
 
-    let document = md.parse_document("- foo\n\n- bar");
+    let document = md.parse("- foo\n\n- bar");
     assert_eq!(
-        md.render_document(&document),
+        md.render_html(&document),
         "<ul>\n<li>\n<p>foo</p>\n</li>\n<li>\n<p>bar</p>\n</li>\n</ul>\n",
     );
 
-    let document = md.parse_document("3. foo");
+    let document = md.parse("3. foo");
     assert_eq!(
-        md.render_document(&document),
+        md.render_html(&document),
         "<ol start=\"3\">\n<li>foo</li>\n</ol>\n",
     );
 }
@@ -1528,9 +1522,9 @@ fn direct_emph_pair_extras_match_snapshots() {
         assert_document_valid(&md, source);
     }
 
-    let document = md.parse_document("==highlighted==");
+    let document = md.parse("==highlighted==");
     assert_eq!(
-        md.render_document(&document),
+        md.render_html(&document),
         "<p><mark>highlighted</mark></p>\n",
     );
 }
@@ -1591,11 +1585,8 @@ fn direct_math_matches_snapshots() {
 fn direct_math_renders_plain_text_content() {
     let mut md = MarkdownIt::new();
     markdown_it::plugins::extra::math::add(&mut md);
-    let document = md.parse_document("$$\nx < y\n$$\n\n雪 $a&b$ 后");
-    assert_eq!(
-        md.render_document_as(&document, "text"),
-        "x < y\n雪 a&b 后\n"
-    );
+    let document = md.parse("$$\nx < y\n$$\n\n雪 $a&b$ 后");
+    assert_eq!(md.render_as(&document, "text"), "x < y\n雪 a&b 后\n");
 }
 
 #[cfg(feature = "linkify")]
@@ -1672,7 +1663,7 @@ fn direct_linkify_matches_snapshots() {
                 ),
             ] {
                 let document = assert_document_structure(&md, source);
-                assert_eq!(md.render_document(&document), expected);
+                assert_eq!(md.render_html(&document), expected);
                 for event in document.events(document.root()) {
                     let (start, end) = event.node().srcmap().unwrap().get_byte_offsets();
                     assert!(source.get(start..end).is_some());
@@ -1703,7 +1694,7 @@ fn direct_linkify_configuration_and_source_maps() {
     linkify::add_with_options(&mut md, LinkifyOptions { fuzzy_links: true });
     let source = "雪 https://example.com 后 a@b.co www.example.org";
     assert_document_valid_with_config(&md, source, "prescan=initial");
-    let direct = md.parse_document(source);
+    let direct = md.parse(source);
     let ranges: Vec<_> = direct
         .events(direct.root())
         .filter_map(|event| {
@@ -1723,10 +1714,7 @@ fn direct_linkify_configuration_and_source_maps() {
             .collect::<Vec<_>>(),
         vec!["https://example.com", "a@b.co", "www.example.org"]
     );
-    assert_eq!(
-        md.render_document_as(&direct, "text"),
-        format!("{source}\n")
-    );
+    assert_eq!(md.render_as(&direct, "text"), format!("{source}\n"));
     for limit in [0, 1, 2] {
         md.max_nesting = limit;
         assert_document_valid(&md, "> https://example.com\n\n雪 a@b.co");
@@ -1735,7 +1723,7 @@ fn direct_linkify_configuration_and_source_maps() {
     md.remove_rule::<LinkifyPrescan>();
     assert_document_valid_with_config(&md, source, "prescan=removed");
     assert_eq!(
-        md.render_document(&md.parse_document(source)),
+        md.render_html(&md.parse(source)),
         format!("<p>{source}</p>\n")
     );
     md.add_rule::<LinkifyPrescan>()
@@ -1778,8 +1766,8 @@ fn direct_linkify_prescan_runs_before_document_postprocessors() {
             "<p>ping <a href=\"mailto:a@b.co\">a@b.co</a> ™ www.example.org</p>\n",
         ),
     ] {
-        let document = md.parse_document(source);
-        assert_eq!(md.render_document(&document), expected, "{source}");
+        let document = md.parse(source);
+        assert_eq!(md.render_html(&document), expected, "{source}");
     }
 }
 
@@ -1787,7 +1775,7 @@ fn direct_linkify_prescan_runs_before_document_postprocessors() {
 fn direct_core_preparations_share_rule_order_and_lifetime() {
     use markdown_it::common::extset::RootExtSet;
     use markdown_it::parser::block::builtin::BlockParserRule;
-    use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
+    use markdown_it::parser::core::{CoreRule, CoreStage};
     use markdown_it::parser::inline::builtin::InlineParserRule;
     use markdown_it::plugins::cmark::block::reference::ReferenceMap;
 
@@ -1801,8 +1789,8 @@ fn direct_core_preparations_share_rule_order_and_lifetime() {
         }
     }
     impl<const AFTER_BLOCK: bool> CoreRule for Preparation<AFTER_BLOCK> {
-        fn document_rule() -> DocumentCoreRule {
-            DocumentCoreRule::PrepareState(Self::prepare)
+        fn stage() -> CoreStage {
+            CoreStage::PrepareState(Self::prepare)
         }
     }
 
@@ -1814,7 +1802,7 @@ fn direct_core_preparations_share_rule_order_and_lifetime() {
         .before::<InlineParserRule>();
     let source = "[x][id]\n\n[id]: /url";
     assert_document_valid_with_config(&md, source, "preparations=before_and_after_blocks");
-    let document = md.parse_document(source);
+    let document = md.parse(source);
     assert_eq!(
         document
             .node(document.root())
@@ -1828,7 +1816,7 @@ fn direct_core_preparations_share_rule_order_and_lifetime() {
 
     md.remove_rule::<Preparation<false>>();
     md.remove_rule::<Preparation<true>>();
-    let document = md.parse_document(source);
+    let document = md.parse(source);
     assert!(
         !document
             .node(document.root())
@@ -1842,7 +1830,7 @@ fn direct_core_preparations_share_rule_order_and_lifetime() {
         .after::<BlockParserRule>()
         .before::<InlineParserRule>();
     assert_document_valid_with_config(&md, source, "preparations=after_blocks");
-    let document = md.parse_document(source);
+    let document = md.parse(source);
     assert_eq!(
         document
             .node(document.root())
@@ -2028,7 +2016,7 @@ fn direct_directives_custom_renderers_match_expected_output() {
 fn direct_directive_callbacks_render_current_document_children() {
     use markdown_it::document::edit::EditBatch;
     use markdown_it::plugins::directives::{self, DirectiveKind, DirectiveNode, DirectiveRenderer};
-    use markdown_it::{DocumentNodeRenderer, DocumentRenderContext, DocumentWriter, NodeRef, Text};
+    use markdown_it::{NodeRef, NodeRenderer, RenderContext, Text, Writer};
 
     fn panel(
         _: DirectiveKind,
@@ -2044,13 +2032,13 @@ fn direct_directive_callbacks_render_current_document_children() {
     }
 
     struct CustomTextRenderer;
-    impl DocumentNodeRenderer<Text> for CustomTextRenderer {
+    impl NodeRenderer<Text> for CustomTextRenderer {
         fn render(
             &self,
             _: NodeRef<'_>,
             text: &Text,
-            _: &mut DocumentRenderContext<'_>,
-            output: &mut DocumentWriter,
+            _: &mut RenderContext<'_>,
+            output: &mut Writer,
         ) {
             output.write_str(&format!("custom:{}", text.content));
         }
@@ -2060,8 +2048,8 @@ fn direct_directive_callbacks_render_current_document_children() {
     markdown_it::plugins::cmark::add(&mut md);
     directives::add(&mut md);
     directives::add_render(&mut md, DirectiveKind::Container, "panel", panel);
-    md.add_document_renderer::<Text, _>("html", CustomTextRenderer);
-    let mut document = md.parse_document(":::panel\nbefore\n:::");
+    md.add_renderer::<Text, _>("html", CustomTextRenderer);
+    let mut document = md.parse(":::panel\nbefore\n:::");
     let panel = document.children(document.root())[0];
     let paragraph = document.children(panel)[0];
     let text = document.children(paragraph)[0];
@@ -2070,20 +2058,20 @@ fn direct_directive_callbacks_render_current_document_children() {
     edits.replace_text(text, 0..6, "after");
     edits.commit(&mut document);
     assert_eq!(
-        md.render_document(&document),
+        md.render_html(&document),
         "<section data-edited=\"yes\">\n<p>custom:after</p>\n</section>\n"
     );
 }
 
 #[test]
 fn direct_draft_finalizers_run_in_order_on_all_parse_paths() {
-    use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
+    use markdown_it::parser::core::{CoreRule, CoreStage};
     use markdown_it::parser::inline::builtin::InlineParserRule;
 
     struct Finalize<const SECOND: bool>;
     impl<const SECOND: bool> CoreRule for Finalize<SECOND> {
-        fn document_rule() -> DocumentCoreRule {
-            DocumentCoreRule::FinalizeDocument(|root, _| {
+        fn stage() -> CoreStage {
+            CoreStage::Finalize(|root, _| {
                 assert_eq!(root.node(root.root()).attrs().len(), usize::from(SECOND));
                 if SECOND {
                     assert_eq!(root.node(root.root()).attrs()[0].1, "false");
@@ -2110,7 +2098,7 @@ fn direct_draft_finalizers_run_in_order_on_all_parse_paths() {
                         source,
                         &format!("preset={preset};finalizers=registered"),
                     );
-                    let document = md.parse_document(source);
+                    let document = md.parse(source);
                     assert_eq!(
                         document.node(document.root()).attrs(),
                         &[
@@ -2128,7 +2116,7 @@ fn direct_draft_finalizers_run_in_order_on_all_parse_paths() {
                     source,
                     &format!("preset={preset};finalizers=removed"),
                 );
-                let document = md.parse_document(source);
+                let document = md.parse(source);
                 assert!(document.node(document.root()).attrs().is_empty());
             }
         }
@@ -2142,13 +2130,13 @@ fn syntect_runs_automatically_and_observes_runtime_settings() {
     let mut md = MarkdownIt::new();
     syntect::add(&mut md);
     let source = "```rust\nfn main() {}\n```";
-    let document = md.parse_document(source);
+    let document = md.parse(source);
     let code = document.children(document.root())[0];
     assert!(document.node(code).is::<syntect::SyntectSnippet>());
-    assert!(md.render_document(&document).contains("<span"));
-    assert_eq!(md.render_document_as(&document, "text"), "fn main() {}\n");
+    assert!(md.render_html(&document).contains("<span"));
+    assert_eq!(md.render_as(&document, "text"), "fn main() {}\n");
     syntect::set_to_classed_with_prefix(&mut md, "custom-");
-    let document = md.parse_document(source);
-    assert!(md.render_document(&document).contains("custom-code"));
+    let document = md.parse(source);
+    assert!(md.render_html(&document).contains("custom-code"));
     assert_document_structure(&md, source);
 }

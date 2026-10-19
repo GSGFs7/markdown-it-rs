@@ -12,9 +12,9 @@ fn run(input: &str, output: &str) {
     let actual = md.render(&source);
     assert_eq!(actual, expected);
 
-    let document = md.parse_document(&source);
-    assert_eq!(md.render_document(&document), actual);
-    md.render_document_as(&document, "text");
+    let document = md.parse(&source);
+    assert_eq!(md.render_html(&document), actual);
+    md.render_as(&document, "text");
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -8,7 +8,7 @@ use crate::document::{Document, NodeId};
 use crate::parser::pipeline::PendingInline;
 
 /// State passed to block rules while building block nodes directly.
-pub struct DocumentBlockState<'a> {
+pub struct BlockState<'a> {
     /// Markdown source.
     pub src: &'a str,
 
@@ -48,7 +48,7 @@ pub struct DocumentBlockState<'a> {
     rules: &'a [BlockRuleFns],
 }
 
-impl<'a> DocumentBlockState<'a> {
+impl<'a> BlockState<'a> {
     pub(in crate::parser) fn new(
         src: &'a str,
         md: &'a MarkdownIt,

@@ -8,7 +8,7 @@ fn inline_and_postpass_links_preserve_source_ranges() {
         "雪 https://example.org *a@b.co* //example.net",
         "> 雪 https://example.org\n> *a@b.co* //example.net",
     ] {
-        let document = md.parse_document(source);
+        let document = md.parse(source);
         let mut ranges = Vec::new();
         for event in document.events(document.root()) {
             let node = event.node();
@@ -117,7 +117,7 @@ fn direct_prescan_persists_original_source_positions_without_scanners() {
         for limit in [0, 100] {
             md.max_nesting = limit;
             for source in ["", "雪 https://example.com\r\na@b.co"] {
-                let document = md.parse_document(source);
+                let document = md.parse(source);
                 let positions: Vec<_> = document
                     .node(document.root())
                     .cast::<Root>()
@@ -166,17 +166,17 @@ fn run(input: &str, output: &str) {
     markdown_it::plugins::cmark::add(md);
     markdown_it::plugins::html::add(md);
     markdown_it::plugins::extra::linkify::add(md);
-    let node = md.parse_document(&(input.to_owned() + "\n"));
+    let node = md.parse(&(input.to_owned() + "\n"));
 
     // make sure we have sourcemaps for everything
     for event in node.events(node.root()) {
         assert!(event.node().srcmap().is_some());
     }
 
-    let result = md.render_document(&node);
+    let result = md.render_html(&node);
     assert_eq!(result, output);
     // make sure it doesn't crash without trailing \n
-    let _ = md.parse_document(input.trim_end());
+    let _ = md.parse(input.trim_end());
 }
 
 #[test]
@@ -457,8 +457,8 @@ fn protocol_relative_links_without_emphasis_plugin() {
             "<p>雪 <a href=\"//example.org/a_b\">//example.org/a_b</a> tail <a href=\"//example.com/b\">//example.com/b</a></p>\n",
         ),
     ] {
-        let document = md.parse_document(input);
-        assert_eq!(md.render_document(&document), output);
+        let document = md.parse(input);
+        assert_eq!(md.render_html(&document), output);
         for event in document.events(document.root()) {
             let node = event.node();
             if let Some(link) = node.cast::<super::Linkified>() {

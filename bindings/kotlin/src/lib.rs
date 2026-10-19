@@ -81,7 +81,7 @@ impl MarkdownParser {
     }
 
     pub fn render_with_metadata(&self, source: String) -> RenderResult {
-        let root = self.inner.parse_document(&source);
+        let root = self.inner.parse(&source);
         let front_matter = root
             .node(root.root())
             .cast::<Root>()
@@ -89,7 +89,7 @@ impl MarkdownParser {
             .map(FrontMatter::from);
 
         RenderResult {
-            html: self.inner.render_document(&root),
+            html: self.inner.render_html(&root),
             front_matter,
         }
     }

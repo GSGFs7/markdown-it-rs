@@ -103,7 +103,7 @@ fn main() {
         markdown_it::plugins::extra::typographer::add(md);
     }
 
-    let ast = md.parse_document(&source);
+    let ast = md.parse(&source);
 
     if show_tree {
         let mut depth = 0usize;
@@ -129,7 +129,7 @@ fn main() {
         return;
     }
 
-    let result = md.render_document(&ast);
+    let result = md.render_html(&ast);
 
     if output == "-" {
         std::io::stdout().write_all(result.as_bytes()).unwrap();

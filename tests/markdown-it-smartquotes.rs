@@ -10,14 +10,14 @@ fn run(input: &str, output: &str) {
     markdown_it::plugins::extra::typographer::add(md);
     markdown_it::plugins::extra::smartquotes::add(md);
     let source = input.to_owned() + "\n";
-    let node = md.parse_document(&source);
+    let node = md.parse(&source);
 
     // make sure we have sourcemaps for everything
     for event in node.events(node.root()) {
         assert!(event.node().srcmap().is_some());
     }
 
-    let result = md.render_document(&node);
+    let result = md.render_html(&node);
     assert_eq!(result, output);
 
     let registry_md = &mut markdown_it::MarkdownIt::empty();
@@ -25,11 +25,11 @@ fn run(input: &str, output: &str) {
     markdown_it::plugins::html::add(registry_md);
     markdown_it::plugins::extra::typographer::add(registry_md);
     markdown_it::plugins::extra::smartquotes::add(registry_md);
-    let registry_document = registry_md.parse_document(&source);
-    assert_eq!(registry_md.render_document(&registry_document), output);
+    let registry_document = registry_md.parse(&source);
+    assert_eq!(registry_md.render_html(&registry_document), output);
 
     // make sure it doesn't crash without trailing \n
-    let _ = md.parse_document(input.trim_end());
+    let _ = md.parse(input.trim_end());
 }
 ///////////////////////////////////////////////////////////////////////////
 // TESTGEN: fixtures/markdown-it/smartquotes.txt

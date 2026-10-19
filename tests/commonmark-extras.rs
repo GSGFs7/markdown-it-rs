@@ -87,7 +87,7 @@ fn nul_link_destination_uses_normalized_source_offsets() {
     let md = markdown_it::MarkdownIt::new();
     let source = "雪 [x](/a\0b) 尾";
     let normalized = "雪 [x](/a\u{fffd}b) 尾";
-    let document = md.parse_document(source);
+    let document = md.parse(source);
     assert_eq!(document.source(), normalized);
     let link = document
         .events(document.root())
@@ -167,7 +167,7 @@ fn emphasis_next_to_nul_uses_normalized_source_offsets() {
     let md = markdown_it::MarkdownIt::new();
     let source = "雪 \0_a_";
     let normalized = "雪 \u{fffd}_a_";
-    let document = md.parse_document(source);
+    let document = md.parse(source);
     assert_eq!(document.source(), normalized);
     let start = normalized.find('_').unwrap();
     let emphasis = document
@@ -203,9 +203,9 @@ fn emphasis_across_normalized_lines_preserves_source_offsets() {
                 ("~~", "<s>", "</s>"),
             ] {
                 let source = format!("<div>\n\n{marker}te{newline}{indent}!90xt{marker} 尾\n");
-                let document = md.parse_document(&source);
+                let document = md.parse(&source);
                 assert_eq!(
-                    md.render_document(&document),
+                    md.render_html(&document),
                     format!("<p>&lt;div&gt;</p>\n<p>{open}te<br>\n!90xt{close} 尾</p>\n"),
                     "{source:?}"
                 );

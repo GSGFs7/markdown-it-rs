@@ -28,12 +28,12 @@ pub use document::text::{
     TextProjection,
     TextProjectionKind,
 };
-pub use document::transform::{DocumentTransform, DocumentTransformRegistry, TransformRuleBuilder};
+pub use document::transform::{Transform, TransformRegistry, TransformRuleBuilder};
 pub use document::{
     Document,
-    DocumentNode,
     HtmlAttribute,
     HtmlAttributes,
+    Node,
     NodeDraft,
     NodeId,
     NodeRef,
@@ -45,13 +45,7 @@ pub use document::{
     TextSpecial,
 };
 pub use markdown_it::MarkdownIt;
-pub use parser::block::DocumentBlockState;
-pub use parser::inline::DocumentInlineState;
+pub use parser::block::BlockState;
+pub use parser::inline::InlineState;
 pub use plugins::presets::{Preset, PresetConfig};
-pub use render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    DocumentRendererRegistry,
-    DocumentWriter,
-    RenderOptions,
-};
+pub use render::{NodeRenderer, RenderContext, RenderOptions, RendererRegistry, Writer};

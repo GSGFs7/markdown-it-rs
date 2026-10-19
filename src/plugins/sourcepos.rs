@@ -10,11 +10,11 @@
 use crate::MarkdownIt;
 use crate::common::sourcemap::{SourcePos, SourceWithLineStarts};
 use crate::document::edit::EditBatch;
-use crate::document::transform::DocumentTransform;
+use crate::document::transform::Transform;
 use crate::document::{Document, StructuralEvent};
 
 pub fn add(md: &mut MarkdownIt) {
-    md.add_document_transform::<SourcePosDocumentTransform>();
+    md.add_transform::<SourcePosTransform>();
 }
 
 const SOURCEPOS_ATTRIBUTE: &str = "data-sourcepos";
@@ -24,11 +24,11 @@ fn sourcepos_value(map: SourcePos, mapping: &SourceWithLineStarts) -> String {
     format!("{startline}:{startcol}-{endline}:{endcol}")
 }
 
-/// Arena-backed source-position transform.
+/// Source-position transform.
 #[derive(Debug, Default)]
-pub struct SourcePosDocumentTransform;
+pub struct SourcePosTransform;
 
-impl DocumentTransform for SourcePosDocumentTransform {
+impl Transform for SourcePosTransform {
     const KEY: &'static str = "sourcepos";
     const ALIASES: &'static [&'static str] = &["source_pos"];
 

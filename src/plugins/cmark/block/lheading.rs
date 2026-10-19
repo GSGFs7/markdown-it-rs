@@ -5,13 +5,13 @@
 //! <https://spec.commonmark.org/0.30/#setext-headings>
 use crate::MarkdownIt;
 use crate::document::{NodeId, NodeRef, NodeValue};
-use crate::parser::block::{BlockRule, DocumentBlockState};
+use crate::parser::block::{BlockRule, BlockState};
 use crate::plugins::cmark::block::paragraph::{ParagraphScanner, test_paragraph_rules_at_line};
 use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    HtmlBlockElementDocumentRenderer,
-    PlainTextBlockDocumentRenderer,
+    HtmlBlockElementRenderer,
+    NodeRenderer,
+    PlainTextBlockRenderer,
+    RenderContext,
 };
 
 #[derive(Debug)]
@@ -20,22 +20,22 @@ pub struct SetextHeader {
     pub marker: char,
 }
 
-struct SetextHeaderDocumentRenderer;
+struct SetextHeaderRenderer;
 
-impl DocumentNodeRenderer<SetextHeader> for SetextHeaderDocumentRenderer {
+impl NodeRenderer<SetextHeader> for SetextHeaderRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         heading: &SetextHeader,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         static TAG: [&str; 2] = ["h1", "h2"];
         debug_assert!((1..=2).contains(&heading.level));
 
         let tag = TAG[heading.level as usize - 1];
 
-        HtmlBlockElementDocumentRenderer(tag).render(node, heading, context, output);
+        HtmlBlockElementRenderer(tag).render(node, heading, context, output);
     }
 }
 
@@ -46,8 +46,8 @@ pub fn add(md: &mut MarkdownIt) {
         .add_rule::<LHeadingScanner>()
         .before::<ParagraphScanner>()
         .after_all();
-    md.add_document_renderer::<SetextHeader, _>("html", SetextHeaderDocumentRenderer);
-    md.add_document_renderer::<SetextHeader, _>("text", PlainTextBlockDocumentRenderer);
+    md.add_renderer::<SetextHeader, _>("html", SetextHeaderRenderer);
+    md.add_renderer::<SetextHeader, _>("text", PlainTextBlockRenderer);
 }
 
 #[doc(hidden)]
@@ -78,11 +78,11 @@ impl BlockRule for LHeadingScanner {
     // no `MARKERS` here on purpose
     const NAMES: &'static [&'static str] = &["lheading"];
 
-    fn check(_: &mut DocumentBlockState<'_>) -> Option<()> {
+    fn check(_: &mut BlockState<'_>) -> Option<()> {
         None // can't interrupt any tags
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         if state.line_indent(state.line) >= state.md.max_indent {
             return None;
         }

@@ -1,21 +1,13 @@
 use std::cell::RefCell;
 
-use markdown_it::{
-    Document,
-    DocumentRendererRegistry,
-    EditBatch,
-    NodeDraft,
-    NodeId,
-    RenderOptions,
-    Text,
-};
+use markdown_it::{Document, EditBatch, NodeDraft, NodeId, RenderOptions, RendererRegistry, Text};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
 #[pyclass(name = "Ast", unsendable)]
 pub(crate) struct PyAst {
     pub(crate) root: RefCell<Document>,
-    pub(crate) renderers: DocumentRendererRegistry,
+    pub(crate) renderers: RendererRegistry,
     pub(crate) options: RenderOptions,
 }
 

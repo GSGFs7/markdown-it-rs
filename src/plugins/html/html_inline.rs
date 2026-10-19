@@ -6,13 +6,13 @@ use super::utils::regexps::HTML_TAG_RE;
 use crate::MarkdownIt;
 use crate::common::extset::InlineRootExtSet;
 use crate::document::{NodeRef, NodeValue};
-use crate::parser::inline::{DocumentInlineState, InlineRule};
-use crate::render::{DocumentNodeRenderer, DocumentRenderContext};
+use crate::parser::inline::{InlineRule, InlineState};
+use crate::render::{NodeRenderer, RenderContext};
 
 pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<HtmlInlineScanner>();
-    md.add_document_renderer::<HtmlInline, _>("html", HtmlInlineRenderer);
-    md.add_document_renderer::<HtmlInline, _>("text", HtmlInlineRenderer);
+    md.add_renderer::<HtmlInline, _>("html", HtmlInlineRenderer);
+    md.add_renderer::<HtmlInline, _>("text", HtmlInlineRenderer);
 }
 
 #[derive(Debug, Default)]
@@ -27,13 +27,13 @@ pub struct HtmlInline {
 
 struct HtmlInlineRenderer;
 
-impl DocumentNodeRenderer<HtmlInline> for HtmlInlineRenderer {
+impl NodeRenderer<HtmlInline> for HtmlInlineRenderer {
     fn render(
         &self,
         _: NodeRef<'_>,
         value: &HtmlInline,
-        _: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        _: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         output.write_str(&value.content);
     }
@@ -48,7 +48,7 @@ impl InlineRule for HtmlInlineScanner {
     const MARKER: char = '<';
     const NAMES: &'static [&'static str] = &["html_inline"];
 
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
         let matched = scan_html_inline(
             &context.src,
             context.pos,
@@ -62,7 +62,7 @@ impl InlineRule for HtmlInlineScanner {
         Some(matched.consumed)
     }
 
-    fn run(state: &mut crate::DocumentInlineState<'_>) -> Option<(Option<crate::NodeId>, usize)> {
+    fn run(state: &mut crate::InlineState<'_>) -> Option<(Option<crate::NodeId>, usize)> {
         let matched =
             scan_html_inline(&state.src, state.pos, state.pos_max, &mut state.inline_ext)?;
 

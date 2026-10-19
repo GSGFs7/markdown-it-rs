@@ -5,24 +5,24 @@
 //! <https://spec.commonmark.org/0.30/#paragraph>
 use crate::MarkdownIt;
 use crate::document::{NodeId, NodeValue};
-use crate::parser::block::{BlockRule, DocumentBlockState};
-use crate::render::{HtmlBlockElementDocumentRenderer, PlainTextBlockDocumentRenderer};
+use crate::parser::block::{BlockRule, BlockState};
+use crate::render::{HtmlBlockElementRenderer, PlainTextBlockRenderer};
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<ParagraphScanner>().after_all();
-    md.document_renderers
-        .add::<Paragraph, _>("html", HtmlBlockElementDocumentRenderer("p"));
-    md.add_document_renderer::<Paragraph, _>("text", PlainTextBlockDocumentRenderer);
+    md.renderers
+        .add::<Paragraph, _>("html", HtmlBlockElementRenderer("p"));
+    md.add_renderer::<Paragraph, _>("text", PlainTextBlockRenderer);
 }
 
 impl BlockRule for ParagraphScanner {
     const NAMES: &'static [&'static str] = &["paragraph"];
 
-    fn check(_: &mut DocumentBlockState<'_>) -> Option<()> {
+    fn check(_: &mut BlockState<'_>) -> Option<()> {
         None // can't interrupt anything
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let start_line = state.line;
         let mut next_line = start_line;
 
@@ -74,7 +74,7 @@ pub struct ParagraphScanner;
 #[derive(Debug)]
 pub(super) struct ParagraphInterrupt;
 
-pub(super) fn test_paragraph_rules_at_line(state: &mut DocumentBlockState<'_>) -> bool {
+pub(super) fn test_paragraph_rules_at_line(state: &mut BlockState<'_>) -> bool {
     let old_context = state.root_ext.insert(ParagraphInterrupt);
     let interrupted = state.test_rules_at_line();
     if let Some(old_context) = old_context {

@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use markdown_it::plugins::extra::smartquotes;
 use markdown_it::{Document, MarkdownIt, NodeDraft};
 
@@ -31,7 +31,7 @@ fn benchmark(c: &mut Criterion) {
                 b.iter_batched(
                     || synthetic(count, split),
                     |mut doc| {
-                        md.run_document_transforms(black_box(&mut doc));
+                        md.run_transforms(black_box(&mut doc));
                         black_box(doc);
                     },
                     BatchSize::SmallInput,

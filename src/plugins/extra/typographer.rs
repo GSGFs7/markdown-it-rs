@@ -35,7 +35,7 @@ use regex::Regex;
 
 use crate::MarkdownIt;
 use crate::document::edit::EditBatch;
-use crate::document::transform::DocumentTransform;
+use crate::document::transform::Transform;
 use crate::document::{Document, StructuralEvent, Text};
 use crate::plugins::cmark::inline::backticks::CodeInline;
 use crate::plugins::cmark::inline::image::Image;
@@ -78,15 +78,15 @@ fn replace_abbreviation(input: &str) -> &'static str {
 
 pub fn add(md: &mut MarkdownIt) {
     // Alias, not type: custom `add_with` variants share only this alias.
-    md.add_document_transform::<TypographerDocumentTransform>()
+    md.add_transform::<TypographerTransform>()
         .before_named("smartquotes");
 }
 
-/// Arena-backed typographer transform.
+/// Typographer transform.
 #[derive(Default)]
-pub struct TypographerDocumentTransform;
+pub struct TypographerTransform;
 
-impl DocumentTransform for TypographerDocumentTransform {
+impl Transform for TypographerTransform {
     const KEY: &'static str = "extra::typographer";
 
     fn run(&self, document: &Document) -> EditBatch {

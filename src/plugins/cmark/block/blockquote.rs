@@ -6,12 +6,12 @@
 use crate::MarkdownIt;
 use crate::common::utils::find_indent_of_from_column;
 use crate::document::{NodeId, NodeRef, NodeValue};
-use crate::parser::block::{BlockRule, DocumentBlockState};
+use crate::parser::block::{BlockRule, BlockState};
 use crate::plugins::cmark::block::reference::Definition;
 use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    PlainTextBlockDocumentRenderer,
+    NodeRenderer,
+    PlainTextBlockRenderer,
+    RenderContext,
     write_html_close,
     write_html_open,
 };
@@ -19,15 +19,15 @@ use crate::render::{
 #[derive(Debug)]
 pub struct Blockquote;
 
-struct BlockquoteDocumentRenderer;
+struct BlockquoteRenderer;
 
-impl DocumentNodeRenderer<Blockquote> for BlockquoteDocumentRenderer {
+impl NodeRenderer<Blockquote> for BlockquoteRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         _: &Blockquote,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         context.cr(output);
         write_html_open(output, "blockquote", node.attrs());
@@ -53,8 +53,8 @@ impl NodeValue for Blockquote {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<BlockquoteScanner>();
-    md.add_document_renderer::<Blockquote, _>("html", BlockquoteDocumentRenderer);
-    md.add_document_renderer::<Blockquote, _>("text", PlainTextBlockDocumentRenderer);
+    md.add_renderer::<Blockquote, _>("html", BlockquoteRenderer);
+    md.add_renderer::<Blockquote, _>("text", PlainTextBlockRenderer);
 }
 
 #[doc(hidden)]
@@ -77,7 +77,7 @@ impl BlockRule for BlockquoteScanner {
     const MARKERS: &'static [char] = &['>'];
     const NAMES: &'static [&'static str] = &["blockquote"];
 
-    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+    fn check(state: &mut BlockState<'_>) -> Option<()> {
         is_blockquote_line(
             state.get_line(state.line),
             state.line_indent(state.line),
@@ -86,7 +86,7 @@ impl BlockRule for BlockquoteScanner {
         .then_some(())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         <Self as BlockRule>::check(state)?;
 
         let mut old_line_offsets = Vec::new();

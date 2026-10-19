@@ -9,23 +9,23 @@ use super::utils::blocks::*;
 use super::utils::regexps::*;
 use crate::MarkdownIt;
 use crate::document::{NodeId, NodeRef, NodeValue};
-use crate::parser::block::{BlockRule, DocumentBlockState};
-use crate::render::{DocumentNodeRenderer, DocumentRenderContext};
+use crate::parser::block::{BlockRule, BlockState};
+use crate::render::{NodeRenderer, RenderContext};
 
 #[derive(Debug)]
 pub struct HtmlBlock {
     pub content: String,
 }
 
-struct HtmlBlockDocumentRenderer;
+struct HtmlBlockRenderer;
 
-impl DocumentNodeRenderer<HtmlBlock> for HtmlBlockDocumentRenderer {
+impl NodeRenderer<HtmlBlock> for HtmlBlockRenderer {
     fn render(
         &self,
         _: NodeRef<'_>,
         value: &HtmlBlock,
-        _: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        _: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         output.write_str(&value.content);
     }
@@ -33,13 +33,13 @@ impl DocumentNodeRenderer<HtmlBlock> for HtmlBlockDocumentRenderer {
 
 struct HtmlBlockTextRenderer;
 
-impl DocumentNodeRenderer<HtmlBlock> for HtmlBlockTextRenderer {
+impl NodeRenderer<HtmlBlock> for HtmlBlockTextRenderer {
     fn render(
         &self,
         _: NodeRef<'_>,
         value: &HtmlBlock,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         context.cr(output);
         output.write_str(&value.content);
@@ -51,8 +51,8 @@ impl NodeValue for HtmlBlock {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HtmlBlockScanner>();
-    md.add_document_renderer::<HtmlBlock, _>("html", HtmlBlockDocumentRenderer);
-    md.add_document_renderer::<HtmlBlock, _>("text", HtmlBlockTextRenderer);
+    md.add_renderer::<HtmlBlock, _>("html", HtmlBlockRenderer);
+    md.add_renderer::<HtmlBlock, _>("text", HtmlBlockTextRenderer);
 }
 
 struct HTMLSequence {
@@ -176,7 +176,7 @@ impl HtmlBlockScanner {
 impl BlockRule for HtmlBlockScanner {
     const MARKERS: &'static [char] = &['<'];
     const NAMES: &'static [&'static str] = &["html_block"];
-    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+    fn check(state: &mut BlockState<'_>) -> Option<()> {
         let sequence = Self::get_sequence(
             state.get_line(state.line),
             state.line_indent(state.line),
@@ -185,7 +185,7 @@ impl BlockRule for HtmlBlockScanner {
         sequence.can_terminate_paragraph.then_some(())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let sequence = Self::get_sequence(
             state.get_line(state.line),
             state.line_indent(state.line),

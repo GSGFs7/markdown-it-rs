@@ -176,10 +176,10 @@ fn parser_facade_preserves_rendering_and_source() {
     let source = "# 雪\n\nA *small* document.\n";
 
     let expected = md.render(source);
-    let document = md.parse_document(source);
+    let document = md.parse(source);
 
     assert_eq!(document.source(), source);
-    assert_eq!(md.render_document(&document), expected);
+    assert_eq!(md.render_html(&document), expected);
 }
 
 #[test]
@@ -189,7 +189,7 @@ fn parsed_document_events_visit_every_node_once() {
     let mut md = MarkdownIt::empty();
     plugins::cmark::add(&mut md);
     plugins::html::add(&mut md);
-    let document = md.parse_document("# Heading\n\nA *small* [link](url).\n\n---\n");
+    let document = md.parse("# Heading\n\nA *small* [link](url).\n\n---\n");
     let mut stack = Vec::new();
     let mut visited = HashSet::new();
 

@@ -13,19 +13,19 @@
 //!
 //! ```rust
 //! use markdown_it::parser::inline::helpers::code_pair;
-//! use markdown_it::{MarkdownIt, NodeId, NodeValue, NodeRef, DocumentNodeRenderer, DocumentRenderContext, DocumentWriter};
+//! use markdown_it::{MarkdownIt, NodeId, NodeValue, NodeRef, NodeRenderer, RenderContext, Writer};
 //! #[derive(Debug)]
 //! struct Ferris;
 //! impl NodeValue for Ferris {}
 //! struct CustomRenderer;
-//! impl DocumentNodeRenderer<Ferris> for CustomRenderer {
-//!     fn render(&self, node: NodeRef<'_>, _: &Ferris, ctx: &mut DocumentRenderContext<'_>, out: &mut DocumentWriter) {
+//! impl NodeRenderer<Ferris> for CustomRenderer {
+//!     fn render(&self, node: NodeRef<'_>, _: &Ferris, ctx: &mut RenderContext<'_>, out: &mut Writer) {
 //!         out.write_str("🦀"); ctx.render_children(node.id(), out); out.write_str("🦀");
 //!     }
 //! }
 //! let md = &mut MarkdownIt::empty();
 //! code_pair::add_with::<'%'>(md, |document, _| document.create_node(Ferris));
-//! md.add_document_renderer::<Ferris, _>("html", CustomRenderer);
+//! md.add_renderer::<Ferris, _>("html", CustomRenderer);
 //! assert_eq!(md.render("hello %world%").trim(), "hello 🦀world🦀");
 //! ```
 //!
@@ -42,7 +42,7 @@
 //!
 use crate::MarkdownIt;
 use crate::document::{Document, NodeId, Text};
-use crate::parser::inline::{DocumentInlineState, InlineRule};
+use crate::parser::inline::{InlineRule, InlineState};
 
 #[derive(Debug, Default, Clone)]
 struct CodePairCache<const MARKER: char> {
@@ -70,7 +70,7 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
     const MARKER: char = MARKER;
     const NAMES: &'static [&'static str] = &["code_pair"];
 
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
         let follows_marker = context.trailing_text().ends_with(MARKER);
         let matched = scan_code_pair_bounds::<MARKER>(
             &context.src,
@@ -82,7 +82,7 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
         matched.map(|matched| matched.consumed)
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let matched = scan_code_pair::<MARKER>(
             &state.src,
             state.pos,

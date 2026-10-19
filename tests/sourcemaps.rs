@@ -5,7 +5,7 @@ fn run(input: &str, f: fn(&Document, SourceWithLineStarts)) {
     let mut md = markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md);
     markdown_it::plugins::html::add(&mut md);
-    let document = md.parse_document(input);
+    let document = md.parse(input);
     for event in document.events(document.root()) {
         assert!(event.node().srcmap().is_some());
     }

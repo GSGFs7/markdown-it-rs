@@ -71,18 +71,18 @@ use std::fmt::Debug;
 use crate::common::extset::{NodeExtSet, RenderExtSet};
 use crate::common::sourcemap::SourcePos;
 use crate::document::{HtmlAttribute, NodeId, NodeRef};
-use crate::parser::block::{BlockRule, DocumentBlockState};
-use crate::parser::inline::{DocumentInlineState, InlineRule};
+use crate::parser::block::{BlockRule, BlockState};
+use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    TransparentDocumentRenderer,
+    NodeRenderer,
+    RenderContext,
+    TransparentRenderer,
     write_html_close,
     write_html_open,
     write_html_self_close,
     write_html_text,
 };
-use crate::{Document, DocumentWriter, MarkdownIt, NodeValue, RenderOptions};
+use crate::{Document, MarkdownIt, NodeValue, RenderOptions, Writer};
 
 // --- render ---
 
@@ -128,12 +128,12 @@ impl InlineRule for TextDirective {
     const MARKER: char = ':';
     const NAMES: &'static [&'static str] = &["text_directive"];
 
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
         let preceded_by_colon = context.pos > 0 && context.src[..context.pos].ends_with(':');
         scan_text_directive(context.remaining(), preceded_by_colon).map(|(_, _, len)| len)
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let preceded_by_colon = state.pos > 0 && state.src[..state.pos].ends_with(':');
         let (name, attrs, len) = scan_text_directive(state.remaining(), preceded_by_colon)?;
 
@@ -158,7 +158,7 @@ impl BlockRule for LeafDirectiveScanner {
     const MARKERS: &'static [char] = &[':'];
     const NAMES: &'static [&'static str] = &["leaf_directive"];
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         // it should be a codeblocks
         if state.line_indent(state.line) >= state.md.max_indent {
             return None;
@@ -211,7 +211,7 @@ impl ContainerDirectiveScanner {
         Some((marker_len, name, attrs))
     }
 
-    fn scan_document(state: &mut DocumentBlockState<'_>) -> Option<(usize, String, Attrs)> {
+    fn scan(state: &mut BlockState<'_>) -> Option<(usize, String, Attrs)> {
         // it should be code blocks
         if state.line_indent(state.line) >= state.md.max_indent {
             return None;
@@ -261,12 +261,12 @@ impl BlockRule for ContainerDirectiveScanner {
     const MARKERS: &'static [char] = &[':'];
     const NAMES: &'static [&'static str] = &["container_directive"];
 
-    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
-        Self::scan_document(state).map(|_| ())
+    fn check(state: &mut BlockState<'_>) -> Option<()> {
+        Self::scan(state).map(|_| ())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
-        let (marker_len, name, attrs) = Self::scan_document(state)?;
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+        let (marker_len, name, attrs) = Self::scan(state)?;
 
         let start_line = state.line;
         let (next_line, have_end_marker) = Self::scan_end(
@@ -377,8 +377,8 @@ impl<'a> DirectiveNode<'a> {
 
 /// HTML rendering services for directive callbacks.
 pub struct DirectiveRenderer<'r, 'd> {
-    context: &'r mut DocumentRenderContext<'d>,
-    output: &'r mut DocumentWriter,
+    context: &'r mut RenderContext<'d>,
+    output: &'r mut Writer,
 }
 
 impl DirectiveRenderer<'_, '_> {
@@ -670,15 +670,15 @@ fn render_directive(
     }
 }
 
-struct DirectiveDocumentRenderer;
+struct DirectiveNodeRenderer;
 
-impl DocumentNodeRenderer<TextDirective> for DirectiveDocumentRenderer {
+impl NodeRenderer<TextDirective> for DirectiveNodeRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         value: &TextDirective,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut Writer,
     ) {
         render_directive(
             DirectiveKind::Text,
@@ -693,13 +693,13 @@ impl DocumentNodeRenderer<TextDirective> for DirectiveDocumentRenderer {
     }
 }
 
-impl DocumentNodeRenderer<LeafDirective> for DirectiveDocumentRenderer {
+impl NodeRenderer<LeafDirective> for DirectiveNodeRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         value: &LeafDirective,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut Writer,
     ) {
         render_directive(
             DirectiveKind::Leaf,
@@ -714,13 +714,13 @@ impl DocumentNodeRenderer<LeafDirective> for DirectiveDocumentRenderer {
     }
 }
 
-impl DocumentNodeRenderer<ContainerDirective> for DirectiveDocumentRenderer {
+impl NodeRenderer<ContainerDirective> for DirectiveNodeRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         value: &ContainerDirective,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut Writer,
     ) {
         render_directive(
             DirectiveKind::Container,
@@ -741,12 +741,12 @@ pub fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<TextDirective>();
     md.block.add_rule::<LeafDirectiveScanner>();
     md.block.add_rule::<ContainerDirectiveScanner>();
-    md.add_document_renderer::<TextDirective, _>("html", DirectiveDocumentRenderer);
-    md.add_document_renderer::<LeafDirective, _>("html", DirectiveDocumentRenderer);
-    md.add_document_renderer::<ContainerDirective, _>("html", DirectiveDocumentRenderer);
-    md.add_document_renderer::<TextDirective, _>("text", TransparentDocumentRenderer);
-    md.add_document_renderer::<LeafDirective, _>("text", TransparentDocumentRenderer);
-    md.add_document_renderer::<ContainerDirective, _>("text", TransparentDocumentRenderer);
+    md.add_renderer::<TextDirective, _>("html", DirectiveNodeRenderer);
+    md.add_renderer::<LeafDirective, _>("html", DirectiveNodeRenderer);
+    md.add_renderer::<ContainerDirective, _>("html", DirectiveNodeRenderer);
+    md.add_renderer::<TextDirective, _>("text", TransparentRenderer);
+    md.add_renderer::<LeafDirective, _>("text", TransparentRenderer);
+    md.add_renderer::<ContainerDirective, _>("text", TransparentRenderer);
 }
 
 /// Register a custom renderer for directives matching `kind` and `name`.
@@ -1040,7 +1040,7 @@ body
         markdown_it::plugins::cmark::add(&mut md);
         directives::add(&mut md);
 
-        let ast = md.parse_document(source);
+        let ast = md.parse(source);
         let mut result = None;
         for event in ast.events(ast.root()) {
             let node = event.node();

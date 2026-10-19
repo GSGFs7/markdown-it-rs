@@ -6,10 +6,10 @@
 use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
 use crate::document::{NodeId, NodeRef, NodeValue};
-use crate::parser::block::{BlockRule, DocumentBlockState};
+use crate::parser::block::{BlockRule, BlockState};
 use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
+    NodeRenderer,
+    RenderContext,
     write_html_close,
     write_html_open,
     write_html_text,
@@ -24,15 +24,15 @@ pub struct CodeFence {
     pub lang_prefix: String,
 }
 
-struct CodeFenceDocumentRenderer;
+struct CodeFenceRenderer;
 
-impl DocumentNodeRenderer<CodeFence> for CodeFenceDocumentRenderer {
+impl NodeRenderer<CodeFence> for CodeFenceRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         fence: &CodeFence,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         let info = unescape_all(&fence.info);
         let lang_name = info
@@ -60,13 +60,13 @@ impl DocumentNodeRenderer<CodeFence> for CodeFenceDocumentRenderer {
 
 struct CodeFenceTextRenderer;
 
-impl DocumentNodeRenderer<CodeFence> for CodeFenceTextRenderer {
+impl NodeRenderer<CodeFence> for CodeFenceTextRenderer {
     fn render(
         &self,
         _: NodeRef<'_>,
         fence: &CodeFence,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         context.cr(output);
         output.write_str(&fence.content);
@@ -86,8 +86,8 @@ impl Default for FenceSettings {
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<FenceScanner>();
-    md.add_document_renderer::<CodeFence, _>("html", CodeFenceDocumentRenderer);
-    md.add_document_renderer::<CodeFence, _>("text", CodeFenceTextRenderer);
+    md.add_renderer::<CodeFence, _>("html", CodeFenceRenderer);
+    md.add_renderer::<CodeFence, _>("text", CodeFenceTextRenderer);
 }
 
 pub fn set_lang_prefix(md: &mut MarkdownIt, lang_prefix: impl Into<String>) {
@@ -133,7 +133,7 @@ impl FenceScanner {}
 impl BlockRule for FenceScanner {
     const MARKERS: &'static [char] = &['`', '~'];
     const NAMES: &'static [&'static str] = &["fence"];
-    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+    fn check(state: &mut BlockState<'_>) -> Option<()> {
         get_header(
             state.get_line(state.line),
             state.line_indent(state.line),
@@ -142,7 +142,7 @@ impl BlockRule for FenceScanner {
         .map(|_| ())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (marker, len, params) = {
             let line = state.get_line(state.line);
             let (marker, len, params) =

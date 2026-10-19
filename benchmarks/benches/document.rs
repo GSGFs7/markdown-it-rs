@@ -1,23 +1,23 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use markdown_it::Text;
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use markdown_it::plugins::html::html_inline::HtmlInline;
 use markdown_it::{
     Document,
-    DocumentTransform,
-    DocumentTransformRegistry,
     EditBatch,
     MarkdownIt,
     NodeDraft,
     NodeRef,
     StructuralEvent,
+    Text,
     TextBoundary,
     TextEvent,
     TextProjection,
     TextProjectionKind,
+    Transform,
+    TransformRegistry,
 };
 use markdown_it_benchmarks::corpus;
 
@@ -26,7 +26,7 @@ macro_rules! empty_transform {
         #[derive(Default)]
         struct $type;
 
-        impl DocumentTransform for $type {
+        impl Transform for $type {
             const KEY: &'static str = $key;
 
             fn run(&self, _: &Document) -> EditBatch {
@@ -141,16 +141,16 @@ fn parser() -> markdown_it::MarkdownIt {
 fn benchmark(c: &mut Criterion) {
     let md = parser();
 
-    let empty_registry = DocumentTransformRegistry::new();
-    let mut one_transform = DocumentTransformRegistry::new();
+    let empty_registry = TransformRegistry::new();
+    let mut one_transform = TransformRegistry::new();
     one_transform.add::<EmptyTransform1>();
-    let mut five_transforms = DocumentTransformRegistry::new();
+    let mut five_transforms = TransformRegistry::new();
     five_transforms.add::<EmptyTransform1>();
     five_transforms.add::<EmptyTransform2>();
     five_transforms.add::<EmptyTransform3>();
     five_transforms.add::<EmptyTransform4>();
     five_transforms.add::<EmptyTransform5>();
-    let mut empty_document = MarkdownIt::empty().parse_document("");
+    let mut empty_document = MarkdownIt::empty().parse("");
     empty_registry.run(&mut empty_document);
     one_transform.run(&mut empty_document);
     five_transforms.run(&mut empty_document);
@@ -172,10 +172,10 @@ fn benchmark(c: &mut Criterion) {
         let mut group = c.benchmark_group(format!("document-build/{}", corpus.name));
         group.throughput(Throughput::Bytes(corpus.len() as u64));
         group.bench_function("arena-document", |b| {
-            b.iter(|| black_box(md.parse_document(black_box(source))))
+            b.iter(|| black_box(md.parse(black_box(source))))
         });
         group.finish();
-        let document = md.parse_document(source);
+        let document = md.parse(source);
         let mut group = c.benchmark_group(format!("document-events/{}", corpus.name));
         group.throughput(Throughput::Elements(document.len() as u64));
         group.bench_function("arena-structural-events", |b| {
@@ -206,7 +206,7 @@ fn benchmark(c: &mut Criterion) {
         group.bench_function("validate-and-commit", |b| {
             b.iter_batched(
                 || {
-                    let document = md.parse_document(source);
+                    let document = md.parse(source);
                     let batch = one_edit_per_text_node(&document);
                     (document, batch)
                 },
@@ -220,7 +220,7 @@ fn benchmark(c: &mut Criterion) {
         group.finish();
 
         let attribute_count = document.len();
-        let mut edited = md.parse_document(source);
+        let mut edited = md.parse(source);
         one_attribute_per_node(&edited).commit(&mut edited);
         for event in edited.events(edited.root()) {
             if let StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) = event {
@@ -235,7 +235,7 @@ fn benchmark(c: &mut Criterion) {
         group.bench_function("validate-and-commit", |b| {
             b.iter_batched(
                 || {
-                    let document = md.parse_document(source);
+                    let document = md.parse(source);
                     let batch = one_attribute_per_node(&document);
                     (document, batch)
                 },
@@ -249,7 +249,7 @@ fn benchmark(c: &mut Criterion) {
         group.finish();
 
         let removed_count = document.len() - 1;
-        let mut edited = md.parse_document(source);
+        let mut edited = md.parse(source);
         remove_top_level_subtrees(&edited).commit(&mut edited);
         assert_eq!(edited.len(), 1);
         assert!(edited.children(edited.root()).is_empty());
@@ -258,7 +258,7 @@ fn benchmark(c: &mut Criterion) {
         group.bench_function("validate-and-commit", |b| {
             b.iter_batched(
                 || {
-                    let document = md.parse_document(source);
+                    let document = md.parse(source);
                     let batch = remove_top_level_subtrees(&document);
                     (document, batch)
                 },
@@ -272,7 +272,7 @@ fn benchmark(c: &mut Criterion) {
         group.finish();
 
         let inserted_count = document.children(document.root()).len();
-        let mut edited = md.parse_document(source);
+        let mut edited = md.parse(source);
         let original_children = edited.children(edited.root()).to_vec();
         insert_before_top_level_nodes(&edited).commit(&mut edited);
         let edited_children = edited.children(edited.root());
@@ -291,7 +291,7 @@ fn benchmark(c: &mut Criterion) {
         group.bench_function("validate-and-commit", |b| {
             b.iter_batched(
                 || {
-                    let document = md.parse_document(source);
+                    let document = md.parse(source);
                     let batch = insert_before_top_level_nodes(&document);
                     (document, batch)
                 },
@@ -305,7 +305,7 @@ fn benchmark(c: &mut Criterion) {
         group.finish();
 
         let replaced_node_count = document.len() - 1;
-        let mut edited = md.parse_document(source);
+        let mut edited = md.parse(source);
         let old_roots = edited.children(edited.root()).to_vec();
         replace_top_level_subtrees(&edited).commit(&mut edited);
         assert_eq!(edited.len(), old_roots.len() + 1);
@@ -323,7 +323,7 @@ fn benchmark(c: &mut Criterion) {
         group.bench_function("validate-and-commit", |b| {
             b.iter_batched(
                 || {
-                    let document = md.parse_document(source);
+                    let document = md.parse(source);
                     let batch = replace_top_level_subtrees(&document);
                     (document, batch)
                 },
@@ -337,7 +337,7 @@ fn benchmark(c: &mut Criterion) {
         group.finish();
 
         let wrapped_count = document.children(document.root()).len();
-        let mut edited = md.parse_document(source);
+        let mut edited = md.parse(source);
         let original_children = edited.children(edited.root()).to_vec();
         wrap_top_level_range(&edited).commit(&mut edited);
         assert_eq!(edited.len(), document.len() + 1);
@@ -351,7 +351,7 @@ fn benchmark(c: &mut Criterion) {
         group.bench_function("validate-and-commit", |b| {
             b.iter_batched(
                 || {
-                    let document = md.parse_document(source);
+                    let document = md.parse(source);
                     let batch = wrap_top_level_range(&document);
                     (document, batch)
                 },

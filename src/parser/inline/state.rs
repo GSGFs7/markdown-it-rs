@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
 
-use super::DocumentRuleSet;
+use super::RuleSet;
 use crate::MarkdownIt;
 use crate::common::extset::{InlineRootExtSet, RootExtSet};
 use crate::common::sourcemap::SourcePos;
@@ -38,7 +38,7 @@ impl ScanLimitCache {
     }
 }
 
-pub struct DocumentInlineState<'a> {
+pub struct InlineState<'a> {
     /// Markdown source.
     pub(crate) src: Cow<'a, str>,
 
@@ -69,7 +69,7 @@ pub struct DocumentInlineState<'a> {
     /// inside raw html and markdown links.
     pub(crate) link_level: i32,
 
-    pub(crate) ruleset: &'a DocumentRuleSet,
+    pub(crate) ruleset: &'a RuleSet,
 
     /// Nodes accumulated for the current inline container; rules append to it.
     nodes: Vec<NodeId>,
@@ -83,7 +83,7 @@ pub struct DocumentInlineState<'a> {
     needs_finalization: bool,
 }
 
-impl<'a> DocumentInlineState<'a> {
+impl<'a> InlineState<'a> {
     /// The unconsumed inline source visible to the current rule.
     pub fn remaining(&self) -> &str {
         &self.src[self.pos..self.pos_max]
@@ -113,7 +113,7 @@ impl<'a> DocumentInlineState<'a> {
         src: String,
         mapping: Vec<(usize, usize)>,
         md: &'a MarkdownIt,
-        ruleset: &'a DocumentRuleSet,
+        ruleset: &'a RuleSet,
         root_ext: Option<&'a RootExtSet>,
     ) -> Vec<NodeId> {
         let mut state = Self {
@@ -186,7 +186,7 @@ impl<'a> DocumentInlineState<'a> {
         range: Range<usize>,
         depth: u32,
         link_level: i32,
-        configure: impl FnOnce(&mut DocumentInlineState<'_>),
+        configure: impl FnOnce(&mut InlineState<'_>),
     ) -> Option<Vec<NodeId>> {
         let mut child = self.child_state(range, depth, link_level)?;
         configure(&mut child);
@@ -355,7 +355,7 @@ impl<'a> DocumentInlineState<'a> {
         range: Range<usize>,
         depth: u32,
         link_level: i32,
-    ) -> Option<DocumentInlineState<'_>> {
+    ) -> Option<InlineState<'_>> {
         self.remaining().get(range.clone())?;
 
         let start = self.pos + range.start;
@@ -364,7 +364,7 @@ impl<'a> DocumentInlineState<'a> {
         #[cfg(debug_assertions)]
         crate::parser::validation::inline_range(self.src.as_ref(), start, end);
 
-        Some(DocumentInlineState {
+        Some(InlineState {
             src: Cow::Borrowed(self.src.as_ref()),
             pos: start,
             pos_max: end,

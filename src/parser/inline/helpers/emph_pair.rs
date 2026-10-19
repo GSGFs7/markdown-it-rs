@@ -24,19 +24,19 @@
 //!
 //! ```rust
 //! use markdown_it::parser::inline::helpers::emph_pair;
-//! use markdown_it::{MarkdownIt, NodeId, NodeValue, NodeRef, DocumentNodeRenderer, DocumentRenderContext, DocumentWriter};
+//! use markdown_it::{MarkdownIt, NodeId, NodeValue, NodeRef, NodeRenderer, RenderContext, Writer};
 //! #[derive(Debug)]
 //! struct Superscript;
 //! impl NodeValue for Superscript {}
 //! struct CustomRenderer;
-//! impl DocumentNodeRenderer<Superscript> for CustomRenderer {
-//!     fn render(&self, node: NodeRef<'_>, _: &Superscript, ctx: &mut DocumentRenderContext<'_>, out: &mut DocumentWriter) {
+//! impl NodeRenderer<Superscript> for CustomRenderer {
+//!     fn render(&self, node: NodeRef<'_>, _: &Superscript, ctx: &mut RenderContext<'_>, out: &mut Writer) {
 //!         out.write_str("<sup>"); ctx.render_children(node.id(), out); out.write_str("</sup>");
 //!     }
 //! }
 //! let md = &mut MarkdownIt::empty();
 //! emph_pair::add_with::<'^', 1, true>(md, |document| document.create_node(Superscript));
-//! md.add_document_renderer::<Superscript, _>("html", CustomRenderer);
+//! md.add_renderer::<Superscript, _>("html", CustomRenderer);
 //! assert_eq!(md.render("e^iπ^+1=0").trim(), "e<sup>iπ</sup>+1=0");
 //! ```
 //!
@@ -48,7 +48,7 @@ use std::cmp::min;
 use crate::MarkdownIt;
 use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId, NodeValue, Text};
-use crate::parser::inline::{DocumentInlineState, InlineRule};
+use crate::parser::inline::{InlineRule, InlineState};
 
 type NodeIdFn = fn(&mut Document) -> NodeId;
 
@@ -132,9 +132,7 @@ pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool
         pair_config.inserted = true;
         let builder = md
             .inline
-            .add_rule_with_finalize::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>(
-                finalize_emphasis_document,
-            );
+            .add_rule_with_finalize::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>(finalize_emphasis);
         if MARKER == '*' || MARKER == '_' {
             builder.alias_named("emphasis");
         } else if MARKER == '~' {
@@ -152,11 +150,11 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
     const MARKER: char = MARKER;
     const NAMES: &'static [&'static str] = &["emph_pair"];
 
-    fn check(_context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(_context: &mut InlineState<'_>) -> Option<usize> {
         None
     }
 
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         if state.remaining().chars().next()? != MARKER {
             return None;
         }
@@ -186,8 +184,7 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
             && !MARKER.is_whitespace()
             && !scanned.can_open
             && state.ruleset.finalizers.len() == 1
-            && state.ruleset.finalizers[0] as usize
-                == finalize_emphasis_document as *const () as usize
+            && state.ruleset.finalizers[0] as usize == finalize_emphasis as *const () as usize
         {
             state.push_text(state.pos, state.pos + scanned_bytes);
             return Some((None, scanned_bytes));
@@ -205,7 +202,7 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
         let srcmap = state.get_map(state.pos, state.pos + scanned_bytes);
         state.document.node_mut(closer).set_srcmap(srcmap);
 
-        closer = scan_and_match_document::<MARKER>(state, closer);
+        closer = scan_and_match::<MARKER>(state, closer);
 
         // Matching already sets the node's source map, which may span earlier
         // delimiters and lines. Append it directly so tokenize does not replace
@@ -218,10 +215,7 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
 
 /// Assuming the last node is a closing delimiter we just inserted,
 /// try to find opener(s). If any are found, move stuff to nested emph node.
-fn scan_and_match_document<const MARKER: char>(
-    state: &mut DocumentInlineState,
-    closer_token: NodeId,
-) -> NodeId {
+fn scan_and_match<const MARKER: char>(state: &mut InlineState, closer_token: NodeId) -> NodeId {
     if state.nodes().is_empty() {
         return closer_token;
     } // must have at least opener and closer
@@ -485,7 +479,7 @@ fn fragments_join_children(document: &mut Document, nodes: &mut Vec<NodeId>) {
     nodes.truncate(write);
 }
 
-fn finalize_emphasis_document(state: &mut DocumentInlineState<'_>) {
+fn finalize_emphasis(state: &mut InlineState<'_>) {
     let mut nodes = std::mem::take(state.nodes_mut());
     fragments_join_children(state.document, &mut nodes);
     let mut pending = nodes.clone();
@@ -512,7 +506,7 @@ mod tests {
     fn literal_closers_stay_text_before_later_emphasis() {
         let md = MarkdownIt::with_preset(Preset::CommonMark);
         let source = "a_ ".repeat(10_000) + "**雪**";
-        let document = md.parse_document(&source);
+        let document = md.parse(&source);
         let paragraph = document.children(document.root())[0];
         let children = document.children(paragraph);
         assert_eq!(children.len(), 2);
@@ -537,7 +531,7 @@ mod tests {
             (30_000, source.len())
         );
         assert_eq!(
-            md.render_document(&document),
+            md.render_html(&document),
             "<p>".to_owned() + &"a_ ".repeat(10_000) + "<strong>雪</strong></p>\n"
         );
     }
@@ -604,11 +598,11 @@ mod tests {
         struct Observer;
         impl InlineRule for Observer {
             const MARKER: char = '\0';
-            fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+            fn run(_: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
                 None
             }
         }
-        fn observe(state: &mut DocumentInlineState<'_>) {
+        fn observe(state: &mut InlineState<'_>) {
             let count = state
                 .nodes()
                 .iter()
@@ -621,12 +615,12 @@ mod tests {
         md.inline
             .add_rule_with_finalize::<Observer>(observe)
             .before_named("emphasis");
-        let document = md.parse_document("a_ b_");
+        let document = md.parse("a_ b_");
         assert_eq!(
             document.node(document.root()).ext().get::<usize>(),
             Some(&2)
         );
-        assert_eq!(md.render_document(&document), "<p>a_ b_</p>\n");
+        assert_eq!(md.render_html(&document), "<p>a_ b_</p>\n");
     }
 
     #[test]
@@ -732,12 +726,12 @@ mod tests {
 
     fn run(input: &str, output: &str) {
         let md = &mut MarkdownIt::with_preset(Preset::CommonMark);
-        let node = md.parse_document(input);
+        let node = md.parse(input);
 
         for event in node.events(node.root()) {
             assert!(event.node().srcmap().is_some());
         }
-        assert_eq!(md.render_document(&node), output);
+        assert_eq!(md.render_html(&node), output);
     }
 
     /// Parse with only the CommonMark paragraph + emphasis rules registered
@@ -747,15 +741,11 @@ mod tests {
         crate::plugins::cmark::block::paragraph::add(md);
         crate::plugins::cmark::inline::emphasis::add(md);
 
-        let node = md.parse_document(input);
+        let node = md.parse(input);
         for event in node.events(node.root()) {
             assert!(event.node().srcmap().is_some());
         }
-        assert_eq!(
-            md.render_document(&node),
-            output,
-            "document parser for {input:?}"
-        );
+        assert_eq!(md.render_html(&node), output, "parser for {input:?}");
     }
 
     #[test]
@@ -806,13 +796,13 @@ mod tests {
     impl NodeValue for CustomEmphasis {}
 
     struct CustomRenderer;
-    impl crate::DocumentNodeRenderer<CustomEmphasis> for CustomRenderer {
+    impl crate::NodeRenderer<CustomEmphasis> for CustomRenderer {
         fn render(
             &self,
             node: crate::NodeRef<'_>,
             _: &CustomEmphasis,
-            ctx: &mut crate::DocumentRenderContext<'_>,
-            out: &mut crate::DocumentWriter,
+            ctx: &mut crate::RenderContext<'_>,
+            out: &mut crate::Writer,
         ) {
             out.write_str("<x>");
             ctx.render_children(node.id(), out);
@@ -824,12 +814,12 @@ mod tests {
         let mut md = MarkdownIt::empty();
         crate::plugins::cmark::block::paragraph::add(&mut md);
 
-        md.add_document_renderer::<CustomEmphasis, _>("html", CustomRenderer);
+        md.add_renderer::<CustomEmphasis, _>("html", CustomRenderer);
         add_with::<'🦀', 1, true>(&mut md, |document| document.create_node(CustomEmphasis));
 
-        let root = md.parse_document("a 🦀雪🦀 b");
+        let root = md.parse("a 🦀雪🦀 b");
 
-        assert_eq!(md.render_document(&root), "<p>a <x>雪</x> b</p>\n",);
+        assert_eq!(md.render_html(&root), "<p>a <x>雪</x> b</p>\n",);
 
         let paragraph = root.children(root.root())[0];
         let wrapper = root.node(root.children(paragraph)[1]);
@@ -841,12 +831,12 @@ mod tests {
         let mut md = MarkdownIt::empty();
         crate::plugins::cmark::block::paragraph::add(&mut md);
 
-        md.add_document_renderer::<CustomEmphasis, _>("html", CustomRenderer);
+        md.add_renderer::<CustomEmphasis, _>("html", CustomRenderer);
         add_with::<'🦀', 2, true>(&mut md, |document| document.create_node(CustomEmphasis));
 
-        let root = md.parse_document("🦀🦀雪🦀🦀");
+        let root = md.parse("🦀🦀雪🦀🦀");
 
-        assert_eq!(md.render_document(&root), "<p><x>雪</x></p>\n",);
+        assert_eq!(md.render_html(&root), "<p><x>雪</x></p>\n",);
 
         let paragraph = root.children(root.root())[0];
         let wrapper = root.node(root.children(paragraph)[0]);

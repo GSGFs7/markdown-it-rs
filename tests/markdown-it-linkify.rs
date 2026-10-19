@@ -26,8 +26,8 @@ fn run(input: &str, output: &str) {
     markdown_it::plugins::extra::linkify::add(&mut direct_md);
     markdown_it::plugins::extra::typographer::add(&mut direct_md);
     markdown_it::plugins::extra::smartquotes::add(&mut direct_md);
-    let document = direct_md.parse_document(&(input.to_owned() + "\n"));
-    assert_eq!(direct_md.render_document(&document), expected);
+    let document = direct_md.parse(&(input.to_owned() + "\n"));
+    assert_eq!(direct_md.render_html(&document), expected);
 }
 
 ///////////////////////////////////////////////////////////////////////////

@@ -6,12 +6,7 @@
 use crate::MarkdownIt;
 use crate::document::{NodeRef, NodeValue};
 use crate::parser::inline::helpers::full_link;
-use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    TransparentDocumentRenderer,
-    render_html_link,
-};
+use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, render_html_link};
 
 #[derive(Debug)]
 pub struct Link {
@@ -19,15 +14,15 @@ pub struct Link {
     pub title: Option<String>,
 }
 
-struct LinkDocumentRenderer;
+struct LinkRenderer;
 
-impl DocumentNodeRenderer<Link> for LinkDocumentRenderer {
+impl NodeRenderer<Link> for LinkRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         link: &Link,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         render_html_link(node, &link.url, link.title.as_deref(), context, output);
     }
@@ -42,8 +37,8 @@ pub fn add(md: &mut MarkdownIt) {
             title,
         })
     });
-    md.add_document_renderer::<Link, _>("html", LinkDocumentRenderer);
-    md.add_document_renderer::<Link, _>("text", TransparentDocumentRenderer);
+    md.add_renderer::<Link, _>("html", LinkRenderer);
+    md.add_renderer::<Link, _>("text", TransparentRenderer);
 }
 
 #[cfg(test)]

@@ -24,7 +24,7 @@ fn debug_format_records_hierarchy_identity_source_and_attributes() {
     root.push_child(container);
 
     let document = Document::from_draft("abcdef", root);
-    let output = MarkdownIt::empty().render_document_as(&document, "debug");
+    let output = MarkdownIt::empty().render_as(&document, "debug");
 
     let expected = format!(
         "container type={} id=NodeId(0:0) srcmap=0..6 attrs=[]\n  container type={} id=NodeId(1:0) srcmap=1..5 attrs=[(\"class\", \"outer\")]\n    leaf type={} id=NodeId(2:0) srcmap=- attrs=[(\"data-value\", \"<&>\")]\n",
@@ -41,8 +41,8 @@ fn debug_format_covers_standard_presets_without_syntax_registrations() {
         MarkdownIt::new(),
         MarkdownIt::with_preset(Preset::CommonMark),
     ] {
-        let document = md.parse_document("# heading *em*\n");
-        let output = md.render_document_as(&document, "debug");
+        let document = md.parse("# heading *em*\n");
+        let output = md.render_as(&document, "debug");
 
         assert!(output.contains(&format!("type={}", std::any::type_name::<Root>())));
         assert!(output.contains("type=markdown_it::plugins::cmark::block::heading::ATXHeading"));

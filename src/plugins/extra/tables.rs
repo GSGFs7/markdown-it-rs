@@ -4,15 +4,15 @@
 use crate::MarkdownIt;
 use crate::common::sourcemap::SourcePos;
 use crate::document::{NodeId, NodeRef, NodeValue};
-use crate::parser::block::{BlockRule, DocumentBlockState};
+use crate::parser::block::{BlockRule, BlockState};
 use crate::plugins::cmark::block::blockquote::{BlockquoteInterrupt, BlockquoteScanner};
 use crate::plugins::cmark::block::heading::HeadingScanner;
 use crate::plugins::cmark::block::list::ListScanner;
 use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    PlainTextBlockDocumentRenderer,
-    TransparentDocumentRenderer,
+    NodeRenderer,
+    PlainTextBlockRenderer,
+    RenderContext,
+    TransparentRenderer,
     write_html_close,
     write_html_open,
 };
@@ -30,15 +30,15 @@ pub struct Table {
     pub alignments: Vec<ColumnAlignment>,
 }
 
-struct TableDocumentRenderer;
+struct TableRenderer;
 
-impl DocumentNodeRenderer<Table> for TableDocumentRenderer {
+impl NodeRenderer<Table> for TableRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         value: &Table,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         let old_context = context.ext().remove::<TableRenderContext>();
         context.ext().insert(TableRenderContext {
@@ -68,15 +68,15 @@ pub struct TableRenderContext {
 #[derive(Debug)]
 pub struct TableHead;
 
-struct TableHeadDocumentRenderer;
+struct TableHeadRenderer;
 
-impl DocumentNodeRenderer<TableHead> for TableHeadDocumentRenderer {
+impl NodeRenderer<TableHead> for TableHeadRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         _: &TableHead,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         context
             .ext()
@@ -95,15 +95,15 @@ impl NodeValue for TableHead {}
 #[derive(Debug)]
 pub struct TableBody;
 
-struct TableBodyDocumentRenderer;
+struct TableBodyRenderer;
 
-impl DocumentNodeRenderer<TableBody> for TableBodyDocumentRenderer {
+impl NodeRenderer<TableBody> for TableBodyRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         _: &TableBody,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         render_block_container(node, context, output, "tbody");
     }
@@ -114,15 +114,15 @@ impl NodeValue for TableBody {}
 #[derive(Debug)]
 pub struct TableRow;
 
-struct TableRowDocumentRenderer;
+struct TableRowRenderer;
 
-impl DocumentNodeRenderer<TableRow> for TableRowDocumentRenderer {
+impl NodeRenderer<TableRow> for TableRowRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         _: &TableRow,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         context
             .ext()
@@ -134,13 +134,13 @@ impl DocumentNodeRenderer<TableRow> for TableRowDocumentRenderer {
 
 struct TableRowTextRenderer;
 
-impl DocumentNodeRenderer<TableRow> for TableRowTextRenderer {
+impl NodeRenderer<TableRow> for TableRowTextRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         _: &TableRow,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         context.cr(output);
         for (index, &cell) in node.children().iter().enumerate() {
@@ -158,15 +158,15 @@ impl NodeValue for TableRow {}
 #[derive(Debug)]
 pub struct TableCell;
 
-struct TableCellDocumentRenderer;
+struct TableCellRenderer;
 
-impl DocumentNodeRenderer<TableCell> for TableCellDocumentRenderer {
+impl NodeRenderer<TableCell> for TableCellRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         _: &TableCell,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         let table_context = context.ext().get_or_insert_default::<TableRenderContext>();
         let tag = if table_context.head { "th" } else { "td" };
@@ -194,8 +194,8 @@ impl DocumentNodeRenderer<TableCell> for TableCellDocumentRenderer {
 
 fn render_block_container(
     node: NodeRef<'_>,
-    context: &mut DocumentRenderContext<'_>,
-    output: &mut crate::DocumentWriter,
+    context: &mut RenderContext<'_>,
+    output: &mut crate::Writer,
     tag: &str,
 ) {
     context.cr(output);
@@ -215,16 +215,16 @@ pub fn add(md: &mut MarkdownIt) {
         .before::<BlockquoteScanner>()
         .before::<ListScanner>()
         .before::<HeadingScanner>();
-    md.add_document_renderer::<Table, _>("html", TableDocumentRenderer);
-    md.add_document_renderer::<TableHead, _>("html", TableHeadDocumentRenderer);
-    md.add_document_renderer::<TableBody, _>("html", TableBodyDocumentRenderer);
-    md.add_document_renderer::<TableRow, _>("html", TableRowDocumentRenderer);
-    md.add_document_renderer::<TableCell, _>("html", TableCellDocumentRenderer);
-    md.add_document_renderer::<Table, _>("text", PlainTextBlockDocumentRenderer);
-    md.add_document_renderer::<TableHead, _>("text", TransparentDocumentRenderer);
-    md.add_document_renderer::<TableBody, _>("text", TransparentDocumentRenderer);
-    md.add_document_renderer::<TableRow, _>("text", TableRowTextRenderer);
-    md.add_document_renderer::<TableCell, _>("text", TransparentDocumentRenderer);
+    md.add_renderer::<Table, _>("html", TableRenderer);
+    md.add_renderer::<TableHead, _>("html", TableHeadRenderer);
+    md.add_renderer::<TableBody, _>("html", TableBodyRenderer);
+    md.add_renderer::<TableRow, _>("html", TableRowRenderer);
+    md.add_renderer::<TableCell, _>("html", TableCellRenderer);
+    md.add_renderer::<Table, _>("text", PlainTextBlockRenderer);
+    md.add_renderer::<TableHead, _>("text", TransparentRenderer);
+    md.add_renderer::<TableBody, _>("text", TransparentRenderer);
+    md.add_renderer::<TableRow, _>("text", TableRowTextRenderer);
+    md.add_renderer::<TableCell, _>("text", TransparentRenderer);
 }
 
 #[doc(hidden)]
@@ -413,7 +413,7 @@ impl TableScanner {
 
 impl BlockRule for TableScanner {
     const NAMES: &'static [&'static str] = &["table", "tables"];
-    fn check(state: &mut DocumentBlockState<'_>) -> Option<()> {
+    fn check(state: &mut BlockState<'_>) -> Option<()> {
         if state.document.node(state.node).is::<TableBody>()
             || state.root_ext.get::<BlockquoteInterrupt>().is_some()
         {
@@ -426,7 +426,7 @@ impl BlockRule for TableScanner {
         .map(|_| ())
     }
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (header_row, alignments) =
             Self::scan_header(state.line, state.line_max, state.md.max_indent, |line| {
                 (state.get_line(line), state.line_indent(line))
@@ -443,7 +443,7 @@ impl BlockRule for TableScanner {
         state.document.node_mut(row_node).set_srcmap(srcmap);
 
         fn add_cell(
-            state: &mut DocumentBlockState<'_>,
+            state: &mut BlockState<'_>,
             row_node: NodeId,
             cell: String,
             srcmap: Vec<(usize, usize)>,

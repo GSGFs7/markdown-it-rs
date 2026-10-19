@@ -13,7 +13,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::document::edit::EditBatch;
-use crate::document::transform::DocumentTransform;
+use crate::document::transform::Transform;
 use crate::document::{Document, NodeRef, Text, TextSpecial};
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
@@ -28,7 +28,7 @@ pub fn add(md: &mut MarkdownIt) {
 
 /// Register heading anchors with per-parser configuration.
 pub fn add_with_options(md: &mut MarkdownIt, options: HeadingAnchorsOptions) {
-    md.add_document_transform_instance(HeadingAnchorsDocumentTransform::new(options));
+    md.add_transform_instance(HeadingAnchorsTransform::new(options));
 }
 
 // --- config ---
@@ -242,13 +242,13 @@ impl<'a> HeadingAnchorState<'a> {
 
 // --- rule ---
 
-/// Arena-backed heading anchors with owned runtime configuration.
+/// Heading anchors with owned runtime configuration.
 #[derive(Debug, Default)]
-pub struct HeadingAnchorsDocumentTransform {
+pub struct HeadingAnchorsTransform {
     options: HeadingAnchorsOptions,
 }
 
-impl HeadingAnchorsDocumentTransform {
+impl HeadingAnchorsTransform {
     pub fn new(options: HeadingAnchorsOptions) -> Self {
         Self { options }
     }
@@ -258,15 +258,15 @@ impl HeadingAnchorsDocumentTransform {
     }
 }
 
-impl DocumentTransform for HeadingAnchorsDocumentTransform {
+impl Transform for HeadingAnchorsTransform {
     const KEY: &'static str = "extra::heading_anchors";
 
     fn run(&self, document: &Document) -> EditBatch {
         let mut state = HeadingAnchorState::new(&self.options);
-        let mut headings = Vec::<DocumentHeading>::new(); // regustration list
+        let mut headings = Vec::<Heading>::new(); // regustration list
         let mut active_headings = Vec::<usize>::new(); // stack
         // Enter(heading)             -> preemption id
-        //   Enter(inlineRoot)        -> `append_document_text` do none thing
+        //   Enter(inlineRoot)        -> `append_text` do none thing
         //     Leaf(Text "Hello ")    -> append "Hello " to active heading
         //     Enter(emphasis)        -> preemption id
         //       Leaf(Text "world")   -> append "world" (headings[0].text = "Hello world")
@@ -280,16 +280,16 @@ impl DocumentTransform for HeadingAnchorsDocumentTransform {
                     state.reserve_ids(is_heading(node), node.attrs());
                     if is_heading(node) {
                         active_headings.push(headings.len());
-                        headings.push(DocumentHeading::new(node));
+                        headings.push(Heading::new(node));
                     }
-                    append_document_text(node, &active_headings, &mut headings);
+                    append_text(node, &active_headings, &mut headings);
                 }
                 StructuralEvent::Leaf(node) => {
                     state.reserve_ids(is_heading(node), node.attrs());
                     if is_heading(node) {
-                        headings.push(DocumentHeading::new(node));
+                        headings.push(Heading::new(node));
                     } else {
-                        append_document_text(node, &active_headings, &mut headings);
+                        append_text(node, &active_headings, &mut headings);
                     }
                 }
                 StructuralEvent::Exit(_) => {
@@ -315,13 +315,13 @@ impl DocumentTransform for HeadingAnchorsDocumentTransform {
     }
 }
 
-struct DocumentHeading {
+struct Heading {
     id: crate::NodeId,
     has_id: bool,
     text: String,
 }
 
-impl DocumentHeading {
+impl Heading {
     fn new(node: NodeRef<'_>) -> Self {
         Self {
             id: node.id(),
@@ -331,11 +331,7 @@ impl DocumentHeading {
     }
 }
 
-fn append_document_text(
-    node: NodeRef<'_>,
-    active_headings: &[usize],
-    headings: &mut [DocumentHeading],
-) {
+fn append_text(node: NodeRef<'_>, active_headings: &[usize], headings: &mut [Heading]) {
     let content = if let Some(text) = node.cast::<Text>() {
         Some(text.content.as_str())
     } else if let Some(text) = node.cast::<TextSpecial>() {
@@ -355,13 +351,13 @@ fn append_document_text(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::core::{CoreRule, DocumentCoreRule};
+    use crate::parser::core::{CoreRule, CoreStage};
     use crate::parser::inline::builtin::InlineParserRule;
 
     struct AddExistingHeadingId;
     impl CoreRule for AddExistingHeadingId {
-        fn document_rule() -> DocumentCoreRule {
-            DocumentCoreRule::FinalizeDocument(|root, _| {
+        fn stage() -> CoreStage {
+            CoreStage::Finalize(|root, _| {
                 let mut stack = vec![root.root()];
                 while let Some(node) = stack.pop() {
                     if (root.node(node).is::<ATXHeading>() || root.node(node).is::<SetextHeader>())
@@ -534,7 +530,7 @@ mod tests {
     }
 
     #[test]
-    fn document_transform_matches_expected_output_options_and_text_semantics() {
+    fn transform_matches_expected_output_options_and_text_semantics() {
         fn custom(text: &str) -> String {
             format!("custom-{}", text.to_lowercase())
         }
@@ -603,7 +599,7 @@ mod tests {
     }
 
     #[test]
-    fn document_configuration_is_isolated_per_parser() {
+    fn configuration_is_isolated_per_parser() {
         let mut first = parser(false);
         add_with_options(
             &mut first,
@@ -620,27 +616,24 @@ mod tests {
                 ..HeadingAnchorsOptions::default()
             },
         );
-        let first_document = first.parse_document("# Heading");
-        let second_document = second.parse_document("# Heading");
+        let first_document = first.parse("# Heading");
+        let second_document = second.parse("# Heading");
 
         assert_eq!(
-            first.render_document(&first_document),
+            first.render_html(&first_document),
             "<h1 id=\"first-heading\">Heading</h1>\n"
         );
         assert_eq!(
-            second.render_document(&second_document),
+            second.render_html(&second_document),
             "<h1 id=\"second-heading\">Heading</h1>\n"
         );
     }
 
     #[test]
-    fn registration_populates_document_registry() {
+    fn registration_populates_transform_registry() {
         let mut md = MarkdownIt::empty();
         add(&mut md);
 
-        assert!(
-            md.document_transforms
-                .contains::<HeadingAnchorsDocumentTransform>()
-        );
+        assert!(md.transforms.contains::<HeadingAnchorsTransform>());
     }
 }

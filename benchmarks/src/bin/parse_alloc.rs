@@ -133,7 +133,7 @@ struct AllocationStats {
 
 fn print_row(configuration: &str, suite: &str, corpus: &str, stats: AllocationStats) {
     println!(
-        "| {configuration} | {suite} | {corpus} | arena-direct | {} | {} | {} | {} | {} |",
+        "| {configuration} | {suite} | {corpus} | markdown-it-rs | {} | {} | {} | {} | {} |",
         stats.allocations,
         stats.reallocations,
         stats.requested_bytes,
@@ -146,7 +146,7 @@ fn main() {
     println!("| Configuration | Suite | Corpus | Path | Alloc | Realloc | Requested bytes | Peak live delta | Retained delta |");
     println!("| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |");
 
-    for configuration in parser::document_parse_configurations() {
+    for configuration in parser::parse_configurations() {
         let configuration_name = configuration.name;
         let md = configuration.parser;
         for (suite, corpora) in [
@@ -159,8 +159,8 @@ fn main() {
                 // Warm lazy parser and renderer state before enabling the counter.
                 // Input and parser storage are part of the baseline, not the delta.
                 let expected = md.render(source);
-                let (document, stats) = ALLOCATOR.measure(|| md.parse_document(black_box(source)));
-                assert_eq!(md.render_document(&document), expected);
+                let (document, stats) = ALLOCATOR.measure(|| md.parse(black_box(source)));
+                assert_eq!(md.render_html(&document), expected);
                 assert!(
                     stats.retained_bytes >= 0,
                     "unexpected warmed-state release: {stats:?}"

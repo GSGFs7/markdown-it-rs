@@ -7,9 +7,9 @@ use crate::MarkdownIt;
 use crate::document::{NodeRef, NodeValue};
 use crate::parser::inline::helpers::code_pair;
 use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    TransparentDocumentRenderer,
+    NodeRenderer,
+    RenderContext,
+    TransparentRenderer,
     write_html_close,
     write_html_open,
 };
@@ -20,15 +20,15 @@ pub struct CodeInline {
     pub marker_len: usize,
 }
 
-struct CodeInlineDocumentRenderer;
+struct CodeInlineRenderer;
 
-impl DocumentNodeRenderer<CodeInline> for CodeInlineDocumentRenderer {
+impl NodeRenderer<CodeInline> for CodeInlineRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         _: &CodeInline,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         write_html_open(output, "code", node.attrs());
         context.render_children(node.id(), output);
@@ -45,6 +45,6 @@ pub fn add(md: &mut MarkdownIt) {
             marker_len: len,
         })
     });
-    md.add_document_renderer::<CodeInline, _>("html", CodeInlineDocumentRenderer);
-    md.add_document_renderer::<CodeInline, _>("text", TransparentDocumentRenderer);
+    md.add_renderer::<CodeInline, _>("html", CodeInlineRenderer);
+    md.add_renderer::<CodeInline, _>("text", TransparentRenderer);
 }

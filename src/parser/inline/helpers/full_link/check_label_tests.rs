@@ -2,16 +2,16 @@ use super::*;
 use crate::document::Text;
 use crate::parser::inline::InlineRule;
 use crate::plugins::cmark::inline::link::Link;
-use crate::{DocumentInlineState, MarkdownIt, NodeId};
+use crate::{InlineState, MarkdownIt, NodeId};
 
 // Register both brackets so the built-in text classifier stops at them.
 struct Bracket<const C: char>;
 impl<const C: char> InlineRule for Bracket<C> {
     const MARKER: char = C;
-    fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(_: &mut InlineState<'_>) -> Option<usize> {
         None
     }
-    fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(_: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         panic!("the consumer must consume the complete test input")
     }
 }
@@ -19,7 +19,7 @@ impl<const C: char> InlineRule for Bracket<C> {
 struct Consumer<const NESTED: bool>;
 impl<const NESTED: bool> InlineRule for Consumer<NESTED> {
     const MARKER: char = '@';
-    fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         if !state.remaining().starts_with("@[") {
             return None;
         }
@@ -99,7 +99,7 @@ fn labels_respect_raw_brackets_and_opaque_spans() {
 struct DefaultCheck;
 impl InlineRule for DefaultCheck {
     const MARKER: char = '?';
-    fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(_: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         None
     }
 }
@@ -107,10 +107,10 @@ impl InlineRule for DefaultCheck {
 struct Closing;
 impl InlineRule for Closing {
     const MARKER: char = ']';
-    fn check(_: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(_: &mut InlineState<'_>) -> Option<usize> {
         panic!("terminal bracket must be checked before dispatch")
     }
-    fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(_: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         panic!("consumer owns input")
     }
 }
@@ -127,7 +127,7 @@ fn terminal_close_precedes_dispatch_and_does_not_scan_suffix() {
 struct BracketToken;
 impl InlineRule for BracketToken {
     const MARKER: char = '[';
-    fn check(context: &mut DocumentInlineState<'_>) -> Option<usize> {
+    fn check(context: &mut InlineState<'_>) -> Option<usize> {
         if context.remaining().starts_with("[x]") {
             // Legacy uses consumed length, even if a custom rule calls it Text.
             Some(3)
@@ -135,7 +135,7 @@ impl InlineRule for BracketToken {
             None
         }
     }
-    fn run(_: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(_: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         panic!("consumer owns input")
     }
 }
@@ -169,20 +169,12 @@ fn registered_link_and_image_check_respect_remaining_depth() {
     crate::plugins::cmark::inline::link::add(&mut md);
     crate::plugins::cmark::inline::image::add(&mut md);
     md.max_nesting = 3;
-    let rules = md.inline.document_rules();
+    let rules = md.inline.rules();
 
     for source in ["[雪](/url)", "[](/url)", "![雪](/img)", "![](/img)"] {
         for depth in [1, 2, 3] {
-            let mut context = DocumentInlineState::new(
-                &mut document,
-                source,
-                0,
-                source.len(),
-                &md,
-                rules,
-                depth,
-                0,
-            );
+            let mut context =
+                InlineState::new(&mut document, source, 0, source.len(), &md, rules, depth, 0);
             let result = if source.starts_with('!') {
                 <LinkPrefixScanner<'!', true> as InlineRule>::check(&mut context)
             } else {
@@ -245,17 +237,9 @@ fn custom_prefix_policies_are_independent_of_marker_and_label_context() {
                 let mut root_ext = crate::common::extset::RootExtSet::default();
                 root_ext.insert(references);
                 let mut document = crate::Document::new("", crate::Root::new(""));
-                let rules = md.inline.document_rules();
-                let mut context = DocumentInlineState::new(
-                    &mut document,
-                    &source,
-                    0,
-                    source.len(),
-                    &md,
-                    rules,
-                    0,
-                    0,
-                );
+                let rules = md.inline.rules();
+                let mut context =
+                    InlineState::new(&mut document, &source, 0, source.len(), &md, rules, 0, 0);
                 context.root_ext = Some(&root_ext);
                 let expected_end = match fallback {
                     InlineTargetFallback::Reference => Some(PREFIX.len_utf8() + "[foo]".len()),
@@ -327,7 +311,7 @@ fn label_scan_checks_unicode_prefixed_rule() {
 fn candidate_combines_label_target_and_reference() {
     let mut document = crate::Document::new("", crate::Root::new(""));
     let md = parser::<false>();
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let mut references = ReferenceMap::default();
     references.insert("x".into(), "/shortcut".into(), None);
     references.insert("ref".into(), "/ref".into(), Some("t".into()));
@@ -341,7 +325,7 @@ fn candidate_combines_label_target_and_reference() {
         ("[x](/unfinished", "/shortcut", None, 3),
     ] {
         let mut context =
-            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
+            InlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
         let result = scan_link_candidate(
             &mut context,
             0,
@@ -367,7 +351,7 @@ fn candidate_combines_label_target_and_reference() {
         "[x]( \t\n",
     ] {
         let mut context =
-            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
+            InlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
         assert!(
             scan_link_candidate(
                 &mut context,
@@ -385,9 +369,9 @@ fn candidate_combines_label_target_and_reference() {
 fn candidate_offsets_are_relative_to_current_window() {
     let mut document = crate::Document::new("", crate::Root::new(""));
     let md = parser::<false>();
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let source = "前雪[x](/url)";
-    let mut context = DocumentInlineState::new(
+    let mut context = InlineState::new(
         &mut document,
         source,
         "前".len(),
@@ -427,11 +411,11 @@ fn candidate_offsets_are_relative_to_current_window() {
 fn candidate_combines_opaque_labels_with_target() {
     let mut document = crate::Document::new("", crate::Root::new(""));
     let md = parser::<false>();
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     for label in LABELS {
         let source = format!("[{label}](/url)");
         let mut context =
-            DocumentInlineState::new(&mut document, &source, 0, source.len(), &md, ruleset, 0, 0);
+            InlineState::new(&mut document, &source, 0, source.len(), &md, ruleset, 0, 0);
         let result = scan_link_candidate(
             &mut context,
             0,
@@ -456,12 +440,11 @@ fn candidate_combines_opaque_labels_with_target() {
 fn candidate_requires_reference_map_and_label_window() {
     let mut document = crate::Document::new("", crate::Root::new(""));
     let md = parser::<false>();
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
 
     // Inline targets parse without references, shortcut references do not.
     let source = "[x](/url)";
-    let mut context =
-        DocumentInlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
+    let mut context = InlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
     let result = scan_link_candidate(
         &mut context,
         0,
@@ -475,7 +458,7 @@ fn candidate_requires_reference_map_and_label_window() {
 
     for source in ["[x]", "[x][ref]"] {
         let mut context =
-            DocumentInlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
+            InlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
         assert!(
             scan_link_candidate(
                 &mut context,
@@ -493,10 +476,9 @@ fn candidate_requires_reference_map_and_label_window() {
     // the whole candidate is rejected even though the syntax is valid.
     let mut md = parser::<false>();
     md.max_nesting = 2;
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let source = "[x](/url)";
-    let mut root =
-        DocumentInlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
+    let mut root = InlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
     assert!(
         scan_link_candidate(&mut root, 0, false, None, InlineTargetFallback::Reference).is_some()
     );
@@ -518,14 +500,13 @@ fn candidate_requires_reference_map_and_label_window() {
 fn candidate_respects_window_edges_and_parent_cursor() {
     let mut document = crate::Document::new("", crate::Root::new(""));
     let md = parser::<false>();
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
 
     // The full source parses, but the window ends before the closing
     // parenthesis; bytes after `remaining()` must stay invisible.
     let source = "[x](/url)tail";
     let close = source.find(')').unwrap();
-    let mut truncated =
-        DocumentInlineState::new(&mut document, source, 0, close, &md, ruleset, 0, 0);
+    let mut truncated = InlineState::new(&mut document, source, 0, close, &md, ruleset, 0, 0);
     assert_eq!(truncated.remaining(), "[x](/url");
     assert!(
         scan_link_candidate(
@@ -539,8 +520,7 @@ fn candidate_respects_window_edges_and_parent_cursor() {
     );
 
     // Including the closing parenthesis makes the same window parse.
-    let mut complete =
-        DocumentInlineState::new(&mut document, source, 0, close + 1, &md, ruleset, 0, 0);
+    let mut complete = InlineState::new(&mut document, source, 0, close + 1, &md, ruleset, 0, 0);
     let result = scan_link_candidate(
         &mut complete,
         0,
@@ -554,7 +534,7 @@ fn candidate_respects_window_edges_and_parent_cursor() {
     // After the parent cursor advances, results stay relative to
     // `remaining()`, not to the start of the session.
     let source = "前雪[x](/url)";
-    let mut context = DocumentInlineState::new(
+    let mut context = InlineState::new(
         &mut document,
         source,
         "前".len(),
@@ -589,10 +569,9 @@ fn registered_link_check_does_not_require_running_the_factory() {
     add::<false>(&mut md, |_, _, _| {
         panic!("check must not call arena node factory")
     });
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let source = "[x](/url)";
-    let mut context =
-        DocumentInlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
+    let mut context = InlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
     let token = context.skip_token().unwrap();
     assert_eq!(token, source.len());
     assert_eq!(context.link_level, 0);
@@ -606,10 +585,9 @@ fn registered_prefix_check_does_not_require_running_the_factory() {
     add_prefix::<'雪', true>(&mut md, |_, _, _| {
         panic!("check must not call arena node factory")
     });
-    let ruleset = md.inline.document_rules();
+    let ruleset = md.inline.rules();
     let source = "雪[x](/url)";
-    let mut context =
-        DocumentInlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
+    let mut context = InlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
     let token = context.skip_token().unwrap();
     assert_eq!(token, source.len());
     assert_eq!(context.link_level, 0);
@@ -647,8 +625,8 @@ fn direct_prefix_uses_utf8_byte_offsets() {
             ),
         ];
         for (source, expected, link_count) in cases {
-            let document = md.parse_document(&source);
-            assert_eq!(md.render_document(&document), expected, "{source}");
+            let document = md.parse(&source);
+            assert_eq!(md.render_html(&document), expected, "{source}");
             let links = document
                 .events(document.root())
                 .filter(|event| {

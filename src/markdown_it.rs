@@ -4,26 +4,22 @@ use std::sync::{Arc, OnceLock};
 use crate::common::RuleMark;
 use crate::common::extset::MarkdownItExtSet;
 use crate::common::ruler::Ruler;
-use crate::document::transform::{
-    DocumentTransform,
-    DocumentTransformRegistry,
-    TransformRuleBuilder,
-};
+use crate::document::transform::{Transform, TransformRegistry, TransformRuleBuilder};
 use crate::document::{Document, NodeValue, Root, Text, TextSpecial};
 use crate::links::{LinkFormatter, MDLinkFormatter};
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::*;
 use crate::parser::inline::{self, InlineParser};
-use crate::parser::pipeline::{DocumentParseContext, DocumentParsePlan};
+use crate::parser::pipeline::{ParseContext, ParsePlan};
 use crate::plugins::presets::{Preset, PresetConfig};
 use crate::render::{
-    DebugTreeDocumentRenderer,
-    DocumentNodeRenderer,
-    DocumentRendererRegistry,
-    HtmlTextDocumentRenderer,
-    PlainTextDocumentRenderer,
+    DebugTreeRenderer,
+    HtmlTextRenderer,
+    NodeRenderer,
+    PlainTextRenderer,
     RenderOptions,
-    TransparentDocumentRenderer,
+    RendererRegistry,
+    TransparentRenderer,
 };
 
 /// Main parser struct, created once and reused for parsing multiple documents.
@@ -53,15 +49,15 @@ pub struct MarkdownIt {
     /// Default rendering options.
     pub render_options: RenderOptions,
 
-    /// Ordered transforms for arena-backed documents.
-    pub document_transforms: DocumentTransformRegistry,
+    /// Ordered transforms for documents.
+    pub transforms: TransformRegistry,
 
-    /// Format-specific renderers for arena-backed documents.
-    pub document_renderers: DocumentRendererRegistry,
+    /// Format-specific renderers for documents.
+    pub renderers: RendererRegistry,
 
-    ruler: Ruler<RuleMark, DocumentCoreRule>,
+    ruler: Ruler<RuleMark, CoreStage>,
 
-    document_parse_plan: OnceLock<DocumentParsePlan>,
+    parse_plan: OnceLock<ParsePlan>,
 }
 
 impl std::fmt::Debug for MarkdownIt {
@@ -75,8 +71,8 @@ impl std::fmt::Debug for MarkdownIt {
             .field("max_indent", &self.max_indent)
             .field("ruler", &self.ruler)
             .field("render_options", &self.render_options)
-            .field("document_transforms", &self.document_transforms)
-            .field("document_renderers", &self.document_renderers)
+            .field("transforms", &self.transforms)
+            .field("renderers", &self.renderers)
             .finish()
     }
 }
@@ -88,14 +84,14 @@ impl MarkdownIt {
     }
 
     pub fn empty() -> Self {
-        let mut document_renderers = DocumentRendererRegistry::new();
-        document_renderers.add::<Root, _>("html", TransparentDocumentRenderer);
-        document_renderers.add::<Text, _>("html", HtmlTextDocumentRenderer);
-        document_renderers.add::<TextSpecial, _>("html", HtmlTextDocumentRenderer);
-        document_renderers.add::<Root, _>("text", TransparentDocumentRenderer);
-        document_renderers.add::<Text, _>("text", PlainTextDocumentRenderer);
-        document_renderers.add::<TextSpecial, _>("text", PlainTextDocumentRenderer);
-        document_renderers.add::<Root, _>("debug", DebugTreeDocumentRenderer);
+        let mut renderers = RendererRegistry::new();
+        renderers.add::<Root, _>("html", TransparentRenderer);
+        renderers.add::<Text, _>("html", HtmlTextRenderer);
+        renderers.add::<TextSpecial, _>("html", HtmlTextRenderer);
+        renderers.add::<Root, _>("text", TransparentRenderer);
+        renderers.add::<Text, _>("text", PlainTextRenderer);
+        renderers.add::<TextSpecial, _>("text", PlainTextRenderer);
+        renderers.add::<Root, _>("debug", DebugTreeRenderer);
 
         let mut md = Self {
             block: BlockParser::new(),
@@ -105,10 +101,10 @@ impl MarkdownIt {
             max_nesting: 100,
             max_indent: i32::MAX,
             render_options: RenderOptions::default(),
-            document_transforms: DocumentTransformRegistry::new(),
-            document_renderers,
+            transforms: TransformRegistry::new(),
+            renderers,
             ruler: Ruler::new(),
-            document_parse_plan: OnceLock::new(),
+            parse_plan: OnceLock::new(),
         };
 
         // infrastructure
@@ -118,7 +114,7 @@ impl MarkdownIt {
         md
     }
 
-    /// Parse Markdown into an arena-backed document and run registered transforms.
+    /// Parse Markdown into a document and run registered transforms.
     ///
     /// NUL is replaced with U+FFFD first, so [`Document::source`] and byte source
     /// maps refer to the normalized text.
@@ -129,56 +125,54 @@ impl MarkdownIt {
     /// # Panics
     ///
     /// Panics if core-rule stages are missing, repeated, or out of order.
-    pub fn parse_document(&self, src: &str) -> Document {
+    pub fn parse(&self, src: &str) -> Document {
         let source: Arc<str> = Arc::from(normalize_input(src).as_ref());
         let mut document = Document::new(Arc::clone(&source), Root::new(Arc::clone(&source)));
         document
             .node_mut(document.root())
             .ext_mut()
             .insert(self.render_options.clone());
-        DocumentParseContext::new(source, self, document).parse()
+        ParseContext::new(source, self, document).parse()
     }
 
-    pub(super) fn document_core_rules(&self) -> impl Iterator<Item = DocumentCoreRule> + '_ {
+    pub(super) fn core_rules(&self) -> impl Iterator<Item = CoreStage> + '_ {
         self.ruler.iter().copied()
     }
 
-    pub(crate) fn document_parse_plan(&self) -> &DocumentParsePlan {
-        self.document_parse_plan
-            .get_or_init(|| DocumentParsePlan::compile(self.document_core_rules()))
+    pub(crate) fn parse_plan(&self) -> &ParsePlan {
+        self.parse_plan
+            .get_or_init(|| ParsePlan::compile(self.core_rules()))
     }
 
-    /// Register an arena-backed document transform.
-    pub fn add_document_transform<T: DocumentTransform + Default>(
-        &mut self,
-    ) -> TransformRuleBuilder<'_> {
-        self.document_transforms.add::<T>()
+    /// Register a transform.
+    pub fn add_transform<T: Transform + Default>(&mut self) -> TransformRuleBuilder<'_> {
+        self.transforms.add::<T>()
     }
 
-    /// Register an owned arena-backed document transform instance.
-    pub fn add_document_transform_instance<T: DocumentTransform>(
+    /// Register an owned transform instance.
+    pub fn add_transform_instance<T: Transform>(
         &mut self,
         transform: T,
     ) -> TransformRuleBuilder<'_> {
-        self.document_transforms.add_instance(transform)
+        self.transforms.add_instance(transform)
     }
 
     /// Run registered transforms again after manually editing a document.
     /// Parsing already runs this pipeline once automatically.
-    pub fn run_document_transforms(&self, document: &mut Document) {
-        self.document_transforms.run(document);
+    pub fn run_transforms(&self, document: &mut Document) {
+        self.transforms.run(document);
     }
 
     /// Register or replace a renderer for one payload type and output format.
-    pub fn add_document_renderer<T, R>(&mut self, format: impl Into<String>, renderer: R) -> bool
+    pub fn add_renderer<T, R>(&mut self, format: impl Into<String>, renderer: R) -> bool
     where
         T: NodeValue,
-        R: DocumentNodeRenderer<T>,
+        R: NodeRenderer<T>,
     {
-        self.document_renderers.add::<T, R>(format, renderer)
+        self.renderers.add::<T, R>(format, renderer)
     }
 
-    /// Render an arena-backed document directly with the renderers registered
+    /// Render a document with the renderers registered
     /// for `format`.
     ///
     /// The built-in format keys are `"html"`, `"text"`, and `"debug"`.
@@ -189,31 +183,31 @@ impl MarkdownIt {
     /// # Panics
     ///
     /// Panics if a leaf node has no renderer registered for `format`.
-    pub fn render_document_as(&self, document: &Document, format: &str) -> String {
-        self.document_renderers
+    pub fn render_as(&self, document: &Document, format: &str) -> String {
+        self.renderers
             .render(document, format, &self.render_options)
     }
 
-    /// Render an arena-backed document directly as HTML.
+    /// Render a document as HTML.
     ///
     /// # Panics
     ///
     /// Panics if a leaf node has no `"html"` renderer.
-    pub fn render_document(&self, document: &Document) -> String {
-        self.render_document_as(document, "html")
+    pub fn render_html(&self, document: &Document) -> String {
+        self.render_as(document, "html")
     }
 
     /// Parse `src`, apply postprocessing, and render HTML using
     /// [`MarkdownIt::render_options`].
     pub fn render(&self, src: &str) -> String {
-        self.render_document(&self.parse_document(src))
+        self.render_html(&self.parse(src))
     }
 
     /// Register a new core rule for type `T`, returning a builder to
     /// position it relative to other rules (before/after/alias/...).
-    pub fn add_rule<T: CoreRule>(&mut self) -> RuleBuilder<'_, DocumentCoreRule> {
-        self.document_parse_plan.take();
-        let item = self.ruler.add(RuleMark::of::<T>(), T::document_rule());
+    pub fn add_rule<T: CoreRule>(&mut self) -> RuleBuilder<'_, CoreStage> {
+        self.parse_plan.take();
+        let item = self.ruler.add(RuleMark::of::<T>(), T::stage());
         for name in T::NAMES {
             item.alias(RuleMark::named(*name));
         }
@@ -227,7 +221,7 @@ impl MarkdownIt {
 
     /// Remove the rule of type `T` from the ruler.
     pub fn remove_rule<T: CoreRule>(&mut self) {
-        self.document_parse_plan.take();
+        self.parse_plan.take();
         self.ruler.remove(RuleMark::of::<T>());
     }
 

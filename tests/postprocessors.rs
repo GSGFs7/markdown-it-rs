@@ -15,7 +15,7 @@ fn sourcepos_runs_after_tasklist_in_reverse_registration_order() {
     sourcepos::add(&mut md);
     extra::tasklist::add(&mut md);
     md.render_options.xhtml_out = true;
-    let doc = md.parse_document("- [x] 雪");
+    let doc = md.parse("- [x] 雪");
     let text = doc
         .events(doc.root())
         .find_map(|event| {
@@ -29,13 +29,13 @@ fn sourcepos_runs_after_tasklist_in_reverse_registration_order() {
         })
         .unwrap();
     assert_eq!(text.srcmap().unwrap().get_byte_offsets(), (6, 9));
-    let html = md.render_document(&doc);
+    let html = md.render_html(&doc);
     assert!(
         html.contains("type=\"checkbox\" checked=\"\" /> 雪"),
         "{html}"
     );
     assert!(html.contains("data-sourcepos=\"1:1-1:7\""), "{html}");
-    assert_eq!(md.render_document_as(&doc, "text"), "雪\n");
+    assert_eq!(md.render_as(&doc, "text"), "雪\n");
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn sourcepos_deduplicates_existing_attributes_and_skips_generated_nodes() {
     }));
     root.push_child(heading);
     let mut doc = Document::from_draft(source, root);
-    md.run_document_transforms(&mut doc);
+    md.run_transforms(&mut doc);
     let heading = doc.node(doc.children(doc.root())[0]);
     assert_eq!(
         heading.attrs(),
@@ -105,7 +105,7 @@ fn draft_drop_and_arena_insertion_handle_deep_generated_trees() {
 #[test]
 fn appended_subtrees_keep_parent_links_and_existing_node_ids() {
     let md = MarkdownIt::new();
-    let mut doc = md.parse_document("first");
+    let mut doc = md.parse("first");
     let root = doc.root();
     let first = doc.children(root)[0];
     let appended = doc.append_child(
@@ -116,7 +116,7 @@ fn appended_subtrees_keep_parent_links_and_existing_node_ids() {
     );
     assert_eq!(doc.children(root), &[first, appended]);
     assert_eq!(doc.parent(appended), Some(root));
-    assert_eq!(md.render_document(&doc), "<p>first</p>\nsecond");
+    assert_eq!(md.render_html(&doc), "<p>first</p>\nsecond");
 }
 
 #[test]

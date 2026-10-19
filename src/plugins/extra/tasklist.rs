@@ -3,7 +3,7 @@
 use crate::MarkdownIt;
 use crate::common::sourcemap::SourcePos;
 use crate::document::edit::EditBatch;
-use crate::document::transform::DocumentTransform;
+use crate::document::transform::Transform;
 use crate::document::{
     Document,
     HtmlAttributes,
@@ -19,10 +19,10 @@ use crate::plugins::cmark::block::paragraph::Paragraph;
 // --- pub method ---
 
 pub fn add(md: &mut MarkdownIt) {
-    md.add_document_renderer::<TaskListMarker, _>("html", TaskListMarkerRenderer);
-    md.add_document_renderer::<TaskListMarker, _>("text", crate::render::EmptyDocumentRenderer);
-    md.add_document_transform::<TaskListDocumentTransform>()
-        .before::<crate::plugins::sourcepos::SourcePosDocumentTransform>();
+    md.add_renderer::<TaskListMarker, _>("html", TaskListMarkerRenderer);
+    md.add_renderer::<TaskListMarker, _>("text", crate::render::EmptyRenderer);
+    md.add_transform::<TaskListTransform>()
+        .before::<crate::plugins::sourcepos::SourcePosTransform>();
 }
 
 #[derive(Debug)]
@@ -68,11 +68,11 @@ struct TaskItemPlan {
     source_map: Option<SourcePos>,
 }
 
-/// Arena-backed task-list transform.
+/// Task-list transform.
 #[derive(Debug, Default)]
-pub struct TaskListDocumentTransform;
+pub struct TaskListTransform;
 
-impl DocumentTransform for TaskListDocumentTransform {
+impl Transform for TaskListTransform {
     const KEY: &'static str = "extra::tasklist";
     const ALIASES: &'static [&'static str] = &["tasklist", "task_list"];
 
@@ -194,13 +194,13 @@ fn merged_class(attrs: &HtmlAttributes, class: &str) -> String {
 
 // render a checkbox `<input type="checkbox" ... />`
 struct TaskListMarkerRenderer;
-impl crate::DocumentNodeRenderer<TaskListMarker> for TaskListMarkerRenderer {
+impl crate::NodeRenderer<TaskListMarker> for TaskListMarkerRenderer {
     fn render(
         &self,
         _: crate::NodeRef<'_>,
         marker: &TaskListMarker,
-        context: &mut crate::DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut crate::RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         let mut attrs = vec![
             ("class".into(), "task-list-item-checkbox".into()),

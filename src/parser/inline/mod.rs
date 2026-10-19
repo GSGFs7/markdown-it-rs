@@ -10,14 +10,14 @@ use std::sync::OnceLock;
 
 use self::builtin::skip_text::TextScannerImpl;
 pub use self::rule::*;
-pub use self::state::DocumentInlineState;
+pub use self::state::InlineState;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
 
-pub(crate) type InlineCheckFn = fn(&mut DocumentInlineState<'_>) -> Option<usize>;
+pub(crate) type InlineCheckFn = fn(&mut InlineState<'_>) -> Option<usize>;
 // TODO: some nested some??
 pub(crate) type InlineRuleFn =
-    fn(&mut crate::DocumentInlineState<'_>) -> Option<(Option<crate::NodeId>, usize)>;
+    fn(&mut crate::InlineState<'_>) -> Option<(Option<crate::NodeId>, usize)>;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct InlineRuleFns {
@@ -47,15 +47,15 @@ fn inline_rule_fns<T: InlineRule>() -> InlineRuleFns {
 #[derive(Clone, Copy)]
 #[doc(hidden)]
 pub struct RuleEntry {
-    document: InlineRuleFns,
-    document_finalize: Option<DocumentFinalizeFn>,
+    fns: InlineRuleFns,
+    finalize: Option<InlineFinalizeFn>,
 }
 
 #[derive(Debug)]
-pub(crate) struct DocumentRuleSet {
+pub(crate) struct RuleSet {
     pub(crate) runs: Vec<InlineRuleFns>,
     pub(crate) checks: Vec<InlineRuleFns>,
-    pub(crate) finalizers: Vec<DocumentFinalizeFn>,
+    pub(crate) finalizers: Vec<InlineFinalizeFn>,
 }
 
 /// Inline-level tokenizer.
@@ -64,7 +64,7 @@ pub struct InlineParser {
     ruler: Ruler<RuleMark, RuleEntry>,
     text_charmap: HashMap<char, Vec<RuleMark>>,
     text_impl: OnceLock<TextScannerImpl>,
-    document_rules: OnceLock<DocumentRuleSet>,
+    rules: OnceLock<RuleSet>,
 }
 
 impl InlineParser {
@@ -72,13 +72,13 @@ impl InlineParser {
         Self::default()
     }
 
-    pub(crate) fn document_rules(&self) -> &DocumentRuleSet {
-        self.document_rules.get_or_init(|| {
-            let entries: Vec<_> = self.ruler.iter().map(|entry| entry.document).collect();
-            DocumentRuleSet {
+    pub(crate) fn rules(&self) -> &RuleSet {
+        self.rules.get_or_init(|| {
+            let entries: Vec<_> = self.ruler.iter().map(|entry| entry.fns).collect();
+            RuleSet {
                 runs: entries.clone(),
                 checks: entries,
-                finalizers: self.document_finalizers(),
+                finalizers: self.finalizers(),
             }
         })
     }
@@ -89,9 +89,9 @@ impl InlineParser {
 
     fn add_rule_entry<T: InlineRule>(
         &mut self,
-        finalize: Option<DocumentFinalizeFn>,
+        finalize: Option<InlineFinalizeFn>,
     ) -> &mut crate::common::ruler::RuleItem<RuleMark, RuleEntry> {
-        self.document_rules.take();
+        self.rules.take();
         if T::MARKER != '\0' {
             self.text_impl = OnceLock::new();
             self.text_charmap
@@ -102,8 +102,8 @@ impl InlineParser {
         let item = self.ruler.add(
             RuleMark::of::<T>(),
             RuleEntry {
-                document: inline_rule_fns::<T>(),
-                document_finalize: finalize,
+                fns: inline_rule_fns::<T>(),
+                finalize,
             },
         );
         for name in T::NAMES {
@@ -121,7 +121,7 @@ impl InlineParser {
     /// Shared callbacks execute once, in rule order.
     pub fn add_rule_with_finalize<T: InlineRule>(
         &mut self,
-        finalize: DocumentFinalizeFn,
+        finalize: InlineFinalizeFn,
     ) -> RuleBuilder<'_, RuleEntry> {
         RuleBuilder::new(self.add_rule_entry::<T>(Some(finalize)))
     }
@@ -131,7 +131,7 @@ impl InlineParser {
     }
 
     pub fn remove_rule<T: InlineRule>(&mut self) {
-        self.document_rules.take();
+        self.rules.take();
         if T::MARKER != '\0' {
             self.text_impl = OnceLock::new();
             let mut marks = self.text_charmap.remove(&T::MARKER).unwrap_or_default();
@@ -143,10 +143,10 @@ impl InlineParser {
         self.ruler.remove(RuleMark::of::<T>());
     }
 
-    fn document_finalizers(&self) -> Vec<DocumentFinalizeFn> {
-        let mut result: Vec<DocumentFinalizeFn> = Vec::new();
+    fn finalizers(&self) -> Vec<InlineFinalizeFn> {
+        let mut result: Vec<InlineFinalizeFn> = Vec::new();
         for entry in self.ruler.iter() {
-            if let Some(finalize) = entry.document_finalize {
+            if let Some(finalize) = entry.finalize {
                 if !result
                     .iter()
                     .any(|existing| *existing as usize == finalize as usize)

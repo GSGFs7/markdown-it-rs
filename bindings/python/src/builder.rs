@@ -30,7 +30,7 @@ pub(crate) fn build(
     let _ = (syntax_theme, syntax_classed);
 
     let mut inner = MarkdownIt::empty();
-    inner.add_document_renderer::<markdown_it::plugins::html::html_inline::HtmlInline, _>(
+    inner.add_renderer::<markdown_it::plugins::html::html_inline::HtmlInline, _>(
         "html",
         RawHtmlRenderer,
     );
@@ -82,15 +82,15 @@ pub(crate) fn build(
 }
 
 struct RawHtmlRenderer;
-impl markdown_it::DocumentNodeRenderer<markdown_it::plugins::html::html_inline::HtmlInline>
+impl markdown_it::NodeRenderer<markdown_it::plugins::html::html_inline::HtmlInline>
     for RawHtmlRenderer
 {
     fn render(
         &self,
         _: markdown_it::NodeRef<'_>,
         value: &markdown_it::plugins::html::html_inline::HtmlInline,
-        _: &mut markdown_it::DocumentRenderContext<'_>,
-        output: &mut markdown_it::DocumentWriter,
+        _: &mut markdown_it::RenderContext<'_>,
+        output: &mut markdown_it::Writer,
     ) {
         output.write_str(&value.content);
     }

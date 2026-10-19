@@ -29,7 +29,7 @@ fn assert_within_budget(start: Instant, phase: &str, input_len: usize) {
 #[track_caller]
 fn run(src: &str) {
     let start = Instant::now();
-    let ast = MD.parse_document(src);
+    let ast = MD.parse(src);
     black_box(&ast);
     assert_within_budget(start, "parse", src.len());
 }
@@ -438,14 +438,14 @@ mod markdownit_rs {
         let src = "*a*\n".repeat(lines);
 
         let start = Instant::now();
-        let document = md.parse_document(&src);
+        let document = md.parse(&src);
         black_box(&document);
         assert_within_budget(start, "parse deferred inline siblings", src.len());
         assert_eq!(document.children(document.root()).len(), lines * 2);
         assert_eq!(document.len(), lines * 3 + 1);
 
         let start = Instant::now();
-        let output = md.render_document(&document);
+        let output = md.render_html(&document);
         black_box(&output);
         assert_within_budget(start, "render deferred inline siblings", src.len());
         assert_eq!(output, "<em>a</em>\n".repeat(lines));

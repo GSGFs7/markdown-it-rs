@@ -265,7 +265,7 @@ impl Document {
         let mut root = None;
         while let Some((parent, link_to_parent, draft)) = pending.pop() {
             let (children, data) = draft.into_parts();
-            let id = self.arena.insert_with(|id| super::node::DocumentNode {
+            let id = self.arena.insert_with(|id| super::node::Node {
                 id,
                 parent,
                 children: Vec::with_capacity(children.len()),

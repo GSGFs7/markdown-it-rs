@@ -6,7 +6,7 @@
 use crate::MarkdownIt;
 use crate::document::NodeValue;
 use crate::parser::inline::helpers::emph_pair;
-use crate::render::{HtmlInlineElementDocumentRenderer, TransparentDocumentRenderer};
+use crate::render::{HtmlInlineElementRenderer, TransparentRenderer};
 
 #[derive(Debug)]
 pub struct Em {
@@ -31,8 +31,8 @@ pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'_', 2, false>(md, |document| {
         document.create_node(Strong { marker: '_' })
     });
-    md.add_document_renderer::<Em, _>("html", HtmlInlineElementDocumentRenderer("em"));
-    md.add_document_renderer::<Strong, _>("html", HtmlInlineElementDocumentRenderer("strong"));
-    md.add_document_renderer::<Em, _>("text", TransparentDocumentRenderer);
-    md.add_document_renderer::<Strong, _>("text", TransparentDocumentRenderer);
+    md.add_renderer::<Em, _>("html", HtmlInlineElementRenderer("em"));
+    md.add_renderer::<Strong, _>("html", HtmlInlineElementRenderer("strong"));
+    md.add_renderer::<Em, _>("text", TransparentRenderer);
+    md.add_renderer::<Strong, _>("text", TransparentRenderer);
 }

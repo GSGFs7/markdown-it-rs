@@ -5,8 +5,8 @@ fn title_example() {
     let parser = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(parser);
 
-    let ast = parser.parse_document("Hello **world**!");
-    let html = parser.render_document(&ast);
+    let ast = parser.parse("Hello **world**!");
+    let html = parser.render_html(&ast);
 
     assert_eq!(html, "<p>Hello <strong>world</strong>!</p>\n");
 }
@@ -19,8 +19,8 @@ fn lazy_singleton() {
         parser
     });
 
-    let ast = MD.parse_document("Hello **world**!");
-    let html = MD.render_document(&ast);
+    let ast = MD.parse("Hello **world**!");
+    let html = MD.render_html(&ast);
 
     assert_eq!(html, "<p>Hello <strong>world</strong>!</p>\n");
 }
@@ -28,8 +28,8 @@ fn lazy_singleton() {
 #[test]
 fn no_plugins() {
     let md = &mut markdown_it::MarkdownIt::empty();
-    let node = md.parse_document("hello\nworld");
-    let result = md.render_document(&node);
+    let node = md.parse("hello\nworld");
+    let result = md.render_html(&node);
     assert_eq!(result, "hello\nworld\n");
 }
 
@@ -39,8 +39,8 @@ fn no_max_indent() {
     markdown_it::plugins::cmark::block::paragraph::add(md);
     markdown_it::plugins::cmark::block::list::add(md);
     md.max_indent = i32::MAX;
-    let node = md.parse_document("        paragraph\n      - item");
-    let result = md.render_document(&node);
+    let node = md.parse("        paragraph\n      - item");
+    let result = md.render_html(&node);
     assert_eq!(result, "<p>paragraph</p>\n<ul>\n<li>item</li>\n</ul>\n");
 }
 
@@ -49,8 +49,8 @@ fn no_block_parser() {
     let md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(md);
     md.remove_rule::<markdown_it::parser::block::builtin::BlockParserRule>();
-    let node = md.parse_document("hello *world*");
-    let result = md.render_document(&node);
+    let node = md.parse("hello *world*");
+    let result = md.render_html(&node);
     assert_eq!(result, "hello <em>world</em>");
 }*/
 
@@ -64,11 +64,11 @@ fn run(input: &str, output: &str) {
     markdown_it::plugins::cmark::add(md);
     markdown_it::plugins::html::add(md);
     markdown_it::plugins::extra::beautify_links::add(md);
-    let node = md.parse_document(&(input.to_owned() + "\n"));
+    let node = md.parse(&(input.to_owned() + "\n"));
     for event in node.events(node.root()) {
         assert!(event.node().srcmap().is_some());
     }
-    let result = md.render_document(&node);
+    let result = md.render_html(&node);
     assert_eq!(result, output);
 }
 
@@ -140,9 +140,9 @@ mod markdown_it_rs_extras {
     #[test]
     fn test_node_ext_propagation() {
         use markdown_it::parser::block::BlockRule;
-        use markdown_it::parser::core::{CoreRule, DocumentCoreRule};
+        use markdown_it::parser::core::{CoreRule, CoreStage};
         use markdown_it::parser::inline::InlineRule;
-        use markdown_it::{DocumentBlockState, DocumentInlineState, MarkdownIt, NodeId, Text};
+        use markdown_it::{BlockState, InlineState, MarkdownIt, NodeId, Text};
 
         #[derive(Debug, Default)]
         struct NodeErrors(Vec<&'static str>);
@@ -150,7 +150,7 @@ mod markdown_it_rs_extras {
         impl InlineRule for MyInlineRule {
             const MARKER: char = '@';
 
-            fn run(state: &mut DocumentInlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+            fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
                 if !state.remaining().starts_with('@') {
                     return None;
                 }
@@ -169,7 +169,7 @@ mod markdown_it_rs_extras {
 
         struct MyBlockRule;
         impl BlockRule for MyBlockRule {
-            fn run(state: &mut DocumentBlockState) -> Option<(Option<NodeId>, usize)> {
+            fn run(state: &mut BlockState) -> Option<(Option<NodeId>, usize)> {
                 let err = state
                     .document
                     .node_mut(state.node)
@@ -182,8 +182,8 @@ mod markdown_it_rs_extras {
 
         struct MyCoreRule;
         impl CoreRule for MyCoreRule {
-            fn document_rule() -> DocumentCoreRule {
-                DocumentCoreRule::FinalizeDocument(|root, _| {
+            fn stage() -> CoreStage {
+                CoreStage::Finalize(|root, _| {
                     root.node_mut(root.root())
                         .ext_mut()
                         .get_or_insert_default::<NodeErrors>()
@@ -200,7 +200,7 @@ mod markdown_it_rs_extras {
         md.add_rule::<MyCoreRule>().after_all();
 
         let text1 = r#"*hello @world*"#;
-        let ast = md.parse_document(text1);
+        let ast = md.parse(text1);
         let mut collected: Vec<&str> = vec![];
 
         for event in ast.events(ast.root()) {
@@ -217,7 +217,7 @@ mod markdown_it_rs_extras {
 
         let mut direct_md = MarkdownIt::empty();
         direct_md.inline.add_rule::<MyInlineRule>();
-        let document = direct_md.parse_document("@");
+        let document = direct_md.parse("@");
         let collected: Vec<_> = document
             .events(document.root())
             .filter_map(|event| event.node().ext().get::<NodeErrors>())

@@ -1,5 +1,5 @@
-use super::block::DocumentBlockState;
-use super::inline::DocumentInlineState;
+use super::block::BlockState;
+use super::inline::InlineState;
 
 #[inline]
 pub(super) fn inline_range(source: &str, start: usize, end: usize) {
@@ -9,9 +9,9 @@ pub(super) fn inline_range(source: &str, start: usize, end: usize) {
 
 #[inline]
 pub(super) fn check_block(
-    state: &mut DocumentBlockState<'_>,
+    state: &mut BlockState<'_>,
     _index: usize,
-    check: fn(&mut DocumentBlockState<'_>) -> Option<()>,
+    check: fn(&mut BlockState<'_>) -> Option<()>,
 ) -> Option<()> {
     let before = BlockCheckSnapshot::capture(state);
     let matched = check(state);
@@ -25,9 +25,9 @@ pub(super) fn check_block(
 
 #[inline]
 pub(super) fn check_inline(
-    state: &mut DocumentInlineState<'_>,
+    state: &mut InlineState<'_>,
     index: usize,
-    check: fn(&mut DocumentInlineState<'_>) -> Option<usize>,
+    check: fn(&mut InlineState<'_>) -> Option<usize>,
 ) -> Option<usize> {
     let before = InlineCheckSnapshot::capture(state);
     let matched = check(state);
@@ -55,7 +55,7 @@ struct InlineCheckSnapshot {
 }
 
 impl InlineCheckSnapshot {
-    fn capture(state: &DocumentInlineState<'_>) -> Self {
+    fn capture(state: &InlineState<'_>) -> Self {
         Self {
             pos: state.pos,
             pos_max: state.pos_max,
@@ -83,7 +83,7 @@ struct BlockCheckSnapshot {
 }
 
 impl BlockCheckSnapshot {
-    fn capture(state: &DocumentBlockState<'_>) -> Self {
+    fn capture(state: &BlockState<'_>) -> Self {
         Self {
             cursor: (
                 state.line,
@@ -121,8 +121,8 @@ mod tests {
     fn inline_check_rejects_cursor_mutation_even_on_no_match() {
         let mut document = crate::Document::new("", crate::Root::new(""));
         let md = MarkdownIt::empty();
-        let ruleset = md.inline.document_rules();
-        let mut state = DocumentInlineState::new(&mut document, "xy", 0, 2, &md, ruleset, 0, 0);
+        let ruleset = md.inline.rules();
+        let mut state = InlineState::new(&mut document, "xy", 0, 2, &md, ruleset, 0, 0);
         check_inline(&mut state, 0, |state| {
             state.pos += 1;
             None
@@ -134,8 +134,8 @@ mod tests {
     fn inline_check_rejects_node_mutation() {
         let mut document = crate::Document::new("", crate::Root::new(""));
         let md = MarkdownIt::empty();
-        let ruleset = md.inline.document_rules();
-        let mut state = DocumentInlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
+        let ruleset = md.inline.rules();
+        let mut state = InlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
         check_inline(&mut state, 0, |state| {
             let node = state.document.create_node(Text {
                 content: "bad".into(),
@@ -150,8 +150,8 @@ mod tests {
     fn inline_check_rejects_detached_allocation_on_no_match() {
         let mut document = crate::Document::new("", Root::new(""));
         let md = MarkdownIt::empty();
-        let ruleset = md.inline.document_rules();
-        let mut state = DocumentInlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
+        let ruleset = md.inline.rules();
+        let mut state = InlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
         check_inline(&mut state, 0, |state| {
             state.document.create_node(Text {
                 content: "leaked".into(),
@@ -165,8 +165,8 @@ mod tests {
     fn inline_check_rejects_payload_mutation_through_id() {
         let mut document = crate::Document::new("", Root::new(""));
         let md = MarkdownIt::empty();
-        let ruleset = md.inline.document_rules();
-        let mut state = DocumentInlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
+        let ruleset = md.inline.rules();
+        let mut state = InlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
         let text = state.document.create_node(Text {
             content: "kept".into(),
         });
@@ -188,7 +188,7 @@ mod tests {
     fn block_check_rejects_state_mutation_even_on_no_match() {
         let md = MarkdownIt::empty();
         let source = "hello";
-        let mut state = DocumentBlockState::new(
+        let mut state = BlockState::new(
             source,
             &md,
             &[],

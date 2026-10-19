@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use markdown_it::{Document, HtmlAttribute, MarkdownIt};
 
 fn parser() -> MarkdownIt {
@@ -19,7 +19,7 @@ fn document_with_attrs(md: &MarkdownIt, attrs: &[HtmlAttribute]) -> Document {
     }));
     root.push_child(paragraph);
     let document = Document::from_draft("text", root);
-    md.render_document(&document);
+    md.render_html(&document);
     document
 }
 
@@ -55,10 +55,10 @@ fn benchmark(c: &mut Criterion) {
 
     for (name, attrs) in cases {
         let document = document_with_attrs(&md, &attrs);
-        let mut group = c.benchmark_group(format!("document-attrs/{name}"));
+        let mut group = c.benchmark_group(format!("attrs/{name}"));
         group.throughput(Throughput::Elements(attrs.len() as u64));
-        group.bench_function("arena-direct", |b| {
-            b.iter(|| black_box(md.render_document(black_box(&document))))
+        group.bench_function("markdown-it-rs", |b| {
+            b.iter(|| black_box(md.render_html(black_box(&document))))
         });
         group.finish();
     }

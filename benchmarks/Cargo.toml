@@ -54,18 +54,18 @@ path = "benches/document.rs"
 harness = false
 
 [[bench]]
-name = "document_parse"
-path = "benches/document_parse.rs"
+name = "parse"
+path = "benches/parse.rs"
 harness = false
 
 [[bench]]
-name = "document_render"
-path = "benches/document_render.rs"
+name = "render"
+path = "benches/render.rs"
 harness = false
 
 [[bench]]
-name = "document_attrs"
-path = "benches/document_attrs.rs"
+name = "attrs"
+path = "benches/attrs.rs"
 harness = false
 
 [workspace]

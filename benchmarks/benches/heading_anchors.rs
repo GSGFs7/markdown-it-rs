@@ -6,7 +6,7 @@ use markdown_it::{Document, MarkdownIt};
 use markdown_it_benchmarks::corpus;
 
 fn transform_registered(document: &mut Document, md: &MarkdownIt) {
-    md.run_document_transforms(document);
+    md.run_transforms(document);
 }
 
 fn parser() -> MarkdownIt {
@@ -34,8 +34,8 @@ fn heading_heavy() -> String {
 fn benchmark(c: &mut Criterion) {
     let mut parser = parser();
     parser.ext.insert(HeadingAnchorsOptions::default());
-    let mut document_transforms = MarkdownIt::empty();
-    heading_anchors::add(&mut document_transforms);
+    let mut transforms = MarkdownIt::empty();
+    heading_anchors::add(&mut transforms);
     let standard = corpus::standard();
     let heading_heavy = heading_heavy();
 
@@ -48,9 +48,9 @@ fn benchmark(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(source.len() as u64));
         group.bench_function("document-registry", |b| {
             b.iter_batched(
-                || parser.parse_document(source),
+                || parser.parse(source),
                 |mut document| {
-                    transform_registered(black_box(&mut document), black_box(&document_transforms));
+                    transform_registered(black_box(&mut document), black_box(&transforms));
                     black_box(document);
                 },
                 BatchSize::SmallInput,

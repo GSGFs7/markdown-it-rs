@@ -2,7 +2,7 @@
 use crate::MarkdownIt;
 use crate::document::NodeValue;
 use crate::parser::inline::helpers::emph_pair;
-use crate::render::{HtmlInlineElementDocumentRenderer, TransparentDocumentRenderer};
+use crate::render::{HtmlInlineElementRenderer, TransparentRenderer};
 
 #[derive(Debug)]
 pub struct Strikethrough {
@@ -15,6 +15,6 @@ pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'~', 2, true>(md, |document| {
         document.create_node(Strikethrough { marker: '~' })
     });
-    md.add_document_renderer::<Strikethrough, _>("html", HtmlInlineElementDocumentRenderer("s"));
-    md.add_document_renderer::<Strikethrough, _>("text", TransparentDocumentRenderer);
+    md.add_renderer::<Strikethrough, _>("html", HtmlInlineElementRenderer("s"));
+    md.add_renderer::<Strikethrough, _>("text", TransparentRenderer);
 }

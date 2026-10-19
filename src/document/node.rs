@@ -7,18 +7,18 @@ use crate::common::sourcemap::SourcePos;
 use crate::document::{HtmlAttributes, NodeEmpty, NodeValue};
 
 /// Borrowed view of a node produced by a structural traversal.
-pub type NodeRef<'a> = &'a DocumentNode;
+pub type NodeRef<'a> = &'a Node;
 
-/// Data for one arena-backed document node.
+/// Data for one document node.
 #[derive(Debug)]
-pub struct DocumentNode {
+pub struct Node {
     pub(super) id: NodeId,
     pub(super) parent: Option<NodeId>,
     pub(super) children: Vec<NodeId>,
     pub(super) data: NodeData,
 }
 
-impl DocumentNode {
+impl Node {
     pub fn id(&self) -> NodeId {
         self.id
     }

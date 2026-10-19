@@ -5,12 +5,12 @@
 //! <https://spec.commonmark.org/0.30/#atx-heading>
 use crate::MarkdownIt;
 use crate::document::{NodeId, NodeRef, NodeValue};
-use crate::parser::block::{BlockRule, DocumentBlockState};
+use crate::parser::block::{BlockRule, BlockState};
 use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    HtmlBlockElementDocumentRenderer,
-    PlainTextBlockDocumentRenderer,
+    HtmlBlockElementRenderer,
+    NodeRenderer,
+    PlainTextBlockRenderer,
+    RenderContext,
 };
 
 #[derive(Debug)]
@@ -18,21 +18,21 @@ pub struct ATXHeading {
     pub level: u8,
 }
 
-struct ATXHeadingDocumentRenderer;
+struct ATXHeadingRenderer;
 
-impl DocumentNodeRenderer<ATXHeading> for ATXHeadingDocumentRenderer {
+impl NodeRenderer<ATXHeading> for ATXHeadingRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         heading: &ATXHeading,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         static TAG: [&str; 6] = ["h1", "h2", "h3", "h4", "h5", "h6"];
         debug_assert!((1..=6).contains(&heading.level));
         let tag = TAG[heading.level as usize - 1];
 
-        HtmlBlockElementDocumentRenderer(tag).render(node, heading, context, output);
+        HtmlBlockElementRenderer(tag).render(node, heading, context, output);
     }
 }
 
@@ -40,8 +40,8 @@ impl NodeValue for ATXHeading {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HeadingScanner>();
-    md.add_document_renderer::<ATXHeading, _>("html", ATXHeadingDocumentRenderer);
-    md.add_document_renderer::<ATXHeading, _>("text", PlainTextBlockDocumentRenderer);
+    md.add_renderer::<ATXHeading, _>("html", ATXHeadingRenderer);
+    md.add_renderer::<ATXHeading, _>("text", PlainTextBlockRenderer);
 }
 
 #[doc(hidden)]
@@ -103,7 +103,7 @@ impl BlockRule for HeadingScanner {
     const MARKERS: &'static [char] = &['#'];
     const NAMES: &'static [&'static str] = &["heading"];
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         if state.line_indent(state.line) >= state.md.max_indent {
             return None;
         }

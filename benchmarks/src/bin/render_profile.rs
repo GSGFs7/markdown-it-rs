@@ -11,7 +11,7 @@ fn parser() -> MarkdownIt {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: document_render_profile <corpus> <arena-direct> [iterations]");
+    eprintln!("usage: render_profile <corpus> <markdown-it-rs> [iterations]");
     std::process::exit(2);
 }
 
@@ -35,10 +35,10 @@ fn main() {
     let source = corpus.source();
 
     match path.as_str() {
-        "arena-direct" => {
-            let document = md.parse_document(source);
+        "markdown-it-rs" => {
+            let document = md.parse(source);
             for _ in 0..iterations {
-                black_box(md.render_document(black_box(&document)));
+                black_box(md.render_html(black_box(&document)));
             }
         }
 

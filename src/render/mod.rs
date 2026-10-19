@@ -1,4 +1,4 @@
-//! Format-specific rendering for arena-backed documents.
+//! Format-specific rendering for documents.
 
 mod options;
 
@@ -15,8 +15,8 @@ use crate::common::typekey::TypeIdHasher;
 use crate::common::utils::escape_html;
 use crate::document::{
     Document,
-    DocumentNode,
     HtmlAttribute,
+    Node,
     NodeId,
     NodeRef,
     NodeValue,
@@ -30,8 +30,8 @@ use crate::document::{
 ///
 /// ```
 /// use markdown_it::{
-///     Document, DocumentNodeRenderer, DocumentRenderContext,
-///     DocumentWriter, MarkdownIt, NodeDraft, NodeRef, NodeValue,
+///     Document, NodeRenderer, RenderContext,
+///     Writer, MarkdownIt, NodeDraft, NodeRef, NodeValue,
 /// };
 ///
 /// #[derive(Debug)]
@@ -39,69 +39,56 @@ use crate::document::{
 /// impl NodeValue for Badge {}
 ///
 /// struct BadgeRenderer;
-/// impl DocumentNodeRenderer<Badge> for BadgeRenderer {
+/// impl NodeRenderer<Badge> for BadgeRenderer {
 ///     fn render(
 ///         &self,
 ///         _: NodeRef<'_>,
 ///         badge: &Badge,
-///         _: &mut DocumentRenderContext<'_>,
-///         output: &mut DocumentWriter,
+///         _: &mut RenderContext<'_>,
+///         output: &mut Writer,
 ///     ) {
 ///         output.write_str(badge.0);
 ///     }
 /// }
 ///
 /// let mut md = MarkdownIt::empty();
-/// md.add_document_renderer::<Badge, _>("html", BadgeRenderer);
+/// md.add_renderer::<Badge, _>("html", BadgeRenderer);
 /// let document = Document::from_draft("", NodeDraft::new(Badge("new")));
-/// assert_eq!(md.render_document(&document), "new");
+/// assert_eq!(md.render_html(&document), "new");
 /// ```
-pub trait DocumentNodeRenderer<T: NodeValue>: Send + Sync + 'static {
+pub trait NodeRenderer<T: NodeValue>: Send + Sync + 'static {
     fn render(
         &self,
         node: NodeRef<'_>,
         value: &T,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut Writer,
     );
 }
 
-trait ErasedDocumentNodeRenderer: Send + Sync {
-    fn render(
-        &self,
-        node: NodeRef<'_>,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
-    );
+trait ErasedNodeRenderer: Send + Sync {
+    fn render(&self, node: NodeRef<'_>, context: &mut RenderContext<'_>, output: &mut Writer);
 }
 
 // --- machinery ---
 
-type FormatRenderers = HashMap<
-    TypeId,
-    std::sync::Arc<dyn ErasedDocumentNodeRenderer>,
-    BuildHasherDefault<TypeIdHasher>,
->;
+type FormatRenderers =
+    HashMap<TypeId, std::sync::Arc<dyn ErasedNodeRenderer>, BuildHasherDefault<TypeIdHasher>>;
 
-struct TypedDocumentNodeRenderer<T, R> {
+struct TypedNodeRenderer<T, R> {
     renderer: R,
     marker: PhantomData<fn() -> T>,
 }
 
-impl<T, R> ErasedDocumentNodeRenderer for TypedDocumentNodeRenderer<T, R>
+impl<T, R> ErasedNodeRenderer for TypedNodeRenderer<T, R>
 where
     T: NodeValue,
-    R: DocumentNodeRenderer<T>,
+    R: NodeRenderer<T>,
 {
-    fn render(
-        &self,
-        node: NodeRef<'_>,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
-    ) {
+    fn render(&self, node: NodeRef<'_>, context: &mut RenderContext<'_>, output: &mut Writer) {
         let value = node
             .cast::<T>()
-            .expect("document renderer registry type and payload type must agree");
+            .expect("renderer registry type and payload type must agree");
         self.renderer.render(node, value, context, output);
     }
 }
@@ -113,13 +100,13 @@ where
 /// Adding the same pair again replaces the previous renderer and returns
 /// `true`. This gives applications an explicit override mechanism.
 #[derive(Default, Clone)]
-pub struct DocumentRendererRegistry {
+pub struct RendererRegistry {
     formats: HashMap<String, FormatRenderers>,
 }
 
-impl fmt::Debug for DocumentRendererRegistry {
+impl fmt::Debug for RendererRegistry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DocumentRendererRegistry")
+        f.debug_struct("RendererRegistry")
             .field("formats", &self.formats.len())
             .field(
                 "renderers",
@@ -129,7 +116,7 @@ impl fmt::Debug for DocumentRendererRegistry {
     }
 }
 
-impl DocumentRendererRegistry {
+impl RendererRegistry {
     pub fn new() -> Self {
         Self::default()
     }
@@ -138,14 +125,14 @@ impl DocumentRendererRegistry {
     pub fn add<T, R>(&mut self, format: impl Into<String>, renderer: R) -> bool
     where
         T: NodeValue,
-        R: DocumentNodeRenderer<T>,
+        R: NodeRenderer<T>,
     {
         self.formats
             .entry(format.into())
             .or_default()
             .insert(
                 TypeId::of::<T>(),
-                std::sync::Arc::new(TypedDocumentNodeRenderer::<T, R> {
+                std::sync::Arc::new(TypedNodeRenderer::<T, R> {
                     renderer,
                     marker: PhantomData,
                 }),
@@ -170,7 +157,7 @@ impl DocumentRendererRegistry {
         removed
     }
 
-    /// Render an arena-backed document.
+    /// Render a document.
     ///
     /// # Panics
     ///
@@ -188,7 +175,7 @@ impl DocumentRendererRegistry {
         options: &RenderOptions,
     ) -> String {
         let mut ext = RenderExtSet::new();
-        let mut output = DocumentWriter::new();
+        let mut output = Writer::new();
         let shared = RenderShared {
             document,
             renderers: self.formats.get(format),
@@ -209,18 +196,18 @@ struct RenderShared<'a> {
     options: &'a RenderOptions,
 }
 
-/// Output buffer supplied to [`DocumentNodeRenderer`] implementations.
+/// Output buffer supplied to [`NodeRenderer`] implementations.
 ///
 /// The inherent [`write_str`](Self::write_str), [`write_char`](Self::write_char),
 /// and [`write_fmt`](Self::write_fmt) methods return `()` and panic on a
 /// formatting error. The type also implements [`fmt::Write`], whose methods
 /// return [`fmt::Result`], for interoperability with generic code.
 #[derive(Debug, Default)]
-pub struct DocumentWriter {
+pub struct Writer {
     output: String,
 }
 
-impl DocumentWriter {
+impl Writer {
     fn new() -> Self {
         Self::default()
     }
@@ -268,7 +255,7 @@ impl DocumentWriter {
     }
 }
 
-impl fmt::Write for DocumentWriter {
+impl fmt::Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.output.push_str(s);
         Ok(())
@@ -276,12 +263,12 @@ impl fmt::Write for DocumentWriter {
 }
 
 /// Recursive services shared by node renderers for one render operation.
-pub struct DocumentRenderContext<'a> {
+pub struct RenderContext<'a> {
     shared: &'a RenderShared<'a>,
     ext: &'a mut RenderExtSet,
 }
 
-impl<'a> DocumentRenderContext<'a> {
+impl<'a> RenderContext<'a> {
     /// The document being rendered.
     pub fn document(&self) -> &'a Document {
         self.shared.document
@@ -303,7 +290,7 @@ impl<'a> DocumentRenderContext<'a> {
     }
 
     /// Write one line ending unless the output is already at the start of a line.
-    pub fn cr(&mut self, output: &mut DocumentWriter) {
+    pub fn cr(&mut self, output: &mut Writer) {
         output.cr();
     }
 
@@ -314,7 +301,7 @@ impl<'a> DocumentRenderContext<'a> {
     /// Panics if `node` is not a valid [`NodeId`] in this document, if a leaf
     /// has no renderer for the active format, or if a renderer or formatting
     /// implementation panics.
-    pub fn render_node(&mut self, node: NodeId, output: &mut DocumentWriter) {
+    pub fn render_node(&mut self, node: NodeId, output: &mut Writer) {
         render_node(self.shared, self.ext, node, output);
     }
 
@@ -325,7 +312,7 @@ impl<'a> DocumentRenderContext<'a> {
     /// Panics if `node` is not a valid [`NodeId`] in this document, if a leaf
     /// descendant has no renderer for the active format, or if a renderer or
     /// formatting implementation panics.
-    pub fn render_children(&mut self, node: NodeId, output: &mut DocumentWriter) {
+    pub fn render_children(&mut self, node: NodeId, output: &mut Writer) {
         for &child in self.shared.document.children(node) {
             stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
                 render_node(self.shared, self.ext, child, output);
@@ -335,12 +322,7 @@ impl<'a> DocumentRenderContext<'a> {
 }
 
 // recursive rendering nodes
-fn render_node(
-    shared: &RenderShared<'_>,
-    ext: &mut RenderExtSet,
-    id: NodeId,
-    output: &mut DocumentWriter,
-) {
+fn render_node(shared: &RenderShared<'_>, ext: &mut RenderExtSet, id: NodeId, output: &mut Writer) {
     let node = shared.document.node(id);
     let Some(renderer) = shared
         .renderers
@@ -365,99 +347,62 @@ fn render_node(
     };
 
     // render the shell (<h1>,<em>,...)
-    let mut context = DocumentRenderContext { shared, ext };
+    let mut context = RenderContext { shared, ext };
     renderer.render(node, &mut context, output);
 }
 
 // --- builtin renderers ---
 
-pub(crate) struct TransparentDocumentRenderer;
+pub(crate) struct TransparentRenderer;
 
-impl<T: NodeValue> DocumentNodeRenderer<T> for TransparentDocumentRenderer {
-    fn render(
-        &self,
-        node: &DocumentNode,
-        _: &T,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
-    ) {
+impl<T: NodeValue> NodeRenderer<T> for TransparentRenderer {
+    fn render(&self, node: &Node, _: &T, context: &mut RenderContext<'_>, output: &mut Writer) {
         context.render_children(node.id(), output);
     }
 }
 
-pub(crate) struct EmptyDocumentRenderer;
+pub(crate) struct EmptyRenderer;
 
-impl<T: NodeValue> DocumentNodeRenderer<T> for EmptyDocumentRenderer {
-    fn render(
-        &self,
-        _: &DocumentNode,
-        _: &T,
-        _: &mut DocumentRenderContext<'_>,
-        _: &mut DocumentWriter,
-    ) {
-    }
+impl<T: NodeValue> NodeRenderer<T> for EmptyRenderer {
+    fn render(&self, _: &Node, _: &T, _: &mut RenderContext<'_>, _: &mut Writer) {}
 }
 
-pub(crate) struct HtmlTextDocumentRenderer;
+pub(crate) struct HtmlTextRenderer;
 
-impl<T> DocumentNodeRenderer<T> for HtmlTextDocumentRenderer
+impl<T> NodeRenderer<T> for HtmlTextRenderer
 where
     T: NodeValue + AsRef<str>,
 {
-    fn render(
-        &self,
-        _: &DocumentNode,
-        value: &T,
-        _: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
-    ) {
+    fn render(&self, _: &Node, value: &T, _: &mut RenderContext<'_>, output: &mut Writer) {
         output.write_escaped_html(value.as_ref());
     }
 }
 
-pub(crate) struct PlainTextDocumentRenderer;
+pub(crate) struct PlainTextRenderer;
 
-impl<T> DocumentNodeRenderer<T> for PlainTextDocumentRenderer
+impl<T> NodeRenderer<T> for PlainTextRenderer
 where
     T: NodeValue + AsRef<str>,
 {
-    fn render(
-        &self,
-        _: &DocumentNode,
-        value: &T,
-        _: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
-    ) {
+    fn render(&self, _: &Node, value: &T, _: &mut RenderContext<'_>, output: &mut Writer) {
         output.write_str(value.as_ref());
     }
 }
 
-pub(crate) struct PlainTextBlockDocumentRenderer;
+pub(crate) struct PlainTextBlockRenderer;
 
-impl<T: NodeValue> DocumentNodeRenderer<T> for PlainTextBlockDocumentRenderer {
-    fn render(
-        &self,
-        node: &DocumentNode,
-        _: &T,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
-    ) {
+impl<T: NodeValue> NodeRenderer<T> for PlainTextBlockRenderer {
+    fn render(&self, node: &Node, _: &T, context: &mut RenderContext<'_>, output: &mut Writer) {
         context.cr(output);
         context.render_children(node.id(), output);
         context.cr(output);
     }
 }
 
-pub(crate) struct PlainTextBreakDocumentRenderer;
+pub(crate) struct PlainTextBreakRenderer;
 
-impl<T: NodeValue> DocumentNodeRenderer<T> for PlainTextBreakDocumentRenderer {
-    fn render(
-        &self,
-        _: &DocumentNode,
-        _: &T,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
-    ) {
+impl<T: NodeValue> NodeRenderer<T> for PlainTextBreakRenderer {
+    fn render(&self, _: &Node, _: &T, context: &mut RenderContext<'_>, output: &mut Writer) {
         context.cr(output);
     }
 }
@@ -466,22 +411,16 @@ impl<T: NodeValue> DocumentNodeRenderer<T> for PlainTextBreakDocumentRenderer {
 ///
 /// It owns the complete structural traversal so custom descendant payloads do
 /// not need a per-type `"debug"` registration.
-pub(crate) struct DebugTreeDocumentRenderer;
+pub(crate) struct DebugTreeRenderer;
 
-impl DocumentNodeRenderer<Root> for DebugTreeDocumentRenderer {
+impl NodeRenderer<Root> for DebugTreeRenderer {
     // in "# heading *em*" it like:
     // container type=markdown_it::document::root::Root id=NodeId(0:0) srcmap=0..14 attrs=[]
     //   container type=markdown_it::plugins::cmark::block::heading::ATXHeading id=NodeId(1:0) srcmap=0..14 attrs=[]
     //     leaf type=markdown_it::document::text::Text id=NodeId(2:0) srcmap=2..10 attrs=[]
     //       container type=markdown_it::plugins::cmark::inline::emphasis::Em id=NodeId(3:0) srcmap=10..14 attrs=[]
     //         leaf type=markdown_it::document::text::Text id=NodeId(11..13)
-    fn render(
-        &self,
-        node: &DocumentNode,
-        _: &Root,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
-    ) {
+    fn render(&self, node: &Node, _: &Root, context: &mut RenderContext<'_>, output: &mut Writer) {
         let mut depth = 0;
         for event in context.document().events(node.id()) {
             let (kind, current) = match event {
@@ -517,32 +456,20 @@ impl DocumentNodeRenderer<Root> for DebugTreeDocumentRenderer {
     }
 }
 
-pub(crate) struct HtmlInlineElementDocumentRenderer(pub(crate) &'static str);
+pub(crate) struct HtmlInlineElementRenderer(pub(crate) &'static str);
 
-impl<T: NodeValue> DocumentNodeRenderer<T> for HtmlInlineElementDocumentRenderer {
-    fn render(
-        &self,
-        node: &DocumentNode,
-        _: &T,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
-    ) {
+impl<T: NodeValue> NodeRenderer<T> for HtmlInlineElementRenderer {
+    fn render(&self, node: &Node, _: &T, context: &mut RenderContext<'_>, output: &mut Writer) {
         write_html_open(output, self.0, node.attrs());
         context.render_children(node.id(), output);
         write_html_close(output, self.0);
     }
 }
 
-pub(crate) struct HtmlBlockElementDocumentRenderer(pub(crate) &'static str);
+pub(crate) struct HtmlBlockElementRenderer(pub(crate) &'static str);
 
-impl<T: NodeValue> DocumentNodeRenderer<T> for HtmlBlockElementDocumentRenderer {
-    fn render(
-        &self,
-        node: &DocumentNode,
-        _: &T,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut DocumentWriter,
-    ) {
+impl<T: NodeValue> NodeRenderer<T> for HtmlBlockElementRenderer {
+    fn render(&self, node: &Node, _: &T, context: &mut RenderContext<'_>, output: &mut Writer) {
         context.cr(output);
         write_html_open(output, self.0, node.attrs());
         context.render_children(node.id(), output);
@@ -555,8 +482,8 @@ pub(crate) fn render_html_link(
     node: NodeRef<'_>,
     url: &str,
     title: Option<&str>,
-    context: &mut DocumentRenderContext<'_>,
-    output: &mut DocumentWriter,
+    context: &mut RenderContext<'_>,
+    output: &mut Writer,
 ) {
     let mut attrs = node.attrs().clone();
     attrs.push(("href".into(), url.to_owned()));
@@ -568,7 +495,7 @@ pub(crate) fn render_html_link(
     write_html_close(output, "a");
 }
 
-pub(crate) fn write_html_attrs(output: &mut DocumentWriter, attrs: &[HtmlAttribute]) {
+pub(crate) fn write_html_attrs(output: &mut Writer, attrs: &[HtmlAttribute]) {
     const LINEAR_SCAN_LIMIT: usize = 8;
 
     // small list, using linear scan. avoid hashmap overhead.
@@ -605,7 +532,7 @@ pub(crate) fn write_html_attrs(output: &mut DocumentWriter, attrs: &[HtmlAttribu
 }
 
 fn write_html_attr_group<'a>(
-    output: &mut DocumentWriter,
+    output: &mut Writer,
     name: &str,
     values: impl Iterator<Item = &'a str>,
 ) {
@@ -632,21 +559,21 @@ fn write_html_attr_group<'a>(
     }
 }
 
-pub(crate) fn write_html_open(output: &mut DocumentWriter, tag: &str, attrs: &[HtmlAttribute]) {
+pub(crate) fn write_html_open(output: &mut Writer, tag: &str, attrs: &[HtmlAttribute]) {
     output.write_char('<');
     output.write_str(tag);
     write_html_attrs(output, attrs);
     output.write_char('>');
 }
 
-pub(crate) fn write_html_close(output: &mut DocumentWriter, tag: &str) {
+pub(crate) fn write_html_close(output: &mut Writer, tag: &str) {
     output.write_str("</");
     output.write_str(tag);
     output.write_char('>');
 }
 
 pub(crate) fn write_html_self_close(
-    output: &mut DocumentWriter,
+    output: &mut Writer,
     tag: &str,
     attrs: &[HtmlAttribute],
     xhtml: bool,
@@ -660,7 +587,7 @@ pub(crate) fn write_html_self_close(
     output.write_char('>');
 }
 
-pub(crate) fn write_html_text(output: &mut DocumentWriter, value: &str) {
+pub(crate) fn write_html_text(output: &mut Writer, value: &str) {
     output.write_escaped_html(value);
 }
 

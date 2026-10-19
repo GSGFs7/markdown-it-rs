@@ -1,12 +1,12 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use markdown_it::plugins::sourcepos::{self, SourcePosDocumentTransform};
-use markdown_it::{Document, DocumentTransform, EditBatch, MarkdownIt, StructuralEvent};
+use markdown_it::plugins::sourcepos::{self, SourcePosTransform};
+use markdown_it::{Document, EditBatch, MarkdownIt, StructuralEvent, Transform};
 use markdown_it_benchmarks::corpus;
 
 fn transform_registered(document: &mut Document, md: &MarkdownIt) {
-    md.run_document_transforms(document);
+    md.run_transforms(document);
 }
 
 fn parser() -> MarkdownIt {
@@ -18,9 +18,9 @@ fn parser() -> MarkdownIt {
 
 fn benchmark(c: &mut Criterion) {
     let parser = parser();
-    let transform = SourcePosDocumentTransform;
-    let mut document_transforms = MarkdownIt::empty();
-    sourcepos::add(&mut document_transforms);
+    let transform = SourcePosTransform;
+    let mut transforms = MarkdownIt::empty();
+    sourcepos::add(&mut transforms);
     let standard = corpus::standard();
 
     for corpus in standard {
@@ -30,16 +30,16 @@ fn benchmark(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(source.len() as u64));
         group.bench_function("document-registry", |b| {
             b.iter_batched(
-                || parser.parse_document(source),
+                || parser.parse(source),
                 |mut document| {
-                    transform_registered(black_box(&mut document), black_box(&document_transforms));
+                    transform_registered(black_box(&mut document), black_box(&transforms));
                     black_box(document);
                 },
                 BatchSize::SmallInput,
             )
         });
         group.bench_function("document-build-edits", |b| {
-            let document = parser.parse_document(source);
+            let document = parser.parse(source);
             // Diagnostic phase only: its timing includes dropping the
             // uncommitted batch, so it is not additive with document-commit.
             b.iter(|| black_box(transform.run(black_box(&document))))
@@ -47,7 +47,7 @@ fn benchmark(c: &mut Criterion) {
         group.bench_function("document-commit", |b| {
             b.iter_batched(
                 || {
-                    let document = parser.parse_document(source);
+                    let document = parser.parse(source);
                     let edits = transform.run(&document);
                     (document, edits)
                 },
@@ -89,7 +89,7 @@ fn attribute_commit_input(
     source: &str,
     reversed: bool,
 ) -> (Document, EditBatch) {
-    let document = parser.parse_document(source);
+    let document = parser.parse(source);
     let mut nodes: Vec<_> = document
         .events(document.root())
         .filter_map(|event| match event {

@@ -5,13 +5,8 @@
 //! <https://spec.commonmark.org/0.30/#thematic-breaks>
 use crate::MarkdownIt;
 use crate::document::{NodeId, NodeRef, NodeValue};
-use crate::parser::block::{BlockRule, DocumentBlockState};
-use crate::render::{
-    DocumentNodeRenderer,
-    DocumentRenderContext,
-    PlainTextBreakDocumentRenderer,
-    write_html_self_close,
-};
+use crate::parser::block::{BlockRule, BlockState};
+use crate::render::{NodeRenderer, PlainTextBreakRenderer, RenderContext, write_html_self_close};
 
 #[derive(Debug)]
 pub struct ThematicBreak {
@@ -19,15 +14,15 @@ pub struct ThematicBreak {
     pub marker_len: usize,
 }
 
-struct ThematicBreakDocumentRenderer;
+struct ThematicBreakRenderer;
 
-impl DocumentNodeRenderer<ThematicBreak> for ThematicBreakDocumentRenderer {
+impl NodeRenderer<ThematicBreak> for ThematicBreakRenderer {
     fn render(
         &self,
         node: NodeRef<'_>,
         _: &ThematicBreak,
-        context: &mut DocumentRenderContext<'_>,
-        output: &mut crate::DocumentWriter,
+        context: &mut RenderContext<'_>,
+        output: &mut crate::Writer,
     ) {
         context.cr(output);
         write_html_self_close(output, "hr", node.attrs(), context.options().xhtml_out);
@@ -39,8 +34,8 @@ impl NodeValue for ThematicBreak {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HrScanner>();
-    md.add_document_renderer::<ThematicBreak, _>("html", ThematicBreakDocumentRenderer);
-    md.add_document_renderer::<ThematicBreak, _>("text", PlainTextBreakDocumentRenderer);
+    md.add_renderer::<ThematicBreak, _>("html", ThematicBreakRenderer);
+    md.add_renderer::<ThematicBreak, _>("text", PlainTextBreakRenderer);
 }
 
 #[doc(hidden)]
@@ -80,7 +75,7 @@ impl BlockRule for HrScanner {
     const MARKERS: &'static [char] = &['*', '-', '_'];
     const NAMES: &'static [&'static str] = &["hr"];
 
-    fn run(state: &mut DocumentBlockState<'_>) -> Option<(Option<NodeId>, usize)> {
+    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         let (marker, marker_len) = scan_thematic_break(
             state.get_line(state.line),
             state.line_indent(state.line),
