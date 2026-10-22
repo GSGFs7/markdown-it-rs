@@ -28,6 +28,8 @@ jobs:
       CARGO_NET_RETRY: "3"
       CARGO_TARGET_DIR: ${{ github.workspace }}/benchmark-target
       REPORT_DIR: ${{ github.workspace }}/benchmark-report
+      # Include this project and its internal parse benchmarks only.
+      BENCHMARK_FILTER: '(/markdown-it-rs$|^parse/(lifecycle|deferred-inline-siblings)/)'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -51,8 +53,6 @@ jobs:
           {
             printf '# Performance regression report\n\n'
             printf 'Baseline commit: %s\n\nCurrent commit: %s\n\n' "$baseline" "$current"
-            printf 'Both revisions run sequentially on the same runner. Timing changes are advisory.\n\n'
-            printf 'Each revision uses its own benchmark harness and lockfile; changes to either can affect comparisons.\n\n'
           } > "$REPORT_DIR/summary.md"
           {
             rustup --version
@@ -88,6 +88,7 @@ jobs:
         run: >-
           cargo bench --manifest-path benchmarks/Cargo.toml --locked
           --bench throughput --bench parse --
+          "$BENCHMARK_FILTER"
           --noplot --sample-size 30 --warm-up-time 1 --measurement-time 2
 
       - name: Benchmark current revision
@@ -99,6 +100,7 @@ jobs:
         run: >-
           cargo bench --manifest-path benchmarks/Cargo.toml --locked
           --bench throughput --bench parse --
+          "$BENCHMARK_FILTER"
           --noplot --sample-size 30 --warm-up-time 1 --measurement-time 2
 
       - name: Generate reports

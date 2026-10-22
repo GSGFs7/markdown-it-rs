@@ -53,6 +53,12 @@ def compare_report(baseline: dict, current: dict) -> str:
             f"Changed input size/throughput: {len(changed)} (excluded)."
         ),
         "",
+        (
+            "Time change = (Current / Baseline - 1) × 100%. "
+            "Positive (+) means more time taken (slower); "
+            "negative (-) means less time taken (faster). Lower times are better."
+        ),
+        "",
         "| Benchmark | Baseline | Current | Time change |",
         "| --- | ---: | ---: | ---: |",
     ]

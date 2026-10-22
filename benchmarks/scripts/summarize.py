@@ -252,9 +252,7 @@ def csv_report(results: list[Result], baseline_engine: str) -> str:
         )
     )
     for result in results:
-        baseline = baselines.get(
-            (result.configuration, result.corpus, result.phase)
-        )
+        baseline = baselines.get((result.configuration, result.corpus, result.phase))
         writer.writerow(
             (
                 result.corpus,
