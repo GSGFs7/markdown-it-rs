@@ -1,16 +1,15 @@
 use crate::document::NodeId;
 use crate::parser::inline::InlineState;
 
-pub type InlineFinalizeFn = for<'a> fn(&mut crate::parser::inline::InlineState<'a>);
-
 /// An inline-level syntax rule.
 ///
 /// Implement this trait to add a new inline construct (emphasis, code span,
 /// link, ...) to an [`InlineParser`](crate::parser::inline::InlineParser).
 /// Register it with
-/// [`InlineParser::add_rule`](crate::parser::inline::InlineParser::add_rule)
-/// (or `add_rule_with_finalize`), then use the returned [`RuleBuilder`] to
-/// position it relative to the built-in rules.
+/// [`InlineParser::add_rule`](crate::parser::inline::InlineParser::add_rule),
+/// then use the returned [`RuleBuilder`] to position it relative to the built-in rules.
+/// Document-level transformations belong in a [`CoreRule`](crate::parser::core::CoreRule)
+/// ordered after [`InlineParserRule`](crate::parser::inline::builtin::InlineParserRule).
 ///
 /// Implement [`run`](InlineRule::run) to match the construct and add nodes to
 /// the document. Override [`check`](InlineRule::check) only if the default does

@@ -34,7 +34,6 @@ impl<'a> InlineState<'a> {
             nodes: Vec::new(),
             document,
             pending_text: None,
-            needs_finalization: false,
         }
     }
 }
@@ -75,12 +74,7 @@ fn panic_run(_: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
 }
 
 #[derive(Debug, Default)]
-struct FinalizerCalls(usize);
-
-fn count_finalizer(state: &mut InlineState<'_>) {
-    assert!(state.pending_text.is_none());
-    state.inline_ext.get_or_insert_default::<FinalizerCalls>().0 += 1;
-}
+struct SessionScratch(usize);
 
 fn parent_state<'a>(
     document: &'a mut Document,
@@ -88,7 +82,7 @@ fn parent_state<'a>(
     ruleset: &'a RuleSet,
 ) -> InlineState<'a> {
     let mut inline_ext = InlineRootExtSet::new();
-    inline_ext.insert(FinalizerCalls(41));
+    inline_ext.insert(SessionScratch(41));
     InlineState {
         src: Cow::Owned("前{ 雪\n次 }尾".to_owned()),
         pos: 3,
@@ -107,7 +101,6 @@ fn parent_state<'a>(
         })],
         document,
         pending_text: Some((0, 3)),
-        needs_finalization: false,
     }
 }
 
@@ -134,7 +127,6 @@ fn check_state<'a>(
         nodes: vec![],
         document,
         pending_text: None,
-        needs_finalization: false,
     }
 }
 
@@ -174,7 +166,6 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
-        finalizers: vec![count_finalizer],
     };
     let mut state = InlineState {
         src: Cow::Owned("前x雪尾".to_owned()),
@@ -194,7 +185,6 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
         })],
         document: &mut document,
         pending_text: Some((4, 7)),
-        needs_finalization: false,
     };
 
     state.finish_nodes();
@@ -216,19 +206,18 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
     #[cfg(feature = "sourcemap")]
     assert_eq!(
         state.document.node(state.nodes[1]).srcmap(),
-        Some(SourcePos::new(14, 17))
+        Some(crate::common::sourcemap::SourcePos::new(14, 17))
     );
-    assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 1);
+    assert!(state.inline_ext.get::<SessionScratch>().is_none());
 }
 
 #[test]
-fn top_level_plain_text_still_skips_finalizers() {
+fn top_level_plain_text_finishes_without_temporary_markers() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
-        finalizers: vec![|_| panic!("plain pending text must skip finalizers")],
     };
     let nodes = InlineState::parse(
         &mut document,
@@ -244,106 +233,10 @@ fn top_level_plain_text_still_skips_finalizers() {
         "plain"
     );
     #[cfg(feature = "sourcemap")]
-    assert_eq!(document.node(nodes[0]).srcmap(), Some(SourcePos::new(1, 6)));
-}
-
-#[test]
-fn text_only_rules_can_request_finalization_in_top_level_and_child_sessions() {
-    let mut document = Document::new("", crate::Root::new(""));
-    let md = MarkdownIt::empty();
-    let ruleset = RuleSet {
-        runs: vec![run_rule(|state| {
-            let end = state.pos_max;
-            state.push_text(state.pos, end);
-            state.request_finalization();
-            state.request_finalization();
-            assert!(state.nodes.is_empty());
-            Some((None, end - state.pos))
-        })],
-        checks: vec![],
-        finalizers: vec![|state| {
-            assert!(state.inline_ext.get::<FinalizerCalls>().is_none());
-            count_finalizer(state);
-            assert_eq!(state.nodes.len(), 1);
-            state
-                .document
-                .node_mut(state.nodes[0])
-                .cast_mut::<Text>()
-                .unwrap()
-                .content
-                .push('!');
-        }],
-    };
-    let top = InlineState::parse(
-        &mut document,
-        " 雪plain ".to_owned(),
-        test_mapping(&[(0, 10)]),
-        &md,
-        &ruleset,
-        None,
-    );
-    assert_eq!(top.len(), 1);
     assert_eq!(
-        document.node(top[0]).cast::<Text>().unwrap().content,
-        "雪plain!"
+        document.node(nodes[0]).srcmap(),
+        Some(crate::common::sourcemap::SourcePos::new(1, 6))
     );
-    #[cfg(feature = "sourcemap")]
-    assert_eq!(document.node(top[0]).srcmap(), Some(SourcePos::new(11, 19)));
-
-    let mut parent = check_state(&mut document, &md, &ruleset, "[雪plain]");
-    for _ in 0..2 {
-        let child = parent.parse_subrange(1..9).unwrap();
-        assert_eq!(child.len(), 1);
-        assert_eq!(
-            parent
-                .document
-                .node(child[0])
-                .cast::<Text>()
-                .unwrap()
-                .content,
-            "雪plain!"
-        );
-        #[cfg(feature = "sourcemap")]
-        assert_eq!(
-            parent.document.node(child[0]).srcmap(),
-            Some(SourcePos::new(1, 9))
-        );
-        assert!(!parent.needs_finalization);
-        assert!(parent.inline_ext.get::<FinalizerCalls>().is_none());
-        assert!(parent.nodes.is_empty());
-        assert!(parent.pending_text.is_none());
-        assert_eq!((parent.pos, parent.pos_max), (0, 10));
-    }
-}
-
-#[test]
-fn child_session_does_not_inherit_parent_finalization_request() {
-    let mut document = Document::new("", crate::Root::new(""));
-    let md = MarkdownIt::empty();
-    let ruleset = RuleSet {
-        runs: vec![],
-        checks: vec![],
-        finalizers: vec![|_| panic!("child without a request must skip finalizers")],
-    };
-    let mut parent = check_state(&mut document, &md, &ruleset, "[plain]");
-    parent.request_finalization();
-    let child = parent.parse_subrange(1..6).unwrap();
-    assert_eq!(child.len(), 1);
-    assert_eq!(
-        parent
-            .document
-            .node(child[0])
-            .cast::<Text>()
-            .unwrap()
-            .content,
-        "plain"
-    );
-    #[cfg(feature = "sourcemap")]
-    assert_eq!(
-        parent.document.node(child[0]).srcmap(),
-        Some(SourcePos::new(1, 6))
-    );
-    assert!(parent.needs_finalization);
 }
 
 #[test]
@@ -353,7 +246,6 @@ fn subrange_preserves_parent_whitespace_and_multiline_mapping() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
-        finalizers: vec![count_finalizer],
     };
     let mut state = parent_state(&mut document, &md, &ruleset);
     let nodes = state.parse_subrange(1..10).unwrap();
@@ -370,7 +262,7 @@ fn subrange_preserves_parent_whitespace_and_multiline_mapping() {
     #[cfg(feature = "sourcemap")]
     assert_eq!(
         state.document.node(nodes[0]).srcmap(),
-        Some(SourcePos::new(14, 34))
+        Some(crate::common::sourcemap::SourcePos::new(14, 34))
     );
     assert_eq!(state.src, "前{ 雪\n次 }尾");
     #[cfg(feature = "sourcemap")]
@@ -390,7 +282,7 @@ fn subrange_preserves_parent_whitespace_and_multiline_mapping() {
             .content,
         "sentinel"
     );
-    assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 41);
+    assert_eq!(state.inline_ext.get::<SessionScratch>().unwrap().0, 41);
 }
 
 #[test]
@@ -400,7 +292,6 @@ fn subrange_validates_ranges_and_empty_output() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
-        finalizers: vec![|_| panic!("empty/plain range")],
     };
     let mut state = parent_state(&mut document, &md, &ruleset);
     for range in [0..0, 11..11] {
@@ -411,58 +302,7 @@ fn subrange_validates_ranges_and_empty_output() {
         assert!(state.parse_subrange(range).is_none());
     }
     assert_eq!(state.pending_text, Some((0, 3)));
-    assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 41);
-}
-
-#[test]
-fn child_finalizer_sees_only_child_nodes_and_scratch() {
-    let mut document = Document::new("", crate::Root::new(""));
-    fn emit(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
-        assert_eq!(state.depth, 1);
-        assert_eq!(state.link_level, 2);
-        assert!(state.inline_ext.get::<FinalizerCalls>().is_none());
-        state.inline_ext.insert(FinalizerCalls(0));
-        let content = state.remaining().to_owned();
-        Some((
-            Some(state.document.create_node(Text { content })),
-            state.remaining().len(),
-        ))
-    }
-    fn finalize(state: &mut InlineState<'_>) {
-        assert!(state.pending_text.is_none());
-        assert_eq!(state.nodes.len(), 1);
-        assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 0);
-        state.inline_ext.get_mut::<FinalizerCalls>().unwrap().0 += 1;
-        state
-            .document
-            .node_mut(state.nodes[0])
-            .cast_mut::<Text>()
-            .unwrap()
-            .content
-            .push('!');
-        state.link_level = 99;
-    }
-    let md = MarkdownIt::empty();
-    let ruleset = RuleSet {
-        runs: vec![run_rule(emit)],
-        checks: vec![],
-        finalizers: vec![finalize],
-    };
-    let mut state = parent_state(&mut document, &md, &ruleset);
-    for _ in 0..2 {
-        let nodes = state.parse_subrange(1..10).unwrap();
-        assert_eq!(
-            state
-                .document
-                .node(nodes[0])
-                .cast::<Text>()
-                .unwrap()
-                .content,
-            " 雪\n次 !"
-        );
-    }
-    assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 41);
-    assert_eq!(state.link_level, 2);
+    assert_eq!(state.inline_ext.get::<SessionScratch>().unwrap().0, 41);
 }
 
 #[test]
@@ -473,7 +313,6 @@ fn subrange_at_nesting_limit_emits_literal_text() {
     let ruleset = RuleSet {
         runs: vec![run_rule(|_| panic!("nesting limit must skip rules"))],
         checks: vec![],
-        finalizers: vec![|_| panic!("literal text must skip finalizers")],
     };
     let mut state = parent_state(&mut document, &md, &ruleset);
     let nodes = state.parse_subrange(0..11).unwrap();
@@ -502,7 +341,6 @@ fn normal_parse_does_not_call_check() {
     let ruleset = RuleSet {
         runs: vec![run_rule(emit)],
         checks: vec![check_rule(|_| panic!("normal parsing must not call check"))],
-        finalizers: vec![],
     };
     let nodes = InlineState::parse(
         &mut document,
@@ -540,7 +378,6 @@ fn run_dispatch_skips_non_matching_markers() {
             run_rule(consume_all),
         ],
         checks: vec![],
-        finalizers: vec![],
     };
 
     for source in ["abc", "雪x"] {
@@ -587,7 +424,6 @@ fn run_dispatch_matches_unicode_marker() {
             run_rule(consume_all),
         ],
         checks: vec![],
-        finalizers: vec![],
     };
     let nodes = InlineState::parse(
         &mut document,
@@ -649,7 +485,6 @@ fn run_dispatch_preserves_wildcard_order() {
     let marker_first = RuleSet {
         runs: vec![run_rule_with_marker(consume_x, 'x'), run_rule(consume_all)],
         checks: vec![],
-        finalizers: vec![],
     };
     let nodes = InlineState::parse(
         &mut document,
@@ -667,7 +502,6 @@ fn run_dispatch_preserves_wildcard_order() {
     let wildcard_first = RuleSet {
         runs: vec![run_rule(consume_all), run_rule_with_marker(panic_run, 'x')],
         checks: vec![],
-        finalizers: vec![],
     };
     let nodes = InlineState::parse(
         &mut document,
@@ -706,7 +540,6 @@ fn check_advances_pending_text_between_tokens() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(check_sequence)],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "abc");
     let mut context = scan(&mut state, 0..3).unwrap();
@@ -729,7 +562,6 @@ fn check_stops_at_nesting_limit() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(|_| panic!("nesting limit must skip checks"))],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "abc");
     let mut context = scan(&mut state, 0..3).unwrap();
@@ -747,7 +579,6 @@ fn nesting_limit_decision_is_shared_with_shallower_scans() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(|_| panic!("cached cutoff must skip checks"))],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "前abc");
     {
@@ -771,7 +602,6 @@ fn nesting_limit_decisions_are_isolated_by_range_end() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
-        finalizers: vec![],
     };
     // Test both short-to-long and long-to-short reuse of the same source.
     for (truncated_end, other_end) in [(5, 7), (7, 5)] {
@@ -806,7 +636,6 @@ fn check_no_match_falls_through_to_lower_priority_rules() {
                 marker: 'x',
             },
         ],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "x");
     let mut context = scan(&mut state, 0..1).unwrap();
@@ -828,7 +657,6 @@ fn check_dispatch_skips_non_matching_markers() {
             check: |_| panic!("marker must filter check dispatch"),
             marker: 'y',
         }],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "x");
     let mut context = scan(&mut state, 0..1).unwrap();
@@ -846,7 +674,6 @@ fn check_rejects_zero_length() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(|_| Some(0))],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "x");
     let mut context = scan(&mut state, 0..1).unwrap();
@@ -862,7 +689,6 @@ fn check_rejects_out_of_bounds_length() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(|_| Some(2))],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "x");
     let mut context = scan(&mut state, 0..1).unwrap();
@@ -878,7 +704,6 @@ fn check_rejects_non_utf8_length() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![check_rule(|_| Some(1))],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "éx");
     let mut context = scan(&mut state, 0..3).unwrap();
@@ -892,7 +717,6 @@ fn child_state_validates_ranges_and_empty_output() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "éx");
 
@@ -919,7 +743,6 @@ fn child_state_keeps_parent_state() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
-        finalizers: vec![],
     };
     let mut state = parent_state(&mut document, &md, &ruleset);
     let before = check_parent_snapshot(&state);
@@ -938,7 +761,7 @@ fn child_state_keeps_parent_state() {
         (3, 14, 0, 2)
     );
     assert_eq!(state.nodes.len(), 1);
-    assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 41);
+    assert_eq!(state.inline_ext.get::<SessionScratch>().unwrap().0, 41);
     assert_eq!(check_parent_snapshot(&state), before);
 }
 
@@ -949,7 +772,7 @@ fn check_matches_and_no_matches_keep_scratch_and_effects_private() {
         assert_eq!(context.root_ext.unwrap().get::<u16>(), Some(&73));
         context
             .inline_ext
-            .get_or_insert_default::<FinalizerCalls>()
+            .get_or_insert_default::<SessionScratch>()
             .0 += 1;
         if context.remaining().starts_with('{') {
             {
@@ -968,7 +791,6 @@ fn check_matches_and_no_matches_keep_scratch_and_effects_private() {
     let ruleset = RuleSet {
         runs: vec![run_rule(panic_run)],
         checks: vec![check_rule(check)],
-        finalizers: vec![|_| panic!("check must not run finalizers")],
     };
     let mut root_ext = RootExtSet::new();
     root_ext.insert(73u16);
@@ -978,7 +800,7 @@ fn check_matches_and_no_matches_keep_scratch_and_effects_private() {
     state
         .document
         .node_mut(state.nodes[0])
-        .set_srcmap(Some(SourcePos::new(10, 13)));
+        .set_srcmap(Some(crate::common::sourcemap::SourcePos::new(10, 13)));
     state
         .document
         .node_mut(state.nodes[0])
@@ -1015,18 +837,18 @@ fn check_matches_and_no_matches_keep_scratch_and_effects_private() {
         assert!(context.inline_ext.is_empty());
         assert_eq!(context.skip_token().unwrap(), 1);
         assert_eq!(context.link_level, 3);
-        assert_eq!(context.inline_ext.get::<FinalizerCalls>().unwrap().0, 1);
+        assert_eq!(context.inline_ext.get::<SessionScratch>().unwrap().0, 1);
 
         let scan_end = context.remaining().len();
         let mut child = scan(&mut context, 0..scan_end).unwrap();
         assert!(child.inline_ext.is_empty());
         assert!(child.skip_token().is_some());
-        assert_eq!(child.inline_ext.get::<FinalizerCalls>().unwrap().0, 1);
-        assert_eq!(context.inline_ext.get::<FinalizerCalls>().unwrap().0, 1);
+        assert_eq!(child.inline_ext.get::<SessionScratch>().unwrap().0, 1);
+        assert_eq!(context.inline_ext.get::<SessionScratch>().unwrap().0, 1);
 
         while context.skip_token().is_some() {}
         assert_eq!(context.link_level, 3);
-        assert!(context.inline_ext.get::<FinalizerCalls>().unwrap().0 > 1);
+        assert!(context.inline_ext.get::<SessionScratch>().unwrap().0 > 1);
         assert_eq!(check_parent_snapshot(&state), before);
     }
 }
@@ -1038,7 +860,6 @@ fn recursive_check_validates_ranges_and_empty_suffixes() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "éx");
     let mut context = scan(&mut state, 0..3).unwrap();
@@ -1069,7 +890,6 @@ fn recursive_check_validates_ranges_and_empty_suffixes() {
             check: |_| None,
             marker: 'x',
         }],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &no_match, "x");
     let mut context = scan(&mut state, 0..1).unwrap();
@@ -1087,7 +907,6 @@ fn recursive_check_depth_limit_is_exact() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "xy");
 
@@ -1116,7 +935,6 @@ fn recursive_check_relative_ranges_keep_child_state_isolated() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "abcdef");
     let mut parent = scan(&mut state, 0..6).unwrap();
@@ -1215,7 +1033,6 @@ fn recursive_check_same_range_terminates_at_depth_limit() {
             check: same_range,
             marker: '#',
         }],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "#");
     let mut context = scan(&mut state, 0..1).unwrap();
@@ -1257,7 +1074,6 @@ fn recursive_check_long_chain_is_linear_and_stack_safe() {
             check: nested,
             marker: '^',
         }],
-        finalizers: vec![],
     };
     let source = "^".repeat(CHAIN) + "x";
     let mut state = check_state(&mut document, &md, &ruleset, &source);
@@ -1287,7 +1103,6 @@ fn check_dispatch_keeps_wildcard_position() {
                 marker: 'x',
             },
         ],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "x");
     let mut context = scan(&mut state, 0..1).unwrap();
@@ -1331,7 +1146,6 @@ fn invalid_check_effect_panics_and_preserves_context() {
                 .expect("check link level overflow");
             Some(1)
         })],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "x");
     state.link_level = i32::MAX;
@@ -1543,7 +1357,7 @@ fn check_html_comment_cache_is_private_to_each_session() {
     crate::plugins::html::html_inline::add(&mut md);
     let ruleset = md.inline.rules();
     let mut state = check_state(&mut document, &md, ruleset, "<!-- [ -->");
-    state.inline_ext.insert(FinalizerCalls(41));
+    state.inline_ext.insert(SessionScratch(41));
     let node = state.document.create_node(Text {
         content: "sentinel".into(),
     });
@@ -1594,11 +1408,10 @@ fn invalid_check_length_panics_and_preserves_pending() {
                 marker: 'a',
             },
         ],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "aa");
     state.link_level = 2;
-    state.inline_ext.insert(FinalizerCalls(41));
+    state.inline_ext.insert(SessionScratch(41));
     let node = state.document.create_node(Text {
         content: "sentinel".into(),
     });
@@ -1633,7 +1446,6 @@ fn invalid_check_effect_underflow_panics_and_preserves_context() {
                 .expect("check link level overflow");
             Some(1)
         })],
-        finalizers: vec![],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "x");
     state.link_level = i32::MIN;
@@ -1736,8 +1548,8 @@ fn child_link_level_override_is_isolated() {
         let check = scan(state, 0..len).unwrap();
         assert_eq!(check.link_level, initial);
         assert_eq!(state.depth, 1);
-        assert!(state.inline_ext.get::<FinalizerCalls>().is_none());
-        state.inline_ext.insert(FinalizerCalls(0));
+        assert!(state.inline_ext.get::<SessionScratch>().is_none());
+        state.inline_ext.insert(SessionScratch(0));
         state.link_level = 99;
         Some((
             Some(state.document.create_node(Text {
@@ -1751,7 +1563,6 @@ fn child_link_level_override_is_isolated() {
     let ruleset = RuleSet {
         runs: vec![run_rule(emit)],
         checks: vec![],
-        finalizers: vec![count_finalizer],
     };
     let mut state = parent_state(&mut document, &md, &ruleset);
     // This fixture's parent link level is 2; range 1..10 excludes braces.
@@ -1787,7 +1598,7 @@ fn child_link_level_override_is_isolated() {
 
     assert_eq!((state.pos, state.pos_max, state.link_level), (3, 14, 2));
     assert_eq!(state.pending_text, Some((0, 3)));
-    assert_eq!(state.inline_ext.get::<FinalizerCalls>().unwrap().0, 41);
+    assert_eq!(state.inline_ext.get::<SessionScratch>().unwrap().0, 41);
     assert_eq!(state.nodes.len(), 1);
     assert_eq!(
         state
@@ -1808,7 +1619,6 @@ fn child_link_level_override_keeps_range_and_depth_rules() {
     let ruleset = RuleSet {
         runs: vec![run_rule(|_| panic!("depth limit must skip rules"))],
         checks: vec![],
-        finalizers: vec![|_| panic!("literal children must skip finalizers")],
     };
     let mut state = parent_state(&mut document, &md, &ruleset);
     assert!(state.parse_subrange_with_link_level(0..12, 3).is_none());

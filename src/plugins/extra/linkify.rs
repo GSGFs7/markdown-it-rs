@@ -8,13 +8,11 @@ use std::collections::HashMap;
 use linkify::{LinkKind, Linkify};
 
 use crate::MarkdownIt;
-#[cfg(feature = "sourcemap")]
-use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId, NodeRef, NodeValue, StructuralEvent, Text, TextSpecial};
 use crate::links::LinkFormatter;
 use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::builtin::InlineParserRule;
-use crate::parser::inline::{InlineRule, InlineState};
+use crate::parser::inline::{InlinePostprocessRanges, InlineRule, InlineState};
 use crate::plugins::html::anchor_delta;
 use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, render_html_link};
 
@@ -56,66 +54,62 @@ pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
     md.add_rule::<LinkifyPrescan>()
         .before::<InlineParserRule>()
         .before_all();
-    md.inline
-        .add_rule_with_finalize::<LinkifyScanner>(linkify_text);
+    md.add_rule::<LinkifyRule>()
+        .after::<InlineParserRule>()
+        .before_all();
+    md.inline.add_rule::<LinkifyScanner>();
     md.inline.add_rule::<LinkifyFuzzyScanner>();
     md.inline.add_rule::<LinkifyEmailScanner>();
     md.add_renderer::<Linkified, _>("html", LinkifiedRenderer);
     md.add_renderer::<Linkified, _>("text", TransparentRenderer);
 }
 
-// Second linkify pass, mirroring JS core linkify: match protocol-relative
-// URLs and emails after emphasis, and retry text hidden by an unmatched `<a>`
-// (which disables the inline scanners but does not protect text in JS).
-fn linkify_text(state: &mut InlineState<'_>) {
-    if state
-        .inline_ext
-        .contains::<crate::parser::inline::helpers::full_link::MarkdownLinkLabel>()
-    {
-        return;
+/// Document-level linkification after inline parsing and emphasis cleanup.
+#[derive(Default)]
+pub struct LinkifyRule;
+
+impl CoreRule for LinkifyRule {
+    const NAMES: &'static [&'static str] = &["linkify"];
+
+    fn run(&self, state: &mut CoreState<'_>) {
+        let document = &mut *state.document;
+        let ranges = document
+            .node_mut(document.root())
+            .ext_mut()
+            .remove::<InlinePostprocessRanges>()
+            .unwrap_or_default();
+        let fuzzy = state
+            .md
+            .ext
+            .get::<LinkifyOptions>()
+            .copied()
+            .unwrap_or_default()
+            .fuzzy_links;
+        for roots in ranges.0 {
+            let roots: Vec<_> = roots
+                .into_iter()
+                .filter(|&id| {
+                    document
+                        .get_node(id)
+                        .is_some_and(|node| node.parent().is_some())
+                })
+                .collect();
+            let events = collect_linkify_events(document, &roots);
+            let replacements = collect_linkify_replacements(
+                document,
+                &events,
+                state.md.link_formatter.as_ref(),
+                fuzzy,
+            );
+            apply_linkify_replacements(document, replacements);
+        }
     }
-
-    if state.link_level <= 0 && !state.src.contains("//") && !state.src.contains('@') {
-        return;
-    }
-
-    let (events, html_delta) = collect_linkify_events(state.document, state.nodes());
-
-    // Child sessions inside Markdown links inherit a positive link level.
-    // An HTML closing tag can lower the final level to zero even inside a
-    // Markdown link. Recover the inherited level before deciding to retry.
-    if state.link_level - html_delta > 0 {
-        return;
-    }
-    let retry_html = state.link_level > 0 && html_delta > 0;
-    let fuzzy = state
-        .md
-        .ext
-        .get::<LinkifyOptions>()
-        .copied()
-        .unwrap_or_default()
-        .fuzzy_links;
-
-    // JS gates on the original inline content first; e.g. `__//example.org__`
-    // fails the `_//` boundary even after emphasis strips the underscores.
-    if Linkify::new()
-        .links_with_fuzzy(&state.src, fuzzy)
-        .is_empty()
-    {
-        return;
-    }
-
-    let replacements = collect_linkify_replacements(
-        state.document,
-        &events,
-        state.md.link_formatter.as_ref(),
-        retry_html,
-        fuzzy,
-    );
-    apply_linkify_replacements(state, replacements);
 }
 
-fn collect_linkify_events(document: &Document, roots: &[NodeId]) -> (Vec<(NodeId, i32)>, i32) {
+#[derive(Debug)]
+struct LinkifyPositions(Vec<LinkifyPosition>);
+
+fn collect_linkify_events(document: &Document, roots: &[NodeId]) -> Vec<(NodeId, i32)> {
     use crate::plugins::cmark::inline::autolink::Autolink;
     use crate::plugins::cmark::inline::backticks::CodeInline;
     use crate::plugins::cmark::inline::image::Image;
@@ -124,7 +118,6 @@ fn collect_linkify_events(document: &Document, roots: &[NodeId]) -> (Vec<(NodeId
 
     let mut events = Vec::new();
     let mut protected_depth = 0;
-    let mut html_delta = 0;
     for &root in roots {
         for event in document.events(root) {
             let node = event.node();
@@ -138,9 +131,7 @@ fn collect_linkify_events(document: &Document, roots: &[NodeId]) -> (Vec<(NodeId
                 StructuralEvent::Exit(_) if protected => protected_depth -= 1,
                 StructuralEvent::Leaf(_) if protected_depth == 0 && !protected => {
                     if let Some(html) = node.cast::<HtmlInline>() {
-                        let delta = anchor_delta(&html.content);
-                        html_delta += delta;
-                        events.push((node.id(), delta));
+                        events.push((node.id(), anchor_delta(&html.content)));
                     } else {
                         events.push((node.id(), 0));
                     }
@@ -153,7 +144,7 @@ fn collect_linkify_events(document: &Document, roots: &[NodeId]) -> (Vec<(NodeId
         }
     }
 
-    (events, html_delta)
+    events
 }
 
 type LinkifyReplacements = HashMap<Option<NodeId>, HashMap<NodeId, Vec<NodeId>>>;
@@ -162,7 +153,6 @@ fn collect_linkify_replacements(
     document: &mut Document,
     events: &[(NodeId, i32)],
     formatter: &dyn LinkFormatter,
-    retry_html: bool,
     fuzzy: bool,
 ) -> LinkifyReplacements {
     let mut reverse_level = 0;
@@ -180,8 +170,7 @@ fn collect_linkify_replacements(
         }
 
         let previous = index.checked_sub(1).map(|index| events[index].0);
-        if let Some(nodes) = linkify_text_node(document, id, previous, formatter, retry_html, fuzzy)
-        {
+        if let Some(nodes) = linkify_text_node(document, id, previous, formatter, fuzzy) {
             replacements
                 .entry(document.parent(id))
                 .or_default()
@@ -196,7 +185,6 @@ fn linkify_text_node(
     id: NodeId,
     previous: Option<NodeId>,
     formatter: &dyn LinkFormatter,
-    retry_html: bool,
     fuzzy: bool,
 ) -> Option<Vec<NodeId>> {
     let text = document.node(id).cast::<Text>()?;
@@ -222,10 +210,6 @@ fn linkify_text_node(
         }
 
         let url = &content[found.start()..found.end()];
-        if !retry_html && found.kind() != LinkKind::Email && !url.starts_with("//") {
-            continue;
-        }
-
         let mode = if found.kind() == LinkKind::Email {
             LinkifyMode::Email
         } else if url.contains("://") {
@@ -285,18 +269,12 @@ fn linkify_text_node(
     Some(nodes)
 }
 
-fn apply_linkify_replacements(state: &mut InlineState<'_>, replacements: LinkifyReplacements) {
+fn apply_linkify_replacements(document: &mut Document, replacements: LinkifyReplacements) {
     for (parent, replacements) in replacements {
         if let Some(parent) = parent {
-            state
-                .document
-                .rewrite_children(parent, |document, children| {
-                    rebuild_linkified_children(document, children, replacements);
-                });
-        } else {
-            let mut children = std::mem::take(state.nodes_mut());
-            rebuild_linkified_children(state.document, &mut children, replacements);
-            *state.nodes_mut() = children;
+            document.rewrite_children(parent, |document, children| {
+                rebuild_linkified_children(document, children, replacements);
+            });
         }
     }
 }
@@ -323,23 +301,25 @@ fn rebuild_linkified_children(
 
 #[cfg(feature = "sourcemap")]
 fn text_range_map(
-    map: Option<SourcePos>,
+    map: Option<crate::common::sourcemap::SourcePos>,
     text_len: usize,
     start: usize,
     end: usize,
-) -> Option<SourcePos> {
+) -> Option<crate::common::sourcemap::SourcePos> {
     let (source_start, source_end) = map?.get_byte_offsets();
     // Multiline container prefixes can make the original span noncontiguous.
     // Only derive subranges when text and source offsets correspond directly.
     (source_end - source_start == text_len)
-        .then(|| SourcePos::new(source_start + start, source_start + end))
+        .then(|| crate::common::sourcemap::SourcePos::new(source_start + start, source_start + end))
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LinkifyEnabled;
+pub(crate) struct LinkifyEnabled {
+    postprocess: bool,
+}
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct LinkifyPosition {
+struct LinkifyPosition {
     start: usize,
     end: usize,
     email: bool,
@@ -352,8 +332,9 @@ impl CoreRule for LinkifyPrescan {
     const NAMES: &'static [&'static str] = &["linkify_prescan"];
 
     fn run(&self, state: &mut CoreState<'_>) {
-        // Gate the inline scanners; candidate positions are cached per inline source.
-        state.root_ext_mut().insert(LinkifyEnabled);
+        // Gate inline scanners; positions are cached per inline source.
+        let postprocess = state.md.has_rule::<LinkifyRule>();
+        state.root_ext_mut().insert(LinkifyEnabled { postprocess });
     }
 }
 
@@ -364,6 +345,11 @@ fn scan_positions(source: &str, md: &MarkdownIt) -> Vec<LinkifyPosition> {
         .copied()
         .unwrap_or_default()
         .fuzzy_links;
+    // Every supported link form needs one of these bytes. Check each inline
+    // source because core rules may synthesize new content.
+    if !fuzzy_links && memchr::memchr3(b':', b'@', b'/', source.as_bytes()).is_none() {
+        return Vec::new();
+    }
     Linkify::new()
         .links_with_fuzzy(source, fuzzy_links)
         .into_iter()
@@ -375,7 +361,7 @@ fn scan_positions(source: &str, md: &MarkdownIt) -> Vec<LinkifyPosition> {
         .collect()
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum LinkifyMode {
     /// URL with an explicit scheme (`http://example.com/path`).
     Scheme,
@@ -466,6 +452,7 @@ impl CandidateRange {
     }
 }
 
+#[derive(Debug, Clone)]
 struct PreparedLink {
     href: String,
     content: String,
@@ -476,16 +463,11 @@ struct CandidateInput<'a> {
     pos: usize,
     pos_max: usize,
     trailing: &'a str,
-    link_level: i32,
     source_start: usize,
     positions: &'a [LinkifyPosition],
 }
 
 fn scan_candidate(input: CandidateInput<'_>, mode: LinkifyMode) -> Option<CandidateRange> {
-    if input.link_level > 0 {
-        return None;
-    }
-
     let trailing = input.trailing;
     let (rewind, length) = if matches!(mode, LinkifyMode::Scheme) {
         if !input.src[input.pos..input.pos_max].starts_with("://") {
@@ -590,7 +572,7 @@ fn prepare_link(
 fn create_linkified(
     document: &mut Document,
     link: PreparedLink,
-    #[cfg(feature = "sourcemap")] map: Option<SourcePos>,
+    #[cfg(feature = "sourcemap")] map: Option<crate::common::sourcemap::SourcePos>,
 ) -> NodeId {
     let inner = document.create_node(TextSpecial {
         content: link.content.clone(),
@@ -610,56 +592,77 @@ fn run_candidate(
     state: &mut InlineState<'_>,
     mode: LinkifyMode,
 ) -> Option<(Option<NodeId>, usize)> {
-    // Require the LinkifyPrescan gate; candidate positions are local to this inline source.
-    state.root_ext?.get::<LinkifyEnabled>()?;
+    // Require the prescan gate; positions are local to this source.
+    let postprocess = state.root_ext?.get::<LinkifyEnabled>()?.postprocess;
+    if state.link_level > 0
+        && (!postprocess
+            || state
+                .inline_ext
+                .contains::<crate::parser::inline::helpers::full_link::MarkdownLinkLabel>())
+    {
+        return None;
+    }
 
-    let candidate = {
-        let mut cache = state.scan_limit_cache.borrow_mut();
-        // Scheme matching scans from the cursor; other modes share a cached prescan.
-        let positions = if matches!(mode, LinkifyMode::Scheme) {
+    let scheme = matches!(mode, LinkifyMode::Scheme);
+    let (has_candidates, candidate) = {
+        let mut cache = state.shared_ext();
+        // Scheme matching ignores prescan boundaries and needs no source-wide
+        // positions when there is no core pass.
+        let positions = if scheme && !postprocess {
             &[][..]
         } else {
             cache
-                .linkify_positions
-                .get_or_insert_with(|| scan_positions(&state.src, state.md))
+                .get_or_insert_with(|| LinkifyPositions(scan_positions(&state.src, state.md)))
+                .0
                 .as_slice()
         };
-        scan_candidate(
-            CandidateInput {
-                src: &state.src,
-                pos: state.pos,
-                pos_max: state.pos_max,
-                trailing: state.trailing_text(),
-                link_level: state.link_level,
-                source_start: state.pos,
-                positions,
-            },
-            mode,
-        )
-    }?;
+        if !scheme && positions.is_empty() {
+            return None;
+        }
+        let has_candidates = !positions.is_empty();
+        let candidate = if state.link_level > 0 {
+            None
+        } else {
+            scan_candidate(
+                CandidateInput {
+                    src: &state.src,
+                    pos: state.pos,
+                    pos_max: state.pos_max,
+                    trailing: state.trailing_text(),
+                    source_start: state.pos,
+                    positions,
+                },
+                mode,
+            )
+        };
+        (has_candidates, candidate)
+    };
 
-    if matches!(mode, LinkifyMode::Email) {
-        // JS only links emails in its core postpass. At `@` we cannot yet
-        // know whether a later `</a>` protects this text, and consuming the
-        // prescan span here could also swallow emphasis or code delimiters.
-        state.request_finalization();
-        return None;
-    }
-
-    if matches!(mode, LinkifyMode::Fuzzy)
-        && state.src[candidate.start..candidate.end].starts_with("//")
+    // Decide from the prescan even if this cursor did not match; core may
+    // retry text hidden by raw HTML anchors.
+    if postprocess
+        && has_candidates
+        && !state
+            .inline_ext
+            .contains::<crate::parser::inline::helpers::full_link::MarkdownLinkLabel>()
     {
-        // Defer to emphasis and the finalizer below. The flag keeps the
-        // finalizer running even when the block stays plain text.
-        state.request_finalization();
+        state.defer_to_core();
+    }
+    let candidate = candidate?;
+
+    // Emails are only linked by the core pass; a later `</a>` may still
+    // protect this text.
+    if matches!(mode, LinkifyMode::Email) {
         return None;
     }
 
-    let link = prepare_link(
-        state.markdown_it().link_formatter.as_ref(),
-        mode,
-        &state.src[candidate.start..candidate.end],
-    )?;
+    let raw = &state.src[candidate.start..candidate.end];
+    if matches!(mode, LinkifyMode::Fuzzy) && raw.starts_with("//") {
+        // Defer until after emphasis cleanup.
+        return None;
+    }
+
+    let link = prepare_link(state.markdown_it().link_formatter.as_ref(), mode, raw)?;
 
     #[cfg(feature = "sourcemap")]
     let srcmap = state.get_map(candidate.start, candidate.end);

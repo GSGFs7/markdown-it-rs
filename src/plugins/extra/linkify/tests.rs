@@ -1,6 +1,47 @@
 use crate as markdown_it;
 
 #[test]
+fn session_cleanup_order_is_independent_of_plugin_registration_order() {
+    let mut md = crate::MarkdownIt::empty();
+    super::add(&mut md);
+    crate::plugins::cmark::add(&mut md);
+    crate::plugins::html::add(&mut md);
+    assert_eq!(
+        md.render("*a@b.co* **//example.org**"),
+        "<p><em><a href=\"mailto:a@b.co\">a@b.co</a></em> <strong><a href=\"//example.org\">//example.org</a></strong></p>\n"
+    );
+}
+
+#[test]
+fn warmed_parser_refreshes_linkify_postpass_configuration() {
+    use crate::parser::inline::builtin::InlineParserRule;
+
+    let mut md = crate::MarkdownIt::new();
+    super::add(&mut md);
+    let source = "*a@b.co* https://example.org";
+    for enabled in [false, true, false, true] {
+        if enabled {
+            md.add_rule::<super::LinkifyRule>()
+                .after::<InlineParserRule>()
+                .before_all();
+        } else {
+            md.remove_rule::<super::LinkifyRule>();
+        }
+        let email = if enabled {
+            "<a href=\"mailto:a@b.co\">a@b.co</a>"
+        } else {
+            "a@b.co"
+        };
+        assert_eq!(
+            md.render(source),
+            format!(
+                "<p><em>{email}</em> <a href=\"https://example.org\">https://example.org</a></p>\n"
+            )
+        );
+    }
+}
+
+#[test]
 #[cfg(feature = "sourcemap")]
 fn inline_and_postpass_links_preserve_source_ranges() {
     let mut md = crate::MarkdownIt::new();

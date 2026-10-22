@@ -95,3 +95,40 @@ impl markdown_it::NodeRenderer<TestContainer> for ContainerRenderer {
         out.write_str("}");
     }
 }
+
+#[cfg(feature = "linkify")]
+#[test]
+fn core_linkify_processes_nested_subranges_without_reprocessing_links() {
+    let mut md = parser();
+    markdown_it::plugins::extra::linkify::add(&mut md);
+    assert_eq!(
+        md.render("{ a@b.co {*//example.org*} }"),
+        "<p>{ <a href=\"mailto:a@b.co\">a@b.co</a> {<em><a href=\"//example.org\">//example.org</a></em>} }</p>\n"
+    );
+}
+
+#[cfg(feature = "linkify")]
+#[test]
+fn core_linkify_ignores_subrange_nodes_discarded_by_the_parent_rule() {
+    struct DiscardChildren;
+    impl InlineRule for DiscardChildren {
+        const MARKER: char = '{';
+        fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+            let close = state.remaining().find('}')?;
+            let children = state.parse_subrange(1..close)?;
+            for child in children {
+                state.document.discard_node(child);
+            }
+            let node = state.document.create_node(markdown_it::Text {
+                content: "gone".into(),
+            });
+            Some((Some(node), close + 1))
+        }
+    }
+    let mut md = parser();
+    md.inline
+        .add_rule::<DiscardChildren>()
+        .before::<ContainerRule>();
+    markdown_it::plugins::extra::linkify::add(&mut md);
+    assert_eq!(md.render("{a@b.co}"), "<p>gone</p>\n");
+}

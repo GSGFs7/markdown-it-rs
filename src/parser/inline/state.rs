@@ -1,7 +1,7 @@
 //! Inline parsing state, source mapping, and nested parse sessions.
 
 use std::borrow::Cow;
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
@@ -9,11 +9,24 @@ use std::rc::Rc;
 use super::RuleSet;
 use crate::MarkdownIt;
 use crate::common::extset::{InlineRootExtSet, RootExtSet};
-#[cfg(feature = "sourcemap")]
-use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId, Text};
 
 // TODO: adjust API visibility
+
+/// Marks an inline parse that has work deferred until core postprocessing.
+#[derive(Debug, Default)]
+pub(crate) struct DeferredPostprocess;
+
+// TODO(inline-postprocess): replace this root list with explicit inline
+// ownership or a flat token model; marker nodes would leak internal structure
+// into the AST.
+/// Roots of inline ranges whose work was deferred to core postprocessing.
+///
+/// Ranges are appended in completion order (children before parents) and
+/// consumed by core rules after inline parsing. Keeping the grouping on the
+/// document root avoids exposing internal marker nodes in the AST.
+#[derive(Debug, Default)]
+pub(crate) struct InlinePostprocessRanges(pub(crate) Vec<Vec<NodeId>>);
 
 /// Per-inline cache shared by nested boundary scans.
 ///
@@ -26,9 +39,8 @@ pub(crate) struct ScanLimitCache {
     truncated: HashSet<(usize, usize)>,
     skip_tokens: HashMap<(usize, usize, i32), (usize, bool)>,
     pub(crate) link_bounds: Option<super::helpers::full_link::LinkLabelBounds>,
-    /// Inline-local link candidates shared by child sessions over the same source.
-    #[cfg(feature = "linkify")]
-    pub(crate) linkify_positions: Option<Vec<crate::plugins::extra::linkify::LinkifyPosition>>,
+    /// Extension caches shared by sessions over the same source.
+    ext: InlineRootExtSet,
 }
 
 impl ScanLimitCache {
@@ -83,9 +95,6 @@ pub struct InlineState<'a> {
     pub document: &'a mut Document,
 
     pending_text: Option<(usize, usize)>,
-
-    /// A rule requested a finalizer even for a plain-text-only session.
-    needs_finalization: bool,
 }
 
 impl<'a> InlineState<'a> {
@@ -99,17 +108,27 @@ impl<'a> InlineState<'a> {
         self.md
     }
 
-    pub(crate) fn nodes(&self) -> &[NodeId] {
+    /// Extension caches shared by sessions over this source.
+    pub(crate) fn shared_ext(&self) -> RefMut<'_, InlineRootExtSet> {
+        RefMut::map(self.scan_limit_cache.borrow_mut(), |cache| &mut cache.ext)
+    }
+
+    /// Defer this session's work to core postprocessing.
+    pub(crate) fn defer_to_core(&mut self) {
+        self.inline_ext
+            .get_or_insert_default::<DeferredPostprocess>();
+    }
+
+    /// Nodes accumulated by this inline session.
+    pub fn nodes(&self) -> &[NodeId] {
         &self.nodes
     }
 
     /// Mutate the nodes accumulated for this inline container.
     ///
-    /// Emphasis caches bounds as indices into this list. A caller that removes,
-    /// inserts, or reorders entries must repair or invalidate those bounds before
-    /// the next emphasis scan; appending is safe. Finalizers run after
-    /// tokenization and never resume emphasis matching, so they need no repair.
-    pub(crate) fn nodes_mut(&mut self) -> &mut Vec<NodeId> {
+    /// Callers that change existing entries must keep rule-local index caches
+    /// in sync.
+    pub fn nodes_mut(&mut self) -> &mut Vec<NodeId> {
         &mut self.nodes
     }
 
@@ -139,7 +158,6 @@ impl<'a> InlineState<'a> {
             nodes: Vec::new(),
             document,
             pending_text: None,
-            needs_finalization: false,
         };
         state.trim();
         state.tokenize();
@@ -151,8 +169,9 @@ impl<'a> InlineState<'a> {
     /// Preserves whitespace and original source coordinates. Returns `None` for
     /// reversed, out-of-bounds, or non-UTF-8-boundary ranges. An empty valid range
     /// returns an empty vector. Parent cursor and scratch are unchanged; children
-    /// are allocated in the shared arena. At the nesting limit,
-    /// the child range is emitted as literal text without running rules.
+    /// are allocated in the shared arena. Children finish local cleanup before
+    /// returning; document-level core transformations run later. At the nesting
+    /// limit, the child range is emitted as literal text without running rules.
     pub fn parse_subrange(&mut self, range: Range<usize>) -> Option<Vec<NodeId>> {
         self.parse_subrange_with_link_level(range, self.link_level)
     }
@@ -203,13 +222,12 @@ impl<'a> InlineState<'a> {
 
     /// Run this child session to completion and return its nodes.
     ///
-    /// Uses `finish_nodes` and a fresh stack segment.
+    /// Uses session cleanup and a fresh stack segment.
     fn run_child_session(mut self) -> Vec<NodeId> {
         stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
             self.tokenize();
-            self.finish_nodes();
-        });
-        self.nodes
+            self.finish()
+        })
     }
 
     fn trim(&mut self) {
@@ -390,7 +408,6 @@ impl<'a> InlineState<'a> {
             nodes: Vec::new(),
             document: &mut *self.document,
             pending_text: None,
-            needs_finalization: false,
         })
     }
 
@@ -421,12 +438,6 @@ impl<'a> InlineState<'a> {
         }
     }
 
-    /// Run finalizers for this session even if it only produced plain text.
-    #[cfg(any(feature = "linkify", test))]
-    pub(crate) fn request_finalization(&mut self) {
-        self.needs_finalization = true;
-    }
-
     pub(crate) fn flush_text(&mut self) {
         let Some((start, end)) = self.pending_text.take() else {
             return;
@@ -442,11 +453,13 @@ impl<'a> InlineState<'a> {
     }
 
     fn finish(mut self) -> Vec<NodeId> {
-        if self.nodes.is_empty() && !self.needs_finalization {
+        // Only reuse an owned input buffer; cloning a borrowed parent source
+        // for each child range would be quadratic.
+        if self.nodes.is_empty() && matches!(self.src, Cow::Owned(_)) {
             if let Some((start, end)) = self.pending_text.take() {
                 #[cfg(feature = "sourcemap")]
                 let srcmap = self.get_map(start, end);
-                let mut content = self.src.into_owned();
+                let mut content = std::mem::take(&mut self.src).into_owned();
                 content.truncate(end);
 
                 if start != 0 {
@@ -458,22 +471,24 @@ impl<'a> InlineState<'a> {
                 self.document.node_mut(text).set_srcmap(srcmap);
                 self.nodes.push(text);
             }
-        } else {
-            self.finish_nodes();
         }
+        self.finish_nodes();
+
+        if self.inline_ext.contains::<DeferredPostprocess>() {
+            let root = self.document.root();
+            self.document
+                .node_mut(root)
+                .ext_mut()
+                .get_or_insert_default::<InlinePostprocessRanges>()
+                .0
+                .push(self.nodes.clone());
+        }
+
         self.nodes
     }
 
     pub(super) fn finish_nodes(&mut self) {
-        let needs_finalization = self.needs_finalization || !self.nodes().is_empty();
         self.flush_text();
-
-        if needs_finalization {
-            for index in 0..self.ruleset.finalizers.len() {
-                let finalize = self.ruleset.finalizers[index];
-                finalize(self);
-            }
-        }
     }
 
     #[cfg(feature = "sourcemap")]
@@ -486,8 +501,15 @@ impl<'a> InlineState<'a> {
     }
 
     #[cfg(feature = "sourcemap")]
-    pub(crate) fn get_map(&self, start: usize, end: usize) -> Option<SourcePos> {
-        Some(SourcePos::new(self.source_pos(start), self.source_pos(end)))
+    pub(crate) fn get_map(
+        &self,
+        start: usize,
+        end: usize,
+    ) -> Option<crate::common::sourcemap::SourcePos> {
+        Some(crate::common::sourcemap::SourcePos::new(
+            self.source_pos(start),
+            self.source_pos(end),
+        ))
     }
 }
 

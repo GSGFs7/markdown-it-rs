@@ -129,3 +129,76 @@ fn core_rules_receive_document_source_and_current_parser_configuration() {
         [("雪\u{FFFD}".into(), false), ("雪\u{FFFD}".into(), true)]
     );
 }
+
+#[cfg(feature = "linkify")]
+#[test]
+fn linkify_postpass_can_be_ordered_and_removed_as_a_core_rule() {
+    use markdown_it::plugins::extra::linkify::{self, Linkified, LinkifyRule};
+
+    #[derive(Default)]
+    struct ObserveLinkify<const AFTER: bool>;
+    impl<const AFTER: bool> CoreRule for ObserveLinkify<AFTER> {
+        fn run(&self, state: &mut CoreState<'_>) {
+            let count = state
+                .document
+                .events(state.document.root())
+                .filter(|event| {
+                    !matches!(event, StructuralEvent::Exit(_)) && event.node().is::<Linkified>()
+                })
+                .count();
+            assert_eq!(count, usize::from(AFTER));
+        }
+    }
+
+    let mut md = MarkdownIt::new();
+    linkify::add(&mut md);
+    md.add_rule::<ObserveLinkify<false>>()
+        .after::<InlineParserRule>()
+        .before::<LinkifyRule>();
+    md.add_rule::<ObserveLinkify<true>>().after::<LinkifyRule>();
+    assert_eq!(
+        md.render("*a@b.co*"),
+        "<p><em><a href=\"mailto:a@b.co\">a@b.co</a></em></p>\n"
+    );
+
+    md.remove_rule::<ObserveLinkify<true>>();
+    md.remove_rule::<LinkifyRule>();
+    assert_eq!(md.render("*a@b.co*"), "<p><em>a@b.co</em></p>\n");
+    // Removing the postpass does not remove inline scheme scanning.
+    md.remove_rule::<ObserveLinkify<false>>();
+    assert_eq!(
+        md.render("https://example.org"),
+        "<p><a href=\"https://example.org\">https://example.org</a></p>\n"
+    );
+}
+
+#[cfg(feature = "linkify")]
+#[test]
+fn linkify_core_preserves_original_input_gates_and_session_boundaries() {
+    use markdown_it::plugins::extra::linkify::{self, Linkified};
+
+    let mut md = MarkdownIt::new();
+    markdown_it::plugins::html::add(&mut md);
+    extra::footnote::add(&mut md);
+    linkify::add(&mut md);
+    for (source, expected) in [
+        ("__//example.org__", 0),
+        ("![ a@b.co ](/img)", 1),
+        ("[a@b.co](/url)", 0),
+        ("[outer ![ a@b.co ](/img)](/url)", 1),
+        ("[</a>a@b.co](/url)", 0),
+        ("<a>a@b.co", 1),
+        ("<a>a@b.co</a>", 0),
+        ("note^[ a@b.co ]", 1),
+        ("note[^n]\n\n[^n]: a@b.co", 1),
+    ] {
+        let document = md.parse(source);
+        let count = document
+            .events(document.root())
+            .filter(|event| {
+                !matches!(event, StructuralEvent::Exit(_)) && event.node().is::<Linkified>()
+            })
+            .count();
+        assert_eq!(count, expected, "{source}");
+    }
+}

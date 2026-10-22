@@ -13,6 +13,7 @@ pub(crate) use document::parse_document;
 
 use self::builtin::skip_text::TextScannerImpl;
 pub use self::rule::*;
+pub(crate) use self::state::InlinePostprocessRanges;
 pub use self::state::InlineState;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
@@ -51,14 +52,12 @@ fn inline_rule_fns<T: InlineRule>() -> InlineRuleFns {
 #[doc(hidden)]
 pub struct RuleEntry {
     fns: InlineRuleFns,
-    finalize: Option<InlineFinalizeFn>,
 }
 
 #[derive(Debug)]
 pub(crate) struct RuleSet {
     pub(crate) runs: Vec<InlineRuleFns>,
     pub(crate) checks: Vec<InlineRuleFns>,
-    pub(crate) finalizers: Vec<InlineFinalizeFn>,
 }
 
 /// Inline-level tokenizer.
@@ -81,7 +80,6 @@ impl InlineParser {
             RuleSet {
                 runs: entries.clone(),
                 checks: entries,
-                finalizers: self.finalizers(),
             }
         })
     }
@@ -92,7 +90,6 @@ impl InlineParser {
 
     fn add_rule_entry<T: InlineRule>(
         &mut self,
-        finalize: Option<InlineFinalizeFn>,
     ) -> &mut crate::common::ruler::RuleItem<RuleMark, RuleEntry> {
         self.rules.take();
         if T::MARKER != '\0' {
@@ -106,7 +103,6 @@ impl InlineParser {
             RuleMark::of::<T>(),
             RuleEntry {
                 fns: inline_rule_fns::<T>(),
-                finalize,
             },
         );
         for name in T::NAMES {
@@ -117,16 +113,7 @@ impl InlineParser {
 
     /// Register an inline syntax rule.
     pub fn add_rule<T: InlineRule>(&mut self) -> RuleBuilder<'_, RuleEntry> {
-        RuleBuilder::new(self.add_rule_entry::<T>(None))
-    }
-
-    /// Register a rule and a callback that finalizes its arena nodes.
-    /// Shared callbacks execute once, in rule order.
-    pub fn add_rule_with_finalize<T: InlineRule>(
-        &mut self,
-        finalize: InlineFinalizeFn,
-    ) -> RuleBuilder<'_, RuleEntry> {
-        RuleBuilder::new(self.add_rule_entry::<T>(Some(finalize)))
+        RuleBuilder::new(self.add_rule_entry::<T>())
     }
 
     pub fn has_rule<T: InlineRule>(&self) -> bool {
@@ -144,21 +131,6 @@ impl InlineParser {
             }
         }
         self.ruler.remove(RuleMark::of::<T>());
-    }
-
-    fn finalizers(&self) -> Vec<InlineFinalizeFn> {
-        let mut result: Vec<InlineFinalizeFn> = Vec::new();
-        for entry in self.ruler.iter() {
-            if let Some(finalize) = entry.finalize {
-                if !result
-                    .iter()
-                    .any(|existing| *existing as usize == finalize as usize)
-                {
-                    result.push(finalize);
-                }
-            }
-        }
-        result
     }
 
     pub(crate) fn text_length(&self, source: &str, pos: usize, pos_max: usize) -> usize {

@@ -28,15 +28,6 @@ impl<const MARKER: char, const SECOND: bool> InlineRule for Replace<MARKER, SECO
     }
 }
 
-fn finalize(state: &mut InlineState<'_>) {
-    let root = state.document.root();
-    state
-        .document
-        .node_mut(root)
-        .attrs_mut()
-        .push(("finalized".into(), "yes".into()));
-}
-
 #[derive(Default)]
 struct CoreFinalize;
 impl CoreRule for CoreFinalize {
@@ -61,25 +52,17 @@ fn warmed_block_rules_follow_registration_order_and_removal() {
 }
 
 #[test]
-fn warmed_inline_rules_update_markers_order_and_finalizers() {
+fn warmed_inline_rules_update_markers_and_order() {
     let mut md = MarkdownIt::empty();
     assert_eq!(md.render("a%雪"), "a%雪\n");
-    md.inline
-        .add_rule_with_finalize::<Replace<'%', false>>(finalize);
+    md.inline.add_rule::<Replace<'%', false>>();
     let document = md.parse("a%雪");
     assert_eq!(md.render_html(&document), "afirst雪\n");
-    assert_eq!(document.node(document.root()).attrs().len(), 1);
 
     // Unicode markers must rebuild the text scanner as well as the rule set.
-    md.inline
-        .add_rule_with_finalize::<Replace<'雪', false>>(finalize);
+    md.inline.add_rule::<Replace<'雪', false>>();
     let document = md.parse("a%雪");
     assert_eq!(md.render_html(&document), "afirstfirst\n");
-    assert_eq!(
-        document.node(document.root()).attrs().len(),
-        1,
-        "shared finalizer runs once"
-    );
 
     md.inline.add_rule::<Replace<'\0', true>>().before_all();
     assert_eq!(md.render("%雪"), "secondsecond\n");

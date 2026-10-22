@@ -46,9 +46,9 @@
 use std::cmp::min;
 
 use crate::MarkdownIt;
-#[cfg(feature = "sourcemap")]
-use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeId, NodeValue, Text};
+use crate::parser::core::{CoreRule, CoreState};
+use crate::parser::inline::builtin::InlineParserRule;
 use crate::parser::inline::{InlineRule, InlineState};
 
 type NodeIdFn = fn(&mut Document) -> NodeId;
@@ -126,6 +126,15 @@ pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool
     md: &mut MarkdownIt,
     f: fn(&mut Document) -> NodeId,
 ) {
+    if !md.has_rule::<EmphasisCleanup>() {
+        md.add_rule::<EmphasisCleanup>()
+            .after::<InlineParserRule>()
+            .before_named("linkify")
+            .before_named("extra::typographer")
+            .before_named("smartquotes")
+            .before_all();
+    }
+
     let pair_config = md.ext.get_or_insert_default::<PairConfig<MARKER>>();
     pair_config.fns[LENGTH as usize - 1] = Some(f);
 
@@ -133,7 +142,7 @@ pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool
         pair_config.inserted = true;
         let builder = md
             .inline
-            .add_rule_with_finalize::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>(finalize_emphasis);
+            .add_rule::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>();
         if MARKER == '*' || MARKER == '_' {
             builder.alias_named("emphasis");
         } else if MARKER == '~' {
@@ -180,13 +189,8 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
         let scanned_bytes = scanned.byte_length();
 
         // With no opener, keep non-opening runs as pending text to avoid temporary nodes.
-        // Preserve node indices, foreign finalizer inputs, and newline whitespace handling.
-        if state.nodes().is_empty()
-            && !MARKER.is_whitespace()
-            && !scanned.can_open
-            && state.ruleset.finalizers.len() == 1
-            && state.ruleset.finalizers[0] as usize == finalize_emphasis as *const () as usize
-        {
+        // Preserve node indices and newline whitespace handling.
+        if state.nodes().is_empty() && !MARKER.is_whitespace() && !scanned.can_open {
             state.push_text(state.pos, state.pos + scanned_bytes);
             return Some((None, scanned_bytes));
         }
@@ -304,21 +308,24 @@ fn scan_and_match<const MARKER: char>(state: &mut InlineState, closer_token: Nod
                         let (open_start, open_end) = opener_map.get_byte_offsets();
                         let (close_start, close_end) = closer_map.get_byte_offsets();
                         let mark_bytes = marker_len * MARKER.len_utf8();
-                        state
-                            .document
-                            .node_mut(opener_token)
-                            .set_srcmap(Some(SourcePos::new(open_start, open_end - mark_bytes)));
-                        state
-                            .document
-                            .node_mut(closer_token)
-                            .set_srcmap(Some(SourcePos::new(close_start + mark_bytes, close_end)));
-                        state
-                            .document
-                            .node_mut(new_token)
-                            .set_srcmap(Some(SourcePos::new(
+                        state.document.node_mut(opener_token).set_srcmap(Some(
+                            crate::common::sourcemap::SourcePos::new(
+                                open_start,
+                                open_end - mark_bytes,
+                            ),
+                        ));
+                        state.document.node_mut(closer_token).set_srcmap(Some(
+                            crate::common::sourcemap::SourcePos::new(
+                                close_start + mark_bytes,
+                                close_end,
+                            ),
+                        ));
+                        state.document.node_mut(new_token).set_srcmap(Some(
+                            crate::common::sourcemap::SourcePos::new(
                                 open_end - mark_bytes,
                                 close_start + mark_bytes,
-                            )));
+                            ),
+                        ));
                     }
                 }
 
@@ -461,10 +468,12 @@ fn fragments_join_children(document: &mut Document, nodes: &mut Vec<NodeId>) {
                 (document.node(previous).srcmap(), document.node(id).srcmap())
             {
                 #[cfg(feature = "sourcemap")]
-                document.node_mut(previous).set_srcmap(Some(SourcePos::new(
-                    first.get_byte_offsets().0,
-                    last.get_byte_offsets().1,
-                )));
+                document.node_mut(previous).set_srcmap(Some(
+                    crate::common::sourcemap::SourcePos::new(
+                        first.get_byte_offsets().0,
+                        last.get_byte_offsets().1,
+                    ),
+                ));
             }
 
             document.discard_node(id);
@@ -482,22 +491,35 @@ fn fragments_join_children(document: &mut Document, nodes: &mut Vec<NodeId>) {
     nodes.truncate(write);
 }
 
-fn finalize_emphasis(state: &mut InlineState<'_>) {
-    let mut nodes = std::mem::take(state.nodes_mut());
-    fragments_join_children(state.document, &mut nodes);
-    let mut pending = nodes.clone();
-    while let Some(parent) = pending.pop() {
-        if state.document.children(parent).is_empty() {
-            continue;
+#[derive(Debug, Default)]
+pub(crate) struct EmphasisCleanup;
+
+impl CoreRule for EmphasisCleanup {
+    const NAMES: &'static [&'static str] = &["emphasis_cleanup"];
+
+    fn run(&self, state: &mut CoreState<'_>) {
+        let document = &mut *state.document;
+        let mut stack = vec![(document.root(), false)];
+        while let Some((node, expanded)) = stack.pop() {
+            if expanded {
+                document.rewrite_children(node, |document, children| {
+                    fragments_join_children(document, children);
+                });
+                continue;
+            }
+
+            if document.children(node).is_empty() {
+                continue;
+            }
+
+            stack.push((node, true));
+            for &child in document.children(node) {
+                if !document.children(child).is_empty() {
+                    stack.push((child, false));
+                }
+            }
         }
-        state
-            .document
-            .rewrite_children(parent, |document, children| {
-                fragments_join_children(document, children);
-                pending.extend_from_slice(children);
-            });
     }
-    *state.nodes_mut() = nodes;
 }
 
 #[cfg(test)]
@@ -599,36 +621,6 @@ mod tests {
     }
 
     #[test]
-    fn foreign_finalizer_can_still_observe_unmatched_markers() {
-        struct Observer;
-        impl InlineRule for Observer {
-            const MARKER: char = '\0';
-            fn run(_: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
-                None
-            }
-        }
-        fn observe(state: &mut InlineState<'_>) {
-            let count = state
-                .nodes()
-                .iter()
-                .filter(|&&id| state.document.node(id).is::<EmphMarker>())
-                .count();
-            let root = state.document.root();
-            state.document.node_mut(root).ext_mut().insert(count);
-        }
-        let mut md = MarkdownIt::with_preset(Preset::CommonMark);
-        md.inline
-            .add_rule_with_finalize::<Observer>(observe)
-            .before_named("emphasis");
-        let document = md.parse("a_ b_");
-        assert_eq!(
-            document.node(document.root()).ext().get::<usize>(),
-            Some(&2)
-        );
-        assert_eq!(md.render_html(&document), "<p>a_ b_</p>\n");
-    }
-
-    #[test]
     #[cfg(feature = "sourcemap")]
     fn joining_markers_preserves_first_node_metadata_and_source_maps() {
         let mut document = Document::new("", crate::document::Root::new(""));
@@ -641,7 +633,7 @@ mod tests {
         });
         document
             .node_mut(first)
-            .set_srcmap(Some(SourcePos::new(0, 8)));
+            .set_srcmap(Some(crate::common::sourcemap::SourcePos::new(0, 8)));
         document
             .node_mut(first)
             .attrs_mut()
@@ -655,7 +647,7 @@ mod tests {
         });
         document
             .node_mut(text)
-            .set_srcmap(Some(SourcePos::new(8, 11)));
+            .set_srcmap(Some(crate::common::sourcemap::SourcePos::new(8, 11)));
         let last = document.create_node(EmphMarker {
             marker: '_',
             length: 3,
@@ -665,7 +657,7 @@ mod tests {
         });
         document
             .node_mut(last)
-            .set_srcmap(Some(SourcePos::new(11, 12)));
+            .set_srcmap(Some(crate::common::sourcemap::SourcePos::new(11, 12)));
         let barrier = document.create_node(CustomEmphasis);
         let trailing = document.create_node(EmphMarker {
             marker: '🦀',
@@ -715,7 +707,7 @@ mod tests {
         });
         document
             .node_mut(marker)
-            .set_srcmap(Some(SourcePos::new(1, 2)));
+            .set_srcmap(Some(crate::common::sourcemap::SourcePos::new(1, 2)));
         let empty = document.create_node(EmphMarker {
             marker: '*',
             length: 1,
