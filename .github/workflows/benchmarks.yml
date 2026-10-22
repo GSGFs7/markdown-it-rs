@@ -1,0 +1,135 @@
+name: Performance report
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "37 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      baseline-ref:
+        description: "Baseline commit, tag, or branch (empty: previous commit)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmarks-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    name: Compare Criterion benchmarks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_NET_RETRY: "3"
+      CARGO_TARGET_DIR: ${{ github.workspace }}/benchmark-target
+      REPORT_DIR: ${{ github.workspace }}/benchmark-report
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: current
+          fetch-depth: 0
+
+      - name: Resolve comparison commits
+        id: refs
+        working-directory: current
+        env:
+          BASELINE_REF: ${{ inputs.baseline-ref }}
+        run: |
+          baseline_ref=${BASELINE_REF:-HEAD^}
+          if ! baseline=$(git rev-parse --verify --end-of-options "$baseline_ref^{commit}" 2>/dev/null); then
+            baseline=$(git rev-parse --verify --end-of-options "refs/remotes/origin/$baseline_ref^{commit}")
+          fi
+          current=$(git rev-parse HEAD)
+          echo "baseline=$baseline" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          mkdir -p "$REPORT_DIR"
+          {
+            printf '# Performance regression report\n\n'
+            printf 'Baseline commit: %s\n\nCurrent commit: %s\n\n' "$baseline" "$current"
+            printf 'Both revisions run sequentially on the same runner. Timing changes are advisory.\n\n'
+            printf 'Each revision uses its own benchmark harness and lockfile; changes to either can affect comparisons.\n\n'
+          } > "$REPORT_DIR/summary.md"
+          {
+            rustup --version
+            uname -a
+            lscpu
+          } > "$REPORT_DIR/environment.txt"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.refs.outputs.baseline }}
+          path: baseline
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            current/benchmarks -> ../../benchmark-target
+          cache-on-failure: true
+
+      - name: Record toolchain
+        run: |
+          rustc -Vv >> "$REPORT_DIR/environment.txt"
+          cargo -V >> "$REPORT_DIR/environment.txt"
+
+      - name: Test comparison report
+        run: python -B -m unittest discover -s current/benchmarks/scripts -p 'test_*.py'
+
+      - name: Benchmark baseline
+        id: baseline
+        working-directory: baseline
+        env:
+          CRITERION_HOME: ${{ env.REPORT_DIR }}/baseline
+        run: >-
+          cargo bench --manifest-path benchmarks/Cargo.toml --locked
+          --bench throughput --bench parse --
+          --noplot --sample-size 30 --warm-up-time 1 --measurement-time 2
+
+      - name: Benchmark current revision
+        id: current
+        if: ${{ !cancelled() && steps.refs.outcome == 'success' }}
+        working-directory: current
+        env:
+          CRITERION_HOME: ${{ env.REPORT_DIR }}/current
+        run: >-
+          cargo bench --manifest-path benchmarks/Cargo.toml --locked
+          --bench throughput --bench parse --
+          --noplot --sample-size 30 --warm-up-time 1 --measurement-time 2
+
+      - name: Generate reports
+        if: ${{ !cancelled() && steps.baseline.outcome == 'success' && steps.current.outcome == 'success' }}
+        run: |
+          python current/benchmarks/scripts/compare.py \
+            --baseline-dir "$REPORT_DIR/baseline" \
+            --current-dir "$REPORT_DIR/current" >> "$REPORT_DIR/summary.md"
+          python current/benchmarks/scripts/summarize.py \
+            --criterion-dir "$REPORT_DIR/current" --output "$REPORT_DIR/current.md"
+          python current/benchmarks/scripts/summarize.py \
+            --criterion-dir "$REPORT_DIR/current" --format csv --output "$REPORT_DIR/current.csv"
+
+      - name: Publish Job Summary
+        if: ${{ !cancelled() && steps.refs.outcome == 'success' }}
+        env:
+          BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+          CURRENT_OUTCOME: ${{ steps.current.outcome }}
+        run: |
+          printf '\nBenchmark status: baseline=%s, current=%s.\n' \
+            "$BASELINE_OUTCOME" "$CURRENT_OUTCOME" >> "$REPORT_DIR/summary.md"
+          cat "$REPORT_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reports and raw Criterion results
+        if: ${{ !cancelled() && steps.refs.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: benchmark-report/
+          if-no-files-found: error
+          retention-days: 90
