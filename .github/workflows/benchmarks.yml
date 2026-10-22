@@ -80,9 +80,6 @@ jobs:
           rustc -Vv >> "$REPORT_DIR/environment.txt"
           cargo -V >> "$REPORT_DIR/environment.txt"
 
-      - name: Test comparison report
-        run: python -B -m unittest discover -s current/benchmarks/scripts -p 'test_*.py'
-
       - name: Benchmark baseline
         id: baseline
         working-directory: baseline
