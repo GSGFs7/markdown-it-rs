@@ -8,7 +8,7 @@ use crate::document::{NodeRef, NodeValue, StructuralEvent, Text, TextSpecial};
 use crate::parser::inline::helpers::full_link;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
-use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, write_html_self_close};
+use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, write_html_attrs_with};
 
 #[derive(Debug)]
 pub struct Image {
@@ -26,13 +26,23 @@ impl NodeRenderer<Image> for ImageRenderer {
         context: &mut RenderContext<'_>,
         output: &mut crate::Writer,
     ) {
-        let mut attrs = node.attrs().clone();
-        attrs.push(("src".into(), image.url.clone()));
-        attrs.push(("alt".into(), collect_alt_text(context, node)));
-        if let Some(title) = image.title.as_ref().filter(|title| !title.is_empty()) {
-            attrs.push(("title".into(), title.clone()));
+        let alt = collect_alt_text(context, node);
+        let title = image.title.as_deref().filter(|title| !title.is_empty());
+        let extra = [
+            ("src", image.url.as_str()),
+            ("alt", alt.as_str()),
+            ("title", title.unwrap_or_default()),
+        ];
+        output.write_str("<img");
+        write_html_attrs_with(
+            output,
+            node.attrs(),
+            &extra[..2 + usize::from(title.is_some())],
+        );
+        if context.options().xhtml_out {
+            output.write_str(" /");
         }
-        write_html_self_close(output, "img", &attrs, context.options().xhtml_out);
+        output.write_char('>');
     }
 }
 

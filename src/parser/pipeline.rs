@@ -83,7 +83,17 @@ pub(super) fn resolve_pending_inline(
             let content = std::mem::take(&mut inline.content);
             let mapping = std::mem::take(&mut inline.mapping);
             let nodes = InlineState::parse(document, content, mapping, md, ruleset, Some(root_ext));
-            frame.replacements.push((index, nodes));
+            if index == 0 && document.children(frame.parent).len() == 1 {
+                // if only one child, replace the children.
+                let parent = frame.parent;
+                document.rewrite_children(parent, |document, children| {
+                    document.discard_node(children.pop().unwrap());
+                    *children = nodes;
+                });
+                stack.pop();
+            } else {
+                frame.replacements.push((index, nodes));
+            }
         } else if !document.children(child).is_empty() {
             stack.push(Frame::new(child));
         }

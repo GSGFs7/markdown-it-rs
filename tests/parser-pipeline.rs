@@ -1019,6 +1019,36 @@ fn deferred_inline_fallback_handles_empty_and_multiple_replacements() {
 }
 
 #[test]
+fn deferred_single_placeholder_handles_empty_one_and_many_nodes() {
+    use markdown_it::parser::inline::InlineRule;
+    use markdown_it::{InlineState, NodeId};
+
+    struct ConsumeLine;
+    impl InlineRule for ConsumeLine {
+        const MARKER: char = '@';
+
+        fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+            Some((None, state.remaining().len()))
+        }
+    }
+
+    let mut md = MarkdownIt::new();
+    md.inline.add_rule::<ConsumeLine>();
+    for (source, expected) in [
+        ("@", "<p></p>\n"),
+        ("plain", "<p>plain</p>\n"),
+        ("*a* b", "<p><em>a</em> b</p>\n"),
+        (
+            "# @\n\nplain\n\n*a* b",
+            "<h1></h1>\n<p>plain</p>\n<p><em>a</em> b</p>\n",
+        ),
+    ] {
+        let document = assert_document_structure(&md, source);
+        assert_eq!(md.render_html(&document), expected);
+    }
+}
+
+#[test]
 fn deferred_inline_fallback_numbers_footnotes_across_nested_blocks_in_source_order() {
     let mut md = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::blockquote::add(&mut md);

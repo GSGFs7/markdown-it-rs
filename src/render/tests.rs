@@ -144,6 +144,73 @@ fn html_attrs_preserve_grouping_order_and_escaping_on_both_paths() {
 }
 
 #[test]
+fn generated_link_and_image_attrs_preserve_duplicates_and_escaping() {
+    use crate::plugins::cmark::inline::image::Image;
+    use crate::plugins::cmark::inline::link::Link;
+
+    for xhtml in [false, true] {
+        for padding in [0, 8] {
+            let mut md = MarkdownIt::new();
+            md.render_options.xhtml_out = xhtml;
+            for image in [false, true] {
+                let mut draft = if image {
+                    NodeDraft::new(Image {
+                        url: "/image?a&b".into(),
+                        title: Some("generated <title>".into()),
+                    })
+                } else {
+                    NodeDraft::new(Link {
+                        url: "/link?a&b".into(),
+                        title: Some("generated <title>".into()),
+                    })
+                };
+                draft.push_child(NodeDraft::new(Text {
+                    content: "a & b".into(),
+                }));
+                let target = if image { "src" } else { "href" };
+                draft.attrs_mut().extend([
+                    ("title".into(), "custom & title".into()),
+                    (target.into(), "custom <url>".into()),
+                    ("class".into(), "one".into()),
+                    ("class".into(), "two".into()),
+                ]);
+                if image {
+                    draft
+                        .attrs_mut()
+                        .push(("alt".into(), "custom <alt>".into()));
+                }
+                let mut extra_html = String::new();
+                for index in 0..padding {
+                    draft
+                        .attrs_mut()
+                        .push((format!("data-{index}"), "value".into()));
+                    extra_html.push_str(&format!(" data-{index}=\"value\""));
+                }
+                let document = Document::from_draft("", draft);
+                let tag = if image { "img" } else { "a" };
+                let url = if image { "image" } else { "link" };
+                let alt = if image {
+                    " alt=\"custom &lt;alt&gt;\" alt=\"a &amp; b\""
+                } else {
+                    ""
+                };
+                let end = if image {
+                    if xhtml { " />" } else { ">" }
+                } else {
+                    ">a &amp; b</a>"
+                };
+                assert_eq!(
+                    md.render_html(&document),
+                    format!(
+                        "<{tag} title=\"custom &amp; title\" title=\"generated &lt;title&gt;\" {target}=\"custom &lt;url&gt;\" {target}=\"/{url}?a&amp;b\" class=\"one two\"{alt}{extra_html}{end}"
+                    )
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn registered_paragraph_renderer_preserves_attributes() {
     let md = MarkdownIt::new();
     let mut document = md.parse("hello");

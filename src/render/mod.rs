@@ -489,43 +489,68 @@ pub(crate) fn render_html_link(
     context: &mut RenderContext<'_>,
     output: &mut Writer,
 ) {
-    let mut attrs = node.attrs().clone();
-    attrs.push(("href".into(), url.to_owned()));
-    if let Some(title) = title.filter(|title| !title.is_empty()) {
-        attrs.push(("title".into(), title.to_owned()));
-    }
-    write_html_open(output, "a", &attrs);
+    let title = title.filter(|title| !title.is_empty());
+    let extra = [("href", url), ("title", title.unwrap_or_default())];
+    output.write_str("<a");
+    write_html_attrs_with(
+        output,
+        node.attrs(),
+        &extra[..1 + usize::from(title.is_some())],
+    );
+    output.write_char('>');
     context.render_children(node.id(), output);
     write_html_close(output, "a");
 }
 
 pub(crate) fn write_html_attrs(output: &mut Writer, attrs: &[HtmlAttribute]) {
+    if attrs.is_empty() {
+        return;
+    }
+    write_html_attrs_with(output, attrs, &[]);
+}
+
+// avoid attr clone
+pub(crate) fn write_html_attrs_with(
+    output: &mut Writer,
+    attrs: &[HtmlAttribute],
+    extra: &[(&str, &str)],
+) {
     const LINEAR_SCAN_LIMIT: usize = 8;
+
+    let count = attrs.len() + extra.len();
+    let attrs = attrs
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .chain(extra.iter().copied());
 
     // small list, using linear scan. avoid hashmap overhead.
     // O(n^2), but very fast with small data.
-    if attrs.len() <= LINEAR_SCAN_LIMIT {
-        for (index, (name, _)) in attrs.iter().enumerate() {
+    if count <= LINEAR_SCAN_LIMIT {
+        for (index, (name, _)) in attrs.clone().enumerate() {
             // deduplication
-            if attrs[..index].iter().any(|(previous, _)| previous == name) {
+            if attrs
+                .clone()
+                .take(index)
+                .any(|(previous, _)| previous == name)
+            {
                 continue;
             }
             write_html_attr_group(
                 output,
                 name,
                 attrs
-                    .iter()
-                    .filter_map(|(candidate, value)| (candidate == name).then_some(value.as_str())),
+                    .clone()
+                    .filter_map(|(candidate, value)| (candidate == name).then_some(value)),
             );
         }
         return;
     }
 
     let mut values = HashMap::<&str, Vec<&str>>::new();
-    let mut order = Vec::with_capacity(attrs.len());
+    let mut order = Vec::with_capacity(count);
     for (name, value) in attrs {
         values.entry(name).or_default().push(value);
-        order.push(name.as_str());
+        order.push(name);
     }
     for name in order {
         let Some(parts) = values.remove(name) else {
