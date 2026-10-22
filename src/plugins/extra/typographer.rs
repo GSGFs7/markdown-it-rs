@@ -31,6 +31,7 @@
 use std::borrow::Cow;
 use std::sync::LazyLock;
 
+use const_format::formatcp;
 use regex::Regex;
 
 use crate::MarkdownIt;
@@ -39,6 +40,9 @@ use crate::document::{Document, StructuralEvent, Text};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::plugins::cmark::inline::backticks::CodeInline;
 use crate::plugins::cmark::inline::image::Image;
+
+// JavaScript's \s includes BOM and excludes NEL, unlike regex's \s.
+const JS_WHITESPACE: &str = r"[\s\u{FEFF}--\u{0085}]";
 
 static REPLACEMENTS: LazyLock<Box<[(Regex, &'static str)]>> = LazyLock::new(|| {
     Box::new([
@@ -54,11 +58,17 @@ static REPLACEMENTS: LazyLock<Box<[(Regex, &'static str)]>> = LazyLock::new(|| {
             "$pre\u{2014}$post",
         ),
         (
-            Regex::new(r"(?m)(?P<pre>^|\s)(?P<dash>--)(?P<post>\s|$)").unwrap(),
+            Regex::new(formatcp!(
+                r"(?m)(?P<pre>^|{JS_WHITESPACE})(?P<dash>--)(?P<post>{JS_WHITESPACE}|$)"
+            ))
+            .unwrap(),
             "$pre\u{2013}$post",
         ),
         (
-            Regex::new(r"(?m)(?P<pre>^|[^-\s])(?P<dash>--)(?P<post>[^-\s]|$)").unwrap(),
+            Regex::new(formatcp!(
+                r"(?m)(?P<pre>^|[^-{JS_WHITESPACE}])(?P<dash>--)(?P<post>[^-{JS_WHITESPACE}]|$)"
+            ))
+            .unwrap(),
             "$pre\u{2013}$post",
         ),
     ])

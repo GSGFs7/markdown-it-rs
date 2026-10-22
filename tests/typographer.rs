@@ -37,6 +37,22 @@ fn run(input: &str, output: &str) {
 }
 
 #[test]
+fn typographer_dash_boundaries_follow_javascript_whitespace() {
+    for (source, expected) in [
+        ("a--\u{feff}b", "<p>a--\u{feff}b</p>"),
+        ("a\u{feff}--b", "<p>a\u{feff}--b</p>"),
+        ("a\u{feff}--\u{feff}b", "<p>a\u{feff}–\u{feff}b</p>"),
+        ("a--\u{85}b", "<p>a–\u{85}b</p>"),
+        ("a\u{85}--b", "<p>a\u{85}–b</p>"),
+        ("a\u{85}--\u{85}b", "<p>a\u{85}–\u{85}b</p>"),
+        ("a --\u{85}b", "<p>a --\u{85}b</p>"),
+        ("a\u{85}-- b", "<p>a\u{85}-- b</p>"),
+    ] {
+        run(source, expected);
+    }
+}
+
+#[test]
 fn typographer_preserves_code_spans_and_image_alt_text() {
     for (source, expected) in [
         (
