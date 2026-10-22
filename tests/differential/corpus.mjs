@@ -1,4 +1,7 @@
 const regressions = [
+  // Valid table headers take precedence over opening code fences.
+  ...['```', '~~~'].map((marker) => `${marker}|b|\n|---|---|\n|x|y|`),
+  '![</a>\n    \n</a> [</a>](\u0000 "\n")](```\n[\t][id]\n\n[id]: /url "\t"\n```|c*!文; b |\n| --- | --- |\n| &amp;&#10; | x |)',
   // Smartquotes sees raw image labels, without traversing parsed alt children.
   '"![&amp;&#10;](/img)"',
   '"![&#32;x&#32;](/img)"',

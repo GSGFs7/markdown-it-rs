@@ -42,6 +42,18 @@ fn run(input: &str, output: &str) {
 }
 
 #[test]
+fn table_headers_take_precedence_over_code_fences() {
+    for marker in ["```", "~~~"] {
+        run(
+            &format!("{marker}|b|\n|---|---|\n|x|y|"),
+            &format!(
+                "<table>\n<thead>\n<tr>\n<th>{marker}</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>x</td>\n<td>y</td>\n</tr>\n</tbody>\n</table>"
+            ),
+        );
+    }
+}
+
+#[test]
 fn escaped_pipe_does_not_escape_the_next_cell_separator() {
     let source = "| a | b |\n| :- | -: |\n| `x\\|| `x\\|y]aac😀!z** |";
     run(

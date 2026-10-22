@@ -2,11 +2,10 @@
 //!
 //! <https://github.github.com/gfm/#tables-extension->
 use crate::MarkdownIt;
-#[cfg(feature = "sourcemap")]
-use crate::common::sourcemap::SourcePos;
 use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::plugins::cmark::block::blockquote::{BlockquoteInterrupt, BlockquoteScanner};
+use crate::plugins::cmark::block::fence::FenceScanner;
 use crate::plugins::cmark::block::heading::HeadingScanner;
 use crate::plugins::cmark::block::list::ListScanner;
 use crate::render::{
@@ -213,6 +212,8 @@ impl NodeValue for TableCell {}
 pub fn add(md: &mut MarkdownIt) {
     md.block
         .add_rule::<TableScanner>()
+        // A table header may look like a code fence, so match tables first.
+        .before::<FenceScanner>()
         .before::<BlockquoteScanner>()
         .before::<ListScanner>()
         .before::<HeadingScanner>();
@@ -478,13 +479,12 @@ impl BlockRule for TableScanner {
             #[cfg(feature = "sourcemap")]
             let start = state.line_offsets[state.line].first_nonspace;
             #[cfg(feature = "sourcemap")]
-            state
-                .document
-                .node_mut(cell_node)
-                .set_srcmap(Some(SourcePos::new(
+            state.document.node_mut(cell_node).set_srcmap(Some(
+                crate::common::sourcemap::SourcePos::new(
                     start + srcmap.first().unwrap().1,
                     start + srcmap.last().unwrap().1 + cell.len() - srcmap.last().unwrap().0,
-                )));
+                ),
+            ));
 
             if !cell.is_empty() {
                 #[cfg(feature = "sourcemap")]
