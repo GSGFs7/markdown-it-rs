@@ -20,4 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@nightly
-      - run: cargo +nightly -Z minimal-versions update && cargo +nightly test --no-default-features --features linkify
+      - name: Resolve minimum dependency versions
+        run: cargo +nightly -Z minimal-versions update
+      - name: Test minimum dependency versions on a single thread
+        run: cargo +nightly test --locked --no-default-features --features linkify -- --test-threads=1
