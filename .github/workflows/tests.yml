@@ -25,6 +25,29 @@ jobs:
       - name: Run Clippy
         run: cargo +stable clippy -p markdown-it-rs --all-targets --all-features -- -D warnings
 
+  subcrates:
+    name: Test and Clippy (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CARGO_NET_RETRY: "3"
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - markdown-it-rs-url
+          - markdown-it-rs-linkify
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Run Clippy
+        run: cargo clippy -p ${{ matrix.package }} --locked --all-targets --all-features -- -D warnings
+      - name: Run unit, integration, and documentation tests
+        if: ${{ !cancelled() }}
+        run: cargo test -p ${{ matrix.package }} --locked --all-features --no-fail-fast
+
   test:
     name: Test (${{ matrix.name }})
     runs-on: ubuntu-latest
