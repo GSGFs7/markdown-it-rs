@@ -122,7 +122,7 @@ fn scan_html_inline(
         }
     }
 
-    let capture = HTML_TAG_RE.captures(rest)?.get(0)?.as_str();
+    let capture = HTML_TAG_RE.find(rest)?.as_str();
 
     Some(HtmlInlineMatch {
         consumed: capture.len(),

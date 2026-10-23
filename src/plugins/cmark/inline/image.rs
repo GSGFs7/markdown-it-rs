@@ -3,6 +3,8 @@
 //! `![image](<src> "title")`
 //!
 //! <https://spec.commonmark.org/0.30/#images>
+use std::borrow::Cow;
+
 use crate::MarkdownIt;
 use crate::document::{NodeRef, NodeValue, StructuralEvent, Text, TextSpecial};
 use crate::parser::inline::helpers::full_link;
@@ -30,7 +32,7 @@ impl NodeRenderer<Image> for ImageRenderer {
         let title = image.title.as_deref().filter(|title| !title.is_empty());
         let extra = [
             ("src", image.url.as_str()),
-            ("alt", alt.as_str()),
+            ("alt", alt.as_ref()),
             ("title", title.unwrap_or_default()),
         ];
         output.write_str("<img");
@@ -54,7 +56,20 @@ impl NodeValue for Image {}
 // raw: "![a *b* c](x)"
 // children: [text "a ", emph(text "b"), text " c"]
 // result: "a b c"
-fn collect_alt_text(context: &RenderContext<'_>, image: NodeRef<'_>) -> String {
+fn collect_alt_text<'a>(context: &RenderContext<'a>, image: NodeRef<'_>) -> Cow<'a, str> {
+    match image.children() {
+        [] => return Cow::Borrowed(""),
+        [child] => {
+            let child = context.document().node(*child);
+            if child.children().is_empty()
+                && let Some(text) = child.cast::<Text>()
+            {
+                return Cow::Borrowed(&text.content);
+            }
+        }
+        _ => {}
+    }
+
     let mut result = String::new();
     let mut image_depth = 0;
     for event in context.document().events(image.id()) {
@@ -66,7 +81,7 @@ fn collect_alt_text(context: &RenderContext<'_>, image: NodeRef<'_>) -> String {
             _ => append_alt_node(&mut result, node, image_depth > 1),
         }
     }
-    result
+    Cow::Owned(result)
 }
 
 fn append_alt_node(result: &mut String, node: NodeRef<'_>, nested_image: bool) {
