@@ -916,7 +916,7 @@ impl NodeRenderer<FootnoteBackref> for FootnoteBackrefRenderer {
 
 pub fn add(md: &mut MarkdownIt) {
     md.add_rule::<FootnotePreparation>()
-        .before::<crate::parser::block::builtin::BlockParserRule>();
+        .before::<crate::parser::block::BlockParserRule>();
     md.block
         .add_rule::<FootnoteDefinitionScanner>()
         .before::<crate::plugins::cmark::block::reference::ReferenceScanner>();
@@ -929,7 +929,7 @@ pub fn add(md: &mut MarkdownIt) {
         // let footnote rule try it first
         .before_named("link");
     md.add_rule::<FootnoteFinalizeRule>()
-        .after::<crate::parser::inline::builtin::InlineParserRule>()
+        .after::<crate::parser::inline::InlineParserRule>()
         .before_named("sourcepos");
     md.add_renderer::<FootnoteDefinition, _>("html", EmptyRenderer);
     md.add_renderer::<FootnoteDefinition, _>("text", EmptyRenderer);

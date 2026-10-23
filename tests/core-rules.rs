@@ -1,6 +1,6 @@
-use markdown_it::parser::block::builtin::BlockParserRule;
+use markdown_it::parser::block::BlockParserRule;
 use markdown_it::parser::core::{CoreRule, CoreState};
-use markdown_it::parser::inline::builtin::InlineParserRule;
+use markdown_it::parser::inline::InlineParserRule;
 #[cfg(feature = "sourcemap")]
 use markdown_it::plugins::sourcepos;
 use markdown_it::plugins::{cmark, extra};

@@ -360,7 +360,7 @@ fn append_text(node: NodeRef<'_>, active_headings: &[usize], headings: &mut [Hea
 mod tests {
     use super::*;
     use crate::parser::core::{CoreRule, CoreState};
-    use crate::parser::inline::builtin::InlineParserRule;
+    use crate::parser::inline::InlineParserRule;
 
     #[derive(Default)]
     struct AddExistingHeadingId;

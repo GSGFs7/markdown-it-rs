@@ -100,8 +100,8 @@ impl MarkdownIt {
         };
 
         // infrastructure
-        block::builtin::add(&mut md);
-        inline::builtin::add(&mut md);
+        block::add(&mut md);
+        inline::add(&mut md);
 
         md
     }
@@ -243,8 +243,8 @@ fn normalize_input(src: &str) -> Cow<'_, str> {
 #[cfg(test)]
 mod tests {
     use super::MarkdownIt;
-    use crate::parser::block::builtin::BlockParserRule;
-    use crate::parser::inline::builtin::TextScanner;
+    use crate::parser::block::BlockParserRule;
+    use crate::parser::inline::TextScanner;
     use crate::plugins::cmark;
     use crate::plugins::cmark::block::paragraph::ParagraphScanner;
 

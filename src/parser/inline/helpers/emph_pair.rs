@@ -48,8 +48,7 @@ use std::cmp::min;
 use crate::MarkdownIt;
 use crate::document::{Document, NodeId, NodeValue, Text};
 use crate::parser::core::{CoreRule, CoreState};
-use crate::parser::inline::builtin::InlineParserRule;
-use crate::parser::inline::{InlineRule, InlineState};
+use crate::parser::inline::{InlineParserRule, InlineRule, InlineState};
 
 type NodeIdFn = fn(&mut Document) -> NodeId;
 

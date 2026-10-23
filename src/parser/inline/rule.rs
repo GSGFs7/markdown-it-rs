@@ -9,7 +9,7 @@ use crate::parser::inline::InlineState;
 /// [`InlineParser::add_rule`](crate::parser::inline::InlineParser::add_rule),
 /// then use the returned [`RuleBuilder`] to position it relative to the built-in rules.
 /// Document-level transformations belong in a [`CoreRule`](crate::parser::core::CoreRule)
-/// ordered after [`InlineParserRule`](crate::parser::inline::builtin::InlineParserRule).
+/// ordered after [`InlineParserRule`](crate::parser::inline::InlineParserRule).
 ///
 /// Implement [`run`](InlineRule::run) to match the construct and add nodes to
 /// the document. Override [`check`](InlineRule::check) only if the default does

@@ -756,7 +756,7 @@ fn non_memoizable_positions(source: &str, state: &InlineState<'_>) -> Option<Vec
 /// cache (which would restore the quadratic blowup). Mutable built-ins such as
 /// `FootnoteInlineScanner` are deliberately absent.
 fn is_memoizable_check(type_id: TypeId) -> bool {
-    use crate::parser::inline::builtin::TextScanner;
+    use crate::parser::inline::TextScanner;
     use crate::parser::inline::helpers::code_pair::CodePairScanner;
     use crate::parser::inline::helpers::emph_pair::EmphPairScanner;
     use crate::plugins::cmark::inline::autolink::AutolinkScanner;
@@ -850,7 +850,7 @@ fn is_index_supported(type_id: std::any::TypeId) -> bool {
         TypeId::of::<LinkScanner<false>>(),
         TypeId::of::<LinkPrefixScanner<'!', true>>(),
         TypeId::of::<LinkScannerEnd>(),
-        TypeId::of::<crate::parser::inline::builtin::TextScanner>(),
+        TypeId::of::<crate::parser::inline::TextScanner>(),
         TypeId::of::<crate::plugins::extra::footnote::FootnoteReferenceScanner>(),
     ]
     .contains(&type_id)

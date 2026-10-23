@@ -48,7 +48,7 @@ fn no_max_indent() {
 fn no_block_parser() {
     let md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(md);
-    md.remove_rule::<markdown_it::parser::block::builtin::BlockParserRule>();
+    md.remove_rule::<markdown_it::parser::block::BlockParserRule>();
     let node = md.parse("hello *world*");
     let result = md.render_html(&node);
     assert_eq!(result, "hello <em>world</em>");

@@ -11,8 +11,7 @@ use crate::MarkdownIt;
 use crate::document::{Document, NodeId, NodeRef, NodeValue, StructuralEvent, Text, TextSpecial};
 use crate::links::LinkFormatter;
 use crate::parser::core::{CoreRule, CoreState};
-use crate::parser::inline::builtin::InlineParserRule;
-use crate::parser::inline::{InlinePostprocessRanges, InlineRule, InlineState};
+use crate::parser::inline::{InlineParserRule, InlinePostprocessRanges, InlineRule, InlineState};
 use crate::plugins::html::anchor_delta;
 use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, render_html_link};
 

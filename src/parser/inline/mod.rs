@@ -1,22 +1,30 @@
 //! Inline syntax rules and check sessions.
-#[doc(hidden)]
-pub mod builtin;
 mod document;
 pub mod helpers;
+mod parser;
 mod rule;
 mod state;
+mod text_scanner;
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 pub(crate) use document::parse_document;
 
-use self::builtin::skip_text::TextScannerImpl;
+pub use self::parser::InlineParserRule;
 pub use self::rule::*;
 pub(crate) use self::state::InlinePostprocessRanges;
 pub use self::state::InlineState;
+pub use self::text_scanner::TextScanner;
+use self::text_scanner::TextScannerImpl;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
+
+/// Register the core rule and text scanner that drive inline parsing.
+pub fn add(md: &mut crate::MarkdownIt) {
+    text_scanner::add(md);
+    parser::add(md);
+}
 
 pub(crate) type InlineCheckFn = fn(&mut InlineState<'_>) -> Option<usize>;
 // TODO: some nested some??
@@ -85,7 +93,7 @@ impl InlineParser {
     }
 
     pub(crate) fn has_only_text_rule(&self) -> bool {
-        self.ruler.len() == 1 && self.has_rule::<builtin::TextScanner>()
+        self.ruler.len() == 1 && self.has_rule::<TextScanner>()
     }
 
     fn add_rule_entry<T: InlineRule>(

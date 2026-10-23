@@ -14,7 +14,7 @@ fn session_cleanup_order_is_independent_of_plugin_registration_order() {
 
 #[test]
 fn warmed_parser_refreshes_linkify_postpass_configuration() {
-    use crate::parser::inline::builtin::InlineParserRule;
+    use crate::parser::inline::InlineParserRule;
 
     let mut md = crate::MarkdownIt::new();
     super::add(&mut md);
@@ -140,8 +140,8 @@ fn direct_prescan_marks_linkify_enabled_without_inline_scanners() {
         LinkifyScanner,
     };
     use crate::document::Root;
-    use crate::parser::block::builtin::BlockParserRule;
-    use crate::parser::inline::builtin::InlineParserRule;
+    use crate::parser::block::BlockParserRule;
+    use crate::parser::inline::InlineParserRule;
     for before_blocks in [false, true] {
         let mut md = crate::MarkdownIt::empty();
         super::add(&mut md);

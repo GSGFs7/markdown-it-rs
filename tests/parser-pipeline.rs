@@ -523,9 +523,9 @@ fn direct_tables_match_snapshots() {
 #[test]
 fn core_parsers_can_be_removed_without_stage_validation() {
     let mut md = MarkdownIt::empty();
-    md.remove_rule::<markdown_it::parser::block::builtin::BlockParserRule>();
+    md.remove_rule::<markdown_it::parser::block::BlockParserRule>();
     assert_eq!(md.render("text"), "");
-    md.remove_rule::<markdown_it::parser::inline::builtin::InlineParserRule>();
+    md.remove_rule::<markdown_it::parser::inline::InlineParserRule>();
     assert_eq!(md.render("text"), "");
 }
 
@@ -1688,16 +1688,16 @@ fn direct_linkify_configuration_and_source_maps() {
         format!("<p>{source}</p>\n")
     );
     md.add_rule::<LinkifyPrescan>()
-        .before::<markdown_it::parser::block::builtin::BlockParserRule>();
+        .before::<markdown_it::parser::block::BlockParserRule>();
     assert_document_valid_with_config(&md, source, "prescan=before_blocks");
     md.remove_rule::<LinkifyPrescan>();
     md.add_rule::<LinkifyPrescan>()
-        .after::<markdown_it::parser::block::builtin::BlockParserRule>()
-        .before::<markdown_it::parser::inline::builtin::InlineParserRule>();
+        .after::<markdown_it::parser::block::BlockParserRule>()
+        .before::<markdown_it::parser::inline::InlineParserRule>();
     assert_document_valid_with_config(&md, source, "prescan=after_blocks");
     md.remove_rule::<LinkifyPrescan>();
     md.add_rule::<LinkifyPrescan>()
-        .after::<markdown_it::parser::inline::builtin::InlineParserRule>();
+        .after::<markdown_it::parser::inline::InlineParserRule>();
     // A prescan after inline parsing cannot linkify text.
     assert_eq!(md.render(""), "");
     assert_eq!(
@@ -1734,9 +1734,9 @@ fn direct_linkify_prescan_runs_before_document_postprocessors() {
 #[test]
 fn direct_core_preparations_share_rule_order_and_lifetime() {
     use markdown_it::common::extset::RootExtSet;
-    use markdown_it::parser::block::builtin::BlockParserRule;
+    use markdown_it::parser::block::BlockParserRule;
     use markdown_it::parser::core::{CoreRule, CoreState};
-    use markdown_it::parser::inline::builtin::InlineParserRule;
+    use markdown_it::parser::inline::InlineParserRule;
     use markdown_it::plugins::cmark::block::reference::ReferenceMap;
 
     #[derive(Default)]
@@ -2030,7 +2030,7 @@ fn direct_directive_callbacks_render_current_document_children() {
 #[test]
 fn direct_draft_finalizers_run_in_order_on_all_parse_paths() {
     use markdown_it::parser::core::{CoreRule, CoreState};
-    use markdown_it::parser::inline::builtin::InlineParserRule;
+    use markdown_it::parser::inline::InlineParserRule;
 
     #[derive(Default)]
     struct Finalize<const SECOND: bool>;

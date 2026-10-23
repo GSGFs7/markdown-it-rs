@@ -220,8 +220,8 @@ impl CoreRule for FinalizeSteps {
 
 #[test]
 fn document_transformations_execute_in_ruler_order() {
-    use markdown_it::parser::block::builtin::BlockParserRule;
-    use markdown_it::parser::inline::builtin::InlineParserRule;
+    use markdown_it::parser::block::BlockParserRule;
+    use markdown_it::parser::inline::InlineParserRule;
 
     let mut md = MarkdownIt::empty();
     md.add_rule::<AppendStep<1>>().before::<BlockParserRule>();

@@ -25,7 +25,7 @@ use crate::render::EmptyRenderer;
 /// if you have some external source for your link references, you can add them like this:
 ///
 /// ```rust
-/// use markdown_it::parser::block::builtin::BlockParserRule;
+/// use markdown_it::parser::block::BlockParserRule;
 /// use markdown_it::Root;
 /// use markdown_it::parser::core::{CoreRule, CoreState};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap, CustomReferenceMap};

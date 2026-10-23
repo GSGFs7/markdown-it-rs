@@ -50,7 +50,7 @@ fn parser<const NESTED: bool>() -> MarkdownIt {
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::block::paragraph::add(&mut md);
     md.inline
-        .add_rule::<crate::parser::inline::builtin::TextScanner>()
+        .add_rule::<crate::parser::inline::TextScanner>()
         .before_all();
     md.inline.add_rule::<Bracket<'['>>();
     md.inline.add_rule::<Bracket<']'>>();

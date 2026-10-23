@@ -1,7 +1,6 @@
 use markdown_it::parser::block::BlockRule;
 use markdown_it::parser::core::{CoreRule, CoreState};
-use markdown_it::parser::inline::InlineRule;
-use markdown_it::parser::inline::builtin::InlineParserRule;
+use markdown_it::parser::inline::{InlineParserRule, InlineRule};
 use markdown_it::{BlockState, InlineState, MarkdownIt, NodeId, Text};
 
 struct ConsumeBlock;

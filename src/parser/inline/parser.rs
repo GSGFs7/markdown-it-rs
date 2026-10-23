@@ -3,7 +3,7 @@ use crate::parser::core::{CoreRule, CoreState};
 
 pub fn add(md: &mut MarkdownIt) {
     md.add_rule::<InlineParserRule>()
-        .after::<crate::parser::block::builtin::BlockParserRule>()
+        .after::<crate::parser::block::BlockParserRule>()
         .before_all();
 }
 

@@ -1,18 +1,23 @@
 //! Block rule chain
-#[doc(hidden)]
-pub mod builtin;
 mod document;
 mod lines;
+mod parser;
 mod rule;
 mod state;
 pub(crate) use document::parse_document;
 pub use lines::*;
+pub use parser::BlockParserRule;
 pub use rule::*;
 pub use state::BlockState;
 
-use crate::NodeId;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
+use crate::{MarkdownIt, NodeId};
+
+/// Register the core rule that drives block parsing.
+pub fn add(md: &mut MarkdownIt) {
+    parser::add(md);
+}
 
 pub(crate) type BlockRuleFns = (
     fn(&mut BlockState<'_>) -> Option<()>,
