@@ -10,7 +10,7 @@ impl InlineRule for ContainerRule {
     const MARKER: char = '{';
 
     fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
-        let source = state.remaining();
+        let (source, document) = state.remaining_and_document();
         if !source.starts_with('{') {
             return None;
         }
@@ -31,12 +31,13 @@ impl InlineRule for ContainerRule {
             }
         }
         let close = close?;
-        let node = state.document.create_node(TestContainer);
+        let node = document.create_node(TestContainer);
+        let consumed = source[..close + 1].len();
         let children = state.parse_subrange(1..close)?;
         for child in children {
             state.document.push_child(node, child);
         }
-        Some((Some(node), close + 1))
+        Some((Some(node), consumed))
     }
 }
 

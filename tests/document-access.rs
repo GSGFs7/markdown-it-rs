@@ -13,6 +13,8 @@ use markdown_it::{
     Root,
     StructuralEvent,
     Text,
+    TextEvent,
+    TextProjectionKind,
     TextSpecial,
     Writer,
 };
@@ -21,6 +23,139 @@ use markdown_it::{
 struct Badge {
     label: String,
     drops: Arc<AtomicUsize>,
+}
+
+fn document_projection<'a>(doc: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+    if let Some(text) = doc.text(node.id()) {
+        TextProjectionKind::Writable(text)
+    } else {
+        TextProjectionKind::Transparent
+    }
+}
+
+#[test]
+fn document_projection_preserves_subtree_depth_and_edit_offsets() {
+    let md = MarkdownIt::new();
+    let mut doc = md.parse("a *雪* and **b**");
+    let projection = document_projection;
+    let subtree = doc.children(doc.root())[0];
+    let events: Vec<_> = doc.text_events_from(subtree, projection).collect();
+    assert_eq!(
+        events.first(),
+        Some(&TextEvent::Enter {
+            node: subtree,
+            nesting_level: 0
+        })
+    );
+    assert_eq!(
+        events.last(),
+        Some(&TextEvent::Exit {
+            node: subtree,
+            nesting_level: 0
+        })
+    );
+    let chars: String = events
+        .iter()
+        .filter_map(|event| match event {
+            TextEvent::Char { ch, .. } => Some(*ch),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(chars, "a 雪 and b");
+
+    let mut edits = EditBatch::new();
+    for event in doc.text_events(projection) {
+        if let TextEvent::Char {
+            node,
+            byte_offset,
+            ch: '雪',
+            writable: true,
+            ..
+        } = event
+        {
+            edits.replace_char(node, byte_offset..byte_offset + '雪'.len_utf8(), '雨');
+        }
+    }
+    edits.commit(&mut doc);
+    assert_eq!(
+        md.render_html(&doc),
+        "<p>a <em>雨</em> and <strong>b</strong></p>\n"
+    );
+    let chars: String = doc
+        .text_events(projection)
+        .filter_map(|event| {
+            if let TextEvent::Char { ch, .. } = event {
+                Some(ch)
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(chars, "a 雨 and b");
+}
+
+#[derive(Debug)]
+struct SourceContext(std::ops::Range<usize>);
+impl NodeValue for SourceContext {}
+
+fn source_projection<'a>(doc: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+    if let Some(context) = doc.value::<SourceContext>(node.id()) {
+        TextProjectionKind::ReadOnly(&doc.source()[context.0.clone()])
+    } else {
+        document_projection(doc, node)
+    }
+}
+
+#[test]
+fn external_classifier_can_borrow_document_source_as_read_only_context() {
+    let mut root = NodeDraft::new(Root::new("前雪尾"));
+    root.push_child(NodeDraft::new(SourceContext(3..6)));
+    root.push_child(NodeDraft::new(Text {
+        content: "edited".into(),
+    }));
+    let doc = Document::from_draft("前雪尾", root);
+    let context = doc.children(doc.root())[0];
+    let text = doc.children(doc.root())[1];
+    let chars: Vec<_> = doc
+        .text_events(source_projection)
+        .filter_map(|event| match event {
+            TextEvent::Char {
+                node,
+                byte_offset,
+                ch,
+                writable,
+                ..
+            } => Some((node, byte_offset, ch, writable)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(chars[0], (context, 0, '雪', false));
+    assert_eq!(chars[1], (text, 0, 'e', true));
+    let mut events = doc.text_events_from(context, source_projection);
+    assert!(matches!(
+        events.next(),
+        Some(TextEvent::Enter {
+            nesting_level: 0,
+            ..
+        })
+    ));
+    assert!(matches!(
+        events.next(),
+        Some(TextEvent::Char {
+            ch: '雪',
+            writable: false,
+            ..
+        })
+    ));
+    assert!(matches!(
+        events.next(),
+        Some(TextEvent::Exit {
+            nesting_level: 0,
+            ..
+        })
+    ));
+    assert_eq!(events.next(), None);
+    assert_eq!(events.next(), None);
 }
 
 impl NodeValue for Badge {}

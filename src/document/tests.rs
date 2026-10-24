@@ -1,5 +1,5 @@
 use super::*;
-use crate::document::text::{TextProjection, TextProjectionKind};
+use crate::document::text::TextProjectionKind;
 use crate::document::{Root, Text};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::{MarkdownIt, plugins};
@@ -91,7 +91,7 @@ fn structural_events_can_start_at_a_subtree_or_leaf() {
 
 #[test]
 fn invalid_node_access_panics_in_all_builds() {
-    fn transparent_text_projection(_: NodeRef<'_>) -> TextProjectionKind<'_> {
+    fn transparent_text_projection<'a>(_: &'a Document, _: NodeRef<'a>) -> TextProjectionKind<'a> {
         TextProjectionKind::Transparent
     }
 
@@ -141,7 +141,7 @@ fn invalid_node_access_panics_in_all_builds() {
             let _ = d.events(id);
         },
         |d, id| {
-            let _ = d.text_events_from(id, TextProjection::new(transparent_text_projection));
+            let _ = d.text_events_from(id, transparent_text_projection);
         },
     ];
     for id in [old, unknown] {

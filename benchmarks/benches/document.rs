@@ -6,6 +6,7 @@ use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use markdown_it::plugins::html::html_inline::HtmlInline;
 use markdown_it::{
+    Document,
     EditBatch,
     MarkdownIt,
     NodeDraft,
@@ -14,7 +15,6 @@ use markdown_it::{
     Text,
     TextBoundary,
     TextEvent,
-    TextProjection,
     TextProjectionKind,
 };
 use markdown_it_benchmarks::corpus;
@@ -38,9 +38,9 @@ empty_core_rule!(EmptyCoreRule3);
 empty_core_rule!(EmptyCoreRule4);
 empty_core_rule!(EmptyCoreRule5);
 
-fn text_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> {
-    if let Some(text) = node.cast::<Text>() {
-        TextProjectionKind::Writable(&text.content)
+fn text_projection<'a>(document: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+    if let Some(text) = document.text(node.id()) {
+        TextProjectionKind::Writable(text)
     } else if let Some(html) = node.cast::<HtmlInline>() {
         TextProjectionKind::ReadOnly(&html.content)
     } else if node.is::<Paragraph>() || node.is::<Hardbreak>() || node.is::<Softbreak>() {
@@ -53,7 +53,7 @@ fn text_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> {
 fn one_edit_per_text_node(document: &markdown_it::Document) -> EditBatch {
     let mut batch = EditBatch::new();
     let mut previous = None;
-    for event in document.text_events(TextProjection::new(text_projection)) {
+    for event in document.text_events(text_projection) {
         match event {
             TextEvent::Char {
                 node,
@@ -182,7 +182,7 @@ fn benchmark(c: &mut Criterion) {
         });
         group.finish();
 
-        let projection = TextProjection::new(text_projection);
+        let projection = text_projection;
         let event_count = document.text_events(projection).count();
         let mut group = c.benchmark_group(format!("document-text-events/{}", corpus.name));
         group.throughput(Throughput::Elements(event_count as u64));

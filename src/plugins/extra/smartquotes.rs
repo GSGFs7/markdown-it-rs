@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use crate::common::utils::{is_markdown_whitespace, is_punct_char};
-use crate::document::{Text, TextSpecial};
+use crate::document::TextSpecial;
 use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::helpers::full_link::IndependentLabelSource;
 use crate::plugins::cmark::block::heading::ATXHeading;
@@ -27,7 +27,6 @@ use crate::{
     NodeRef,
     TextBoundary,
     TextEvent,
-    TextProjection,
     TextProjectionKind,
 };
 
@@ -106,55 +105,59 @@ fn edits_with<
     document: &Document,
 ) -> EditBatch {
     let mut edits = EditBatch::new();
-    let projection = TextProjection::new(smartquotes_projection);
     let mut protected_depth = 0;
     let mut opaque_image = None;
-    let events = document.text_events(projection).filter_map(|event| {
-        // JS sees one image token whose content is the original label, not
-        // the parsed alt children. Their breaks and nesting are local to alt.
-        if let Some(image) = opaque_image {
-            return match event {
-                TextEvent::Char { node, .. } if node == image => relevant_event(document, event),
-                TextEvent::Exit { node, .. } if node == image => {
-                    opaque_image = None;
-                    None
-                }
-                _ => None,
-            };
-        }
-        if let TextEvent::Enter { node, .. } = event
-            && document.node(node).is::<Image>()
-            && document
-                .node(node)
-                .ext()
-                .contains::<IndependentLabelSource>()
-        {
-            opaque_image = Some(node);
-            return None;
-        }
-        match event {
-            TextEvent::Enter { node, .. } | TextEvent::Exit { node, .. }
-                if document.node(node).is::<CodeInline>() || document.node(node).is::<Image>() =>
+    let events = document
+        .text_events(smartquotes_projection)
+        .filter_map(|event| {
+            // JS sees one image token whose content is the original label, not
+            // the parsed alt children. Their breaks and nesting are local to alt.
+            if let Some(image) = opaque_image {
+                return match event {
+                    TextEvent::Char { node, .. } if node == image => {
+                        relevant_event(document, event)
+                    }
+                    TextEvent::Exit { node, .. } if node == image => {
+                        opaque_image = None;
+                        None
+                    }
+                    _ => None,
+                };
+            }
+            if let TextEvent::Enter { node, .. } = event
+                && document.node(node).is::<Image>()
+                && document
+                    .node(node)
+                    .ext()
+                    .contains::<IndependentLabelSource>()
             {
-                if matches!(event, TextEvent::Enter { .. }) {
-                    protected_depth += 1;
-                } else {
-                    protected_depth -= 1;
-                }
+                opaque_image = Some(node);
                 return None;
             }
-            _ => {}
-        }
+            match event {
+                TextEvent::Enter { node, .. } | TextEvent::Exit { node, .. }
+                    if document.node(node).is::<CodeInline>()
+                        || document.node(node).is::<Image>() =>
+                {
+                    if matches!(event, TextEvent::Enter { .. }) {
+                        protected_depth += 1;
+                    } else {
+                        protected_depth -= 1;
+                    }
+                    return None;
+                }
+                _ => {}
+            }
 
-        let mut event = relevant_event(document, event)?;
-        // Code and alt text provide context but cannot be edited.
-        if protected_depth > 0
-            && let RelevantEvent::Char { writable, .. } = &mut event
-        {
-            *writable = false;
-        }
-        Some(event)
-    });
+            let mut event = relevant_event(document, event)?;
+            // Code and alt text provide context but cannot be edited.
+            if protected_depth > 0
+                && let RelevantEvent::Char { writable, .. } = &mut event
+            {
+                *writable = false;
+            }
+            Some(event)
+        });
 
     let mut special_replacements: HashMap<NodeId, Vec<(usize, char)>> = HashMap::new();
     transform_events::<
@@ -442,7 +445,7 @@ fn relevant_event(document: &Document, event: TextEvent) -> Option<RelevantEvent
         TextEvent::Boundary(TextBoundary::Hard) => Some(RelevantEvent::HardBoundary),
         TextEvent::Exit { node, .. }
             if matches!(
-                smartquotes_projection(document.node(node)),
+                smartquotes_projection(document, document.node(node)),
                 TextProjectionKind::Boundary(TextBoundary::Hard)
             ) =>
         {
@@ -453,15 +456,15 @@ fn relevant_event(document: &Document, event: TextEvent) -> Option<RelevantEvent
     }
 }
 
-fn smartquotes_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> {
+fn smartquotes_projection<'a>(document: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
     if node.is::<Image>()
         && let Some(source) = node.ext().get::<IndependentLabelSource>()
     {
         TextProjectionKind::ReadOnly(&source.0)
-    } else if let Some(text) = node.cast::<Text>() {
+    } else if let Some(text) = document.text(node.id()) {
         // normal text, editable
-        TextProjectionKind::Writable(&text.content)
-    } else if let Some(text) = node.cast::<TextSpecial>() {
+        TextProjectionKind::Writable(text)
+    } else if let Some(text) = document.value::<TextSpecial>(node.id()) {
         if text.info == "autolink" {
             // JS smartquotes processes automatic link labels as normal text.
             TextProjectionKind::Writable(&text.content)
@@ -469,7 +472,7 @@ fn smartquotes_projection(node: NodeRef<'_>) -> TextProjectionKind<'_> {
             // Escapes and entities provide context but remain literal.
             TextProjectionKind::ReadOnly(&text.content)
         }
-    } else if let Some(html) = node.cast::<HtmlInline>() {
+    } else if let Some(html) = document.value::<HtmlInline>(node.id()) {
         // HTML, not editable (protect quotes for <a href="...">)
         TextProjectionKind::ReadOnly(&html.content)
     } else if node.is::<Paragraph>()

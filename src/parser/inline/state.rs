@@ -103,6 +103,11 @@ impl<'a> InlineState<'a> {
         &self.src[self.pos..self.pos_max]
     }
 
+    /// Borrow the current source window and document independently.
+    pub fn remaining_and_document(&mut self) -> (&str, &mut Document) {
+        (&self.src[self.pos..self.pos_max], &mut *self.document)
+    }
+
     /// Parser instance that owns this inline rule.
     pub fn markdown_it(&self) -> &MarkdownIt {
         self.md

@@ -68,9 +68,11 @@ impl InlineRule for HtmlInlineScanner {
 
         state.link_level += matched.link_level_delta;
 
+        let (source, document) = state.remaining_and_document();
+
         Some((
-            Some(state.document.create_node(HtmlInline {
-                content: state.src[state.pos..state.pos + matched.consumed].to_owned(),
+            Some(document.create_node(HtmlInline {
+                content: source[..matched.consumed].to_owned(),
             })),
             matched.consumed,
         ))

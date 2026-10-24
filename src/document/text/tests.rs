@@ -14,9 +14,9 @@ impl NodeValue for ReadOnlyText {}
 
 static CLASSIFICATIONS: AtomicUsize = AtomicUsize::new(0);
 
-fn classify(node: NodeRef<'_>) -> TextProjectionKind<'_> {
-    if let Some(text) = node.cast::<Text>() {
-        TextProjectionKind::Writable(&text.content)
+fn classify<'a>(document: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+    if let Some(text) = document.text(node.id()) {
+        TextProjectionKind::Writable(text)
     } else if let Some(text) = node.cast::<ReadOnlyText>() {
         TextProjectionKind::ReadOnly(&text.0)
     } else if node.is::<Paragraph>() {
@@ -26,9 +26,9 @@ fn classify(node: NodeRef<'_>) -> TextProjectionKind<'_> {
     }
 }
 
-fn smartquotes_like(node: NodeRef<'_>) -> TextProjectionKind<'_> {
-    if let Some(text) = node.cast::<Text>() {
-        TextProjectionKind::Writable(&text.content)
+fn smartquotes_like<'a>(document: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+    if let Some(text) = document.text(node.id()) {
+        TextProjectionKind::Writable(text)
     } else if let Some(html) = node.cast::<HtmlInline>() {
         TextProjectionKind::ReadOnly(&html.content)
     } else if node.is::<Paragraph>() || node.is::<Hardbreak>() || node.is::<Softbreak>() {
@@ -38,7 +38,7 @@ fn smartquotes_like(node: NodeRef<'_>) -> TextProjectionKind<'_> {
     }
 }
 
-fn count_classifications(_: NodeRef<'_>) -> TextProjectionKind<'_> {
+fn count_classifications<'a>(_: &'a Document, _: NodeRef<'a>) -> TextProjectionKind<'a> {
     CLASSIFICATIONS.fetch_add(1, Ordering::Relaxed);
     TextProjectionKind::Transparent
 }
@@ -62,7 +62,7 @@ fn projection_uses_node_ids_and_utf8_byte_offsets() {
     let paragraph = document.children(document.root())[0];
     let text = document.children(paragraph)[0];
     let chars: Vec<_> = document
-        .text_events(TextProjection::new(classify))
+        .text_events(classify)
         .filter_map(|event| match event {
             TextEvent::Char {
                 node,
@@ -88,9 +88,7 @@ fn projection_order_depth_and_boundaries_are_stable() {
     let root = document.root();
     let paragraph = document.children(root)[0];
     let children = document.children(paragraph);
-    let events: Vec<_> = document
-        .text_events(TextProjection::new(classify))
-        .collect();
+    let events: Vec<_> = document.text_events(classify).collect();
 
     assert_eq!(
         events[0],
@@ -124,7 +122,7 @@ fn projection_order_depth_and_boundaries_are_stable() {
 fn subtree_projection_uses_the_subtree_as_depth_zero() {
     let document = document();
     let paragraph = document.children(document.root())[0];
-    let mut events = document.text_events_from(paragraph, TextProjection::new(classify));
+    let mut events = document.text_events_from(paragraph, classify);
 
     assert_eq!(
         events.next(),
@@ -138,8 +136,9 @@ fn subtree_projection_uses_the_subtree_as_depth_zero() {
 #[test]
 fn projection_is_lazy_and_fused() {
     let document = document();
+    let projection = count_classifications;
     CLASSIFICATIONS.store(0, Ordering::Relaxed);
-    let mut events = document.text_events(TextProjection::new(count_classifications));
+    let mut events = document.text_events(projection);
 
     assert_eq!(CLASSIFICATIONS.load(Ordering::Relaxed), 1);
     assert!(matches!(events.next(), Some(TextEvent::Enter { .. })));
@@ -158,9 +157,7 @@ fn real_markdown_preserves_text_html_and_linebreak_semantics() {
     plugins::cmark::add(&mut md);
     plugins::html::add(&mut md);
     let document = md.parse("A *雪*\n<b title=\"q\">B</b>  \nC");
-    let events: Vec<_> = document
-        .text_events(TextProjection::new(smartquotes_like))
-        .collect();
+    let events: Vec<_> = document.text_events(smartquotes_like).collect();
 
     let writable: String = events
         .iter()

@@ -20,14 +20,7 @@ pub mod plugins;
 pub mod render;
 
 pub use document::edit::EditBatch;
-pub use document::text::{
-    TextBoundary,
-    TextClassifier,
-    TextEvent,
-    TextEvents,
-    TextProjection,
-    TextProjectionKind,
-};
+pub use document::text::{TextBoundary, TextClassifier, TextEvent, TextEvents, TextProjectionKind};
 pub use document::{
     Document,
     HtmlAttribute,

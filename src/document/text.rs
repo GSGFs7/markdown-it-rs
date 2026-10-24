@@ -100,20 +100,9 @@ pub enum TextProjectionKind<'a> {
     Transparent,
 }
 
-/// Classifies nodes without restricting third-party [`crate::NodeValue`] types.
-pub type TextClassifier = for<'a> fn(NodeRef<'a>) -> TextProjectionKind<'a>;
-
-/// Reusable policy for projecting a document into text events.
-#[derive(Clone, Copy)]
-pub struct TextProjection {
-    classifier: TextClassifier,
-}
-
-impl TextProjection {
-    pub const fn new(classifier: TextClassifier) -> Self {
-        Self { classifier }
-    }
-}
+/// Classifies a node, optionally using the document for text, payloads, or source.
+/// Writable content must match the node's editable text and byte offsets.
+pub type TextClassifier = for<'a> fn(&'a Document, NodeRef<'a>) -> TextProjectionKind<'a>;
 
 enum FrameProjection<'a> {
     Writable(CharIndices<'a>),
@@ -147,10 +136,10 @@ pub struct TextEvents<'a> {
 
 impl<'a> TextEvents<'a> {
     #[track_caller]
-    fn new(document: &'a Document, root: NodeId, projection: TextProjection) -> Self {
+    fn new(document: &'a Document, root: NodeId, classifier: TextClassifier) -> Self {
         let mut events = Self {
             document,
-            classifier: projection.classifier,
+            classifier,
             stack: Vec::with_capacity(16),
         };
         let root = document.node(root);
@@ -159,7 +148,7 @@ impl<'a> TextEvents<'a> {
     }
 
     fn push(&mut self, node: NodeRef<'a>, nesting_level: u32) {
-        let projection = match (self.classifier)(node) {
+        let projection = match (self.classifier)(self.document, node) {
             TextProjectionKind::Writable(content) => {
                 FrameProjection::Writable(content.char_indices())
             }
@@ -255,8 +244,26 @@ impl FusedIterator for TextEvents<'_> {}
 
 impl Document {
     /// Project the whole document into a lazy text event stream.
-    pub fn text_events(&self, projection: TextProjection) -> TextEvents<'_> {
-        TextEvents::new(self, self.root(), projection)
+    ///
+    /// ```
+    /// use markdown_it::{Document, MarkdownIt, NodeRef, TextEvent, TextProjectionKind};
+    ///
+    /// fn classify<'a>(doc: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+    ///     match doc.text(node.id()) {
+    ///         Some(text) => TextProjectionKind::Writable(text),
+    ///         None => TextProjectionKind::Transparent,
+    ///     }
+    /// }
+    ///
+    /// let doc = MarkdownIt::new().parse("a *雪*");
+    /// let text: String = doc.text_events(classify).filter_map(|event| match event {
+    ///     TextEvent::Char { ch, .. } => Some(ch),
+    ///     _ => None,
+    /// }).collect();
+    /// assert_eq!(text, "a 雪");
+    /// ```
+    pub fn text_events(&self, classifier: TextClassifier) -> TextEvents<'_> {
+        TextEvents::new(self, self.root(), classifier)
     }
 
     /// Project one document subtree into text events.
@@ -264,8 +271,8 @@ impl Document {
     /// # Panics
     /// Panics if the root ID is invalid or stale.
     #[track_caller]
-    pub fn text_events_from(&self, root: NodeId, projection: TextProjection) -> TextEvents<'_> {
-        TextEvents::new(self, root, projection)
+    pub fn text_events_from(&self, root: NodeId, classifier: TextClassifier) -> TextEvents<'_> {
+        TextEvents::new(self, root, classifier)
     }
 }
 
