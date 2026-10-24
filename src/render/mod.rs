@@ -22,6 +22,8 @@ use crate::document::{
     NodeValue,
     Root,
     StructuralEvent,
+    Text,
+    TextSpecial,
 };
 
 // --- protocol ---
@@ -86,9 +88,8 @@ where
     R: NodeRenderer<T>,
 {
     fn render(&self, node: NodeRef<'_>, context: &mut RenderContext<'_>, output: &mut Writer) {
-        let value = context
-            .document()
-            .value::<T>(node.id())
+        let value = node
+            .cast::<T>()
             .expect("renderer registry type and payload type must agree");
         self.renderer.render(node, value, context, output);
     }
@@ -370,23 +371,41 @@ impl<T: NodeValue> NodeRenderer<T> for EmptyRenderer {
 
 pub(crate) struct HtmlTextRenderer;
 
-impl<T> NodeRenderer<T> for HtmlTextRenderer
-where
-    T: NodeValue + AsRef<str>,
-{
-    fn render(&self, _: &Node, value: &T, _: &mut RenderContext<'_>, output: &mut Writer) {
-        output.write_escaped_html(value.as_ref());
+impl NodeRenderer<Text> for HtmlTextRenderer {
+    fn render(&self, _: &Node, value: &Text, _: &mut RenderContext<'_>, output: &mut Writer) {
+        output.write_escaped_html(&value.content);
+    }
+}
+
+impl NodeRenderer<TextSpecial> for HtmlTextRenderer {
+    fn render(
+        &self,
+        _: &Node,
+        value: &TextSpecial,
+        _: &mut RenderContext<'_>,
+        output: &mut Writer,
+    ) {
+        output.write_escaped_html(&value.content);
     }
 }
 
 pub(crate) struct PlainTextRenderer;
 
-impl<T> NodeRenderer<T> for PlainTextRenderer
-where
-    T: NodeValue + AsRef<str>,
-{
-    fn render(&self, _: &Node, value: &T, _: &mut RenderContext<'_>, output: &mut Writer) {
-        output.write_str(value.as_ref());
+impl NodeRenderer<Text> for PlainTextRenderer {
+    fn render(&self, _: &Node, value: &Text, _: &mut RenderContext<'_>, output: &mut Writer) {
+        output.write_str(&value.content);
+    }
+}
+
+impl NodeRenderer<TextSpecial> for PlainTextRenderer {
+    fn render(
+        &self,
+        _: &Node,
+        value: &TextSpecial,
+        _: &mut RenderContext<'_>,
+        output: &mut Writer,
+    ) {
+        output.write_str(&value.content);
     }
 }
 

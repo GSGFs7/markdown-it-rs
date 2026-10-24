@@ -258,6 +258,7 @@ fn borrowed_unicode_text_can_produce_edits_without_copying_the_input() {
     edits.commit(&mut doc);
     doc.materialize_text(id).unwrap().insert(0, '新');
     assert_eq!(md.render_html(&doc), "<p>新雨 &amp; &lt;tag&gt;</p>\n");
+    assert_eq!(md.render_as(&doc, "text"), "新雨 & <tag>\n");
     assert_eq!(doc.source(), source);
     #[cfg(feature = "sourcemap")]
     assert_eq!(doc.node(id).srcmap(), srcmap);
@@ -277,6 +278,9 @@ fn owned_text_snapshot_and_generated_draft_outlive_the_source_document() {
     let mut doc = Document::from_draft("", NodeDraft::new(Text { content: snapshot }));
     let id = doc.root();
     assert_eq!(doc.text(id), Some("decoded & edited 雪"));
+    let md = MarkdownIt::empty();
+    assert_eq!(md.render_html(&doc), "decoded &amp; edited 雪");
+    assert_eq!(md.render_as(&doc, "text"), "decoded & edited 雪");
     let mut edits = EditBatch::new();
     edits.replace_value(
         id,
@@ -291,5 +295,9 @@ fn owned_text_snapshot_and_generated_draft_outlive_the_source_document() {
     assert!(doc.materialize_text(id).is_none());
     assert!(doc.value::<Text>(id).is_none());
     assert_eq!(doc.value::<TextSpecial>(id).unwrap().content, "&");
-    assert_eq!(MarkdownIt::empty().render_html(&doc), "&amp;");
+    assert_eq!(md.render_html(&doc), "&amp;");
+    assert_eq!(md.render_as(&doc, "text"), "&");
+    doc.value_mut::<TextSpecial>(id).unwrap().content = "雪<&amp;>".into();
+    assert_eq!(md.render_html(&doc), "雪&lt;&amp;amp;&gt;");
+    assert_eq!(md.render_as(&doc, "text"), "雪<&amp;>");
 }

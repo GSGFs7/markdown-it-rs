@@ -11,12 +11,6 @@ pub struct Text {
     pub content: String,
 }
 
-impl AsRef<str> for Text {
-    fn as_ref(&self) -> &str {
-        &self.content
-    }
-}
-
 impl NodeValue for Text {}
 
 impl Document {
@@ -47,12 +41,6 @@ pub struct TextSpecial {
     pub content: String,
     pub markup: String,
     pub info: &'static str,
-}
-
-impl AsRef<str> for TextSpecial {
-    fn as_ref(&self) -> &str {
-        &self.content
-    }
 }
 
 impl NodeValue for TextSpecial {}
