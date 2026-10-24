@@ -1,4 +1,5 @@
 use super::*;
+use crate::Text;
 #[cfg(feature = "sourcemap")]
 use crate::common::sourcemap::SourcePos;
 use crate::document::Root;

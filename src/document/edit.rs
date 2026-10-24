@@ -3,7 +3,7 @@
 use std::ops::Range;
 
 use crate::document::data::NodeData;
-use crate::document::{Document, NodeDraft, NodeId, NodeValue, SiblingPosition, Text};
+use crate::document::{Document, NodeDraft, NodeId, NodeValue, SiblingPosition};
 
 #[derive(Clone, Debug)]
 enum TextReplacement {
@@ -359,19 +359,17 @@ impl EditBatch {
         for edits in text_groups(&self.node_patches.text) {
             let node_id = edits[0].node;
             let text = document
-                .node_mut(node_id)
-                .cast_mut::<Text>()
+                .materialize_text(node_id)
                 .expect("text edit target must be a Text node");
 
             if let [edit] = edits {
                 match &edit.replacement {
                     TextReplacement::String(replacement) => {
-                        text.content
-                            .replace_range(edit.range.clone(), replacement.as_str());
+                        text.replace_range(edit.range.clone(), replacement.as_str());
                     }
                     TextReplacement::Char(replacement) => {
                         let mut encoded = [0; 4];
-                        text.content.replace_range(
+                        text.replace_range(
                             edit.range.clone(),
                             replacement.encode_utf8(&mut encoded),
                         );
@@ -380,18 +378,18 @@ impl EditBatch {
                 continue;
             }
 
-            let capacity = edits.iter().fold(text.content.len(), |len, edit| {
+            let capacity = edits.iter().fold(text.len(), |len, edit| {
                 len - (edit.range.end - edit.range.start) + edit.replacement.len()
             });
             let mut content = String::with_capacity(capacity);
             let mut copied_until = 0;
             for edit in edits {
-                content.push_str(&text.content[copied_until..edit.range.start]);
+                content.push_str(&text[copied_until..edit.range.start]);
                 edit.replacement.push_to(&mut content);
                 copied_until = edit.range.end;
             }
-            content.push_str(&text.content[copied_until..]);
-            text.content = content;
+            content.push_str(&text[copied_until..]);
+            *text = content;
         }
     }
 

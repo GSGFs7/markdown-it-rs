@@ -86,8 +86,9 @@ where
     R: NodeRenderer<T>,
 {
     fn render(&self, node: NodeRef<'_>, context: &mut RenderContext<'_>, output: &mut Writer) {
-        let value = node
-            .cast::<T>()
+        let value = context
+            .document()
+            .value::<T>(node.id())
             .expect("renderer registry type and payload type must agree");
         self.renderer.render(node, value, context, output);
     }

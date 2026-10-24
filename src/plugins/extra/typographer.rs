@@ -36,7 +36,7 @@ use regex::Regex;
 
 use crate::MarkdownIt;
 use crate::document::edit::EditBatch;
-use crate::document::{Document, StructuralEvent, Text};
+use crate::document::{Document, StructuralEvent};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::plugins::cmark::inline::backticks::CodeInline;
 use crate::plugins::cmark::inline::image::Image;
@@ -128,11 +128,11 @@ fn edits(document: &Document) -> EditBatch {
         if protected_depth > 0 {
             continue;
         }
-        let Some(text) = node.cast::<Text>() else {
+        let Some(text) = document.text(node.id()) else {
             continue;
         };
-        if let Some(replacement) = replace_text(&text.content) {
-            edits.replace_text(node.id(), 0..text.content.len(), replacement);
+        if let Some(replacement) = replace_text(text) {
+            edits.replace_text(node.id(), 0..text.len(), replacement);
         }
     }
     edits

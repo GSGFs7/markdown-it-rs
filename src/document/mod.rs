@@ -198,6 +198,26 @@ impl Document {
         }
     }
 
+    /// Borrow a node's payload through its owning document.
+    ///
+    /// # Panics
+    /// Panics if the ID is invalid or stale.
+    #[inline]
+    #[track_caller]
+    pub fn value<T: NodeValue>(&self, id: NodeId) -> Option<&T> {
+        self.node(id).cast::<T>()
+    }
+
+    /// Mutably borrow a node's payload without changing its type or identity.
+    ///
+    /// # Panics
+    /// Panics if the ID is invalid or stale. It must originate from this document.
+    #[inline]
+    #[track_caller]
+    pub fn value_mut<T: NodeValue>(&mut self, id: NodeId) -> Option<&mut T> {
+        self.node_mut(id).cast_mut::<T>()
+    }
+
     /// Return the parent of a valid node, or None for the document root.
     ///
     /// # Panics

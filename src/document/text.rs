@@ -19,6 +19,28 @@ impl AsRef<str> for Text {
 
 impl NodeValue for Text {}
 
+impl Document {
+    /// Borrow the current content of a built-in [`Text`] node without copying.
+    ///
+    /// # Panics
+    /// Panics if the ID is invalid or stale. It must originate from this document.
+    #[inline]
+    #[track_caller]
+    pub fn text(&self, id: NodeId) -> Option<&str> {
+        self.value::<Text>(id).map(|text| text.content.as_str())
+    }
+
+    /// Obtain owned, writable content for a built-in [`Text`] node.
+    ///
+    /// # Panics
+    /// Panics if the ID is invalid or stale. It must originate from this document.
+    #[inline]
+    #[track_caller]
+    pub fn materialize_text(&mut self, id: NodeId) -> Option<&mut String> {
+        self.value_mut::<Text>(id).map(|text| &mut text.content)
+    }
+}
+
 #[derive(Debug)]
 /// Escaped text AST node (backslash escapes and entities).
 pub struct TextSpecial {
