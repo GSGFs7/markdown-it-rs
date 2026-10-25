@@ -974,7 +974,10 @@ mod tests {
             for n in [32, 128, 512] {
                 let source = format!("{}x", "^[".repeat(n));
                 let direct = md.parse(&source);
-                assert_eq!(md.render_html(&direct), format!("<p>{source}</p>\n"));
+                assert_eq!(
+                    md.render_document(&direct, "html"),
+                    format!("<p>{source}</p>\n")
+                );
                 let root = direct.node(direct.root());
                 let env = root
                     .cast::<crate::document::Root>()
@@ -1010,7 +1013,7 @@ mod tests {
             md.max_nesting = limit;
             let source = format!("{}x{}", "^[".repeat(256), "]".repeat(256));
             let direct = md.parse(&source);
-            assert!(md.render_html(&direct).contains('x'));
+            assert!(md.render_document(&direct, "html").contains('x'));
         }
     }
 

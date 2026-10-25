@@ -55,7 +55,7 @@ fn custom_rule_parses_nested_children_without_losing_parent_text() {
     let md = parser();
     let document = md.parse("前{ 雪 {*x*} }尾 {}");
     assert_eq!(
-        md.render_html(&document),
+        md.render_document(&document, "html"),
         "<p>前{ 雪 {<em>x</em>} }尾 {}</p>\n"
     );
 }
@@ -78,7 +78,10 @@ fn nesting_limit_stops_recursive_container_rules() {
     let mut md = parser();
     md.max_nesting = 2;
     let document = md.parse("{ {*x*} *y* }");
-    assert_eq!(md.render_html(&document), "<p>{ {*x*} <em>y</em> }</p>\n");
+    assert_eq!(
+        md.render_document(&document, "html"),
+        "<p>{ {*x*} <em>y</em> }</p>\n"
+    );
 }
 
 struct ContainerRenderer;

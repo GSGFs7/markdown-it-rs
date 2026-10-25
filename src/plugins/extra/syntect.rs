@@ -36,7 +36,7 @@
 //! markdown_it::plugins::cmark::add(&mut md);
 //! markdown_it::plugins::extra::syntect::add(&mut md);
 //! let mut document = md.parse("```rust\nfn main() {}\n```");
-//! assert!(md.render_html(&document).contains("language-rust"));
+//! assert!(md.render_document(&document, "html").contains("language-rust"));
 //! ```
 
 use std::collections::HashSet;

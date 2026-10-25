@@ -13,8 +13,8 @@ fn run(input: &str, output: &str) {
     assert_eq!(actual, expected);
 
     let document = md.parse(&source);
-    assert_eq!(md.render_html(&document), actual);
-    md.render_as(&document, "text");
+    assert_eq!(md.render_document(&document, "html"), actual);
+    md.render_document(&document, "text");
 }
 
 #[test]
@@ -75,5 +75,8 @@ fn partially_matched_strikethrough_keeps_source_offsets() {
         text.srcmap().unwrap().get_byte_offsets(),
         (content_start, content_start + 1)
     );
-    assert_eq!(md.render_html(&document), "<p>雪 -~~<s>;</s> 尾</p>\n");
+    assert_eq!(
+        md.render_document(&document, "html"),
+        "<p>雪 -~~<s>;</s> 尾</p>\n"
+    );
 }

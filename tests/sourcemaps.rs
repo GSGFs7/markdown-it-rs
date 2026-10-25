@@ -60,7 +60,7 @@ fn text_fallback_maps_only_existing_source_bytes() {
         }
         edits.commit(&mut document);
         assert_eq!(
-            md.render_html(&document),
+            md.render_document(&document, "html"),
             expected_html,
             "source={source:?}"
         );

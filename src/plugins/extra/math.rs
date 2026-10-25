@@ -238,7 +238,7 @@ mod tests {
                 .into_owned()
         }
 
-        let actual = normalize_katex_attrs(&md.render_html(&node));
+        let actual = normalize_katex_attrs(&md.render_document(&node, "html"));
         let expected = normalize_katex_attrs(&output);
         assert_eq!(actual, expected);
 

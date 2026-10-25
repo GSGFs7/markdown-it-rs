@@ -445,7 +445,7 @@ mod markdownit_rs {
         assert_eq!(document.len(), lines * 3 + 1);
 
         let start = Instant::now();
-        let output = md.render_html(&document);
+        let output = md.render_document(&document, "html");
         black_box(&output);
         assert_within_budget(start, "render deferred inline siblings", src.len());
         assert_eq!(output, "<em>a</em>\n".repeat(lines));

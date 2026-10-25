@@ -99,7 +99,7 @@ fn document_projection_preserves_subtree_depth_and_edit_offsets() {
     }
     edits.commit(&mut doc);
     assert_eq!(
-        md.render_html(&doc),
+        md.render_document(&doc, "html"),
         "<p>a <em>雨</em> and <strong>b</strong></p>\n"
     );
     let chars: String = doc
@@ -225,7 +225,7 @@ fn external_payload_mutation_replacement_and_removal_preserve_ownership() {
         .attrs_mut()
         .push(("data-kind".into(), "badge".into()));
     doc.value_mut::<Badge>(id).unwrap().label = "edited".into();
-    assert_eq!(md.render_html(&doc), "edited!");
+    assert_eq!(md.render_document(&doc, "html"), "edited!");
     assert_eq!(drops.load(Ordering::SeqCst), 0);
 
     let mut edits = EditBatch::new();
@@ -235,7 +235,7 @@ fn external_payload_mutation_replacement_and_removal_preserve_ownership() {
     assert_eq!(doc.children(id), &[child]);
     assert_eq!(doc.parent(child), Some(id));
     assert_eq!(doc.node(id).attrs()[0].1, "badge");
-    assert_eq!(md.render_html(&doc), "old!");
+    assert_eq!(md.render_document(&doc, "html"), "old!");
 
     let mut edits = EditBatch::new();
     edits.remove_node(id);
@@ -275,8 +275,11 @@ fn borrowed_unicode_text_can_produce_edits_without_copying_the_input() {
     let srcmap = doc.node(id).srcmap();
     edits.commit(&mut doc);
     doc.materialize_text(id).unwrap().insert(0, '新');
-    assert_eq!(md.render_html(&doc), "<p>新雨 &amp; &lt;tag&gt;</p>\n");
-    assert_eq!(md.render_as(&doc, "text"), "新雨 & <tag>\n");
+    assert_eq!(
+        md.render_document(&doc, "html"),
+        "<p>新雨 &amp; &lt;tag&gt;</p>\n"
+    );
+    assert_eq!(md.render_document(&doc, "text"), "新雨 & <tag>\n");
     assert_eq!(doc.source(), source);
     #[cfg(feature = "sourcemap")]
     assert_eq!(doc.node(id).srcmap(), srcmap);
@@ -297,8 +300,8 @@ fn owned_text_snapshot_and_generated_draft_outlive_the_source_document() {
     let id = doc.root();
     assert_eq!(doc.text(id), Some("decoded & edited 雪"));
     let md = MarkdownIt::empty();
-    assert_eq!(md.render_html(&doc), "decoded &amp; edited 雪");
-    assert_eq!(md.render_as(&doc, "text"), "decoded & edited 雪");
+    assert_eq!(md.render_document(&doc, "html"), "decoded &amp; edited 雪");
+    assert_eq!(md.render_document(&doc, "text"), "decoded & edited 雪");
     let mut edits = EditBatch::new();
     edits.replace_value(
         id,
@@ -313,9 +316,9 @@ fn owned_text_snapshot_and_generated_draft_outlive_the_source_document() {
     assert!(doc.materialize_text(id).is_none());
     assert!(doc.value::<Text>(id).is_none());
     assert_eq!(doc.value::<TextSpecial>(id).unwrap().content, "&");
-    assert_eq!(md.render_html(&doc), "&amp;");
-    assert_eq!(md.render_as(&doc, "text"), "&");
+    assert_eq!(md.render_document(&doc, "html"), "&amp;");
+    assert_eq!(md.render_document(&doc, "text"), "&");
     doc.value_mut::<TextSpecial>(id).unwrap().content = "雪<&amp;>".into();
-    assert_eq!(md.render_html(&doc), "雪&lt;&amp;amp;&gt;");
-    assert_eq!(md.render_as(&doc, "text"), "雪<&amp;>");
+    assert_eq!(md.render_document(&doc, "html"), "雪&lt;&amp;amp;&gt;");
+    assert_eq!(md.render_document(&doc, "text"), "雪<&amp;>");
 }

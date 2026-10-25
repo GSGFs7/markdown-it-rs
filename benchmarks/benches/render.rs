@@ -11,7 +11,7 @@ fn benchmark(c: &mut Criterion) {
         let mut group = c.benchmark_group(format!("render/{}", corpus.name));
         group.throughput(Throughput::Bytes(corpus.len() as u64));
         group.bench_function("html", |b| {
-            b.iter(|| black_box(md.render_html(black_box(&document))))
+            b.iter(|| black_box(md.render_document(black_box(&document), "html")))
         });
         group.bench_function("parse-render", |b| {
             b.iter(|| black_box(md.render(black_box(source))))

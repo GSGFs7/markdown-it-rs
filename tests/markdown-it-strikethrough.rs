@@ -13,8 +13,8 @@ fn run(input: &str, output: &str) {
     assert_eq!(actual, expected);
 
     let document = md.parse(&source);
-    assert_eq!(md.render_html(&document), actual);
-    md.render_as(&document, "text");
+    assert_eq!(md.render_document(&document, "html"), actual);
+    md.render_document(&document, "text");
 }
 
 ///////////////////////////////////////////////////////////////////////////

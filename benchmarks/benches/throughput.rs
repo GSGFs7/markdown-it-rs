@@ -141,7 +141,7 @@ pub fn benchmark(c: &mut Criterion) {
         let mut render = c.benchmark_group(format!("render/{}", corpus.name));
         render.throughput(Throughput::Bytes(corpus.len() as u64));
         render.bench_function(MARKDOWN_IT_RS, |b| {
-            b.iter(|| black_box(current.render_html(&current_ast)))
+            b.iter(|| black_box(current.render_document(&current_ast, "html")))
         });
         if let (Some(legacy_ast), Some(comrak_ast)) = (legacy_ast.as_ref(), comrak_ast) {
             render.bench_function(MARKDOWN_IT_V6, |b| {

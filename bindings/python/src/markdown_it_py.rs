@@ -84,7 +84,7 @@ impl PyMarkdownIt {
     fn render(&self, py: Python<'_>, src: &str) -> PyResult<String> {
         let ast = self.parse(py, src)?;
         let ast_ref = ast.borrow(py);
-        let html = self.inner.render_html(&ast_ref.root.borrow());
+        let html = self.inner.render_document(&ast_ref.root.borrow(), "html");
         self.run_postprocessors(py, html)
     }
 
@@ -122,7 +122,7 @@ impl PyMarkdownIt {
             .cast::<Root>()
             .and_then(|root| root.ext.get::<FrontMatter>())
             .map(PyFrontMatter::from);
-        let html = self.inner.render_html(&root);
+        let html = self.inner.render_document(&root, "html");
         let html = self.run_postprocessors(py, html)?;
 
         Ok(PyMarkdownOutput { html, frontmatter })

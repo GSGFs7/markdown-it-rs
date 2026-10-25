@@ -646,7 +646,7 @@ mod tests {
             (30_000, source.len())
         );
         assert_eq!(
-            md.render_html(&document),
+            md.render_document(&document, "html"),
             "<p>".to_owned() + &"a_ ".repeat(10_000) + "<strong>雪</strong></p>\n"
         );
     }
@@ -819,7 +819,7 @@ mod tests {
         for event in node.events(node.root()) {
             assert!(event.node().srcmap().is_some());
         }
-        assert_eq!(md.render_html(&node), output);
+        assert_eq!(md.render_document(&node, "html"), output);
     }
 
     /// Parse with only CommonMark paragraph and emphasis rules.
@@ -833,7 +833,11 @@ mod tests {
         for event in node.events(node.root()) {
             assert!(event.node().srcmap().is_some());
         }
-        assert_eq!(md.render_html(&node), output, "parser for {input:?}");
+        assert_eq!(
+            md.render_document(&node, "html"),
+            output,
+            "parser for {input:?}"
+        );
     }
 
     #[test]
@@ -906,7 +910,7 @@ mod tests {
 
         let root = md.parse("a 🦀雪🦀 b");
 
-        assert_eq!(md.render_html(&root), "<p>a <x>雪</x> b</p>\n",);
+        assert_eq!(md.render_document(&root, "html"), "<p>a <x>雪</x> b</p>\n",);
 
         let paragraph = root.children(root.root())[0];
         let wrapper = root.node(root.children(paragraph)[1]);
@@ -923,7 +927,7 @@ mod tests {
 
         let root = md.parse("🦀🦀雪🦀🦀");
 
-        assert_eq!(md.render_html(&root), "<p><x>雪</x></p>\n",);
+        assert_eq!(md.render_document(&root, "html"), "<p><x>雪</x></p>\n",);
 
         #[cfg(feature = "sourcemap")]
         {

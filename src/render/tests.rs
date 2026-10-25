@@ -66,13 +66,19 @@ fn renders_minimal_html_directly_without_consuming_document() {
     let md = MarkdownIt::empty();
     let document = md.parse("hello <world>");
 
-    assert_eq!(md.render_html(&document), "hello &lt;world&gt;\n");
-    assert_eq!(md.render_as(&document, "text"), "hello <world>\n");
-    assert_eq!(md.render_html(&document), "hello &lt;world&gt;\n");
+    assert_eq!(
+        md.render_document(&document, "html"),
+        "hello &lt;world&gt;\n"
+    );
+    assert_eq!(md.render_document(&document, "text"), "hello <world>\n");
+    assert_eq!(
+        md.render_document(&document, "html"),
+        "hello &lt;world&gt;\n"
+    );
 
     let nul = md.parse("\0");
-    assert_eq!(md.render_html(&nul), "\u{FFFD}\n");
-    assert_eq!(md.render_as(&nul, "text"), "\u{FFFD}\n");
+    assert_eq!(md.render_document(&nul, "html"), "\u{FFFD}\n");
+    assert_eq!(md.render_document(&nul, "text"), "\u{FFFD}\n");
 }
 
 #[test]
@@ -198,7 +204,7 @@ fn generated_link_and_image_attrs_preserve_duplicates_and_escaping() {
                     ">a &amp; b</a>"
                 };
                 assert_eq!(
-                    md.render_html(&document),
+                    md.render_document(&document, "html"),
                     format!(
                         "<{tag} title=\"custom &amp; title\" title=\"generated &lt;title&gt;\" {target}=\"custom &lt;url&gt;\" {target}=\"/{url}?a&amp;b\" class=\"one two\"{alt}{extra_html}{end}"
                     )
@@ -218,7 +224,7 @@ fn registered_paragraph_renderer_preserves_attributes() {
     edits.commit(&mut document);
 
     assert_eq!(
-        md.render_html(&document),
+        md.render_document(&document, "html"),
         "<p class=\"one two\">hello</p>\n"
     );
 }
@@ -246,7 +252,7 @@ fn commonmark_block_renderers_match_render_api() {
             let expected = md.render(source);
             let document = md.parse(source);
             assert_eq!(
-                md.render_html(&document),
+                md.render_document(&document, "html"),
                 expected,
                 "direct renderer differs for {source:?} with options {:?}",
                 md.render_options
@@ -271,7 +277,7 @@ fn block_renderers_preserve_transform_attributes() {
     crate::plugins::sourcepos::add(&mut direct);
     let document = direct.parse(source);
 
-    assert_eq!(direct.render_html(&document), expected);
+    assert_eq!(direct.render_document(&document, "html"), expected);
 }
 
 #[test]
@@ -297,7 +303,7 @@ fn commonmark_inline_renderers_match_render_api() {
                 let expected = md.render(source);
                 let document = md.parse(source);
                 assert_eq!(
-                    md.render_html(&document),
+                    md.render_document(&document, "html"),
                     expected,
                     "direct renderer differs for {source:?} with options {:?}",
                     md.render_options
@@ -323,7 +329,7 @@ fn inline_renderers_preserve_transform_attributes() {
     crate::plugins::sourcepos::add(&mut direct);
     let document = direct.parse(source);
 
-    assert_eq!(direct.render_html(&document), expected);
+    assert_eq!(direct.render_document(&document, "html"), expected);
 }
 
 #[test]
@@ -335,8 +341,8 @@ fn unknown_container_transparently_renders_children() {
     }));
     let document = Document::from_draft("", root);
 
-    assert_eq!(md.render_html(&document), "child");
-    assert_eq!(md.render_as(&document, "text"), "child");
+    assert_eq!(md.render_document(&document, "html"), "child");
+    assert_eq!(md.render_document(&document, "text"), "child");
 }
 
 #[test]
@@ -367,12 +373,12 @@ fn markdown_it_selects_and_isolates_renderer_formats() {
     md.add_renderer::<UnknownLeaf, _>("html", UnknownLeafRenderer("html"));
     md.add_renderer::<UnknownLeaf, _>("text", UnknownLeafRenderer("text"));
 
-    assert_eq!(md.render_html(&document), "html:value");
-    assert_eq!(md.render_as(&document, "text"), "text:value");
+    assert_eq!(md.render_document(&document, "html"), "html:value");
+    assert_eq!(md.render_document(&document, "text"), "text:value");
 
     md.add_renderer::<UnknownLeaf, _>("text", UnknownLeafRenderer("override"));
-    assert_eq!(md.render_html(&document), "html:value");
-    assert_eq!(md.render_as(&document, "text"), "override:value");
+    assert_eq!(md.render_document(&document, "html"), "html:value");
+    assert_eq!(md.render_document(&document, "text"), "override:value");
 }
 
 #[test]
@@ -381,7 +387,7 @@ fn unknown_leaf_panics_with_format_type_and_node_id() {
     let document = Document::from_draft("", NodeDraft::new(UnknownLeaf("value")));
 
     let panic = catch_unwind(AssertUnwindSafe(|| {
-        let _ = md.render_html(&document);
+        let _ = md.render_document(&document, "html");
     }))
     .expect_err("rendering an unregistered leaf must panic");
     let message = panic_message(panic);
@@ -400,7 +406,7 @@ fn missing_format_panics_with_requested_format() {
     let document = Document::from_draft("", NodeDraft::new(UnknownLeaf("value")));
 
     let panic = catch_unwind(AssertUnwindSafe(|| {
-        let _ = md.render_as(&document, "missing");
+        let _ = md.render_document(&document, "missing");
     }))
     .expect_err("rendering without a registered format must panic");
     let message = panic_message(panic);

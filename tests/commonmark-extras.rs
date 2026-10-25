@@ -211,7 +211,7 @@ fn emphasis_across_normalized_lines_preserves_source_offsets() {
                 let source = format!("<div>\n\n{marker}te{newline}{indent}!90xt{marker} 尾\n");
                 let document = md.parse(&source);
                 assert_eq!(
-                    md.render_html(&document),
+                    md.render_document(&document, "html"),
                     format!("<p>&lt;div&gt;</p>\n<p>{open}te<br>\n!90xt{close} 尾</p>\n"),
                     "{source:?}"
                 );

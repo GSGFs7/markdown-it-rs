@@ -202,7 +202,7 @@ fn run(input: &str, output: &str) {
         assert!(event.node().srcmap().is_some());
     }
 
-    let result = md.render_html(&node);
+    let result = md.render_document(&node, "html");
     assert_eq!(result, output);
     // make sure it doesn't crash without trailing \n
     let _ = md.parse(input.trim_end());
@@ -487,7 +487,7 @@ fn protocol_relative_links_without_emphasis_plugin() {
         ),
     ] {
         let document = md.parse(input);
-        assert_eq!(md.render_html(&document), output);
+        assert_eq!(md.render_document(&document, "html"), output);
         #[cfg(feature = "sourcemap")]
         for event in document.events(document.root()) {
             let node = event.node();

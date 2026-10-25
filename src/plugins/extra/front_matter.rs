@@ -114,7 +114,7 @@ mod tests {
         assert_eq!(front_matter.raw, "title: Hello\ntags:\n  - rust");
         assert_eq!(front_matter.start_line, 0);
         assert_eq!(front_matter.end_line, 4);
-        assert_eq!(md.render_html(&ast), "<h1>Post</h1>\n");
+        assert_eq!(md.render_document(&ast, "html"), "<h1>Post</h1>\n");
     }
 
     #[test]
@@ -132,7 +132,7 @@ mod tests {
 
         assert_eq!(front_matter.kind, FrontMatterKind::Toml);
         assert_eq!(front_matter.raw, "title = \"Hello\"");
-        assert_eq!(md.render_html(&ast), "<p>Body</p>\n");
+        assert_eq!(md.render_document(&ast, "html"), "<p>Body</p>\n");
     }
 
     #[test]
@@ -187,7 +187,7 @@ mod tests {
 
         assert!(root.ext.get::<FrontMatter>().is_none());
         assert_eq!(
-            md.render_html(&ast),
+            md.render_document(&ast, "html"),
             "<hr>\n<h2>title: Hello\nstill: metadata</h2>\n<p>Body</p>\n"
         );
     }

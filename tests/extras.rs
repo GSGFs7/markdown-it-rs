@@ -6,7 +6,7 @@ fn title_example() {
     markdown_it::plugins::cmark::add(parser);
 
     let ast = parser.parse("Hello **world**!");
-    let html = parser.render_html(&ast);
+    let html = parser.render_document(&ast, "html");
 
     assert_eq!(html, "<p>Hello <strong>world</strong>!</p>\n");
 }
@@ -20,7 +20,7 @@ fn lazy_singleton() {
     });
 
     let ast = MD.parse("Hello **world**!");
-    let html = MD.render_html(&ast);
+    let html = MD.render_document(&ast, "html");
 
     assert_eq!(html, "<p>Hello <strong>world</strong>!</p>\n");
 }
@@ -29,7 +29,7 @@ fn lazy_singleton() {
 fn no_plugins() {
     let md = &mut markdown_it::MarkdownIt::empty();
     let node = md.parse("hello\nworld");
-    let result = md.render_html(&node);
+    let result = md.render_document(&node, "html");
     assert_eq!(result, "hello\nworld\n");
 }
 
@@ -40,7 +40,7 @@ fn no_max_indent() {
     markdown_it::plugins::cmark::block::list::add(md);
     md.max_indent = i32::MAX;
     let node = md.parse("        paragraph\n      - item");
-    let result = md.render_html(&node);
+    let result = md.render_document(&node, "html");
     assert_eq!(result, "<p>paragraph</p>\n<ul>\n<li>item</li>\n</ul>\n");
 }
 
@@ -50,7 +50,7 @@ fn no_block_parser() {
     markdown_it::plugins::cmark::add(md);
     md.remove_rule::<markdown_it::parser::block::BlockParserRule>();
     let node = md.parse("hello *world*");
-    let result = md.render_html(&node);
+    let result = md.render_document(&node, "html");
     assert_eq!(result, "hello <em>world</em>");
 }*/
 
@@ -69,7 +69,7 @@ fn run(input: &str, output: &str) {
     for event in node.events(node.root()) {
         assert!(event.node().srcmap().is_some());
     }
-    let result = md.render_html(&node);
+    let result = md.render_document(&node, "html");
     assert_eq!(result, output);
 }
 

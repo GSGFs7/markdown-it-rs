@@ -12,7 +12,7 @@ fn main() {
     inline_rule::add(inline_md);
 
     let document = inline_md.parse("(\\/) hello world (\\/)");
-    let inline_html = inline_md.render_html(&document);
+    let inline_html = inline_md.render_document(&document, "html");
 
     let block_md = &mut markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(block_md);

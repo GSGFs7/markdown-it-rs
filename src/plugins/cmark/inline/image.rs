@@ -163,7 +163,7 @@ mod tests {
         let source = "> 雪 ![*a\n> b*](/img)";
         let document = md.parse(source);
         assert_eq!(
-            md.render_html(&document),
+            md.render_document(&document, "html"),
             "<blockquote>\n<p>雪 <img src=\"/img\" alt=\"a\nb\"></p>\n</blockquote>\n",
         );
         let emphasis = document

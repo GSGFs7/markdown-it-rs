@@ -133,7 +133,7 @@ fn main() {
         return;
     }
 
-    let result = md.render_html(&ast);
+    let result = md.render_document(&ast, "html");
 
     if output == "-" {
         std::io::stdout().write_all(result.as_bytes()).unwrap();

@@ -40,15 +40,15 @@ fn benchmark(c: &mut Criterion) {
             .content;
         // Verify the full output independently before timing document rendering.
         let expected = markdown_it::common::utils::escape_html(text);
-        assert_eq!(md.render_html(&document), expected);
-        assert_eq!(legacy.render_html(&document), expected);
+        assert_eq!(md.render_document(&document, "html"), expected);
+        assert_eq!(legacy.render_document(&document, "html"), expected);
         let mut group = c.benchmark_group(format!("html-escape/{name}"));
         group.throughput(Throughput::Bytes(text.len() as u64));
         group.bench_function("legacy-html", |b| {
-            b.iter(|| black_box(legacy.render_html(black_box(&document))))
+            b.iter(|| black_box(legacy.render_document(black_box(&document), "html")))
         });
         group.bench_function("document-html", |b| {
-            b.iter(|| black_box(md.render_html(black_box(&document))))
+            b.iter(|| black_box(md.render_document(black_box(&document), "html")))
         });
         group.finish();
     }
@@ -79,18 +79,20 @@ fn benchmark_sizes(c: &mut Criterion) {
             assert_eq!(source.len(), len);
             let expected = markdown_it::common::utils::escape_html(&source).into_owned();
             let document = Document::from_draft("", NodeDraft::new(Text { content: source }));
-            assert_eq!(md.render_html(&document), expected);
-            assert_eq!(legacy.render_html(&document), expected);
+            assert_eq!(md.render_document(&document, "html"), expected);
+            assert_eq!(legacy.render_document(&document, "html"), expected);
             group.throughput(Throughput::Bytes(len as u64));
             group.bench_with_input(
                 BenchmarkId::new("legacy-html", len),
                 &document,
-                |b, document| b.iter(|| black_box(legacy.render_html(black_box(document)))),
+                |b, document| {
+                    b.iter(|| black_box(legacy.render_document(black_box(document), "html")))
+                },
             );
             group.bench_with_input(
                 BenchmarkId::new("document-html", len),
                 &document,
-                |b, document| b.iter(|| black_box(md.render_html(black_box(document)))),
+                |b, document| b.iter(|| black_box(md.render_document(black_box(document), "html"))),
             );
         }
         group.finish();

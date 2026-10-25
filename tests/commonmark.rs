@@ -16,18 +16,18 @@ fn run(input: &str, output: &str) {
         assert!(event.node().srcmap().is_some());
     }
 
-    let result = md.render_html(&node);
+    let result = md.render_document(&node, "html");
     assert_eq!(result, output);
 
     let document = md.parse(&source);
-    assert_eq!(md.render_html(&document), result);
-    md.render_as(&document, "text");
+    assert_eq!(md.render_document(&document, "html"), result);
+    md.render_document(&document, "text");
 
     let direct = md.parse(&source);
-    assert_eq!(md.render_html(&direct), result);
+    assert_eq!(md.render_document(&direct, "html"), result);
     assert_eq!(
-        md.render_as(&direct, "text"),
-        md.render_as(&document, "text"),
+        md.render_document(&direct, "text"),
+        md.render_document(&document, "text"),
     );
 
     // The CJK-friendly amendment must not change any original CommonMark case.

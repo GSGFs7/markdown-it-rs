@@ -2,7 +2,7 @@
 use std::hint::black_box;
 use std::time::Duration;
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use markdown_it::parser::inline::InlineRule;
 use markdown_it::{
     Html,
@@ -140,7 +140,7 @@ fn benchmark(c: &mut Criterion) {
                         black_box(md.parse(black_box(source)));
                     }),
                     "render" => b.iter(|| {
-                        black_box(md.render_html(black_box(&document)));
+                        black_box(md.render_document(black_box(&document), "html"));
                     }),
                     "total" => b.iter(|| {
                         black_box(md.render(black_box(source)));

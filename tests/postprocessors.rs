@@ -35,13 +35,13 @@ fn sourcepos_runs_after_tasklist_in_reverse_registration_order() {
         })
         .unwrap();
     assert_eq!(text.srcmap().unwrap().get_byte_offsets(), (6, 9));
-    let html = md.render_html(&doc);
+    let html = md.render_document(&doc, "html");
     assert!(
         html.contains("type=\"checkbox\" checked=\"\" /> 雪"),
         "{html}"
     );
     assert!(html.contains("data-sourcepos=\"1:1-1:7\""), "{html}");
-    assert_eq!(md.render_as(&doc, "text"), "雪\n");
+    assert_eq!(md.render_document(&doc, "text"), "雪\n");
 }
 
 #[test]
@@ -121,7 +121,7 @@ fn appended_subtrees_keep_parent_links_and_existing_node_ids() {
     );
     assert_eq!(doc.children(root), &[first, appended]);
     assert_eq!(doc.parent(appended), Some(root));
-    assert_eq!(md.render_html(&doc), "<p>first</p>\nsecond");
+    assert_eq!(md.render_document(&doc, "html"), "<p>first</p>\nsecond");
 }
 
 struct ConfiguredPostProcess {
@@ -189,7 +189,7 @@ fn core_rules_run_once_per_parse_and_rendering_does_not_repeat_them() {
         for source in ["", "text"] {
             let document = md.parse(source);
             assert_eq!(steps(&document), "1");
-            md.render_html(&document);
+            md.render_document(&document, "html");
             assert_eq!(steps(&document), "1");
             assert_eq!(steps(&md.parse(source)), "1");
         }

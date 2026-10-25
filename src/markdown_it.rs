@@ -4,8 +4,6 @@ use std::sync::Arc;
 use crate::common::RuleMark;
 use crate::common::extset::MarkdownItExtSet;
 use crate::common::ruler::Ruler;
-#[cfg(feature = "sourcemap")]
-use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, NodeValue, Root, Text, TextSpecial};
 use crate::links::{LinkFormatter, MDLinkFormatter};
 use crate::parser::block::{self, BlockParser};
@@ -39,7 +37,6 @@ pub struct MarkdownIt {
     /// Maximum depth of the generated AST, exists to prevent recursion
     /// (if markdown source reaches this depth, deeply nested structures
     /// will be parsed as plain text).
-    #[doc(hidden)]
     pub max_nesting: u32,
 
     /// Maximum allowed indentation for syntax blocks
@@ -122,9 +119,9 @@ impl MarkdownIt {
             .insert(self.render_options.clone());
 
         #[cfg(feature = "sourcemap")]
-        document
-            .node_mut(document.root())
-            .set_srcmap(Some(SourcePos::new(0, source.len())));
+        document.node_mut(document.root()).set_srcmap(Some(
+            crate::common::sourcemap::SourcePos::new(0, source.len()),
+        ));
 
         let mut state = CoreState::new(&source, self, &mut document);
         for rule in self.ruler.iter() {
@@ -144,34 +141,26 @@ impl MarkdownIt {
         self.renderers.add::<T, R>(format, renderer)
     }
 
-    /// Render a document with the renderers registered
-    /// for `format`.
+    /// Render a document using the renderers registered for `format`
+    /// (built-in: `"html"`, `"text"`, `"debug"`).
     ///
-    /// The built-in format keys are `"html"`, `"text"`, and `"debug"`.
-    /// Standard syntax plugins register HTML and plain-text behavior; plugins
-    /// that add leaf payloads must register both explicitly. The diagnostic
-    /// debug tree traverses all descendants without per-payload registration.
+    /// Plugins adding leaf payloads must register a renderer for each format.
     ///
     /// # Panics
     ///
-    /// Panics if a leaf node has no renderer registered for `format`.
-    pub fn render_as(&self, document: &Document, format: &str) -> String {
+    /// Panics if a leaf node has no renderer for `format`.
+    pub fn render_document(&self, document: &Document, format: &str) -> String {
         self.renderers
             .render(document, format, &self.render_options)
     }
 
-    /// Render a document as HTML.
+    /// Parse `src` and render it as HTML using [`MarkdownIt::render_options`].
     ///
     /// # Panics
     ///
     /// Panics if a leaf node has no `"html"` renderer.
-    pub fn render_html(&self, document: &Document) -> String {
-        self.render_as(document, "html")
-    }
-
-    /// Parse `src` and render it as HTML using [`MarkdownIt::render_options`].
     pub fn render(&self, src: &str) -> String {
-        self.render_html(&self.parse(src))
+        self.render_document(&self.parse(src), "html")
     }
 
     /// Register a new core rule for type `T`, returning a builder to position

@@ -19,7 +19,7 @@ fn document_with_attrs(md: &MarkdownIt, attrs: &[HtmlAttribute]) -> Document {
     }));
     root.push_child(paragraph);
     let document = Document::from_draft("text", root);
-    md.render_html(&document);
+    md.render_document(&document, "html");
     document
 }
 
@@ -58,7 +58,7 @@ fn benchmark(c: &mut Criterion) {
         let mut group = c.benchmark_group(format!("attrs/{name}"));
         group.throughput(Throughput::Elements(attrs.len() as u64));
         group.bench_function("markdown-it-rs", |b| {
-            b.iter(|| black_box(md.render_html(black_box(&document))))
+            b.iter(|| black_box(md.render_document(black_box(&document), "html")))
         });
         group.finish();
     }

@@ -37,7 +37,7 @@ fn inline_pair_lowers_to_low_level_rule_and_keeps_captured_values() {
 
     let document = md.parse("🦀🦀a **b**🦀🦀");
     assert_eq!(
-        md.render_html(&document),
+        md.render_document(&document, "html"),
         "<p><mark>a <strong>b</strong></mark></p>\n"
     );
     let paragraph = document.children(document.root())[0];
@@ -685,10 +685,10 @@ fn static_renderer_can_be_overridden_after_installation() {
     let mut md = MarkdownIt::new();
     PluginSpec::new("static").with(A).install(&mut md);
     let document = md.parse("@");
-    assert_eq!(md.render_html(&document), "<p><b>A</b></p>\n");
+    assert_eq!(md.render_document(&document, "html"), "<p><b>A</b></p>\n");
 
     md.add_renderer::<A, _>("html", Custom);
-    assert_eq!(md.render_html(&document), "<p>CUSTOM</p>\n");
+    assert_eq!(md.render_document(&document, "html"), "<p>CUSTOM</p>\n");
 }
 
 #[test]

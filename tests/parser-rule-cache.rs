@@ -56,12 +56,12 @@ fn warmed_inline_rules_update_markers_and_order() {
     assert_eq!(md.render("a%雪"), "a%雪\n");
     md.inline.add_rule::<Replace<'%', false>>();
     let document = md.parse("a%雪");
-    assert_eq!(md.render_html(&document), "afirst雪\n");
+    assert_eq!(md.render_document(&document, "html"), "afirst雪\n");
 
     // Unicode markers must rebuild the text scanner as well as the rule set.
     md.inline.add_rule::<Replace<'雪', false>>();
     let document = md.parse("a%雪");
-    assert_eq!(md.render_html(&document), "afirstfirst\n");
+    assert_eq!(md.render_document(&document, "html"), "afirstfirst\n");
 
     md.inline.add_rule::<Replace<'\0', true>>().before_all();
     assert_eq!(md.render("%雪"), "secondsecond\n");
@@ -70,7 +70,7 @@ fn warmed_inline_rules_update_markers_and_order() {
     md.inline.remove_rule::<Replace<'%', false>>();
     md.inline.remove_rule::<Replace<'雪', false>>();
     let document = md.parse("a%雪");
-    assert_eq!(md.render_html(&document), "a%雪\n");
+    assert_eq!(md.render_document(&document, "html"), "a%雪\n");
     assert!(document.node(document.root()).attrs().is_empty());
 }
 

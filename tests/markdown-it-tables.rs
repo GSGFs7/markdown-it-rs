@@ -18,12 +18,12 @@ fn run(input: &str, output: &str) {
         assert!(event.node().srcmap().is_some());
     }
 
-    let result = md.render_html(&node);
+    let result = md.render_document(&node, "html");
     assert_eq!(result, output);
 
     let document = md.parse(&source);
-    assert_eq!(md.render_html(&document), result);
-    md.render_as(&document, "text");
+    assert_eq!(md.render_document(&document, "html"), result);
+    md.render_document(&document, "text");
 
     let mut direct_md = markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut direct_md);
@@ -31,10 +31,10 @@ fn run(input: &str, output: &str) {
     markdown_it::plugins::extra::tables::add(&mut direct_md);
     markdown_it::plugins::extra::typographer::add(&mut direct_md);
     let direct = direct_md.parse(&source);
-    assert_eq!(direct_md.render_html(&direct), result);
+    assert_eq!(direct_md.render_document(&direct, "html"), result);
     assert_eq!(
-        direct_md.render_as(&direct, "text"),
-        md.render_as(&document, "text"),
+        direct_md.render_document(&direct, "text"),
+        md.render_document(&document, "text"),
     );
 
     // make sure it doesn't crash without trailing \n

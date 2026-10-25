@@ -55,7 +55,7 @@ use crate::document::{
 /// let mut md = MarkdownIt::empty();
 /// md.add_renderer::<Badge, _>("html", BadgeRenderer);
 /// let document = Document::from_draft("", NodeDraft::new(Badge("new")));
-/// assert_eq!(md.render_html(&document), "new");
+/// assert_eq!(md.render_document(&document, "html"), "new");
 /// ```
 pub trait NodeRenderer<T: NodeValue>: Send + Sync + 'static {
     fn render(

@@ -38,7 +38,7 @@ fn main() {
         "markdown-it-rs" => {
             let document = md.parse(source);
             for _ in 0..iterations {
-                black_box(md.render_html(black_box(&document)));
+                black_box(md.render_document(black_box(&document), "html"));
             }
         }
 

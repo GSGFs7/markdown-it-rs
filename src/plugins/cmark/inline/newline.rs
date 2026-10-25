@@ -114,7 +114,7 @@ mod test {
     fn renders_softbreak_as_newline_by_default() {
         let md = parser();
         let ast = md.parse("hello\nworld");
-        assert_eq!(md.render_html(&ast), "<p>hello\nworld</p>\n");
+        assert_eq!(md.render_document(&ast, "html"), "<p>hello\nworld</p>\n");
     }
 
     #[test]

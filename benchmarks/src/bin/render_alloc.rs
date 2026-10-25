@@ -91,8 +91,8 @@ fn main() {
         let source = corpus.source();
         let document = md.parse(source);
         // Warm lazy parser/renderer state before enabling the counter.
-        let expected = md.render_html(&document);
-        let (html, stats) = measure(|| md.render_html(black_box(&document)));
+        let expected = md.render_document(&document, "html");
+        let (html, stats) = measure(|| md.render_document(black_box(&document), "html"));
         assert_eq!(html, expected);
         print_row(corpus.name, "render", "markdown-it-rs", stats, &html);
         let (html, stats) = measure(|| md.render(black_box(source)));

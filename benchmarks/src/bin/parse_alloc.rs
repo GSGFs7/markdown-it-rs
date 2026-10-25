@@ -160,7 +160,7 @@ fn main() {
                 // Input and parser storage are part of the baseline, not the delta.
                 let expected = md.render(source);
                 let (document, stats) = ALLOCATOR.measure(|| md.parse(black_box(source)));
-                assert_eq!(md.render_html(&document), expected);
+                assert_eq!(md.render_document(&document, "html"), expected);
                 assert!(
                     stats.retained_bytes >= 0,
                     "unexpected warmed-state release: {stats:?}"

@@ -51,20 +51,20 @@ fn inline_renderers_preserve_formats_and_override_in_registration_order() {
         let mut md = MarkdownIt::builder().plugin(leaf.finish()).build();
         let document = md.parse("@");
         assert_eq!(
-            md.render_html(&document),
+            md.render_document(&document, "html"),
             if custom_last {
                 "<p>custom</p>\n"
             } else {
                 "<p>&lt;&amp;&gt;</p>\n"
             }
         );
-        assert_eq!(md.render_as(&document, "text"), "<&>\n");
+        assert_eq!(md.render_document(&document, "text"), "<&>\n");
 
         // The installed renderer is in the ordinary registry and can still be
         // replaced through the low-level API without affecting other formats.
         md.add_renderer::<Label, _>("html", Literal("replaced"));
-        assert_eq!(md.render_html(&document), "<p>replaced</p>\n");
-        assert_eq!(md.render_as(&document, "text"), "<&>\n");
+        assert_eq!(md.render_document(&document, "html"), "<p>replaced</p>\n");
+        assert_eq!(md.render_document(&document, "text"), "<&>\n");
     }
 }
 
@@ -78,8 +78,8 @@ fn leaf_can_register_only_a_non_html_renderer() {
         .render_with(String::from("labels"), LabelRenderer)
         .finish();
     let md = MarkdownIt::builder().plugin(plugin).build();
-    assert_eq!(md.render_as(&md.parse("@"), "text"), "plain\n");
-    assert_eq!(md.render_as(&md.parse("@"), "labels"), "plain");
+    assert_eq!(md.render_document(&md.parse("@"), "text"), "plain\n");
+    assert_eq!(md.render_document(&md.parse("@"), "labels"), "plain");
     assert!(!md.renderers.contains::<Label>("html"));
 }
 
@@ -109,11 +109,11 @@ fn inline_text_callback_keeps_captured_configuration_and_pair_children() {
     let md = MarkdownIt::builder().plugin(plugin).build();
     let document = md.parse("before ==@== after");
     assert_eq!(
-        md.render_as(&document, "text"),
+        md.render_document(&document, "text"),
         "before label:<&雪> after\n"
     );
     assert_eq!(
-        md.render_html(&document),
+        md.render_document(&document, "html"),
         "<p>before <mark>&lt;&amp;雪&gt;</mark> after</p>\n"
     );
 }
@@ -138,7 +138,7 @@ fn block_text_callback_separates_adjacent_blocks_without_duplicate_line_breaks()
         let md = MarkdownIt::builder().plugin(plugin).build();
         let document = md.parse("before\n\n!!! <&雪>\n!!! last\n\nafter");
         assert_eq!(
-            md.render_as(&document, "text"),
+            md.render_document(&document, "text"),
             "before\n<&雪>\nlast\nafter\n"
         );
     }
@@ -186,7 +186,7 @@ fn text_shortcuts_and_generic_renderers_follow_the_same_override_order() {
                 (false, true) => "custom\n",
                 (_, false) => "payload\n",
             };
-            assert_eq!(md.render_as(&document, "text"), expected);
+            assert_eq!(md.render_document(&document, "text"), expected);
         }
     }
 }
@@ -209,8 +209,8 @@ fn block_custom_renderer_controls_output_without_automatic_line_breaks() {
         .finish();
     let md = MarkdownIt::builder().plugin(leaf).build();
     let document = md.parse("!!! payload");
-    assert_eq!(md.render_html(&document), "custom");
-    assert_eq!(md.render_as(&document, "text"), "payload");
+    assert_eq!(md.render_document(&document, "html"), "custom");
+    assert_eq!(md.render_document(&document, "text"), "payload");
 }
 
 struct PairRenderer;
@@ -271,10 +271,10 @@ fn pair_renderer_receives_payload_node_context_and_children_in_each_format() {
         .push(("data-id".into(), "n&1".into()));
 
     assert_eq!(
-        md.render_html(&document),
+        md.render_document(&document, "html"),
         "<p><span class=\"spoiler&amp;more\" data-id=\"n&amp;1\">secret <strong>bold</strong></span></p>\n"
     );
-    assert_eq!(md.render_as(&document, "text"), "[secret bold]\n");
+    assert_eq!(md.render_document(&document, "text"), "[secret bold]\n");
 }
 
 #[test]
@@ -289,6 +289,9 @@ fn pair_html_tag_can_replace_a_custom_html_renderer_and_keep_other_formats() {
         .finish();
     let md = MarkdownIt::builder().plugin(plugin).build();
     let document = md.parse("==content==");
-    assert_eq!(md.render_html(&document), "<p><mark>content</mark></p>\n");
-    assert_eq!(md.render_as(&document, "text"), "plain\n");
+    assert_eq!(
+        md.render_document(&document, "html"),
+        "<p><mark>content</mark></p>\n"
+    );
+    assert_eq!(md.render_document(&document, "text"), "plain\n");
 }

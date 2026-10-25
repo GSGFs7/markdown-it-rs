@@ -628,11 +628,11 @@ mod tests {
         let second_document = second.parse("# Heading");
 
         assert_eq!(
-            first.render_html(&first_document),
+            first.render_document(&first_document, "html"),
             "<h1 id=\"first-heading\">Heading</h1>\n"
         );
         assert_eq!(
-            second.render_html(&second_document),
+            second.render_document(&second_document, "html"),
             "<h1 id=\"second-heading\">Heading</h1>\n"
         );
     }

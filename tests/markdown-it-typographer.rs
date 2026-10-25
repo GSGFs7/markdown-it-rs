@@ -17,7 +17,7 @@ fn run_with(input: &str, output: &str, configure: impl Fn(&mut markdown_it::Mark
         assert!(event.node().srcmap().is_some());
     }
 
-    let result = md.render_html(&node);
+    let result = md.render_document(&node, "html");
     assert_eq!(result, output);
 
     let document_md = &mut markdown_it::MarkdownIt::empty();
@@ -26,7 +26,7 @@ fn run_with(input: &str, output: &str, configure: impl Fn(&mut markdown_it::Mark
     configure(document_md);
     markdown_it::plugins::extra::typographer::add(document_md);
     let document = document_md.parse(&(input.to_owned() + "\n"));
-    assert_eq!(document_md.render_html(&document), output);
+    assert_eq!(document_md.render_document(&document, "html"), output);
 
     // make sure it doesn't crash without trailing \n
     let _ = md.parse(input.trim_end());

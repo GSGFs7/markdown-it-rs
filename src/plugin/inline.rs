@@ -174,8 +174,8 @@ impl<T: NodeValue, P, R> InlineLeafBuilder<T, P, R> {
     ///     .finish();
     /// let md = MarkdownIt::builder().plugin(emoji).build();
     /// let document = md.parse("Go :rocket:!");
-    /// assert_eq!(md.render_html(&document), "<p>Go 🚀!</p>\n");
-    /// assert_eq!(md.render_as(&document, "text"), "Go [rocket]!\n");
+    /// assert_eq!(md.render_document(&document, "html"), "<p>Go 🚀!</p>\n");
+    /// assert_eq!(md.render_document(&document, "text"), "Go [rocket]!\n");
     /// ```
     pub fn render_text<F>(self, render: F) -> InlineLeafBuilder<T, P, WithRenderer>
     where

@@ -626,7 +626,7 @@ fn direct_prefix_uses_utf8_byte_offsets() {
         ];
         for (source, expected, link_count) in cases {
             let document = md.parse(&source);
-            assert_eq!(md.render_html(&document), expected, "{source}");
+            assert_eq!(md.render_document(&document, "html"), expected, "{source}");
             let links = document
                 .events(document.root())
                 .filter(|event| {

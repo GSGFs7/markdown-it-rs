@@ -18,7 +18,7 @@ fn run(input: &str, output: &str) {
         assert!(event.node().srcmap().is_some());
     }
 
-    let result = md.render_html(&node);
+    let result = md.render_document(&node, "html");
     assert_eq!(result, output);
 
     let registry_md = &mut markdown_it::MarkdownIt::empty();
@@ -27,7 +27,10 @@ fn run(input: &str, output: &str) {
     markdown_it::plugins::extra::typographer::add(registry_md);
     markdown_it::plugins::extra::smartquotes::add(registry_md);
     let registry_document = registry_md.parse(&source);
-    assert_eq!(registry_md.render_html(&registry_document), output);
+    assert_eq!(
+        registry_md.render_document(&registry_document, "html"),
+        output
+    );
 
     // make sure it doesn't crash without trailing \n
     let _ = md.parse(input.trim_end());

@@ -89,7 +89,7 @@ impl MarkdownParser {
             .map(FrontMatter::from);
 
         RenderResult {
-            html: self.inner.render_html(&root),
+            html: self.inner.render_document(&root, "html"),
             front_matter,
         }
     }

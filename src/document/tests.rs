@@ -179,7 +179,7 @@ fn parser_facade_preserves_rendering_and_source() {
     let document = md.parse(source);
 
     assert_eq!(document.source(), source);
-    assert_eq!(md.render_html(&document), expected);
+    assert_eq!(md.render_document(&document, "html"), expected);
 }
 
 #[test]
