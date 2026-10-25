@@ -219,6 +219,106 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
 }
 
 #[test]
+fn finish_callbacks_see_flushed_nodes_in_registration_order() {
+    let mut document = Document::new("", crate::Root::new(""));
+    let md = MarkdownIt::empty();
+    let ruleset = RuleSet {
+        runs: vec![],
+        checks: vec![],
+    };
+    let mut state = check_state(&mut document, &md, &ruleset, "plain");
+    state.on_finish(|state| {
+        let node = state.document.node(state.nodes()[0]);
+        assert!(node.parent().is_none());
+        assert_eq!(node.cast::<Text>().unwrap().content, "plain");
+        let root = state.document.root();
+        state.document.node_mut(root).ext_mut().insert(vec![1u8]);
+    });
+    state.on_finish(|state| {
+        let root = state.document.root();
+        state
+            .document
+            .node_mut(root)
+            .ext_mut()
+            .get_mut::<Vec<u8>>()
+            .unwrap()
+            .push(2);
+    });
+    state.tokenize();
+    let nodes = state.finish();
+    assert_eq!(nodes.len(), 1);
+    assert_eq!(
+        document
+            .node(document.root())
+            .ext()
+            .get::<Vec<u8>>()
+            .unwrap(),
+        &[1, 2]
+    );
+}
+
+#[test]
+fn finish_callbacks_are_local_to_sessions_and_skipped_by_boundary_scans() {
+    fn record(state: &mut InlineState<'_>) {
+        let root = state.document.root();
+        let depth = state.depth;
+        state
+            .document
+            .node_mut(root)
+            .ext_mut()
+            .get_or_insert_default::<Vec<u32>>()
+            .push(depth);
+    }
+    let mut document = Document::new("", crate::Root::new(""));
+    let md = MarkdownIt::empty();
+    let ruleset = RuleSet {
+        runs: vec![],
+        checks: vec![],
+    };
+    let mut state = check_state(&mut document, &md, &ruleset, "plain");
+    state.on_finish(record);
+    {
+        let mut boundary = scan(&mut state, 0..5).unwrap();
+        boundary.on_finish(|_| panic!("boundary scans must not finish"));
+        while boundary.skip_token().is_some() {}
+    }
+    state
+        .parse_child(0..5, 1, 0, |child| child.on_finish(record))
+        .unwrap();
+    state.tokenize();
+    state.finish();
+    assert_eq!(
+        document
+            .node(document.root())
+            .ext()
+            .get::<Vec<u32>>()
+            .unwrap(),
+        &[1, 0]
+    );
+}
+
+#[test]
+fn source_extensions_are_shared_by_children_but_isolated_between_inputs() {
+    let mut document = Document::new("", crate::Root::new(""));
+    let md = MarkdownIt::empty();
+    let ruleset = RuleSet {
+        runs: vec![],
+        checks: vec![],
+    };
+    let mut state = check_state(&mut document, &md, &ruleset, "plain");
+    state.shared_ext().insert(41u8);
+    {
+        let child = scan(&mut state, 0..5).unwrap();
+        assert_eq!(child.shared_ext().get::<u8>(), Some(&41));
+        child.shared_ext().insert(42u8);
+    }
+    assert_eq!(state.shared_ext().get::<u8>(), Some(&42));
+    drop(state);
+    let other = check_state(&mut document, &md, &ruleset, "plain");
+    assert!(other.shared_ext().get::<u8>().is_none());
+}
+
+#[test]
 fn top_level_plain_text_finishes_without_temporary_markers() {
     let mut document = Document::new("", crate::Root::new(""));
     let md = MarkdownIt::empty();

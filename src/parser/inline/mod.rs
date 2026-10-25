@@ -13,7 +13,6 @@ pub(crate) use document::parse_document;
 
 pub use self::parser::InlineParserRule;
 pub use self::rule::*;
-pub(crate) use self::state::InlinePostprocessRanges;
 pub use self::state::InlineState;
 pub use self::text_scanner::TextScanner;
 use self::text_scanner::TextScannerImpl;

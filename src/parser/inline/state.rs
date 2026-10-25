@@ -13,20 +13,8 @@ use crate::document::{Document, NodeId, Text};
 
 // TODO: adjust API visibility
 
-/// Marks an inline parse that has work deferred until core postprocessing.
 #[derive(Debug, Default)]
-pub(crate) struct DeferredPostprocess;
-
-// TODO(inline-postprocess): replace this root list with explicit inline
-// ownership or a flat token model; marker nodes would leak internal structure
-// into the AST.
-/// Roots of inline ranges whose work was deferred to core postprocessing.
-///
-/// Ranges are appended in completion order (children before parents) and
-/// consumed by core rules after inline parsing. Keeping the grouping on the
-/// document root avoids exposing internal marker nodes in the AST.
-#[derive(Debug, Default)]
-pub(crate) struct InlinePostprocessRanges(pub(crate) Vec<Vec<NodeId>>);
+struct FinishCallbacks(Vec<fn(&mut InlineState<'_>)>);
 
 /// Per-inline cache shared by nested boundary scans.
 ///
@@ -113,15 +101,24 @@ impl<'a> InlineState<'a> {
         self.md
     }
 
-    /// Extension caches shared by sessions over this source.
-    pub(crate) fn shared_ext(&self) -> RefMut<'_, InlineRootExtSet> {
+    /// Extension caches shared by nested sessions over the same source.
+    ///
+    /// Keep source-wide data here; range- or link-specific state belongs in
+    /// session scratch. Drop the borrow before starting another session.
+    pub fn shared_ext(&self) -> RefMut<'_, InlineRootExtSet> {
         RefMut::map(self.scan_limit_cache.borrow_mut(), |cache| &mut cache.ext)
     }
 
-    /// Defer this session's work to core postprocessing.
-    pub(crate) fn defer_to_core(&mut self) {
+    /// Register a callback to run after this session's pending text is flushed.
+    ///
+    /// Callbacks run once, in registration order, before nodes attach to their
+    /// parent. Child sessions finish first; boundary scans never run callbacks.
+    /// Register during parsing.
+    pub fn on_finish(&mut self, callback: fn(&mut InlineState<'_>)) {
         self.inline_ext
-            .get_or_insert_default::<DeferredPostprocess>();
+            .get_or_insert_default::<FinishCallbacks>()
+            .0
+            .push(callback);
     }
 
     /// Nodes accumulated by this inline session.
@@ -487,14 +484,10 @@ impl<'a> InlineState<'a> {
         }
         self.finish_nodes();
 
-        if self.inline_ext.contains::<DeferredPostprocess>() {
-            let root = self.document.root();
-            self.document
-                .node_mut(root)
-                .ext_mut()
-                .get_or_insert_default::<InlinePostprocessRanges>()
-                .0
-                .push(self.nodes.clone());
+        if let Some(callbacks) = self.inline_ext.remove::<FinishCallbacks>() {
+            for callback in callbacks.0 {
+                callback(&mut self);
+            }
         }
 
         self.nodes

@@ -8,7 +8,7 @@ permissions: read-all
 
 jobs:
   quality:
-    name: Format and Clippy
+    name: Format
     runs-on: ubuntu-latest
     env:
       CARGO_NET_RETRY: "3"
@@ -17,13 +17,44 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
+      - name: Check formatting
+        run: cargo +nightly fmt --all --check
+
+  clippy:
+    name: Clippy (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CARGO_NET_RETRY: "3"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default features
+            args: ""
+          - name: no default features
+            args: --no-default-features
+          - name: source maps only
+            args: --no-default-features --features sourcemap
+          - name: linkify only
+            args: --no-default-features --features linkify
+          - name: CLI only
+            args: --no-default-features --features cli
+          - name: KaTeX only
+            args: --no-default-features --features katex
+          - name: syntect only
+            args: --no-default-features --features syntect
+          - name: linkify with source maps
+            args: --no-default-features --features linkify,sourcemap
+          - name: all features
+            args: --all-features
+    steps:
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: Check formatting
-        run: cargo +nightly fmt --all --check
       - name: Run Clippy
-        run: cargo +stable clippy -p markdown-it-rs --all-targets --all-features -- -D warnings
+        run: cargo clippy -p markdown-it-rs --locked --all-targets ${{ matrix.args }} -- -D warnings
 
   subcrates:
     name: Test and Clippy (${{ matrix.package }})

@@ -11,7 +11,7 @@ use crate::MarkdownIt;
 use crate::document::{Document, NodeId, NodeRef, StructuralEvent, Text, TextSpecial};
 use crate::links::LinkFormatter;
 use crate::parser::core::{CoreRule, CoreState};
-use crate::parser::inline::{InlineParserRule, InlinePostprocessRanges, InlineRule, InlineState};
+use crate::parser::inline::{InlineParserRule, InlineRule, InlineState};
 use crate::plugins::html::anchor_delta;
 use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, render_html_link};
 
@@ -73,7 +73,7 @@ impl CoreRule for LinkifyRule {
         let ranges = document
             .node_mut(document.root())
             .ext_mut()
-            .remove::<InlinePostprocessRanges>()
+            .remove::<LinkifyRanges>()
             .unwrap_or_default();
         let fuzzy = state
             .md
@@ -105,6 +105,32 @@ impl CoreRule for LinkifyRule {
 
 #[derive(Debug)]
 struct LinkifyPositions(Vec<LinkifyPosition>);
+
+/// Ranges awaiting linkification, in completion order (children before parents).
+/// Stored on the document root to keep internal markers out of the AST.
+#[derive(Debug, Default)]
+struct LinkifyRanges(Vec<Vec<NodeId>>);
+
+#[derive(Debug)]
+struct DeferredLinkify;
+
+fn defer_linkify(state: &mut InlineState<'_>) {
+    if state.inline_ext.contains::<DeferredLinkify>() {
+        return;
+    }
+    state.inline_ext.insert(DeferredLinkify);
+    state.on_finish(|state| {
+        let nodes = state.nodes().to_vec();
+        let root = state.document.root();
+        state
+            .document
+            .node_mut(root)
+            .ext_mut()
+            .get_or_insert_default::<LinkifyRanges>()
+            .0
+            .push(nodes);
+    });
+}
 
 fn collect_linkify_events(document: &Document, roots: &[NodeId]) -> Vec<(NodeId, i32)> {
     use crate::plugins::cmark::inline::autolink::Autolink;
@@ -643,7 +669,7 @@ fn run_candidate(
             .inline_ext
             .contains::<crate::parser::inline::helpers::full_link::MarkdownLinkLabel>()
     {
-        state.defer_to_core();
+        defer_linkify(state);
     }
     let candidate = candidate?;
 

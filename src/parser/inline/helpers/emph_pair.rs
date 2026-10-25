@@ -45,10 +45,10 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
+use crate::MarkdownIt;
 use crate::document::{Document, NodeId, Text};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::{InlineParserRule, InlineRule, InlineState};
-use crate::MarkdownIt;
 
 // --- pub ---
 
