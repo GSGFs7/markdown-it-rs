@@ -18,6 +18,105 @@ struct Emoji {
 const EMOJIS: &[(&str, &str, &str)] =
     &[(":rocket:", "🚀", "rocket"), (":warning:", "⚠️", "warning")];
 
+#[test]
+fn inline_pair_lowers_to_low_level_rule_and_keeps_captured_values() {
+    use markdown_it::parser::inline::helpers::emph_pair::EmphPairScanner;
+
+    #[derive(Debug)]
+    struct Pair(String);
+
+    let label = String::from("captured configuration");
+    let pair = PluginSpec::new("pair")
+        .inline_pair::<Pair>("pair")
+        .delimiter::<'🦀', 2, true>()
+        .value(move || Pair(label.clone()))
+        .html_tag("mark")
+        .finish();
+    let md = MarkdownIt::builder().plugin(pair).build();
+    assert!(md.inline.has_rule::<EmphPairScanner<'🦀', true>>());
+
+    let document = md.parse("🦀🦀a **b**🦀🦀");
+    assert_eq!(
+        md.render_html(&document),
+        "<p><mark>a <strong>b</strong></mark></p>\n"
+    );
+    let paragraph = document.children(document.root())[0];
+    let wrapper = document.node(document.children(paragraph)[0]);
+    assert_eq!(wrapper.cast::<Pair>().unwrap().0, "captured configuration");
+    #[cfg(feature = "sourcemap")]
+    assert_eq!(wrapper.srcmap().unwrap().get_byte_offsets(), (0, 23));
+}
+
+#[test]
+fn inline_pair_and_later_low_level_registration_share_the_scanner() {
+    use markdown_it::parser::inline::helpers::emph_pair;
+
+    #[derive(Debug)]
+    struct One;
+    #[derive(Debug)]
+    struct Two;
+
+    struct OneRenderer;
+    impl markdown_it::NodeRenderer<One> for OneRenderer {
+        fn render(
+            &self,
+            node: markdown_it::NodeRef<'_>,
+            _: &One,
+            context: &mut markdown_it::RenderContext<'_>,
+            output: &mut markdown_it::Writer,
+        ) {
+            output.write_str("<i>");
+            context.render_children(node.id(), output);
+            output.write_str("</i>");
+        }
+    }
+
+    let pair = PluginSpec::new("two")
+        .inline_pair::<Two>("two")
+        .delimiter::<'%', 2, true>()
+        .value(|| Two)
+        .html_tag("b")
+        .finish();
+    let mut md = MarkdownIt::builder().plugin(pair).build();
+    emph_pair::add_with::<'%', 1, true>(&mut md, |document| document.create_node(One));
+    md.add_renderer::<One, _>("html", OneRenderer);
+    assert_eq!(
+        md.render("%one% and %%two%%"),
+        "<p><i>one</i> and <b>two</b></p>\n"
+    );
+}
+
+#[test]
+fn inline_pair_conflicts_are_rejected_before_any_installer_runs() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[derive(Debug)]
+    struct Pair;
+
+    let installed = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&installed);
+    let mut group = PluginSpec::new("group").with(PluginSpec::custom("observer", move |_| {
+        flag.store(true, Ordering::SeqCst);
+    }));
+    for name in ["first", "second"] {
+        group = group.with(
+            PluginSpec::new(name)
+                .inline_pair::<Pair>("pair")
+                .delimiter::<'=', 2, true>()
+                .value(|| Pair)
+                .html_tag("mark")
+                .finish(),
+        );
+    }
+    let mut md = MarkdownIt::new();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        group.install(&mut md);
+    }));
+    assert!(result.is_err());
+    assert!(!installed.load(Ordering::SeqCst));
+}
+
 fn emoji() -> PluginSpec {
     PluginSpec::new("emoji")
         .inline_leaf::<Emoji>("shortcode")

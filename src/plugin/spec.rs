@@ -1,7 +1,14 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use super::{BlockLeafBuilder, InlineLeafBuilder, InlinePlugin, LeafRule, Plugin};
+use super::{
+    BlockLeafBuilder,
+    InlineLeafBuilder,
+    InlinePairBuilder,
+    InlinePlugin,
+    LeafRule,
+    Plugin,
+};
 use crate::MarkdownIt;
 use crate::document::NodeValue;
 
@@ -203,6 +210,47 @@ impl PluginSpec {
         BlockLeafBuilder::new(self, rule.into())
     }
 
+    /// Start an emphasis-style inline pair belonging to this plugin.
+    ///
+    /// Pairs reuse the emphasis delimiter scanner and matching algorithm, then
+    /// render their parsed children inside an HTML tag. Call
+    /// [`delimiter`](InlinePairBuilder::delimiter),
+    /// [`value`](InlinePairBuilder::value) and
+    /// [`html_tag`](InlinePairBuilder::html_tag), then `.finish()`.
+    ///
+    /// ```
+    /// use markdown_it::{MarkdownIt, PluginSpec};
+    ///
+    /// #[derive(Debug)]
+    /// struct Mark;
+    ///
+    /// let highlight = PluginSpec::new("highlight")
+    ///     .inline_pair::<Mark>("highlight")
+    ///     .delimiter::<'=', 2, true>()
+    ///     .value(|| Mark)
+    ///     .html_tag("mark")
+    ///     .finish();
+    ///
+    /// let md = MarkdownIt::builder().plugin(highlight).build();
+    /// assert_eq!(md.render("a ==marked== b"), "<p>a <mark>marked</mark> b</p>\n");
+    /// ```
+    ///
+    /// A delimiter must be selected before finishing the pair:
+    ///
+    /// ```compile_fail
+    /// use markdown_it::PluginSpec;
+    /// #[derive(Debug)]
+    /// struct Mark;
+    /// PluginSpec::new("highlight")
+    ///     .inline_pair::<Mark>("highlight")
+    ///     .value(|| Mark)
+    ///     .html_tag("mark")
+    ///     .finish();
+    /// ```
+    pub fn inline_pair<T: NodeValue>(self, rule: impl Into<String>) -> InlinePairBuilder<T> {
+        InlinePairBuilder::new(self, rule.into())
+    }
+
     /// Create a plugin from a custom install function.
     ///
     /// The function runs once when the plugin is installed and can modify the
@@ -360,10 +408,16 @@ impl Plugin for PluginSpec {
     }
 }
 
+#[derive(Default)]
+pub(super) struct RegistrationContext {
+    pub rules: HashSet<std::any::TypeId>,
+    pub pairs: HashMap<char, crate::parser::inline::helpers::emph_pair::PairRegistration>,
+}
+
 pub(super) trait PluginInstaller: Send {
     fn name(&self) -> &str;
     fn validate(&self);
-    fn validate_registration(&self, _md: &MarkdownIt, _rules: &mut HashSet<std::any::TypeId>) {}
+    fn validate_registration(&self, _md: &MarkdownIt, _context: &mut RegistrationContext) {}
     fn install(self: Box<Self>, md: &mut MarkdownIt);
 }
 
@@ -401,11 +455,11 @@ fn installation_order(md: &MarkdownIt, plugins: &[PluginSpec]) -> Vec<usize> {
         .map(|plugins| plugins.0.iter().map(String::as_str).collect())
         .unwrap_or_default();
     let mut names = installed.clone();
-    let mut static_rules = HashSet::new();
+    let mut context = RegistrationContext::default();
     for plugin in plugins {
         plugin.validate();
         for installer in &plugin.installers {
-            installer.validate_registration(md, &mut static_rules);
+            installer.validate_registration(md, &mut context);
         }
         assert!(
             names.insert(plugin.name.as_str()),

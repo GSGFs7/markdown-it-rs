@@ -1,9 +1,8 @@
-use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
 use super::html::render_html_fragment;
-use super::spec::PluginInstaller;
+use super::spec::{PluginInstaller, RegistrationContext};
 use super::{Html, InlinePluginState, Plugin, PluginSpec};
 use crate::MarkdownIt;
 use crate::document::{Document, NodeId, NodeValue};
@@ -281,10 +280,10 @@ impl<P: InlinePlugin> PluginInstaller for LeafRule<P> {
         );
     }
 
-    fn validate_registration(&self, md: &MarkdownIt, rules: &mut HashSet<std::any::TypeId>) {
+    fn validate_registration(&self, md: &MarkdownIt, context: &mut RegistrationContext) {
         assert!(
             !md.inline.has_rule::<LeafRule<P>>()
-                && rules.insert(std::any::TypeId::of::<LeafRule<P>>()),
+                && context.rules.insert(std::any::TypeId::of::<LeafRule<P>>()),
             "inline plugin {:?} was added more than once",
             std::any::type_name::<P>()
         );

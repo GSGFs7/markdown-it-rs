@@ -351,3 +351,157 @@ fn configured_block_leaf_rejects_zero_line_success() {
         .build()
         .render("anything");
 }
+
+#[derive(Debug)]
+struct Highlight;
+
+#[test]
+fn configured_inline_pair_parses_and_renders_children() {
+    let highlight = PluginSpec::new("highlight")
+        .inline_pair::<Highlight>("highlight")
+        .delimiter::<'=', 2, true>()
+        .value(|| Highlight)
+        .html_tag("mark")
+        .finish();
+
+    let md = MarkdownIt::builder().plugin(highlight).build();
+    assert_eq!(
+        md.render("a ==marked **bold**=="),
+        "<p>a <mark>marked <strong>bold</strong></mark></p>\n"
+    );
+}
+
+#[test]
+fn configured_inline_pair_honors_can_split_word() {
+    #[derive(Debug)]
+    struct Placeholder;
+
+    let placeholder = PluginSpec::new("placeholder")
+        .inline_pair::<Placeholder>("placeholder")
+        .delimiter::<'^', 1, false>()
+        .value(|| Placeholder)
+        .html_tag("span")
+        .finish();
+
+    let md = MarkdownIt::builder().plugin(placeholder).build();
+    assert_eq!(
+        md.render("foo^bar^baz and ^ok^"),
+        "<p>foo^bar^baz and <span>ok</span></p>\n"
+    );
+}
+
+#[test]
+fn configured_inline_pair_shares_marker_between_lengths() {
+    #[derive(Debug)]
+    struct One;
+
+    #[derive(Debug)]
+    struct Two;
+
+    let one = PluginSpec::new("one")
+        .inline_pair::<One>("one")
+        .delimiter::<'+', 1, true>()
+        .value(|| One)
+        .html_tag("i")
+        .finish();
+    let two = PluginSpec::new("two")
+        .inline_pair::<Two>("two")
+        .delimiter::<'+', 2, true>()
+        .value(|| Two)
+        .html_tag("b")
+        .finish();
+
+    let md = MarkdownIt::builder().plugin(one).plugin(two).build();
+    assert_eq!(
+        md.render("+one+ and ++two++"),
+        "<p><i>one</i> and <b>two</b></p>\n"
+    );
+}
+
+#[test]
+fn configured_inline_pair_reuses_existing_static_marker_scanner() {
+    #[derive(Debug)]
+    struct Triple;
+
+    let triple = PluginSpec::new("triple")
+        .inline_pair::<Triple>("triple")
+        .delimiter::<'*', 3, true>()
+        .value(|| Triple)
+        .html_tag("mark")
+        .finish();
+
+    // The default preset already has a static `*` scanner for emphasis and
+    // strong. The new length must still be reachable through that scanner.
+    let md = MarkdownIt::builder().plugin(triple).build();
+    assert_eq!(md.render("***hello***"), "<p><mark>hello</mark></p>\n");
+    assert_eq!(
+        md.render("*em* **strong** ***mark***"),
+        "<p><em>em</em> <strong>strong</strong> <mark>mark</mark></p>\n"
+    );
+}
+
+#[test]
+#[should_panic(expected = "length 2 is already registered")]
+fn configured_inline_pair_rejects_duplicate_marker_length() {
+    #[derive(Debug)]
+    struct First;
+
+    #[derive(Debug)]
+    struct Second;
+
+    let first = PluginSpec::new("first")
+        .inline_pair::<First>("first")
+        .delimiter::<'=', 2, true>()
+        .value(|| First)
+        .html_tag("mark")
+        .finish();
+    let second = PluginSpec::new("second")
+        .inline_pair::<Second>("second")
+        .delimiter::<'=', 2, true>()
+        .value(|| Second)
+        .html_tag("b")
+        .finish();
+
+    MarkdownIt::builder().plugin(first).plugin(second).build();
+}
+
+#[test]
+#[should_panic(expected = "can_split_word must agree")]
+fn configured_inline_pair_rejects_can_split_word_conflict() {
+    #[derive(Debug)]
+    struct First;
+
+    #[derive(Debug)]
+    struct Second;
+
+    let first = PluginSpec::new("first")
+        .inline_pair::<First>("first")
+        .delimiter::<'=', 1, true>()
+        .value(|| First)
+        .html_tag("mark")
+        .finish();
+    let second = PluginSpec::new("second")
+        .inline_pair::<Second>("second")
+        .delimiter::<'=', 2, false>()
+        .value(|| Second)
+        .html_tag("b")
+        .finish();
+
+    MarkdownIt::builder().plugin(first).plugin(second).build();
+}
+
+#[test]
+#[should_panic(expected = "marker '*' length 1 is already registered")]
+fn configured_inline_pair_rejects_conflict_with_builtin_pair() {
+    #[derive(Debug)]
+    struct Star;
+
+    let star = PluginSpec::new("star")
+        .inline_pair::<Star>("star")
+        .delimiter::<'*', 1, true>()
+        .value(|| Star)
+        .html_tag("mark")
+        .finish();
+
+    MarkdownIt::builder().plugin(star).build();
+}

@@ -46,11 +46,13 @@ pub use plugin::{
     Html,
     HtmlElement,
     InlineLeafBuilder,
+    InlinePairBuilder,
     InlinePlugin,
     InlinePluginState,
     LeafRenderer,
     LeafRule,
     MarkdownItBuilder,
+    PairDelimiter,
     Plugin,
     PluginSpec,
 };

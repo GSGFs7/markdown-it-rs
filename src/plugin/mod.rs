@@ -70,6 +70,7 @@ mod block;
 mod builder;
 mod html;
 mod inline;
+mod pair;
 mod spec;
 mod state;
 
@@ -77,6 +78,7 @@ pub use block::{BlockLeafBuilder, BlockPluginState};
 pub use builder::MarkdownItBuilder;
 pub use html::{Html, HtmlElement};
 pub use inline::{InlineLeafBuilder, InlinePlugin, LeafRenderer, LeafRule};
+pub use pair::{InlinePairBuilder, PairDelimiter};
 pub use spec::PluginSpec;
 pub use state::InlinePluginState;
 

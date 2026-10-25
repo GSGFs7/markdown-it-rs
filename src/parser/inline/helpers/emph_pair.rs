@@ -1,7 +1,6 @@
-//! Structure similar to `*emphasis*` with configurable markers of fixed length.
+//! Fixed-length paired delimiters, such as `*emphasis*` and `~~strikethrough~~`.
 //!
-//! There are many structures in various markdown flavors that
-//! can be implemented with this, namely:
+//! Common uses include:
 //!
 //!  - `*emphasis*` or `_emphasis_` -> `<em>emphasis</em>`
 //!  - `**strong**` or `__strong__` -> `<strong>strong</strong>`
@@ -11,16 +10,15 @@
 //!  - `~subscript~` -> `<sub>subscript</sub>`
 //!  - `^superscript^` -> `<sup>superscript</sup>`
 //!
-//! You add a custom structure by using [add_with] function, which takes following arguments:
-//!  - `MARKER` - marker character
-//!  - `LENGTH` - length of the opening/closing marker (can be 1, 2 or 3)
-//!  - `CAN_SPLIT_WORD` - whether this structure can be found in the middle of the word
-//!    (for example, note the difference between `foo*bar*baz` and `foo_bar_baz`
-//!    in CommonMark - first one is an emphasis, second one isn't)
-//!  - `md` - parser instance
-//!  - `f` - function that should return your custom [NodeId]
+//! Register a custom pair with [add_with]:
+//!  - `MARKER`: delimiter character
+//!  - `LENGTH`: delimiter length (1–3)
+//!  - `CAN_SPLIT_WORD`: allow pairs inside words. For example, CommonMark treats
+//!    `foo*bar*baz` as emphasis but not `foo_bar_baz`.
+//!  - `md`: parser instance
+//!  - `f`: returns the node to create
 //!
-//! Here is an example of implementing superscript in your custom code:
+//! Superscript example:
 //!
 //! ```rust
 //! use markdown_it::parser::inline::helpers::emph_pair;
@@ -39,90 +37,142 @@
 //! assert_eq!(md.render("e^iπ^+1=0").trim(), "e<sup>iπ</sup>+1=0");
 //! ```
 //!
-//! Note that these structures have lower priority than the rest of the rules,
-//! e.g. `` *foo`bar*baz` `` is parsed as `*foo<code>bar*baz</code>`.
-//!
-use std::cmp::min;
+//! These rules run after most inline rules, so `` *foo`bar*baz` `` parses as
+//! `*foo<code>bar*baz</code>`.
 
-use crate::MarkdownIt;
+use std::cmp::min;
+use std::collections::HashMap;
+use std::fmt;
+use std::sync::Arc;
+
 use crate::document::{Document, NodeId, Text};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::{InlineParserRule, InlineRule, InlineState};
+use crate::MarkdownIt;
 
-type NodeIdFn = fn(&mut Document) -> NodeId;
-
-#[derive(Debug, Default)]
-struct PairConfig<const MARKER: char> {
-    inserted: bool,
-    fns: [Option<NodeIdFn>; 3],
-}
-
-/// Cached lower bounds for the emphasis scan.
-///
-/// Indexed by marker character and `(closer.open as usize) * 3 + length_class`.
-/// Bounds are node indices, so they must be rebased when matches remove nodes.
-#[derive(Debug, Default)]
-struct OpenersBottom {
-    markers: Vec<(char, [usize; 6])>,
-}
-
-impl OpenersBottom {
-    fn get(&self, marker: char, parameter: usize) -> usize {
-        self.markers
-            .iter()
-            .find(|(known, _)| *known == marker)
-            .map_or(0, |(_, bounds)| bounds[parameter])
-    }
-
-    fn set(&mut self, marker: char, parameter: usize, value: usize) {
-        if let Some((_, bounds)) = self.markers.iter_mut().find(|(known, _)| *known == marker) {
-            bounds[parameter] = value;
-        } else {
-            let mut bounds = [0; 6];
-            bounds[parameter] = value;
-            self.markers.push((marker, bounds));
-        }
-    }
-
-    /// Clamp all bounds to `removal_index` after nodes at or past it were removed.
-    fn rebase_after_removal(&mut self, removal_index: usize) {
-        for (_, bounds) in &mut self.markers {
-            for bound in bounds.iter_mut() {
-                if *bound > removal_index {
-                    *bound = removal_index;
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-#[doc(hidden)]
-pub struct EmphMarker {
-    // Starting marker
-    pub marker: char,
-
-    // Total length of these series of delimiters.
-    pub length: usize,
-
-    // Remaining length that's not already matched to other delimiters.
-    pub remaining: usize,
-
-    // Boolean flags that determine if this delimiter could open or close
-    // an emphasis.
-    pub open: bool,
-
-    // Boolean flags that determine if this delimiter could open or close
-    // an emphasis.
-    pub close: bool,
-}
-
-// this node is supposed to be replaced by actual emph or text node
+// --- pub ---
 
 pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool>(
     md: &mut MarkdownIt,
     f: fn(&mut Document) -> NodeId,
 ) {
+    register::<MARKER, LENGTH, CAN_SPLIT_WORD>(md, PairFactory::Static(f));
+}
+
+/// Like [`add_with`], but accepts a factory that may capture configuration.
+///
+/// All lengths of a marker must agree on `CAN_SPLIT_WORD`. Captured factories
+/// cannot replace an already registered length.
+pub fn add_with_factory<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool>(
+    md: &mut MarkdownIt,
+    factory: impl Fn(&mut Document) -> NodeId + Send + Sync + 'static,
+) {
+    register::<MARKER, LENGTH, CAN_SPLIT_WORD>(md, PairFactory::Captured(Arc::new(factory)));
+}
+
+// --- inner ---
+
+type NodeIdFn = fn(&mut Document) -> NodeId;
+
+#[derive(Clone)]
+enum PairFactory {
+    Static(NodeIdFn),
+    Captured(Arc<dyn Fn(&mut Document) -> NodeId + Send + Sync>),
+}
+
+impl PairFactory {
+    fn create(&self, document: &mut Document) -> NodeId {
+        match self {
+            Self::Static(f) => f(document),
+            Self::Captured(f) => f(document),
+        }
+    }
+}
+
+impl fmt::Debug for PairFactory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Static(_) => "Static",
+            Self::Captured(_) => "Captured",
+        })
+    }
+}
+
+#[derive(Debug, Default)]
+struct PairConfig<const MARKER: char> {
+    can_split_word: Option<bool>,
+    fns: [Option<PairFactory>; 3],
+}
+
+/// Snapshot of current registrations, used to validate a batch before installing rules.
+#[derive(Debug, Default)]
+pub(crate) struct PairRegistration {
+    can_split_word: Option<bool>,
+    occupied: u8,
+}
+
+impl PairRegistration {
+    pub(crate) fn claim(&mut self, marker: char, length: u8, split: bool) {
+        assert!(
+            (1..=3).contains(&length),
+            "emph_pair marker length must be 1, 2 or 3"
+        );
+
+        if let Some(existing) = self.can_split_word {
+            assert_eq!(
+                existing, split,
+                "inline pairs using marker {marker:?}: can_split_word must agree"
+            );
+        }
+
+        let bit = 1 << (length - 1);
+        assert!(
+            self.occupied & bit == 0,
+            "inline pair marker {marker:?} length {length} is already registered"
+        );
+
+        self.can_split_word = Some(split);
+        self.occupied |= bit;
+    }
+}
+
+pub(crate) fn registration<const MARKER: char>(md: &MarkdownIt) -> PairRegistration {
+    let Some(config) = md.ext.get::<PairConfig<MARKER>>() else {
+        return PairRegistration::default();
+    };
+
+    PairRegistration {
+        can_split_word: config.can_split_word,
+        occupied: config
+            .fns
+            .iter()
+            .enumerate()
+            .fold(0, |mask, (index, f)| mask | ((f.is_some() as u8) << index)),
+    }
+}
+
+fn register<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool>(
+    md: &mut MarkdownIt,
+    factory: PairFactory,
+) {
+    assert!(
+        (1..=3).contains(&LENGTH),
+        "emph_pair marker length must be 1, 2 or 3"
+    );
+
+    let index = LENGTH as usize - 1;
+    let mut claim = registration::<MARKER>(md);
+    // Keep add_with's behavior of replacing an existing static factory.
+    if matches!(factory, PairFactory::Static(_))
+        && md
+            .ext
+            .get::<PairConfig<MARKER>>()
+            .is_some_and(|config| matches!(config.fns[index], Some(PairFactory::Static(_))))
+    {
+        claim.occupied &= !(1 << index);
+    }
+    claim.claim(MARKER, LENGTH, CAN_SPLIT_WORD);
+
     if !md.has_rule::<EmphasisCleanup>() {
         md.add_rule::<EmphasisCleanup>()
             .after::<InlineParserRule>()
@@ -132,11 +182,11 @@ pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool
             .before_all();
     }
 
-    let pair_config = md.ext.get_or_insert_default::<PairConfig<MARKER>>();
-    pair_config.fns[LENGTH as usize - 1] = Some(f);
-
-    if !pair_config.inserted {
-        pair_config.inserted = true;
+    let config = md.ext.get_or_insert_default::<PairConfig<MARKER>>();
+    let needs_scanner = config.can_split_word.is_none();
+    config.can_split_word = Some(CAN_SPLIT_WORD);
+    config.fns[index] = Some(factory);
+    if needs_scanner {
         let builder = md
             .inline
             .add_rule::<EmphPairScanner<MARKER, CAN_SPLIT_WORD>>();
@@ -147,6 +197,8 @@ pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool
         }
     }
 }
+
+// --- scanner ---
 
 #[doc(hidden)]
 pub struct EmphPairScanner<const MARKER: char, const CAN_SPLIT_WORD: bool>;
@@ -185,8 +237,8 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
         );
         let scanned_bytes = scanned.byte_length();
 
-        // With no opener, keep non-opening runs as pending text to avoid temporary nodes.
-        // Preserve node indices and newline whitespace handling.
+        // Avoid temporary nodes for non-opening runs before any node exists.
+        // Preserve node indices and newline handling.
         if state.nodes().is_empty() && !MARKER.is_whitespace() && !scanned.can_open {
             state.push_text(state.pos, state.pos + scanned_bytes);
             return Some((None, scanned_bytes));
@@ -208,35 +260,95 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
 
         closer = scan_and_match::<MARKER>(state, closer);
 
-        // Matching already sets the node's source map, which may span earlier
-        // delimiters and lines. Append it directly so tokenize does not replace
-        // that map with the current delimiter's span. Original source offsets
-        // cannot be used to backtrack within the normalized inline source.
+        // scan_and_match may set a map spanning earlier delimiters. Push directly
+        // so tokenize does not overwrite it with this delimiter's span.
         state.nodes_mut().push(closer);
         Some((None, scanned_bytes))
     }
 }
 
-/// Assuming the last node is a closing delimiter we just inserted,
-/// try to find opener(s). If any are found, move stuff to nested emph node.
+#[derive(Debug, Clone, Copy)]
+#[doc(hidden)]
+pub struct EmphMarker {
+    // Delimiter character.
+    pub marker: char,
+
+    // Length of the delimiter run.
+    pub length: usize,
+
+    // Delimiters not yet matched.
+    pub remaining: usize,
+
+    // Whether this run can open or close a pair.
+    pub open: bool,
+    pub close: bool,
+}
+
+impl EmphMarker {
+    /// Whether all delimiters in this run are matched.
+    fn is_empty(&self) -> bool {
+        self.remaining == 0
+    }
+
+    /// Append unmatched delimiters as literal text.
+    fn append_to(&self, content: &mut String) {
+        content.reserve(self.remaining * self.marker.len_utf8());
+        for _ in 0..self.remaining {
+            content.push(self.marker);
+        }
+    }
+
+    /// Convert unmatched delimiters into a text payload.
+    fn into_text(self) -> Text {
+        let mut encoded = [0; 4];
+        Text {
+            content: self.marker.encode_utf8(&mut encoded).repeat(self.remaining),
+        }
+    }
+}
+
+/// Cached lower search bounds, indexed by marker and
+/// `(closer.open as usize) * 3 + length_class`.
+///
+/// Values are node indices and must be clamped when earlier nodes are removed.
+#[derive(Debug, Default)]
+struct OpenersBottom(HashMap<char, [usize; 6]>);
+
+impl OpenersBottom {
+    fn get(&self, marker: char, parameter: usize) -> usize {
+        self.0.get(&marker).map_or(0, |bounds| bounds[parameter])
+    }
+
+    fn set(&mut self, marker: char, parameter: usize, value: usize) {
+        self.0.entry(marker).or_default()[parameter] = value;
+    }
+
+    /// Clamp bounds after nodes at or past `removal_index` were removed.
+    fn rebase_after_removal(&mut self, removal_index: usize) {
+        for bound in self.0.values_mut().flatten() {
+            *bound = (*bound).min(removal_index);
+        }
+    }
+}
+
+/// Match the closing delimiter at the end of the node stack with an opener,
+/// nesting any matched content under the new node.
 fn scan_and_match<const MARKER: char>(state: &mut InlineState, closer_token: NodeId) -> NodeId {
     if state.nodes().is_empty() {
         return closer_token;
     } // must have at least opener and closer
 
-    let mut closer = state
+    let mut closer = *state
         .document
         .node(closer_token)
         .cast::<EmphMarker>()
-        .unwrap()
-        .clone();
+        .unwrap();
     if !closer.close {
         return closer_token;
     }
 
-    // Previously calculated lower bounds (previous fails)
-    // for each marker, each delimiter length class,
-    // and for whether this closer can be an opener;
+    // Lower bounds from previous failed searches, cached per marker, length
+    // class, and whether the closer can also open.
     // https://github.com/commonmark/cmark/commit/34250e12ccebdc6372b8b49c44fab57c72443460
     let length_class = if matches!(MARKER, '*' | '_') {
         closer.length % 3
@@ -249,84 +361,62 @@ fn scan_and_match<const MARKER: char>(state: &mut InlineState, closer_token: Nod
         .get_or_insert_default::<OpenersBottom>()
         .get(MARKER, openers_parameter);
 
+    // Snapshot factories to avoid repeated extension lookups.
+    let fns = state
+        .markdown_it()
+        .ext
+        .get::<PairConfig<MARKER>>()
+        .unwrap()
+        .fns
+        .clone();
+
     let closer_idx = state.nodes().len() - 1;
     let mut idx = closer_idx;
-    // Earliest opener consumed by a match; removing nodes shifts later indices,
-    // so bounds beyond it must be clamped.
+    // Earliest opener removed by a match; later indices shift and need clamping.
     let mut removed_from: Option<usize> = None;
     while idx > min_opener_idx {
         idx -= 1;
 
-        let Some(opener) = state.document.node(state.nodes()[idx]).cast::<EmphMarker>() else {
+        let Some(mut opener) = state
+            .document
+            .node(state.nodes()[idx])
+            .cast::<EmphMarker>()
+            .copied()
+        else {
             continue;
         };
 
-        let mut opener = opener.clone();
         if opener.open && opener.marker == closer.marker && !is_odd_match(&opener, &closer) {
-            // Cache matching functions to avoid repeated lookups.
-            let fns = state
-                .markdown_it()
-                .ext
-                .get::<PairConfig<MARKER>>()
-                .unwrap()
-                .fns;
             while closer.remaining > 0 && opener.remaining > 0 {
                 let max_marker_len = min(3, min(opener.remaining, closer.remaining));
-                let mut matched_rule = None;
-                for marker_len in (1..=max_marker_len).rev() {
-                    if let Some(f) = fns[marker_len - 1] {
-                        matched_rule = Some((marker_len, f));
-                        break;
-                    }
-                }
-
-                // If matched_fn isn't found, it can only mean that function is defined for larger marker
-                // than we have (e.g. function defined for **, we have *).
-                // Treat this as "marker not found".
-                if matched_rule.is_none() {
+                // No factory means no pair is registered for these lengths.
+                let Some((marker_len, marker_fn)) = (1..=max_marker_len)
+                    .rev()
+                    .find_map(|len| fns[len - 1].as_ref().map(|f| (len, f)))
+                else {
                     break;
-                }
-
-                let (marker_len, marker_fn) = matched_rule.unwrap();
+                };
 
                 closer.remaining -= marker_len;
                 opener.remaining -= marker_len;
 
-                let new_token = marker_fn(state.document);
+                let new_token = marker_fn.create(state.document);
                 let children = state.nodes_mut().split_off(idx + 1);
                 state.document.attach_children(new_token, children);
 
                 #[cfg(feature = "sourcemap")]
                 {
                     let opener_token = *state.nodes().last().unwrap();
-                    let opener_map = state.document.node(opener_token).srcmap();
-                    let closer_map = state.document.node(closer_token).srcmap();
-                    if let (Some(opener_map), Some(closer_map)) = (opener_map, closer_map) {
-                        let (open_start, open_end) = opener_map.get_byte_offsets();
-                        let (close_start, close_end) = closer_map.get_byte_offsets();
-                        let mark_bytes = marker_len * MARKER.len_utf8();
-                        state.document.node_mut(opener_token).set_srcmap(Some(
-                            crate::common::sourcemap::SourcePos::new(
-                                open_start,
-                                open_end - mark_bytes,
-                            ),
-                        ));
-                        state.document.node_mut(closer_token).set_srcmap(Some(
-                            crate::common::sourcemap::SourcePos::new(
-                                close_start + mark_bytes,
-                                close_end,
-                            ),
-                        ));
-                        state.document.node_mut(new_token).set_srcmap(Some(
-                            crate::common::sourcemap::SourcePos::new(
-                                open_end - mark_bytes,
-                                close_start + mark_bytes,
-                            ),
-                        ));
-                    }
+                    update_pair_sourcemaps(
+                        state.document,
+                        opener_token,
+                        closer_token,
+                        new_token,
+                        marker_len * MARKER.len_utf8(),
+                    );
                 }
 
-                // remove empty node as a small optimization so we can do less work later
+                // Drop the opener once fully matched.
                 if opener.remaining == 0 {
                     let removed = state.nodes_mut().pop().unwrap();
                     state.document.discard_node(removed);
@@ -343,7 +433,7 @@ fn scan_and_match<const MARKER: char>(state: &mut InlineState, closer_token: Nod
                 .document
                 .node_mut(id)
                 .cast_mut::<EmphMarker>()
-                .unwrap() = opener; // reuse the Box, avoid unnecessary memory allocation
+                .unwrap() = opener; // Reuse the allocation.
         } // otherwise node was already deleted
 
         if closer.remaining == 0 {
@@ -355,16 +445,12 @@ fn scan_and_match<const MARKER: char>(state: &mut InlineState, closer_token: Nod
     if let Some(removed_from) = removed_from {
         openers.rebase_after_removal(removed_from);
     } else {
-        // If match for this delimiter run failed, we want to set lower bound for
-        // future lookups. This is required to make sure algorithm has linear
-        // complexity.
-        //
-        // See details here:
+        // Cache the failure bound to keep the scan linear.
         // https://github.com/commonmark/cmark/issues/178#issuecomment-270417442
         openers.set(MARKER, openers_parameter, closer_idx);
     }
 
-    // remove empty node as a small optimization so we can do less work later
+    // Keep a partially matched closer so its remaining delimiters become text.
     if closer.remaining > 0 {
         *state
             .document
@@ -379,114 +465,19 @@ fn scan_and_match<const MARKER: char>(state: &mut InlineState, closer_token: Nod
 }
 
 fn is_odd_match(opener: &EmphMarker, closer: &EmphMarker) -> bool {
-    // The rule of three applies to CommonMark emphasis, not fixed-length
-    // pairs such as strikethrough. markdown-it's ~~ delimiters have length 0
-    // for this check, regardless of the length of the original tilde run.
+    // The rule of three applies only to CommonMark `*`/`_` emphasis.
     if !matches!(opener.marker, '*' | '_') {
         return false;
     }
 
-    // from spec:
-    //
-    // If one of the delimiters can both open and close emphasis, then the
-    // sum of the lengths of the delimiter runs containing the opening and
-    // closing delimiters must not be a multiple of 3 unless both lengths
-    // are multiples of 3.
-    //
-    #[allow(clippy::collapsible_if)]
-    if opener.close || closer.open {
-        if (opener.length + closer.length).is_multiple_of(3) {
-            if !opener.length.is_multiple_of(3) || !closer.length.is_multiple_of(3) {
-                return true;
-            }
-        }
-    }
-
-    false
+    // If either delimiter can both open and close, their combined run length
+    // must not be a multiple of 3 unless both lengths are.
+    let adjacent = opener.close || closer.open;
+    let both_multiples = opener.length.is_multiple_of(3) && closer.length.is_multiple_of(3);
+    adjacent && (opener.length + closer.length).is_multiple_of(3) && !both_multiples
 }
 
-/// Clean up nodes after emphasis and strikethrough postprocessing:
-/// merge adjacent text nodes into one and re-calculate all source maps.
-///
-/// This is necessary because initially emphasis delimiter markers (*, _, ~)
-/// are treated as their own separate text nodes. Then the emphasis rule either
-/// leaves them as text (needed to merge with adjacent text) or turns them
-/// into opening/closing elements (which messes up the source maps inside).
-///
-fn fragments_join_children(document: &mut Document, nodes: &mut Vec<NodeId>) {
-    let mut write = 0; // result
-    for read in 0..nodes.len() {
-        let id = nodes[read];
-        let marker = document
-            .node(id)
-            .cast::<EmphMarker>()
-            .map(|data| (data.marker, data.remaining));
-
-        // empty test || no remaining chars marker
-        if document
-            .node(id)
-            .cast::<Text>()
-            .is_some_and(|text| text.content.is_empty())
-            || marker.is_some_and(|(_, remaining)| remaining == 0)
-        {
-            document.discard_node(id);
-            continue;
-        }
-
-        // whether it can be merged into the preceding result node
-        if write > 0
-            && document.node(nodes[write - 1]).is::<Text>()
-            && (marker.is_some() || document.node(id).is::<Text>())
-        {
-            let previous = nodes[write - 1];
-
-            if let Some((marker, remaining)) = marker {
-                // Append unmatched delimiters without materializing a temporary
-                // String or replacing a payload that will immediately be discarded.
-                let previous = document.node_mut(previous);
-                let content = &mut previous.cast_mut::<Text>().unwrap().content;
-                content.reserve(remaining * marker.len_utf8());
-                for _ in 0..remaining {
-                    content.push(marker);
-                }
-            } else {
-                let content =
-                    std::mem::take(&mut document.node_mut(id).cast_mut::<Text>().unwrap().content);
-                document
-                    .node_mut(previous)
-                    .cast_mut::<Text>()
-                    .unwrap()
-                    .content += &content;
-            }
-
-            // update source map
-            #[cfg(feature = "sourcemap")]
-            if let (Some(first), Some(last)) =
-                (document.node(previous).srcmap(), document.node(id).srcmap())
-            {
-                #[cfg(feature = "sourcemap")]
-                document.node_mut(previous).set_srcmap(Some(
-                    crate::common::sourcemap::SourcePos::new(
-                        first.get_byte_offsets().0,
-                        last.get_byte_offsets().1,
-                    ),
-                ));
-            }
-
-            document.discard_node(id);
-        } else {
-            if let Some((marker, remaining)) = marker {
-                let mut encoded = [0; 4];
-                let content = marker.encode_utf8(&mut encoded).repeat(remaining);
-                document.node_mut(id).replace_value(Text { content });
-            }
-            nodes[write] = id;
-            write += 1;
-        }
-    }
-
-    nodes.truncate(write);
-}
+// --- post process ---
 
 #[derive(Debug, Default)]
 pub(crate) struct EmphasisCleanup;
@@ -516,6 +507,106 @@ impl CoreRule for EmphasisCleanup {
                 }
             }
         }
+    }
+}
+
+/// Merge adjacent text nodes and fix source maps after emphasis matching.
+///
+/// Unmatched delimiters become text, while matched delimiters may leave source
+/// maps split across nested nodes.
+///
+fn fragments_join_children(document: &mut Document, nodes: &mut Vec<NodeId>) {
+    let mut write = 0; // result
+    for read in 0..nodes.len() {
+        let id = nodes[read];
+        let marker = document.node(id).cast::<EmphMarker>().copied();
+
+        // Empty text or a fully matched delimiter run.
+        if document
+            .node(id)
+            .cast::<Text>()
+            .is_some_and(|text| text.content.is_empty())
+            || marker.is_some_and(|marker| marker.is_empty())
+        {
+            document.discard_node(id);
+            continue;
+        }
+
+        // Can this merge into the previous text node?
+        if write > 0
+            && document.node(nodes[write - 1]).is::<Text>()
+            && (marker.is_some() || document.node(id).is::<Text>())
+        {
+            let previous = nodes[write - 1];
+
+            if let Some(marker) = marker {
+                // Append directly to avoid a temporary String.
+                let content = &mut document
+                    .node_mut(previous)
+                    .cast_mut::<Text>()
+                    .unwrap()
+                    .content;
+                marker.append_to(content);
+            } else {
+                let content =
+                    std::mem::take(&mut document.node_mut(id).cast_mut::<Text>().unwrap().content);
+                document
+                    .node_mut(previous)
+                    .cast_mut::<Text>()
+                    .unwrap()
+                    .content += &content;
+            }
+
+            // Extend the source map to include this node.
+            #[cfg(feature = "sourcemap")]
+            if let (Some(first), Some(last)) =
+                (document.node(previous).srcmap(), document.node(id).srcmap())
+            {
+                document.node_mut(previous).set_srcmap(Some(
+                    crate::common::sourcemap::SourcePos::new(
+                        first.get_byte_offsets().0,
+                        last.get_byte_offsets().1,
+                    ),
+                ));
+            }
+
+            document.discard_node(id);
+        } else {
+            if let Some(marker) = marker {
+                document.node_mut(id).replace_value(marker.into_text());
+            }
+            nodes[write] = id;
+            write += 1;
+        }
+    }
+
+    nodes.truncate(write);
+}
+
+#[cfg(feature = "sourcemap")]
+fn update_pair_sourcemaps(
+    document: &mut Document,
+    opener: NodeId,
+    closer: NodeId,
+    pair: NodeId,
+    mark_bytes: usize,
+) {
+    let (Some(opener_map), Some(closer_map)) = (
+        document.node(opener).srcmap(),
+        document.node(closer).srcmap(),
+    ) else {
+        return;
+    };
+    let (open_start, open_end) = opener_map.get_byte_offsets();
+    let (close_start, close_end) = closer_map.get_byte_offsets();
+    for (node, start, end) in [
+        (opener, open_start, open_end - mark_bytes),
+        (closer, close_start + mark_bytes, close_end),
+        (pair, open_end - mark_bytes, close_start + mark_bytes),
+    ] {
+        document
+            .node_mut(node)
+            .set_srcmap(Some(crate::common::sourcemap::SourcePos::new(start, end)));
     }
 }
 
@@ -731,8 +822,7 @@ mod tests {
         assert_eq!(md.render_html(&node), output);
     }
 
-    /// Parse with only the CommonMark paragraph + emphasis rules registered
-    /// (nothing else), and check the expected rendered output.
+    /// Parse with only CommonMark paragraph and emphasis rules.
     fn run_minimal(input: &str, output: &str) {
         let md = &mut MarkdownIt::empty();
         crate::plugins::cmark::block::paragraph::add(md);
