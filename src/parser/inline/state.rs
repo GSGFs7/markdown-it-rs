@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
 
-use super::RuleSet;
+use super::{InlineRunRunner, RuleSet};
 use crate::MarkdownIt;
 use crate::common::extset::{InlineRootExtSet, RootExtSet};
 use crate::document::{Document, NodeId, Text};
@@ -261,7 +261,13 @@ impl<'a> InlineState<'a> {
                 if !rule.matches_marker(marker) {
                     continue;
                 }
-                if let Some(result) = (rule.run)(self) {
+
+                let result = match &rule.run {
+                    InlineRunRunner::Static(run) => run(self),
+                    InlineRunRunner::Dynamic(run) => run(self),
+                };
+
+                if let Some(result) = result {
                     matched = Some(result);
                     break;
                 }
@@ -333,16 +339,18 @@ impl<'a> InlineState<'a> {
 
         let marker = self.remaining().chars().next().unwrap();
         for rule_index in 0..self.ruleset.checks.len() {
-            let entry = self.ruleset.checks[rule_index];
+            let entry = &self.ruleset.checks[rule_index];
             if !entry.matches_marker(marker) {
                 continue;
             }
 
-            #[cfg(debug_assertions)]
-            let matched = crate::parser::validation::check_inline(self, rule_index, entry.check);
+            let check = |state: &mut InlineState<'_>| entry.check.call(state);
 
+            #[cfg(debug_assertions)]
+            let matched = crate::parser::validation::check_inline(self, rule_index, check);
             #[cfg(not(debug_assertions))]
-            let matched = (entry.check)(self);
+            let matched = check(self);
+
             if let Some(len) = matched {
                 // Extend the pending text when the match is contiguous;
                 // otherwise start an opaque token.

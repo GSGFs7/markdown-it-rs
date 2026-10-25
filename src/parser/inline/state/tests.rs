@@ -2,7 +2,14 @@ use std::sync::{Arc, Mutex};
 
 use super::*;
 use crate::links::LinkFormatter;
-use crate::parser::inline::{InlineCheckFn, InlineRule, InlineRuleFn, InlineRuleFns};
+use crate::parser::inline::{
+    InlineCheckFn,
+    InlineCheckRunner,
+    InlineRule,
+    InlineRuleFns,
+    InlineRunFn,
+    InlineRunRunner,
+};
 
 impl<'a> InlineState<'a> {
     #[allow(clippy::too_many_arguments)]
@@ -46,22 +53,22 @@ fn scan<'s>(state: &'s mut InlineState<'_>, range: Range<usize>) -> Option<Inlin
 fn check_rule(check: InlineCheckFn) -> InlineRuleFns {
     InlineRuleFns {
         type_id: std::any::TypeId::of::<()>(),
-        run: panic_run,
-        check,
+        run: InlineRunRunner::Static(panic_run),
+        check: InlineCheckRunner::Static(check),
         marker: '\0',
     }
 }
 
-fn run_rule_with_marker(run: InlineRuleFn, marker: char) -> InlineRuleFns {
+fn run_rule_with_marker(run: InlineRunFn, marker: char) -> InlineRuleFns {
     InlineRuleFns {
         type_id: std::any::TypeId::of::<()>(),
-        run,
-        check: panic_check,
+        run: InlineRunRunner::Static(run),
+        check: InlineCheckRunner::Static(panic_check),
         marker,
     }
 }
 
-fn run_rule(run: InlineRuleFn) -> InlineRuleFns {
+fn run_rule(run: InlineRunFn) -> InlineRuleFns {
     run_rule_with_marker(run, '\0')
 }
 
@@ -625,14 +632,14 @@ fn check_no_match_falls_through_to_lower_priority_rules() {
         checks: vec![
             InlineRuleFns {
                 type_id: std::any::TypeId::of::<()>(),
-                run: panic_run,
-                check: |_| None,
+                run: InlineRunRunner::Static(panic_run),
+                check: InlineCheckRunner::Static(|_| None),
                 marker: 'x',
             },
             InlineRuleFns {
                 type_id: std::any::TypeId::of::<()>(),
-                run: panic_run,
-                check: |_| Some(1),
+                run: InlineRunRunner::Static(panic_run),
+                check: InlineCheckRunner::Static(|_| Some(1)),
                 marker: 'x',
             },
         ],
@@ -653,8 +660,8 @@ fn check_dispatch_skips_non_matching_markers() {
         runs: vec![],
         checks: vec![InlineRuleFns {
             type_id: std::any::TypeId::of::<()>(),
-            run: panic_run,
-            check: |_| panic!("marker must filter check dispatch"),
+            run: InlineRunRunner::Static(panic_run),
+            check: InlineCheckRunner::Static(|_| panic!("marker must filter check dispatch")),
             marker: 'y',
         }],
     };
@@ -886,8 +893,8 @@ fn recursive_check_validates_ranges_and_empty_suffixes() {
         runs: vec![],
         checks: vec![InlineRuleFns {
             type_id: std::any::TypeId::of::<()>(),
-            run: panic_run,
-            check: |_| None,
+            run: InlineRunRunner::Static(panic_run),
+            check: InlineCheckRunner::Static(|_| None),
             marker: 'x',
         }],
     };
@@ -1029,8 +1036,8 @@ fn recursive_check_same_range_terminates_at_depth_limit() {
         runs: vec![],
         checks: vec![InlineRuleFns {
             type_id: std::any::TypeId::of::<()>(),
-            run: panic_run,
-            check: same_range,
+            run: InlineRunRunner::Static(panic_run),
+            check: InlineCheckRunner::Static(same_range),
             marker: '#',
         }],
     };
@@ -1070,8 +1077,8 @@ fn recursive_check_long_chain_is_linear_and_stack_safe() {
         runs: vec![],
         checks: vec![InlineRuleFns {
             type_id: std::any::TypeId::of::<()>(),
-            run: panic_run,
-            check: nested,
+            run: InlineRunRunner::Static(panic_run),
+            check: InlineCheckRunner::Static(nested),
             marker: '^',
         }],
     };
@@ -1098,8 +1105,10 @@ fn check_dispatch_keeps_wildcard_position() {
             check_rule(|_| Some(1)),
             InlineRuleFns {
                 type_id: std::any::TypeId::of::<()>(),
-                run: panic_run,
-                check: |_| panic!("specific rule must not run after a wildcard match"),
+                run: InlineRunRunner::Static(panic_run),
+                check: InlineCheckRunner::Static(|_| {
+                    panic!("specific rule must not run after a wildcard match")
+                }),
                 marker: 'x',
             },
         ],
@@ -1390,21 +1399,21 @@ fn invalid_check_length_panics_and_preserves_pending() {
         checks: vec![
             InlineRuleFns {
                 type_id: std::any::TypeId::of::<()>(),
-                run: panic_run,
-                check: |context| {
+                run: InlineRunRunner::Static(panic_run),
+                check: InlineCheckRunner::Static(|context| {
                     if context.remaining() == "aa" {
                         context.push_text(context.pos, context.pos + 1);
                         Some(1)
                     } else {
                         None
                     }
-                },
+                }),
                 marker: 'a',
             },
             InlineRuleFns {
                 type_id: std::any::TypeId::of::<()>(),
-                run: panic_run,
-                check: |_| Some(0),
+                run: InlineRunRunner::Static(panic_run),
+                check: InlineCheckRunner::Static(|_| Some(0)),
                 marker: 'a',
             },
         ],

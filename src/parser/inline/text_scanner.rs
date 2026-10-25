@@ -13,14 +13,21 @@ pub fn add(md: &mut MarkdownIt) {
 
 #[derive(Debug)]
 pub(crate) enum TextScannerImpl {
+    /// A dynamic wildcard rule must get a chance at every character.
+    Disabled,
     SkipAscii(AsciiMarkSet),
     SkipRegex(Regex),
 }
 
 impl TextScannerImpl {
     pub(in crate::parser::inline) fn compile(mut markers: Vec<char>) -> Self {
-        markers.sort_unstable();
+        // Resolve this once per configuration, not through a hash lookup on
+        // every text scan. Dynamic registration invalidates the scanner cache.
+        if markers.contains(&'\0') {
+            return Self::Disabled;
+        }
 
+        markers.sort_unstable();
         if markers.iter().all(|marker| marker.is_ascii()) {
             let mut set = AsciiMarkSet::default();
             for marker in markers {
@@ -39,6 +46,7 @@ impl TextScannerImpl {
     #[inline]
     pub(in crate::parser::inline) fn find(&self, source: &str) -> usize {
         match self {
+            Self::Disabled => 0,
             Self::SkipAscii(markers) => source
                 .as_bytes()
                 .iter()

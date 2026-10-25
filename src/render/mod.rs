@@ -220,7 +220,7 @@ impl Writer {
         }
     }
 
-    fn finish(self) -> String {
+    pub(crate) fn finish(self) -> String {
         self.output
     }
 

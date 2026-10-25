@@ -216,6 +216,10 @@ impl MarkdownIt {
         self.ruler.remove(RuleMark::of::<T>());
     }
 
+    pub(crate) fn validate_rules(&self) {
+        let _ = self.ruler.as_slice();
+    }
+
     /// Create a parser configured with a preset (e.g. `Preset::CommonMark`)
     /// or a custom closure `|md| { ... }`.
     pub fn with_preset(preset: impl PresetConfig) -> Self {

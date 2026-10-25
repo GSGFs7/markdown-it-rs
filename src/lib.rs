@@ -16,6 +16,7 @@ pub mod examples;
 pub mod links;
 mod markdown_it;
 pub mod parser;
+pub mod plugin;
 pub mod plugins;
 pub mod render;
 
@@ -39,5 +40,17 @@ pub use document::{
 pub use markdown_it::MarkdownIt;
 pub use parser::block::BlockState;
 pub use parser::inline::InlineState;
+pub use plugin::{
+    Html,
+    HtmlElement,
+    InlineLeafBuilder,
+    InlinePlugin,
+    InlinePluginState,
+    LeafRenderer,
+    LeafRule,
+    MarkdownItBuilder,
+    Plugin,
+    PluginSpec,
+};
 pub use plugins::presets::{Preset, PresetConfig};
 pub use render::{NodeRenderer, RenderContext, RenderOptions, RendererRegistry, Writer};

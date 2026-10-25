@@ -68,4 +68,9 @@ name = "attrs"
 path = "benches/attrs.rs"
 harness = false
 
+[[bench]]
+name = "plugin_api"
+path = "benches/plugin_api.rs"
+harness = false
+
 [workspace]

@@ -27,7 +27,7 @@ pub(super) fn check_block(
 pub(super) fn check_inline(
     state: &mut InlineState<'_>,
     index: usize,
-    check: fn(&mut InlineState<'_>) -> Option<usize>,
+    check: impl FnOnce(&mut InlineState<'_>) -> Option<usize>,
 ) -> Option<usize> {
     let before = InlineCheckSnapshot::capture(state);
     let matched = check(state);

@@ -7,7 +7,7 @@ mod state;
 mod text_scanner;
 
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 pub(crate) use document::parse_document;
 
@@ -28,13 +28,60 @@ pub fn add(md: &mut crate::MarkdownIt) {
 
 pub(crate) type InlineCheckFn = fn(&mut InlineState<'_>) -> Option<usize>;
 // TODO: some nested some??
-pub(crate) type InlineRuleFn =
+pub(crate) type InlineRunFn =
     fn(&mut crate::InlineState<'_>) -> Option<(Option<crate::NodeId>, usize)>;
 
-#[derive(Debug, Clone, Copy)]
+// functions that cause heap allocation
+type DynamicCheckFn = dyn Fn(&mut InlineState<'_>) -> Option<usize> + Send + Sync;
+type DynamicRunFn =
+    dyn Fn(&mut InlineState<'_>) -> Option<(Option<crate::NodeId>, usize)> + Send + Sync;
+
+#[derive(Clone)]
+pub(crate) enum InlineCheckRunner {
+    Static(InlineCheckFn),
+    Dynamic(Arc<DynamicCheckFn>),
+}
+
+impl InlineCheckRunner {
+    #[inline]
+    pub(crate) fn call(&self, state: &mut InlineState<'_>) -> Option<usize> {
+        match self {
+            Self::Static(check) => check(state),
+            Self::Dynamic(check) => check(state),
+        }
+    }
+}
+
+impl std::fmt::Debug for InlineCheckRunner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Static(_) => "Static",
+            Self::Dynamic(_) => "Dynamic",
+        })
+    }
+}
+
+#[derive(Clone)]
+pub(crate) enum InlineRunRunner {
+    Static(InlineRunFn),
+    Dynamic(Arc<DynamicRunFn>),
+}
+
+impl std::fmt::Debug for InlineRunRunner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Static(_) => "Static",
+            Self::Dynamic(_) => "Dynamic",
+        })
+    }
+}
+
+struct DynamicRuleTag;
+
+#[derive(Debug, Clone)]
 pub(crate) struct InlineRuleFns {
-    pub(crate) run: InlineRuleFn,
-    pub(crate) check: InlineCheckFn,
+    pub(crate) run: InlineRunRunner,
+    pub(crate) check: InlineCheckRunner,
     pub(crate) marker: char,
     pub(crate) type_id: std::any::TypeId,
 }
@@ -42,21 +89,21 @@ pub(crate) struct InlineRuleFns {
 impl InlineRuleFns {
     /// Whether this rule can be considered for the given current character.
     #[inline]
-    pub(crate) fn matches_marker(self, ch: char) -> bool {
+    pub(crate) fn matches_marker(&self, ch: char) -> bool {
         self.marker == '\0' || self.marker == ch
     }
 }
 
 fn inline_rule_fns<T: InlineRule>() -> InlineRuleFns {
     InlineRuleFns {
-        run: T::run,
-        check: T::check,
+        run: InlineRunRunner::Static(T::run),
+        check: InlineCheckRunner::Static(T::check),
         marker: T::MARKER,
         type_id: std::any::TypeId::of::<T>(),
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 #[doc(hidden)]
 pub struct RuleEntry {
     fns: InlineRuleFns,
@@ -84,7 +131,7 @@ impl InlineParser {
 
     pub(crate) fn rules(&self) -> &RuleSet {
         self.rules.get_or_init(|| {
-            let entries: Vec<_> = self.ruler.iter().map(|entry| entry.fns).collect();
+            let entries: Vec<_> = self.ruler.iter().map(|entry| entry.fns.clone()).collect();
             RuleSet {
                 runs: entries.clone(),
                 checks: entries,
@@ -100,7 +147,7 @@ impl InlineParser {
         &mut self,
     ) -> &mut crate::common::ruler::RuleItem<RuleMark, RuleEntry> {
         self.rules.take();
-        if T::MARKER != '\0' {
+        if std::any::TypeId::of::<T>() != std::any::TypeId::of::<TextScanner>() {
             self.text_impl = OnceLock::new();
             self.text_charmap
                 .entry(T::MARKER)
@@ -130,7 +177,7 @@ impl InlineParser {
 
     pub fn remove_rule<T: InlineRule>(&mut self) {
         self.rules.take();
-        if T::MARKER != '\0' {
+        if std::any::TypeId::of::<T>() != std::any::TypeId::of::<TextScanner>() {
             self.text_impl = OnceLock::new();
             let mut marks = self.text_charmap.remove(&T::MARKER).unwrap_or_default();
             marks.retain(|mark| *mark != RuleMark::of::<T>());
@@ -141,6 +188,38 @@ impl InlineParser {
         self.ruler.remove(RuleMark::of::<T>());
     }
 
+    /// Register a runtime inline rule produced by the high-level plugin API.
+    pub(crate) fn add_dynamic_rule(
+        &mut self,
+        mark: RuleMark,
+        marker: char,
+        run: Arc<DynamicRunFn>,
+        check: Arc<DynamicCheckFn>,
+    ) -> RuleBuilder<'_, RuleEntry> {
+        self.rules.take();
+        self.text_impl = OnceLock::new();
+
+        self.text_charmap
+            .entry(marker)
+            .or_default()
+            .push(mark.clone());
+
+        let item = self.ruler.add(
+            mark,
+            RuleEntry {
+                fns: InlineRuleFns {
+                    run: InlineRunRunner::Dynamic(run),
+                    check: InlineCheckRunner::Dynamic(check),
+                    marker,
+                    type_id: std::any::TypeId::of::<DynamicRuleTag>(),
+                },
+            },
+        );
+        RuleBuilder::new(item)
+    }
+
+    // Keep short text scans inside the calling rule's hot path.
+    #[inline]
     pub(crate) fn text_length(&self, source: &str, pos: usize, pos_max: usize) -> usize {
         self.text_impl
             .get_or_init(|| TextScannerImpl::compile(self.text_charmap.keys().copied().collect()))
