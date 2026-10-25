@@ -4,15 +4,7 @@ use crate::MarkdownIt;
 #[cfg(feature = "sourcemap")]
 use crate::common::sourcemap::SourcePos;
 use crate::document::edit::EditBatch;
-use crate::document::{
-    Document,
-    HtmlAttributes,
-    NodeDraft,
-    NodeId,
-    NodeValue,
-    StructuralEvent,
-    Text,
-};
+use crate::document::{Document, HtmlAttributes, NodeDraft, NodeId, StructuralEvent, Text};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::plugins::cmark::block::list::{BulletList, ListItem, OrderedList};
 use crate::plugins::cmark::block::paragraph::Paragraph;
@@ -32,8 +24,6 @@ pub fn add(md: &mut MarkdownIt) {
 pub struct TaskListMarker {
     pub checked: bool,
 }
-
-impl NodeValue for TaskListMarker {}
 
 struct TaskListScanner;
 impl TaskListScanner {

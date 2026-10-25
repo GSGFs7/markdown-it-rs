@@ -2,15 +2,13 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::{NodeRenderer, RenderContext, RendererRegistry, Writer};
 use crate::document::Text;
-use crate::{Document, MarkdownIt, NodeDraft, NodeRef, NodeValue, RenderOptions};
+use crate::{Document, MarkdownIt, NodeDraft, NodeRef, RenderOptions};
 
 #[derive(Debug)]
 struct UnknownContainer;
-impl NodeValue for UnknownContainer {}
 
 #[derive(Debug)]
 struct UnknownLeaf(&'static str);
-impl NodeValue for UnknownLeaf {}
 
 #[derive(Debug)]
 struct FailingDisplay;

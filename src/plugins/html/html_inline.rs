@@ -5,7 +5,7 @@ use super::anchor_delta;
 use super::utils::regexps::HTML_TAG_RE;
 use crate::MarkdownIt;
 use crate::common::extset::InlineRootExtSet;
-use crate::document::{NodeRef, NodeValue};
+use crate::document::NodeRef;
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{NodeRenderer, RenderContext};
 
@@ -38,8 +38,6 @@ impl NodeRenderer<HtmlInline> for HtmlInlineRenderer {
         output.write_str(&value.content);
     }
 }
-
-impl NodeValue for HtmlInline {}
 
 #[doc(hidden)]
 pub struct HtmlInlineScanner;

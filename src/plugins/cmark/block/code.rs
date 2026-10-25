@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#indented-code-block>
 use crate::MarkdownIt;
-use crate::document::{NodeId, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::render::{
     NodeRenderer,
@@ -56,8 +56,6 @@ impl NodeRenderer<CodeBlock> for CodeBlockTextRenderer {
         context.cr(output);
     }
 }
-
-impl NodeValue for CodeBlock {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<CodeScanner>();

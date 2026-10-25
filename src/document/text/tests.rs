@@ -5,12 +5,10 @@ use crate::document::{Root, Text};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
-use crate::{MarkdownIt, NodeDraft, NodeValue, plugins};
+use crate::{MarkdownIt, NodeDraft, plugins};
 
 #[derive(Debug)]
 struct ReadOnlyText(String);
-
-impl NodeValue for ReadOnlyText {}
 
 static CLASSIFICATIONS: AtomicUsize = AtomicUsize::new(0);
 

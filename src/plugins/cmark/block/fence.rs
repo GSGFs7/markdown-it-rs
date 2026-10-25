@@ -5,7 +5,7 @@
 //! <https://spec.commonmark.org/0.30/#code-fence>
 use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
-use crate::document::{NodeId, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::render::{
     NodeRenderer,
@@ -73,8 +73,6 @@ impl NodeRenderer<CodeFence> for CodeFenceTextRenderer {
         context.cr(output);
     }
 }
-
-impl NodeValue for CodeFence {}
 
 #[derive(Debug, Clone)]
 struct FenceSettings(String);

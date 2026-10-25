@@ -7,7 +7,6 @@ fn recursive_block_rules_switch_current_node_and_nesting_level() {
 
     #[derive(Debug)]
     struct Wrapper;
-    impl crate::document::NodeValue for Wrapper {}
 
     #[derive(Debug, PartialEq, Eq)]
     struct ObservedLevel(u32);

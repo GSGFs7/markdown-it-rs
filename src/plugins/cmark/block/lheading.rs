@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#setext-headings>
 use crate::MarkdownIt;
-use crate::document::{NodeId, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::plugins::cmark::block::paragraph::{ParagraphScanner, test_paragraph_rules_at_line};
 use crate::render::{
@@ -38,8 +38,6 @@ impl NodeRenderer<SetextHeader> for SetextHeaderRenderer {
         HtmlBlockElementRenderer(tag).render(node, heading, context, output);
     }
 }
-
-impl NodeValue for SetextHeader {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block

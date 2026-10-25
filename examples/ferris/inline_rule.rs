@@ -1,24 +1,13 @@
 // Replaces `(\/)` with `🦀`.
 
 use markdown_it::parser::inline::InlineRule;
-use markdown_it::{
-    InlineState,
-    MarkdownIt,
-    NodeId,
-    NodeRef,
-    NodeRenderer,
-    NodeValue,
-    RenderContext,
-    Writer,
-};
+use markdown_it::{InlineState, MarkdownIt, NodeId, NodeRef, NodeRenderer, RenderContext, Writer};
 
 const CRAB_CLAW: &str = r#"(\/)"#;
 
 #[derive(Debug)]
 // This is a structure that represents your custom node payload in the document.
 pub struct InlineFerris;
-
-impl NodeValue for InlineFerris {}
 
 // This defines how your custom node should be rendered.
 struct InlineFerrisRenderer;

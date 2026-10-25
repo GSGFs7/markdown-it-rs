@@ -20,7 +20,6 @@ use markdown_it::{
 
 #[derive(Debug)]
 struct Emoji;
-impl markdown_it::NodeValue for Emoji {}
 
 impl InlinePlugin for Emoji {
     const RULE: &'static str = "emoji";

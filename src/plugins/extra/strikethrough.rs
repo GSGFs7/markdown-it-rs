@@ -1,6 +1,5 @@
 //! Strikethrough syntax (like `~~this~~`)
 use crate::MarkdownIt;
-use crate::document::NodeValue;
 use crate::parser::inline::helpers::emph_pair;
 use crate::render::{HtmlInlineElementRenderer, TransparentRenderer};
 
@@ -8,8 +7,6 @@ use crate::render::{HtmlInlineElementRenderer, TransparentRenderer};
 pub struct Strikethrough {
     pub marker: char,
 }
-
-impl NodeValue for Strikethrough {}
 
 pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'~', 2, true>(md, |document| {

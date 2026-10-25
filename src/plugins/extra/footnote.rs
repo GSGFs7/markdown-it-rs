@@ -51,6 +51,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
+use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
 use crate::common::utils::normalize_reference;
 use crate::document::{Document, NodeId, NodeRef};
@@ -68,15 +69,12 @@ use crate::render::{
     write_html_self_close,
     write_html_text,
 };
-use crate::{MarkdownIt, NodeValue};
 
 // [^1]: somthing
 #[derive(Debug)]
 struct FootnoteDefinition {
     normalized: String,
 }
-
-impl NodeValue for FootnoteDefinition {}
 
 // something[^1]
 #[derive(Debug)]
@@ -85,13 +83,9 @@ struct FootnoteReference {
     sub_id: usize,
 }
 
-impl NodeValue for FootnoteReference {}
-
 // rendered footnote definition at the bottom of HTML
 #[derive(Debug)]
 struct FootnoteSection;
-
-impl NodeValue for FootnoteSection {}
 
 // rendered footnote reference
 #[derive(Debug)]
@@ -99,15 +93,11 @@ struct FootnoteItem {
     number: usize,
 }
 
-impl NodeValue for FootnoteItem {}
-
 #[derive(Debug)]
 struct FootnoteBackref {
     number: usize,
     sub_id: usize,
 }
-
-impl NodeValue for FootnoteBackref {}
 
 // --- scanner ---
 

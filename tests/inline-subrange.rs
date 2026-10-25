@@ -1,9 +1,8 @@
 use markdown_it::parser::inline::InlineRule;
-use markdown_it::{InlineState, MarkdownIt, NodeId, NodeValue};
+use markdown_it::{InlineState, MarkdownIt, NodeId};
 
 #[derive(Debug)]
 struct TestContainer;
-impl NodeValue for TestContainer {}
 
 struct ContainerRule;
 impl InlineRule for ContainerRule {

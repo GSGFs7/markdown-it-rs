@@ -219,7 +219,6 @@ fn parsed_document_events_visit_every_node_once() {
 fn node_data_survives_draft_insertion() {
     #[derive(Debug)]
     struct Payload(String);
-    impl crate::NodeValue for Payload {}
 
     #[derive(Debug)]
     struct Metadata(String);

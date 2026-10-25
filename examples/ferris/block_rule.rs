@@ -1,7 +1,7 @@
 // Replaces `(\/)-------(\/)` with a nice picture.
 
 use markdown_it::parser::block::BlockRule;
-use markdown_it::{BlockState, MarkdownIt, NodeId, NodeValue};
+use markdown_it::{BlockState, MarkdownIt, NodeId};
 
 const CRAB_CLAW: &str = r#"(\/)"#;
 const CRAB_URL: &str = "https://upload.wikimedia.org/wikipedia/commons/0/0f/Original_Ferris.svg";
@@ -9,8 +9,6 @@ const CRAB_URL: &str = "https://upload.wikimedia.org/wikipedia/commons/0/0f/Orig
 #[derive(Debug)]
 // This is a structure that represents your custom node payload in the document.
 pub struct BlockFerris;
-
-impl NodeValue for BlockFerris {}
 
 // This is an extension for the block subparser.
 struct FerrisBlockScanner;

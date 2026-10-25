@@ -13,10 +13,9 @@
 //!
 //! ```rust
 //! use markdown_it::parser::inline::helpers::code_pair;
-//! use markdown_it::{MarkdownIt, NodeId, NodeValue, NodeRef, NodeRenderer, RenderContext, Writer};
+//! use markdown_it::{MarkdownIt, NodeId, NodeRef, NodeRenderer, RenderContext, Writer};
 //! #[derive(Debug)]
 //! struct Ferris;
-//! impl NodeValue for Ferris {}
 //! struct CustomRenderer;
 //! impl NodeRenderer<Ferris> for CustomRenderer {
 //!     fn render(&self, node: NodeRef<'_>, _: &Ferris, ctx: &mut RenderContext<'_>, out: &mut Writer) {

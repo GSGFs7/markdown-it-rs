@@ -8,7 +8,7 @@ use regex::Regex;
 use super::utils::blocks::*;
 use super::utils::regexps::*;
 use crate::MarkdownIt;
-use crate::document::{NodeId, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::render::{NodeRenderer, RenderContext};
 
@@ -46,8 +46,6 @@ impl NodeRenderer<HtmlBlock> for HtmlBlockTextRenderer {
         context.cr(output);
     }
 }
-
-impl NodeValue for HtmlBlock {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HtmlBlockScanner>();

@@ -19,7 +19,6 @@
 //!
 //! #[derive(Debug)]
 //! struct Emoji;
-//! impl markdown_it::NodeValue for Emoji {}
 //!
 //! impl InlinePlugin for Emoji {
 //!     const RULE: &'static str = "rocket";
@@ -45,7 +44,6 @@
 //!
 //! #[derive(Debug)]
 //! struct Badge(&'static str);
-//! impl markdown_it::NodeValue for Badge {}
 //!
 //! let badge = PluginSpec::new("badge")
 //!     .inline_leaf::<Badge>("badge")

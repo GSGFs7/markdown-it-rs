@@ -72,7 +72,6 @@ struct Emoji {
     glyph: &'static str,
     label: &'static str,
 }
-impl markdown_it::NodeValue for Emoji {}
 
 fn emoji() -> PluginSpec {
     PluginSpec::new("emoji")

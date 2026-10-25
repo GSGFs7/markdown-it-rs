@@ -99,8 +99,6 @@ pub struct TextDirective {
     pub attrs: Attrs,
 }
 
-impl NodeValue for TextDirective {}
-
 #[derive(Debug, Clone)]
 /// Block directive parsed from `::name{key=value}`.
 pub struct LeafDirective {
@@ -110,8 +108,6 @@ pub struct LeafDirective {
     pub attrs: Attrs,
 }
 
-impl NodeValue for LeafDirective {}
-
 #[derive(Debug, Clone)]
 /// Block directive parsed from a fenced `:::name` container.
 pub struct ContainerDirective {
@@ -120,8 +116,6 @@ pub struct ContainerDirective {
     /// Parsed directive attributes.
     pub attrs: Attrs,
 }
-
-impl NodeValue for ContainerDirective {}
 
 // --- scanner ---
 

@@ -1,13 +1,11 @@
 //! Highlight syntax (like `==this==`)
 
+use crate::MarkdownIt;
 use crate::parser::inline::helpers::emph_pair;
 use crate::render::{HtmlInlineElementRenderer, TransparentRenderer};
-use crate::{MarkdownIt, NodeValue};
 
 #[derive(Debug)]
 pub struct Mark;
-
-impl NodeValue for Mark {}
 
 pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'=', 2, true>(md, |document| document.create_node(Mark));

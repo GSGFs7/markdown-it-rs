@@ -3,11 +3,9 @@ use crate::document::NodeValue;
 
 #[derive(Debug, PartialEq, Eq)]
 struct Word(String);
-impl crate::NodeValue for Word {}
 
 #[derive(Debug)]
 struct Plain;
-impl crate::NodeValue for Plain {}
 
 impl InlinePlugin for Plain {
     const RULE: &'static str = "plain";
@@ -74,7 +72,6 @@ fn static_leaf_type_can_be_registered_directly() {
 fn leaf_unifies_static_and_dynamic_registration() {
     #[derive(Debug)]
     struct Bang;
-    impl crate::NodeValue for Bang {}
 
     let bang = configured_leaf::<Bang, _, _>(
         "bang",
@@ -99,7 +96,6 @@ fn leaf_unifies_static_and_dynamic_registration() {
 fn plugin_spec_with_groups_static_and_dynamic_leaves() {
     #[derive(Debug)]
     struct Bang;
-    impl crate::NodeValue for Bang {}
 
     let bang = configured_leaf::<Bang, _, _>(
         "bang",

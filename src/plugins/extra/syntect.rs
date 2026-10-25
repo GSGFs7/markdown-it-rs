@@ -62,7 +62,7 @@ use crate::parser::core::{CoreRule, CoreState};
 use crate::plugins::cmark::block::code::CodeBlock;
 use crate::plugins::cmark::block::fence::CodeFence;
 use crate::render::{NodeRenderer, RenderContext, write_html_close, write_html_open};
-use crate::{MarkdownIt, NodeValue, Writer};
+use crate::{MarkdownIt, Writer};
 
 // lazy load themes. it wast a lot of performance
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(two_face::syntax::extra_newlines);
@@ -87,8 +87,6 @@ pub struct SyntectSnippet {
     /// Extra CSS class for the `<code>` element in classed mode (e.g. `syntect-code`).
     code_class: Option<String>,
 }
-
-impl NodeValue for SyntectSnippet {}
 
 impl SyntectSnippet {
     fn code_attrs(&self, lang_prefix: Option<&str>) -> Vec<(String, String)> {

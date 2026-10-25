@@ -2,7 +2,7 @@
 
 use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
-use crate::document::{Document, NodeId, NodeValue};
+use crate::document::{Document, NodeId};
 use crate::parser::inline::{InlineState, RuleSet};
 
 /// Inline content queued during the block pass, resolved once all reference
@@ -12,8 +12,6 @@ pub(super) struct PendingInline {
     pub(super) content: String,
     pub(super) mapping: crate::parser::InlineMapping,
 }
-
-impl NodeValue for PendingInline {}
 
 /// Resolve deferred content in place after collecting all block definitions.
 ///

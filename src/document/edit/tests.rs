@@ -347,7 +347,6 @@ fn inserts_siblings_in_stable_call_order() {
 fn inserts_an_owned_subtree_without_cloning_payloads() {
     #[derive(Debug)]
     struct NonClonePayload(&'static str);
-    impl crate::NodeValue for NonClonePayload {}
 
     let mut document = document(&["anchor"]);
     let root = document.root();

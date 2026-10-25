@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#links>
 use crate::MarkdownIt;
-use crate::document::{NodeRef, NodeValue};
+use crate::document::NodeRef;
 use crate::parser::inline::helpers::full_link;
 use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, render_html_link};
 
@@ -27,8 +27,6 @@ impl NodeRenderer<Link> for LinkRenderer {
         render_html_link(node, &link.url, link.title.as_deref(), context, output);
     }
 }
-
-impl NodeValue for Link {}
 
 pub fn add(md: &mut MarkdownIt) {
     full_link::add::<false>(md, |document, href, title| {

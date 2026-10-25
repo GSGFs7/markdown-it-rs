@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#paragraph>
 use crate::MarkdownIt;
-use crate::document::{NodeId, NodeValue};
+use crate::document::NodeId;
 use crate::parser::block::{BlockRule, BlockState};
 use crate::render::{HtmlBlockElementRenderer, PlainTextBlockRenderer};
 
@@ -64,8 +64,6 @@ impl BlockRule for ParagraphScanner {
 
 #[derive(Debug)]
 pub struct Paragraph;
-
-impl NodeValue for Paragraph {}
 
 #[doc(hidden)]
 pub struct ParagraphScanner;

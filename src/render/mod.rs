@@ -33,12 +33,11 @@ use crate::document::{
 /// ```
 /// use markdown_it::{
 ///     Document, NodeRenderer, RenderContext,
-///     Writer, MarkdownIt, NodeDraft, NodeRef, NodeValue,
+///     Writer, MarkdownIt, NodeDraft, NodeRef,
 /// };
 ///
 /// #[derive(Debug)]
 /// struct Badge(&'static str);
-/// impl NodeValue for Badge {}
 ///
 /// struct BadgeRenderer;
 /// impl NodeRenderer<Badge> for BadgeRenderer {

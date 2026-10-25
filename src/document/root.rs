@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::NodeValue;
 use crate::common::extset::RootExtSet;
 
 #[derive(Debug)]
@@ -18,5 +17,3 @@ impl Root {
         }
     }
 }
-
-impl NodeValue for Root {}

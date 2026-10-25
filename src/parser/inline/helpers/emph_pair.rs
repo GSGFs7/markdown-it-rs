@@ -24,10 +24,9 @@
 //!
 //! ```rust
 //! use markdown_it::parser::inline::helpers::emph_pair;
-//! use markdown_it::{MarkdownIt, NodeId, NodeValue, NodeRef, NodeRenderer, RenderContext, Writer};
+//! use markdown_it::{MarkdownIt, NodeId, NodeRef, NodeRenderer, RenderContext, Writer};
 //! #[derive(Debug)]
 //! struct Superscript;
-//! impl NodeValue for Superscript {}
 //! struct CustomRenderer;
 //! impl NodeRenderer<Superscript> for CustomRenderer {
 //!     fn render(&self, node: NodeRef<'_>, _: &Superscript, ctx: &mut RenderContext<'_>, out: &mut Writer) {
@@ -46,7 +45,7 @@
 use std::cmp::min;
 
 use crate::MarkdownIt;
-use crate::document::{Document, NodeId, NodeValue, Text};
+use crate::document::{Document, NodeId, Text};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::{InlineParserRule, InlineRule, InlineState};
 
@@ -119,7 +118,6 @@ pub struct EmphMarker {
 }
 
 // this node is supposed to be replaced by actual emph or text node
-impl NodeValue for EmphMarker {}
 
 pub fn add_with<const MARKER: char, const LENGTH: u8, const CAN_SPLIT_WORD: bool>(
     md: &mut MarkdownIt,
@@ -792,8 +790,6 @@ mod tests {
 
     #[derive(Debug)]
     struct CustomEmphasis;
-
-    impl NodeValue for CustomEmphasis {}
 
     struct CustomRenderer;
     impl crate::NodeRenderer<CustomEmphasis> for CustomRenderer {

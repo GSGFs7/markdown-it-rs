@@ -3,15 +3,13 @@
 use std::iter::FusedIterator;
 use std::str::CharIndices;
 
-use crate::document::{Document, NodeId, NodeRef, NodeValue};
+use crate::document::{Document, NodeId, NodeRef};
 
 #[derive(Debug)]
 /// Plain text AST node.
 pub struct Text {
     pub content: String,
 }
-
-impl NodeValue for Text {}
 
 impl Document {
     /// Borrow the current content of a built-in [`Text`] node without copying.
@@ -42,8 +40,6 @@ pub struct TextSpecial {
     pub markup: String,
     pub info: &'static str,
 }
-
-impl NodeValue for TextSpecial {}
 
 /// A semantic boundary between projected text regions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

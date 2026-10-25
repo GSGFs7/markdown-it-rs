@@ -8,7 +8,7 @@
 //!  - <https://spec.commonmark.org/0.30/#list-items>
 use crate::MarkdownIt;
 use crate::common::utils::find_indent_of_from_column;
-use crate::document::{Document, NodeId, NodeRef, NodeValue};
+use crate::document::{Document, NodeId, NodeRef};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::plugins::cmark::block::hr::HrScanner;
 use crate::plugins::cmark::block::paragraph::{Paragraph, ParagraphInterrupt};
@@ -44,8 +44,6 @@ impl NodeRenderer<OrderedList> for OrderedListRenderer {
     }
 }
 
-impl NodeValue for OrderedList {}
-
 #[derive(Debug)]
 pub struct BulletList {
     pub marker: char,
@@ -64,8 +62,6 @@ impl NodeRenderer<BulletList> for BulletListRenderer {
         render_list_container(node, context, output, "ul", node.attrs());
     }
 }
-
-impl NodeValue for BulletList {}
 
 #[derive(Debug)]
 pub struct ListItem;
@@ -117,8 +113,6 @@ fn render_list_container(
     write_html_close(output, tag);
     context.cr(output);
 }
-
-impl NodeValue for ListItem {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<ListScanner>().after::<HrScanner>();

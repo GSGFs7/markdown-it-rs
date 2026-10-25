@@ -13,16 +13,15 @@ use crate::render::{NodeRenderer, RenderContext, Writer};
 /// A leaf node that owns its parsing and HTML rendering.
 ///
 /// Implement this trait for the common case: one payload type, one syntax rule,
-/// one renderer. Implement [`NodeValue`] explicitly for the payload, as with
-/// low-level nodes. The payload type is also the rule identity, so registering the
-/// same payload type twice is rejected.
+/// one renderer. The payload automatically implements [`NodeValue`] when it is
+/// `Debug + Send + Sync + 'static`. The payload type is also the rule identity,
+/// so registering the same payload type twice is rejected.
 ///
 /// ```
 /// use markdown_it::{Html, InlinePlugin, InlinePluginState, MarkdownIt};
 ///
 /// #[derive(Debug)]
 /// struct Mark;
-/// impl markdown_it::NodeValue for Mark {}
 ///
 /// impl InlinePlugin for Mark {
 ///     const RULE: &'static str = "mark";
@@ -66,7 +65,6 @@ pub trait InlinePlugin: NodeValue + Sized + 'static {
 ///
 /// #[derive(Debug)]
 /// struct Emoji;
-/// impl markdown_it::NodeValue for Emoji {}
 ///
 /// impl InlinePlugin for Emoji {
 ///     const RULE: &'static str = "rocket";

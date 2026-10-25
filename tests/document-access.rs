@@ -8,7 +8,6 @@ use markdown_it::{
     NodeDraft,
     NodeRef,
     NodeRenderer,
-    NodeValue,
     RenderContext,
     Root,
     StructuralEvent,
@@ -18,6 +17,28 @@ use markdown_it::{
     TextSpecial,
     Writer,
 };
+
+#[test]
+fn blanket_node_values_preserve_concrete_types() {
+    #[derive(Debug)]
+    struct Payload<T>(T);
+
+    let mut doc = MarkdownIt::new().parse("");
+    let generic = doc.create_node(Payload(vec![String::from("first")]));
+    let boxed = doc.create_node(Box::new(String::from("boxed")));
+
+    doc.value_mut::<Payload<Vec<String>>>(generic)
+        .unwrap()
+        .0
+        .push(String::from("second"));
+    assert_eq!(
+        doc.value::<Payload<Vec<String>>>(generic).unwrap().0,
+        ["first", "second"]
+    );
+    assert!(doc.value::<Payload<String>>(generic).is_none());
+    assert_eq!(doc.value::<Box<String>>(boxed).unwrap().as_str(), "boxed");
+    assert!(doc.value::<String>(boxed).is_none());
+}
 
 #[derive(Debug)]
 struct Badge {
@@ -96,7 +117,6 @@ fn document_projection_preserves_subtree_depth_and_edit_offsets() {
 
 #[derive(Debug)]
 struct SourceContext(std::ops::Range<usize>);
-impl NodeValue for SourceContext {}
 
 fn source_projection<'a>(doc: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
     if let Some(context) = doc.value::<SourceContext>(node.id()) {
@@ -157,8 +177,6 @@ fn external_classifier_can_borrow_document_source_as_read_only_context() {
     assert_eq!(events.next(), None);
     assert_eq!(events.next(), None);
 }
-
-impl NodeValue for Badge {}
 
 impl Drop for Badge {
     fn drop(&mut self) {

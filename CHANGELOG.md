@@ -11,7 +11,7 @@
   with `Document`; use `.as_ref()` for borrowed text or `.to_string()` for an
   owned, mutable copy. `Root::new` accepts `String`, `&str`, and `Arc<str>`;
   pass these directly instead of using an ambiguous `.into()` call
-- required custom `NodeValue` implementations to be `Send + Sync`
+- blanket-implemented `NodeValue`; remove explicit implementations when migrating
 - removed `syntect` from the default features; enable it explicitly when needed
 
 ### Added

@@ -15,7 +15,7 @@ use downcast_rs::{Downcast, impl_downcast};
 
 use crate::MarkdownIt;
 use crate::common::utils::{normalize_reference, unescape_all};
-use crate::document::{NodeId, NodeValue};
+use crate::document::NodeId;
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::inline::helpers::full_link;
 use crate::render::EmptyRenderer;
@@ -235,8 +235,6 @@ pub struct Definition {
     pub destination: String,
     pub title: Option<String>,
 }
-
-impl NodeValue for Definition {}
 
 #[doc(hidden)]
 pub struct ReferenceScanner;

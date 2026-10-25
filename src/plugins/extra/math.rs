@@ -17,8 +17,6 @@ struct MathBlock {
     pub content: String,
 }
 
-impl NodeValue for MathBlock {}
-
 #[doc(hidden)]
 pub struct MathBlockScanner;
 
@@ -77,8 +75,6 @@ impl BlockRule for MathBlockScanner {
 struct MathInline {
     pub content: String,
 }
-
-impl NodeValue for MathInline {}
 
 #[doc(hidden)]
 pub struct MathInlineScanner;

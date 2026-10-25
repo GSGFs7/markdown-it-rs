@@ -14,7 +14,6 @@ struct Emoji {
     glyph: &'static str,
     label: &'static str,
 }
-impl markdown_it::NodeValue for Emoji {}
 
 const EMOJIS: &[(&str, &str, &str)] =
     &[(":rocket:", "🚀", "rocket"), (":warning:", "⚠️", "warning")];
@@ -56,7 +55,6 @@ fn readme_emoji_example_works() {
 
 #[derive(Debug)]
 struct Tag(String);
-impl markdown_it::NodeValue for Tag {}
 
 fn configured_leaf<T, F, R>(name: &str, marker: char, parse: F, render: R) -> PluginSpec
 where
@@ -210,7 +208,6 @@ fn builder_can_start_from_an_empty_parser() {
 fn html_builder_escapes_untrusted_payload() {
     #[derive(Debug)]
     struct Raw(&'static str);
-    impl markdown_it::NodeValue for Raw {}
 
     let leaf = configured_leaf::<Raw, _, _>(
         "raw",
@@ -232,7 +229,6 @@ fn html_builder_escapes_untrusted_payload() {
 fn default_marker_is_tried_at_every_character() {
     #[derive(Debug)]
     struct Everywhere;
-    impl markdown_it::NodeValue for Everywhere {}
 
     let leaf = configured_leaf::<Everywhere, _, _>(
         "everywhere",
@@ -475,7 +471,6 @@ macro_rules! static_tag {
     ($name:ident, $rule:literal, $marker:literal, $output:literal) => {
         #[derive(Debug)]
         struct $name;
-        impl markdown_it::NodeValue for $name {}
 
         impl InlinePlugin for $name {
             const RULE: &'static str = $rule;
@@ -496,7 +491,6 @@ static_tag!(A, "a", '@', "A");
 static_tag!(B, "b", '雪', "B");
 #[derive(Debug)]
 struct Todo;
-impl markdown_it::NodeValue for Todo {}
 impl InlinePlugin for Todo {
     const RULE: &'static str = "todo";
     const MARKER: char = '\0';
@@ -603,7 +597,6 @@ fn static_renderer_can_be_overridden_after_installation() {
 fn static_leaf_rejects_success_without_consumption() {
     #[derive(Debug)]
     struct Empty;
-    impl markdown_it::NodeValue for Empty {}
     impl InlinePlugin for Empty {
         const RULE: &'static str = "empty";
         const MARKER: char = '@';

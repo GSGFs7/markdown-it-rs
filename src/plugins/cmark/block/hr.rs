@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#thematic-breaks>
 use crate::MarkdownIt;
-use crate::document::{NodeId, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::render::{NodeRenderer, PlainTextBreakRenderer, RenderContext, write_html_self_close};
 
@@ -29,8 +29,6 @@ impl NodeRenderer<ThematicBreak> for ThematicBreakRenderer {
         context.cr(output);
     }
 }
-
-impl NodeValue for ThematicBreak {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block.add_rule::<HrScanner>();

@@ -1,13 +1,12 @@
 // Counts the crabs after inline parsing and appends a footer node.
+use markdown_it::MarkdownIt;
 use markdown_it::parser::core::{CoreRule, CoreState};
-use markdown_it::{MarkdownIt, NodeValue};
 
 use super::block_rule::BlockFerris;
 use super::inline_rule::InlineFerris;
 
 #[derive(Debug)]
 pub struct FerrisCounter(usize);
-impl NodeValue for FerrisCounter {}
 
 // This is an extension for the markdown parser.
 #[derive(Default)]

@@ -15,7 +15,6 @@ struct InstalledPlugins(HashSet<String>);
 ///
 /// #[derive(Debug)]
 /// struct Tag(String);
-/// impl markdown_it::NodeValue for Tag {}
 ///
 /// let plugin = PluginSpec::new("tag")
 ///     .inline_leaf::<Tag>("tag")
@@ -73,7 +72,6 @@ impl PluginSpec {
     ///
     /// #[derive(Debug)]
     /// struct Mark;
-    /// impl markdown_it::NodeValue for Mark {}
     ///
     /// impl InlinePlugin for Mark {
     ///     const RULE: &'static str = "mark";
@@ -106,7 +104,6 @@ impl PluginSpec {
     ///
     /// #[derive(Debug)]
     /// struct Emoji;
-    /// impl markdown_it::NodeValue for Emoji {}
     ///
     /// let emoji = PluginSpec::new("emoji")
     ///     .inline_leaf::<Emoji>("shortcode")
@@ -126,7 +123,6 @@ impl PluginSpec {
     /// use markdown_it::{PluginSpec};
     /// #[derive(Debug)]
     /// struct Emoji;
-    /// impl markdown_it::NodeValue for Emoji {}
     /// PluginSpec::new("emoji")
     ///     .inline_leaf::<Emoji>("shortcode")
     ///     .parse(|cx| cx.consume(":rocket:").then_some(Emoji))
@@ -137,7 +133,6 @@ impl PluginSpec {
     /// use markdown_it::{PluginSpec};
     /// #[derive(Debug)]
     /// struct Emoji;
-    /// impl markdown_it::NodeValue for Emoji {}
     /// PluginSpec::new("emoji")
     ///     .inline_leaf::<Emoji>("shortcode")
     ///     .render_html(|_, html| { html.text("🚀"); })

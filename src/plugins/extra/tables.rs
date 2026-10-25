@@ -2,7 +2,7 @@
 //!
 //! <https://github.github.com/gfm/#tables-extension->
 use crate::MarkdownIt;
-use crate::document::{NodeId, NodeRef, NodeValue};
+use crate::document::{NodeId, NodeRef};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::plugins::cmark::block::blockquote::{BlockquoteInterrupt, BlockquoteScanner};
 use crate::plugins::cmark::block::fence::FenceScanner;
@@ -56,8 +56,6 @@ impl NodeRenderer<Table> for TableRenderer {
     }
 }
 
-impl NodeValue for Table {}
-
 #[derive(Debug, Default)]
 pub struct TableRenderContext {
     pub head: bool,
@@ -90,8 +88,6 @@ impl NodeRenderer<TableHead> for TableHeadRenderer {
     }
 }
 
-impl NodeValue for TableHead {}
-
 #[derive(Debug)]
 pub struct TableBody;
 
@@ -108,8 +104,6 @@ impl NodeRenderer<TableBody> for TableBodyRenderer {
         render_block_container(node, context, output, "tbody");
     }
 }
-
-impl NodeValue for TableBody {}
 
 #[derive(Debug)]
 pub struct TableRow;
@@ -152,8 +146,6 @@ impl NodeRenderer<TableRow> for TableRowTextRenderer {
         context.cr(output);
     }
 }
-
-impl NodeValue for TableRow {}
 
 #[derive(Debug)]
 pub struct TableCell;
@@ -206,8 +198,6 @@ fn render_block_container(
     write_html_close(output, tag);
     context.cr(output);
 }
-
-impl NodeValue for TableCell {}
 
 pub fn add(md: &mut MarkdownIt) {
     md.block

@@ -1,14 +1,12 @@
 #[cfg(feature = "sourcemap")]
 use markdown_it::common::sourcemap::SourcePos;
-use markdown_it::{Document, MarkdownIt, NodeDraft, NodeValue, Preset, Root};
+use markdown_it::{Document, MarkdownIt, NodeDraft, Preset, Root};
 
 #[derive(Debug)]
 struct CustomContainer;
-impl NodeValue for CustomContainer {}
 
 #[derive(Debug)]
 struct CustomLeaf;
-impl NodeValue for CustomLeaf {}
 
 #[test]
 #[cfg(feature = "sourcemap")]

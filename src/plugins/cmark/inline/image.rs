@@ -6,7 +6,7 @@
 use std::borrow::Cow;
 
 use crate::MarkdownIt;
-use crate::document::{NodeRef, NodeValue, StructuralEvent, Text, TextSpecial};
+use crate::document::{NodeRef, StructuralEvent, Text, TextSpecial};
 use crate::parser::inline::helpers::full_link;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
@@ -47,8 +47,6 @@ impl NodeRenderer<Image> for ImageRenderer {
         output.write_char('>');
     }
 }
-
-impl NodeValue for Image {}
 
 // collect alt text, ignore marker
 //

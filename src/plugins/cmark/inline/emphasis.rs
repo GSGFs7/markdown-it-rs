@@ -4,7 +4,6 @@
 //!
 //! <https://spec.commonmark.org/0.30/#emphasis-and-strong-emphasis>
 use crate::MarkdownIt;
-use crate::document::NodeValue;
 use crate::parser::inline::helpers::emph_pair;
 use crate::render::{HtmlInlineElementRenderer, TransparentRenderer};
 
@@ -13,14 +12,10 @@ pub struct Em {
     pub marker: char,
 }
 
-impl NodeValue for Em {}
-
 #[derive(Debug)]
 pub struct Strong {
     pub marker: char,
 }
-
-impl NodeValue for Strong {}
 
 pub fn add(md: &mut MarkdownIt) {
     emph_pair::add_with::<'*', 1, true>(md, |document| document.create_node(Em { marker: '*' }));
