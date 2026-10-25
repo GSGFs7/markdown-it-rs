@@ -74,13 +74,121 @@ fn leaf_can_register_only_a_non_html_renderer() {
         .inline_leaf::<Label>("label")
         .marker('@')
         .parse(|cx| cx.consume("@").then(|| Label("plain".into())))
-        .render_with("text", LabelRenderer)
+        .render_text(|label, out| out.write_str(&label.0))
         .render_with(String::from("labels"), LabelRenderer)
         .finish();
     let md = MarkdownIt::builder().plugin(plugin).build();
     assert_eq!(md.render_as(&md.parse("@"), "text"), "plain\n");
     assert_eq!(md.render_as(&md.parse("@"), "labels"), "plain");
     assert!(!md.renderers.contains::<Label>("html"));
+}
+
+#[test]
+fn inline_text_callback_keeps_captured_configuration_and_pair_children() {
+    #[derive(Debug)]
+    struct Mark;
+
+    let prefix = String::from("label:");
+    let plugin = PluginSpec::new("labels")
+        .inline_leaf::<Label>("label")
+        .render_text(move |label, out| {
+            out.write_str(&prefix);
+            out.write_str(&label.0);
+        })
+        .marker('@')
+        .parse(|cx| cx.consume("@").then(|| Label("<&雪>".into())))
+        .render_html(|label, html| {
+            html.text(&label.0);
+        })
+        .finish()
+        .inline_pair::<Mark>("mark")
+        .delimiter::<'=', 2, true>()
+        .value(|| Mark)
+        .html_tag("mark")
+        .finish();
+    let md = MarkdownIt::builder().plugin(plugin).build();
+    let document = md.parse("before ==@== after");
+    assert_eq!(
+        md.render_as(&document, "text"),
+        "before label:<&雪> after\n"
+    );
+    assert_eq!(
+        md.render_html(&document),
+        "<p>before <mark>&lt;&amp;雪&gt;</mark> after</p>\n"
+    );
+}
+
+#[test]
+fn block_text_callback_separates_adjacent_blocks_without_duplicate_line_breaks() {
+    for trailing_newline in [false, true] {
+        let plugin = PluginSpec::new("notice")
+            .block_leaf::<Label>("notice")
+            .render_text(move |label, out| {
+                out.write_str(&label.0);
+                if trailing_newline {
+                    out.write_char('\n');
+                }
+            })
+            .parse(|cx| {
+                let content = cx.line(0)?.strip_prefix("!!! ")?.to_owned();
+                cx.advance_lines(1);
+                Some(Label(content))
+            })
+            .finish();
+        let md = MarkdownIt::builder().plugin(plugin).build();
+        let document = md.parse("before\n\n!!! <&雪>\n!!! last\n\nafter");
+        assert_eq!(
+            md.render_as(&document, "text"),
+            "before\n<&雪>\nlast\nafter\n"
+        );
+    }
+}
+
+#[test]
+fn text_shortcuts_and_generic_renderers_follow_the_same_override_order() {
+    for block in [false, true] {
+        for custom_last in [false, true] {
+            let plugin = if block {
+                let leaf = PluginSpec::new("label")
+                    .block_leaf::<Label>("label")
+                    .parse(|cx| {
+                        cx.advance_lines(1);
+                        Some(Label("payload".into()))
+                    });
+                if custom_last {
+                    leaf.render_text(|label, out| out.write_str(&label.0))
+                        .render_with("text", Literal("custom"))
+                        .finish()
+                } else {
+                    leaf.render_with("text", Literal("custom"))
+                        .render_text(|label, out| out.write_str(&label.0))
+                        .finish()
+                }
+            } else {
+                let leaf = PluginSpec::new("label")
+                    .inline_leaf::<Label>("label")
+                    .marker('@')
+                    .parse(|cx| cx.consume("@").then(|| Label("payload".into())));
+                if custom_last {
+                    leaf.render_text(|label, out| out.write_str(&label.0))
+                        .render_with("text", Literal("custom"))
+                        .finish()
+                } else {
+                    leaf.render_with("text", Literal("custom"))
+                        .render_text(|label, out| out.write_str(&label.0))
+                        .finish()
+                }
+            };
+            let md = MarkdownIt::builder().plugin(plugin).build();
+            let document = md.parse("@");
+            let expected = match (block, custom_last) {
+                (true, true) => "custom",
+                (false, true) => "custom\n",
+                (_, false) => "payload\n",
+            };
+            assert_eq!(md.render_as(&document, "text"), expected);
+        }
+    }
 }
 
 #[test]

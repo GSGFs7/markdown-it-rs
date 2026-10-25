@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use super::html::render_html_fragment;
-use super::renderer::{HtmlCallbackRenderer, Renderers, WithRenderer};
+use super::renderer::{HtmlCallbackRenderer, Renderers, TextCallbackRenderer, WithRenderer};
 use super::spec::{PluginInstaller, RegistrationContext};
 use super::{Html, InlinePluginState, Plugin, PluginSpec};
 use crate::MarkdownIt;
@@ -152,6 +152,36 @@ impl<T: NodeValue, P, R> InlineLeafBuilder<T, P, R> {
         F: Fn(&T, &mut Html) + Send + Sync + 'static,
     {
         self.render_with("html", HtmlCallbackRenderer::<F, false>(render))
+    }
+
+    /// Register a plain-text callback for the `"text"` output format.
+    ///
+    /// The callback writes directly to [`Writer`], without HTML escaping or
+    /// added line breaks. May be combined with [`render_html`](Self::render_html).
+    /// Like [`render_with`](Self::render_with), the last registration for a
+    /// payload type and format wins.
+    ///
+    /// ```
+    /// use markdown_it::{MarkdownIt, PluginSpec};
+    /// #[derive(Debug)]
+    /// struct Emoji;
+    /// let emoji = PluginSpec::new("emoji")
+    ///     .inline_leaf::<Emoji>("rocket")
+    ///     .marker(':')
+    ///     .parse(|cx| cx.consume(":rocket:").then_some(Emoji))
+    ///     .render_html(|_, html| { html.text("🚀"); })
+    ///     .render_text(|_, out| out.write_str("[rocket]"))
+    ///     .finish();
+    /// let md = MarkdownIt::builder().plugin(emoji).build();
+    /// let document = md.parse("Go :rocket:!");
+    /// assert_eq!(md.render_html(&document), "<p>Go 🚀!</p>\n");
+    /// assert_eq!(md.render_as(&document, "text"), "Go [rocket]!\n");
+    /// ```
+    pub fn render_text<F>(self, render: F) -> InlineLeafBuilder<T, P, WithRenderer>
+    where
+        F: Fn(&T, &mut Writer) + Send + Sync + 'static,
+    {
+        self.render_with("text", TextCallbackRenderer::<F, false>(render))
     }
 
     /// Register a low-level renderer for an output format.

@@ -102,10 +102,10 @@ impl PluginSpec {
 
     /// Start an inline leaf belonging to this plugin.
     ///
-    /// Call `.parse(...)` and register a renderer with `.render_html(...)` or
-    /// `.render_with(format, renderer)`, then `.finish()` to return to this
-    /// specification. Multiple leaves can be added this way; their rule names
-    /// must be unique within the plugin.
+    /// Call `.parse(...)` and register a renderer with `.render_html(...)`,
+    /// `.render_text(...)` or `.render_with(format, renderer)`, then `.finish()`
+    /// to return to this specification. Multiple leaves can be added this way;
+    /// their rule names must be unique within the plugin.
     ///
     /// ```
     /// use markdown_it::{MarkdownIt, PluginSpec};
@@ -154,9 +154,9 @@ impl PluginSpec {
     ///
     /// A block leaf parses source lines, emits one payload node, and renders
     /// its own output. Call `.parse(...)` and register a renderer with
-    /// `.render_html(...)` or `.render_with(format, renderer)`, then `.finish()`.
-    /// Use [`BlockLeafBuilder::interrupts_paragraph`] if it may start without a
-    /// preceding blank line.
+    /// `.render_html(...)`, `.render_text(...)` or `.render_with(format, renderer)`,
+    /// then `.finish()`. Use [`BlockLeafBuilder::interrupts_paragraph`] if it may
+    /// start without a preceding blank line.
     ///
     /// ```
     /// use markdown_it::{MarkdownIt, PluginSpec};

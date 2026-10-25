@@ -8,13 +8,13 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use super::renderer::{HtmlCallbackRenderer, Renderers, WithRenderer};
+use super::renderer::{HtmlCallbackRenderer, Renderers, TextCallbackRenderer, WithRenderer};
 use super::spec::PluginInstaller;
 use super::{Html, PluginSpec};
 use crate::MarkdownIt;
 use crate::document::{NodeId, NodeValue};
 use crate::parser::block::{BlockRule, BlockState, LineOffset};
-use crate::render::NodeRenderer;
+use crate::render::{NodeRenderer, Writer};
 
 type ParseFn<T> = Arc<dyn Fn(&mut BlockPluginState<'_>) -> Option<T> + Send + Sync + 'static>;
 
@@ -165,6 +165,20 @@ impl<T: NodeValue, P, R> BlockLeafBuilder<T, P, R> {
         F: Fn(&T, &mut Html) + Send + Sync + 'static,
     {
         self.render_with("html", HtmlCallbackRenderer::<F, true>(render))
+    }
+
+    /// Register a plain-text callback for the `"text"` output format.
+    ///
+    /// Writes directly to [`Writer`], without HTML escaping. Like the HTML
+    /// shortcut, the block output is separated from adjacent output by line
+    /// breaks; existing trailing line breaks are preserved without duplication.
+    /// The last registration for a payload type and format wins. Use
+    /// [`render_with`](Self::render_with) to control all line breaks yourself.
+    pub fn render_text<F>(self, render: F) -> BlockLeafBuilder<T, P, WithRenderer>
+    where
+        F: Fn(&T, &mut Writer) + Send + Sync + 'static,
+    {
+        self.render_with("text", TextCallbackRenderer::<F, true>(render))
     }
 
     /// Register a low-level renderer for an output format.

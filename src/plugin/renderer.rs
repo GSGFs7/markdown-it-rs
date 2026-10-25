@@ -80,3 +80,22 @@ where
         }
     }
 }
+
+/// Adapter used by the plain-text callback shortcuts.
+pub(super) struct TextCallbackRenderer<F, const BLOCK: bool>(pub F);
+
+impl<T, F, const BLOCK: bool> NodeRenderer<T> for TextCallbackRenderer<F, BLOCK>
+where
+    T: NodeValue,
+    F: Fn(&T, &mut Writer) + Send + Sync + 'static,
+{
+    fn render(&self, _: NodeRef<'_>, value: &T, cx: &mut RenderContext<'_>, out: &mut Writer) {
+        if BLOCK {
+            cx.cr(out);
+        }
+        (self.0)(value, out);
+        if BLOCK {
+            cx.cr(out);
+        }
+    }
+}
