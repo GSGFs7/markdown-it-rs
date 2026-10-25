@@ -8,7 +8,7 @@ struct Word(String);
 struct Plain;
 
 impl InlinePlugin for Plain {
-    const RULE: &'static str = "plain";
+    const NAME: &'static str = "plain";
     const MARKER: char = '@';
 
     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
@@ -21,7 +21,7 @@ impl InlinePlugin for Plain {
 }
 
 impl InlinePlugin for Word {
-    const RULE: &'static str = "word";
+    const NAME: &'static str = "word";
     const MARKER: char = '@';
 
     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
@@ -234,4 +234,120 @@ fn nested_html_elements_are_ordered() {
         md.render("@"),
         "<p><div class=\"outer\">a<span class=\"inner\">b</span></div></p>\n"
     );
+}
+
+#[derive(Debug)]
+struct Notice(String);
+
+fn notice(interrupts_paragraph: bool) -> PluginSpec {
+    PluginSpec::new("notice")
+        .block_leaf::<Notice>("notice")
+        .interrupts_paragraph(interrupts_paragraph)
+        .parse(|cx| {
+            let text = cx.line(0)?.strip_prefix("!!! ")?.to_owned();
+            cx.advance_lines(1);
+            Some(Notice(text))
+        })
+        .render_html(|notice, html| {
+            html.element("aside").class("notice").text(&notice.0);
+        })
+        .finish()
+}
+
+#[test]
+fn configured_block_leaf_parses_and_renders() {
+    let md = MarkdownIt::builder().plugin(notice(false)).build();
+    assert_eq!(
+        md.render("before\n\n!!! hello\nafter"),
+        "<p>before</p>\n<aside class=\"notice\">hello</aside>\n<p>after</p>\n"
+    );
+    assert_eq!(
+        md.render("!!! hello"),
+        "<aside class=\"notice\">hello</aside>\n"
+    );
+}
+
+#[test]
+fn configured_block_leaf_interrupts_paragraph_only_when_enabled() {
+    let without = MarkdownIt::builder().plugin(notice(false)).build();
+    assert_eq!(
+        without.render("before\n!!! hello"),
+        "<p>before\n!!! hello</p>\n"
+    );
+
+    let with = MarkdownIt::builder().plugin(notice(true)).build();
+    assert_eq!(
+        with.render("before\n!!! hello"),
+        "<p>before</p>\n<aside class=\"notice\">hello</aside>\n"
+    );
+}
+
+#[test]
+fn configured_block_leaf_can_consume_multiple_lines() {
+    #[derive(Debug)]
+    struct Fence(String);
+
+    let fence = PluginSpec::new("fence")
+        .block_leaf::<Fence>("fence")
+        .parse(|cx| {
+            if cx.line(0)? != "%%" {
+                return None;
+            }
+            let mut body = Vec::new();
+            let mut lines = 1;
+            while let Some(line) = cx.line(lines) {
+                if line == "%%" {
+                    cx.advance_lines(lines + 1);
+                    return Some(Fence(body.join("\n")));
+                }
+                body.push(line);
+                lines += 1;
+            }
+            None
+        })
+        .render_html(|fence, html| {
+            html.element("pre").text(&fence.0);
+        })
+        .finish();
+
+    let md = MarkdownIt::builder().plugin(fence).build();
+    assert_eq!(
+        md.render("%%\nhello\nworld\n%%\nafter"),
+        "<pre>hello\nworld</pre>\n<p>after</p>\n"
+    );
+    assert_eq!(md.render("%%\nunterminated"), "<p>%%\nunterminated</p>\n");
+
+    // A multi-line leaf must not consume outdented lines inside a list item.
+    assert_eq!(
+        md.render("- %%\n  inside\n\noutside\n%%"),
+        "<ul>\n<li>%%\ninside</li>\n</ul>\n<p>outside\n%%</p>\n"
+    );
+}
+
+#[test]
+fn configured_block_leaf_check_rejects_indented_code_like_builtin_rules() {
+    let source = "> before\n    !!! hello";
+    let plain = MarkdownIt::builder().build();
+    let with_notice = MarkdownIt::builder().plugin(notice(true)).build();
+
+    // The indented line is a lazy paragraph continuation, not a notice that
+    // ends the blockquote.
+    assert_eq!(with_notice.render(source), plain.render(source));
+}
+
+#[test]
+#[should_panic(expected = "succeeded without consuming input")]
+fn configured_block_leaf_rejects_zero_line_success() {
+    let leaf = PluginSpec::new("empty")
+        .block_leaf::<Notice>("empty")
+        .parse(|_| Some(Notice("empty".into())))
+        .render_html(|_, html| {
+            html.text("empty");
+        })
+        .finish();
+
+    MarkdownIt::builder()
+        .plugin(leaf)
+        .build()
+        .render("anything");
 }

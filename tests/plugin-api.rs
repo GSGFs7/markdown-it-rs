@@ -473,7 +473,7 @@ macro_rules! static_tag {
         struct $name;
 
         impl InlinePlugin for $name {
-            const RULE: &'static str = $rule;
+            const NAME: &'static str = $rule;
             const MARKER: char = $marker;
 
             fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
@@ -492,7 +492,7 @@ static_tag!(B, "b", '雪', "B");
 #[derive(Debug)]
 struct Todo;
 impl InlinePlugin for Todo {
-    const RULE: &'static str = "todo";
+    const NAME: &'static str = "todo";
     const MARKER: char = '\0';
 
     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
@@ -598,7 +598,7 @@ fn static_leaf_rejects_success_without_consumption() {
     #[derive(Debug)]
     struct Empty;
     impl InlinePlugin for Empty {
-        const RULE: &'static str = "empty";
+        const NAME: &'static str = "empty";
         const MARKER: char = '@';
 
         fn parse(_: &mut InlinePluginState<'_>) -> Option<Self> {

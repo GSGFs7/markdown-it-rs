@@ -24,7 +24,7 @@ use crate::render::{NodeRenderer, RenderContext, Writer};
 /// struct Mark;
 ///
 /// impl InlinePlugin for Mark {
-///     const RULE: &'static str = "mark";
+///     const NAME: &'static str = "mark";
 ///     const MARKER: char = '=';
 ///
 ///     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
@@ -40,8 +40,8 @@ use crate::render::{NodeRenderer, RenderContext, Writer};
 /// assert_eq!(md.render("a == b"), "<p>a <mark>marked</mark> b</p>\n");
 /// ```
 pub trait InlinePlugin: NodeValue + Sized + 'static {
-    /// Rule name used for diagnostics and plugin ordering.
-    const RULE: &'static str;
+    /// Name used for diagnostics and plugin ordering.
+    const NAME: &'static str;
 
     /// Character that may start this leaf.
     ///
@@ -67,7 +67,7 @@ pub trait InlinePlugin: NodeValue + Sized + 'static {
 /// struct Emoji;
 ///
 /// impl InlinePlugin for Emoji {
-///     const RULE: &'static str = "rocket";
+///     const NAME: &'static str = "rocket";
 ///     const MARKER: char = ':';
 ///
 ///     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
@@ -84,7 +84,7 @@ pub trait InlinePlugin: NodeValue + Sized + 'static {
 /// ```
 impl<T: InlinePlugin> Plugin for T {
     fn into_spec(self) -> PluginSpec {
-        PluginSpec::new(T::RULE).with_installer(Box::new(LeafRule::<T>::new()))
+        PluginSpec::new(T::NAME).with_installer(Box::new(LeafRule::<T>::new()))
     }
 }
 
@@ -265,18 +265,18 @@ impl<P: InlinePlugin> LeafRule<P> {
     }
 
     fn parse(source: &str) -> Option<(P, usize)> {
-        parse_leaf(P::RULE, source, P::parse)
+        parse_leaf(P::NAME, source, P::parse)
     }
 }
 
 impl<P: InlinePlugin> PluginInstaller for LeafRule<P> {
     fn name(&self) -> &str {
-        P::RULE
+        P::NAME
     }
 
     fn validate(&self) {
         assert!(
-            !P::RULE.is_empty(),
+            !P::NAME.is_empty(),
             "inline plugin rule name must not be empty"
         );
     }

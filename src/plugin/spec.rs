@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fmt;
 
-use super::{InlineLeafBuilder, InlinePlugin, LeafRule, Plugin};
+use super::{BlockLeafBuilder, InlineLeafBuilder, InlinePlugin, LeafRule, Plugin};
 use crate::MarkdownIt;
 use crate::document::NodeValue;
 
@@ -65,7 +65,7 @@ impl PluginSpec {
 
     /// Create a plugin from a static [`InlinePlugin`] type.
     ///
-    /// The plugin name is taken from [`InlinePlugin::RULE`].
+    /// The plugin name is taken from [`InlinePlugin::NAME`].
     ///
     /// ```
     /// use markdown_it::{Html, InlinePlugin, InlinePluginState, MarkdownIt, PluginSpec};
@@ -74,7 +74,7 @@ impl PluginSpec {
     /// struct Mark;
     ///
     /// impl InlinePlugin for Mark {
-    ///     const RULE: &'static str = "mark";
+    ///     const NAME: &'static str = "mark";
     ///     const MARKER: char = '=';
     ///
     ///     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
@@ -90,7 +90,7 @@ impl PluginSpec {
     /// assert_eq!(md.render("a == b"), "<p>a <mark>marked</mark> b</p>\n");
     /// ```
     pub fn of<P: InlinePlugin>() -> Self {
-        Self::new(P::RULE).with_installer(Box::new(LeafRule::<P>::new()))
+        Self::new(P::NAME).with_installer(Box::new(LeafRule::<P>::new()))
     }
 
     /// Start an inline leaf belonging to this plugin.
@@ -140,6 +140,67 @@ impl PluginSpec {
     /// ```
     pub fn inline_leaf<T: NodeValue>(self, rule: impl Into<String>) -> InlineLeafBuilder<T> {
         InlineLeafBuilder::new(self, rule.into())
+    }
+
+    /// Start a block leaf belonging to this plugin.
+    ///
+    /// A block leaf parses source lines, emits one payload node, and renders
+    /// its own HTML. Call `.parse(...)` and `.render_html(...)`, then
+    /// `.finish()`. Use [`BlockLeafBuilder::interrupts_paragraph`] if it may
+    /// start without a preceding blank line.
+    ///
+    /// ```
+    /// use markdown_it::{MarkdownIt, PluginSpec};
+    ///
+    /// #[derive(Debug)]
+    /// struct Notice(String);
+    ///
+    /// let notice = PluginSpec::new("notice")
+    ///     .block_leaf::<Notice>("notice")
+    ///     .interrupts_paragraph(true)
+    ///     .parse(|cx| {
+    ///         let text = cx.line(0)?.strip_prefix("!!! ")?.to_owned();
+    ///         cx.advance_lines(1);
+    ///         Some(Notice(text))
+    ///     })
+    ///     .render_html(|notice, html| {
+    ///         html.element("aside").class("notice").text(&notice.0);
+    ///     })
+    ///     .finish();
+    ///
+    /// let md = MarkdownIt::builder().plugin(notice).build();
+    /// assert_eq!(
+    ///     md.render("before\n!!! hello\nafter"),
+    ///     "<p>before</p>\n<aside class=\"notice\">hello</aside>\n<p>after</p>\n"
+    /// );
+    /// ```
+    ///
+    /// Missing callbacks are rejected at compile time:
+    ///
+    /// ```compile_fail
+    /// use markdown_it::PluginSpec;
+    /// #[derive(Debug)]
+    /// struct Notice(String);
+    /// PluginSpec::new("notice")
+    ///     .block_leaf::<Notice>("notice")
+    ///     .parse(|cx| {
+    ///         cx.advance_lines(1);
+    ///         Some(Notice(String::new()))
+    ///     })
+    ///     .finish(); // no renderer
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use markdown_it::PluginSpec;
+    /// #[derive(Debug)]
+    /// struct Notice(String);
+    /// PluginSpec::new("notice")
+    ///     .block_leaf::<Notice>("notice")
+    ///     .render_html(|_, html| { html.text("notice"); })
+    ///     .finish(); // no parser
+    /// ```
+    pub fn block_leaf<T: NodeValue>(self, rule: impl Into<String>) -> BlockLeafBuilder<T> {
+        BlockLeafBuilder::new(self, rule.into())
     }
 
     /// Create a plugin from a custom install function.

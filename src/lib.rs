@@ -41,6 +41,8 @@ pub use markdown_it::MarkdownIt;
 pub use parser::block::BlockState;
 pub use parser::inline::InlineState;
 pub use plugin::{
+    BlockLeafBuilder,
+    BlockPluginState,
     Html,
     HtmlElement,
     InlineLeafBuilder,

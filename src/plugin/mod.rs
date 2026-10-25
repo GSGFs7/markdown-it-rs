@@ -2,11 +2,11 @@
 //!
 //! There are two public plugin concepts:
 //!
-//! - [`InlinePlugin`]: a static leaf node that knows how to parse and render itself.
+//! - [`InlinePlugin`]: a static inline leaf that parses and renders itself.
 //! - [`PluginSpec`]: groups leaves, adds dependency ordering and installs them.
 //!
-//! Configured leaves are added directly to a [`PluginSpec`] with
-//! [`PluginSpec::inline_leaf`].
+//! Configured leaves are added to a [`PluginSpec`] with
+//! [`PluginSpec::inline_leaf`] or [`PluginSpec::block_leaf`].
 //!
 //! A payload type has one HTML renderer per parser. Register a second plugin for
 //! the same payload type only when it uses the same rendering; use a newtype when
@@ -21,7 +21,7 @@
 //! struct Emoji;
 //!
 //! impl InlinePlugin for Emoji {
-//!     const RULE: &'static str = "rocket";
+//!     const NAME: &'static str = "rocket";
 //!     const MARKER: char = ':';
 //!
 //!     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
@@ -66,14 +66,14 @@
 //! );
 //! ```
 
-// TODO: block rule
-
+mod block;
 mod builder;
 mod html;
 mod inline;
 mod spec;
 mod state;
 
+pub use block::{BlockLeafBuilder, BlockPluginState};
 pub use builder::MarkdownItBuilder;
 pub use html::{Html, HtmlElement};
 pub use inline::{InlineLeafBuilder, InlinePlugin, LeafRenderer, LeafRule};

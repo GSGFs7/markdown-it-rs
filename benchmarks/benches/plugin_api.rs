@@ -22,7 +22,7 @@ use markdown_it::{
 struct Emoji;
 
 impl InlinePlugin for Emoji {
-    const RULE: &'static str = "emoji";
+    const NAME: &'static str = "emoji";
     const MARKER: char = ':';
 
     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
