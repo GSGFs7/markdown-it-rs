@@ -11,23 +11,28 @@ on:
         description: "Baseline commit, tag, or branch (empty: previous commit)"
         type: string
         default: ""
+      rounds:
+        description: "Paired rounds per benchmark (2 = ABBA)"
+        type: choice
+        options: ["2", "4", "6"]
+        default: "2"
 
 permissions:
   contents: read
 
 concurrency:
-  group: benchmarks-${{ github.ref }}
-  cancel-in-progress: false
+  group: benchmarks-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   benchmark:
     name: Compare Criterion benchmarks
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       CARGO_NET_RETRY: "3"
-      CARGO_TARGET_DIR: ${{ github.workspace }}/benchmark-target
       REPORT_DIR: ${{ github.workspace }}/benchmark-report
+      PAIRED_ROUNDS: ${{ inputs.rounds || '2' }}
       # Include this project and its internal parse benchmarks only.
       BENCHMARK_FILTER: '(/markdown-it-rs$|^parse/(lifecycle|deferred-inline-siblings)/)'
     steps:
@@ -35,18 +40,26 @@ jobs:
         with:
           path: current
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
       - name: Resolve comparison commits
         id: refs
         working-directory: current
         env:
           BASELINE_REF: ${{ inputs.baseline-ref }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          baseline_ref=${BASELINE_REF:-HEAD^}
-          if ! baseline=$(git rev-parse --verify --end-of-options "$baseline_ref^{commit}" 2>/dev/null); then
-            baseline=$(git rev-parse --verify --end-of-options "refs/remotes/origin/$baseline_ref^{commit}")
-          fi
           current=$(git rev-parse HEAD)
+          if [[ -n "$BASELINE_REF" ]]; then
+            if ! baseline=$(git rev-parse --verify --end-of-options "$BASELINE_REF^{commit}" 2>/dev/null); then
+              baseline=$(git rev-parse --verify --end-of-options "refs/remotes/origin/$BASELINE_REF^{commit}")
+            fi
+          elif [[ -n "$PR_BASE_SHA" ]]; then
+            baseline=$(git merge-base "$PR_BASE_SHA" "$current")
+          else
+            baseline=$(git rev-parse HEAD^)
+          fi
           echo "baseline=$baseline" >> "$GITHUB_OUTPUT"
           echo "current=$current" >> "$GITHUB_OUTPUT"
           mkdir -p "$REPORT_DIR"
@@ -64,6 +77,7 @@ jobs:
         with:
           ref: ${{ steps.refs.outputs.baseline }}
           path: baseline
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v6
@@ -72,7 +86,8 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: |
-            current/benchmarks -> ../../benchmark-target
+            baseline/benchmarks -> ../../benchmark-target/baseline
+            current/benchmarks -> ../../benchmark-target/current
           cache-on-failure: true
 
       - name: Record toolchain
@@ -80,52 +95,54 @@ jobs:
           rustc -Vv >> "$REPORT_DIR/environment.txt"
           cargo -V >> "$REPORT_DIR/environment.txt"
 
-      - name: Benchmark baseline
-        id: baseline
+      - name: Build baseline benchmarks
         working-directory: baseline
         env:
-          CRITERION_HOME: ${{ env.REPORT_DIR }}/baseline
-        run: >-
-          cargo bench --manifest-path benchmarks/Cargo.toml --locked
-          --bench throughput --bench parse --
-          "$BENCHMARK_FILTER"
-          --noplot --sample-size 30 --warm-up-time 1 --measurement-time 2
+          CARGO_TARGET_DIR: ${{ github.workspace }}/benchmark-target/baseline
+        run: |
+          cargo bench --manifest-path benchmarks/Cargo.toml --locked \
+            --bench throughput --bench parse --no-run --message-format=json \
+            > "$REPORT_DIR/build-baseline.jsonl"
 
-      - name: Benchmark current revision
-        id: current
-        if: ${{ !cancelled() && steps.refs.outcome == 'success' }}
+      - name: Build current benchmarks
         working-directory: current
         env:
-          CRITERION_HOME: ${{ env.REPORT_DIR }}/current
-        run: >-
-          cargo bench --manifest-path benchmarks/Cargo.toml --locked
-          --bench throughput --bench parse --
-          "$BENCHMARK_FILTER"
-          --noplot --sample-size 30 --warm-up-time 1 --measurement-time 2
+          CARGO_TARGET_DIR: ${{ github.workspace }}/benchmark-target/current
+        run: |
+          cargo bench --manifest-path benchmarks/Cargo.toml --locked \
+            --bench throughput --bench parse --no-run --message-format=json \
+            > "$REPORT_DIR/build-current.jsonl"
+
+      - name: Measure paired benchmarks on one CPU
+        id: measure
+        run: |
+          python current/benchmarks/scripts/benchmark.py run \
+            --baseline-build "$REPORT_DIR/build-baseline.jsonl" \
+            --current-build "$REPORT_DIR/build-current.jsonl" \
+            --baseline-root "$GITHUB_WORKSPACE/baseline" \
+            --current-root "$GITHUB_WORKSPACE/current" \
+            --report-dir "$REPORT_DIR" --filter "$BENCHMARK_FILTER" \
+            --rounds "$PAIRED_ROUNDS" \
+            --sample-size 100 --warm-up-time 3 --measurement-time 5
 
       - name: Generate reports
-        if: ${{ !cancelled() && steps.baseline.outcome == 'success' && steps.current.outcome == 'success' }}
+        id: report
         run: |
-          python current/benchmarks/scripts/compare.py \
-            --baseline-dir "$REPORT_DIR/baseline" \
-            --current-dir "$REPORT_DIR/current" >> "$REPORT_DIR/summary.md"
-          python current/benchmarks/scripts/summarize.py \
-            --criterion-dir "$REPORT_DIR/current" --output "$REPORT_DIR/current.md"
-          python current/benchmarks/scripts/summarize.py \
-            --criterion-dir "$REPORT_DIR/current" --format csv --output "$REPORT_DIR/current.csv"
+          python current/benchmarks/scripts/benchmark.py report \
+            --report-dir "$REPORT_DIR" --threshold 3 >> "$REPORT_DIR/summary.md"
 
       - name: Publish Job Summary
-        if: ${{ !cancelled() && steps.refs.outcome == 'success' }}
+        if: ${{ always() && steps.refs.outcome == 'success' }}
         env:
-          BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
-          CURRENT_OUTCOME: ${{ steps.current.outcome }}
+          MEASURE_OUTCOME: ${{ steps.measure.outcome }}
+          REPORT_OUTCOME: ${{ steps.report.outcome }}
         run: |
-          printf '\nBenchmark status: baseline=%s, current=%s.\n' \
-            "$BASELINE_OUTCOME" "$CURRENT_OUTCOME" >> "$REPORT_DIR/summary.md"
+          printf '\nBenchmark status: measurement=%s, report=%s. Partial or failed runs are not comparable.\n' \
+            "$MEASURE_OUTCOME" "$REPORT_OUTCOME" >> "$REPORT_DIR/summary.md"
           cat "$REPORT_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload reports and raw Criterion results
-        if: ${{ !cancelled() && steps.refs.outcome == 'success' }}
+        if: ${{ always() && steps.refs.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-report-${{ github.run_id }}-${{ github.run_attempt }}

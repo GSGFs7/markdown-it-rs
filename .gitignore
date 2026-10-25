@@ -2,6 +2,7 @@
 /.idea
 /target
 /benchmarks/target
+/benchmarks/scripts/__pycache__/
 /tests/fixtures/node_modules
 /tests/differential/node_modules
 /tests/differential/failures
