@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use super::html::render_html_fragment;
+use super::renderer::{HtmlCallbackRenderer, Renderers, WithRenderer};
 use super::spec::{PluginInstaller, RegistrationContext};
 use super::{Html, InlinePluginState, Plugin, PluginSpec};
 use crate::MarkdownIt;
@@ -88,11 +89,10 @@ impl<T: InlinePlugin> Plugin for T {
 }
 
 type ParseFn<T> = Arc<dyn Fn(&mut InlinePluginState<'_>) -> Option<T> + Send + Sync + 'static>;
-type RenderFn<T> = Arc<dyn Fn(&T, &mut Html) + Send + Sync + 'static>;
 
 /// Builds one inline leaf inside a [`PluginSpec`].
 ///
-/// Both callbacks are required before [`finish`](Self::finish) is available.
+/// A parser and at least one renderer are required before [`finish`](Self::finish).
 /// The marker defaults to `'\0'`, which tries matching at every position.
 #[must_use = "call finish() to add this leaf to its plugin"]
 pub struct InlineLeafBuilder<T: NodeValue, P = (), R = ()> {
@@ -101,6 +101,7 @@ pub struct InlineLeafBuilder<T: NodeValue, P = (), R = ()> {
     marker: char,
     parse: P,
     render: R,
+    renderers: Renderers,
     payload: PhantomData<fn() -> T>,
 }
 
@@ -112,6 +113,7 @@ impl<T: NodeValue> InlineLeafBuilder<T> {
             marker: '\0',
             parse: (),
             render: (),
+            renderers: Renderers::default(),
             payload: PhantomData,
         }
     }
@@ -136,30 +138,49 @@ impl<T: NodeValue, P, R> InlineLeafBuilder<T, P, R> {
             marker: self.marker,
             parse,
             render: self.render,
+            renderers: self.renderers,
             payload: PhantomData,
         }
     }
 
-    /// Set the HTML renderer. Text and attribute values are escaped.
-    pub fn render_html<F>(self, render: F) -> InlineLeafBuilder<T, P, F>
+    /// Register an HTML callback. Text and attribute values are escaped.
+    ///
+    /// Equivalent to registering a `NodeRenderer<T>` for `"html"`. Repeated
+    /// registrations for the same format replace earlier ones.
+    pub fn render_html<F>(self, render: F) -> InlineLeafBuilder<T, P, WithRenderer>
     where
         F: Fn(&T, &mut Html) + Send + Sync + 'static,
     {
+        self.render_with("html", HtmlCallbackRenderer::<F, false>(render))
+    }
+
+    /// Register a low-level renderer for an output format.
+    ///
+    /// May be called repeatedly for different formats. For the same payload
+    /// type and format, the last registration wins, just like
+    /// [`MarkdownIt::add_renderer`]. The renderer receives the original node,
+    /// value and render context, without an HTML fragment adapter.
+    pub fn render_with<N: NodeRenderer<T>>(
+        mut self,
+        format: impl Into<String>,
+        renderer: N,
+    ) -> InlineLeafBuilder<T, P, WithRenderer> {
+        self.renderers.add::<T, _>(format, renderer);
         InlineLeafBuilder {
             plugin: self.plugin,
             rule: self.rule,
             marker: self.marker,
             parse: self.parse,
-            render,
+            render: WithRenderer,
+            renderers: self.renderers,
             payload: PhantomData,
         }
     }
 }
 
-impl<T: NodeValue, P, R> InlineLeafBuilder<T, P, R>
+impl<T: NodeValue, P> InlineLeafBuilder<T, P, WithRenderer>
 where
     P: Fn(&mut InlinePluginState<'_>) -> Option<T> + Send + Sync + 'static,
-    R: Fn(&T, &mut Html) + Send + Sync + 'static,
 {
     /// Add the leaf to its owning plugin and resume building that plugin.
     pub fn finish(self) -> PluginSpec {
@@ -167,9 +188,8 @@ where
             rule: self.rule,
             marker: self.marker,
             parse: Arc::new(self.parse),
-            render_html: Arc::new(self.render),
         };
-        self.plugin.with_installer(Box::new(installer))
+        self.plugin.with_installer(self.renderers.attach(installer))
     }
 }
 
@@ -177,7 +197,6 @@ struct ConfiguredLeaf<T: NodeValue> {
     rule: String,
     marker: char,
     parse: ParseFn<T>,
-    render_html: RenderFn<T>,
 }
 
 impl<T: NodeValue> ConfiguredLeaf<T> {
@@ -231,23 +250,6 @@ impl<T: NodeValue> PluginInstaller for ConfiguredLeaf<T> {
             )
             .after_named("text")
             .before_all();
-        md.add_renderer::<T, _>("html", leaf);
-    }
-}
-
-impl<T: NodeValue> NodeRenderer<T> for Arc<ConfiguredLeaf<T>> {
-    fn render(
-        &self,
-        _node: crate::NodeRef<'_>,
-        value: &T,
-        context: &mut RenderContext<'_>,
-        output: &mut Writer,
-    ) {
-        render_html_fragment(
-            |html| (self.render_html)(value, html),
-            context.options(),
-            output,
-        );
     }
 }
 

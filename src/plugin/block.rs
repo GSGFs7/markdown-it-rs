@@ -8,16 +8,15 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use super::html::render_html_fragment;
+use super::renderer::{HtmlCallbackRenderer, Renderers, WithRenderer};
 use super::spec::PluginInstaller;
 use super::{Html, PluginSpec};
 use crate::MarkdownIt;
 use crate::document::{NodeId, NodeValue};
 use crate::parser::block::{BlockRule, BlockState, LineOffset};
-use crate::render::{NodeRenderer, RenderContext, Writer};
+use crate::render::NodeRenderer;
 
 type ParseFn<T> = Arc<dyn Fn(&mut BlockPluginState<'_>) -> Option<T> + Send + Sync + 'static>;
-type RenderFn<T> = Arc<dyn Fn(&T, &mut Html) + Send + Sync + 'static>;
 
 /// Cursor passed to a block leaf parser.
 ///
@@ -99,7 +98,7 @@ impl<'a> BlockPluginState<'a> {
 
 /// Builds one block leaf inside a [`PluginSpec`].
 ///
-/// Both callbacks are required before [`finish`](Self::finish) is available.
+/// A parser and at least one renderer are required before [`finish`](Self::finish).
 /// Paragraph interruption is disabled by default.
 #[must_use = "call finish() to add this leaf to its plugin"]
 pub struct BlockLeafBuilder<T: NodeValue, P = (), R = ()> {
@@ -108,6 +107,7 @@ pub struct BlockLeafBuilder<T: NodeValue, P = (), R = ()> {
     interrupts_paragraph: bool,
     parse: P,
     render: R,
+    renderers: Renderers,
     payload: PhantomData<fn() -> T>,
 }
 
@@ -119,6 +119,7 @@ impl<T: NodeValue> BlockLeafBuilder<T> {
             interrupts_paragraph: false,
             parse: (),
             render: (),
+            renderers: Renderers::default(),
             payload: PhantomData,
         }
     }
@@ -149,33 +150,50 @@ impl<T: NodeValue, P, R> BlockLeafBuilder<T, P, R> {
             interrupts_paragraph: self.interrupts_paragraph,
             parse,
             render: self.render,
+            renderers: self.renderers,
             payload: PhantomData,
         }
     }
 
-    /// Set the HTML renderer. Text and attributes are escaped.
+    /// Register an HTML callback. Text and attributes are escaped.
     ///
     /// The fragment is rendered as a block, separated from adjacent block
-    /// output by line breaks.
-    pub fn render_html<F>(self, render: F) -> BlockLeafBuilder<T, P, F>
+    /// output by line breaks. Repeated registrations for the same format
+    /// replace earlier ones.
+    pub fn render_html<F>(self, render: F) -> BlockLeafBuilder<T, P, WithRenderer>
     where
         F: Fn(&T, &mut Html) + Send + Sync + 'static,
     {
+        self.render_with("html", HtmlCallbackRenderer::<F, true>(render))
+    }
+
+    /// Register a low-level renderer for an output format.
+    ///
+    /// May be called repeatedly; the last renderer for a payload type and
+    /// format wins, just like [`MarkdownIt::add_renderer`]. The renderer
+    /// controls all output, including block line breaks. Use
+    /// [`RenderContext::cr`](crate::RenderContext::cr) when needed.
+    pub fn render_with<N: NodeRenderer<T>>(
+        mut self,
+        format: impl Into<String>,
+        renderer: N,
+    ) -> BlockLeafBuilder<T, P, WithRenderer> {
+        self.renderers.add::<T, _>(format, renderer);
         BlockLeafBuilder {
             plugin: self.plugin,
             rule: self.rule,
             interrupts_paragraph: self.interrupts_paragraph,
             parse: self.parse,
-            render,
+            render: WithRenderer,
+            renderers: self.renderers,
             payload: PhantomData,
         }
     }
 }
 
-impl<T: NodeValue, P, R> BlockLeafBuilder<T, P, R>
+impl<T: NodeValue, P> BlockLeafBuilder<T, P, WithRenderer>
 where
     P: Fn(&mut BlockPluginState<'_>) -> Option<T> + Send + Sync + 'static,
-    R: Fn(&T, &mut Html) + Send + Sync + 'static,
 {
     /// Add the leaf to its plugin and continue building that plugin.
     pub fn finish(self) -> PluginSpec {
@@ -183,9 +201,8 @@ where
             rule: self.rule,
             interrupts_paragraph: self.interrupts_paragraph,
             parse: Arc::new(self.parse),
-            render_html: Arc::new(self.render),
         };
-        self.plugin.with_installer(Box::new(installer))
+        self.plugin.with_installer(self.renderers.attach(installer))
     }
 }
 
@@ -193,7 +210,6 @@ struct ConfiguredBlockLeaf<T: NodeValue> {
     rule: String,
     interrupts_paragraph: bool,
     parse: ParseFn<T>,
-    render_html: RenderFn<T>,
 }
 
 impl<T: NodeValue> fmt::Debug for ConfiguredBlockLeaf<T> {
@@ -322,25 +338,5 @@ impl<T: NodeValue> PluginInstaller for ConfiguredBlockLeaf<T> {
                 .add_rule::<BlockPluginRule>()
                 .before_named("paragraph");
         }
-
-        md.add_renderer::<T, _>("html", leaf);
-    }
-}
-
-impl<T: NodeValue> NodeRenderer<T> for Arc<ConfiguredBlockLeaf<T>> {
-    fn render(
-        &self,
-        _node: crate::NodeRef<'_>,
-        value: &T,
-        context: &mut RenderContext<'_>,
-        output: &mut Writer,
-    ) {
-        context.cr(output);
-        render_html_fragment(
-            |html| (self.render_html)(value, html),
-            context.options(),
-            output,
-        );
-        context.cr(output);
     }
 }

@@ -189,7 +189,7 @@ fn render_html_nodes(nodes: &[HtmlNode], output: &mut Writer, xhtml_out: bool) {
     }
 }
 
-fn validate_tag(tag: &str) {
+pub(super) fn validate_tag(tag: &str) {
     assert!(
         !tag.is_empty()
             && tag

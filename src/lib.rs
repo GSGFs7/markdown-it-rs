@@ -55,6 +55,7 @@ pub use plugin::{
     PairDelimiter,
     Plugin,
     PluginSpec,
+    WithRenderer,
 };
 pub use plugins::presets::{Preset, PresetConfig};
 pub use render::{NodeRenderer, RenderContext, RenderOptions, RendererRegistry, Writer};

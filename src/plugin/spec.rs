@@ -102,9 +102,10 @@ impl PluginSpec {
 
     /// Start an inline leaf belonging to this plugin.
     ///
-    /// Call `.parse(...)` and `.render_html(...)`, then `.finish()` to return
-    /// to this specification. Multiple leaves can be added this way; their
-    /// rule names must be unique within the plugin.
+    /// Call `.parse(...)` and register a renderer with `.render_html(...)` or
+    /// `.render_with(format, renderer)`, then `.finish()` to return to this
+    /// specification. Multiple leaves can be added this way; their rule names
+    /// must be unique within the plugin.
     ///
     /// ```
     /// use markdown_it::{MarkdownIt, PluginSpec};
@@ -152,9 +153,10 @@ impl PluginSpec {
     /// Start a block leaf belonging to this plugin.
     ///
     /// A block leaf parses source lines, emits one payload node, and renders
-    /// its own HTML. Call `.parse(...)` and `.render_html(...)`, then
-    /// `.finish()`. Use [`BlockLeafBuilder::interrupts_paragraph`] if it may
-    /// start without a preceding blank line.
+    /// its own output. Call `.parse(...)` and register a renderer with
+    /// `.render_html(...)` or `.render_with(format, renderer)`, then `.finish()`.
+    /// Use [`BlockLeafBuilder::interrupts_paragraph`] if it may start without a
+    /// preceding blank line.
     ///
     /// ```
     /// use markdown_it::{MarkdownIt, PluginSpec};
@@ -212,11 +214,12 @@ impl PluginSpec {
 
     /// Start an emphasis-style inline pair belonging to this plugin.
     ///
-    /// Pairs reuse the emphasis delimiter scanner and matching algorithm, then
-    /// render their parsed children inside an HTML tag. Call
+    /// Pairs reuse the emphasis delimiter scanner and matching algorithm to
+    /// create nodes with parsed inline children. Call
     /// [`delimiter`](InlinePairBuilder::delimiter),
     /// [`value`](InlinePairBuilder::value) and
-    /// [`html_tag`](InlinePairBuilder::html_tag), then `.finish()`.
+    /// register a renderer with [`html_tag`](InlinePairBuilder::html_tag) or
+    /// [`render_with`](InlinePairBuilder::render_with), then `.finish()`.
     ///
     /// ```
     /// use markdown_it::{MarkdownIt, PluginSpec};
@@ -245,6 +248,19 @@ impl PluginSpec {
     ///     .inline_pair::<Mark>("highlight")
     ///     .value(|| Mark)
     ///     .html_tag("mark")
+    ///     .finish();
+    /// ```
+    ///
+    /// A renderer must also be registered:
+    ///
+    /// ```compile_fail
+    /// use markdown_it::PluginSpec;
+    /// #[derive(Debug)]
+    /// struct Mark;
+    /// PluginSpec::new("highlight")
+    ///     .inline_pair::<Mark>("highlight")
+    ///     .delimiter::<'=', 2, true>()
+    ///     .value(|| Mark)
     ///     .finish();
     /// ```
     pub fn inline_pair<T: NodeValue>(self, rule: impl Into<String>) -> InlinePairBuilder<T> {

@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use super::PluginSpec;
+use super::renderer::{Renderers, WithRenderer};
 use super::spec::{PluginInstaller, RegistrationContext};
 use crate::MarkdownIt;
 use crate::document::{Document, NodeId, NodeValue};
@@ -12,21 +13,22 @@ pub struct PairDelimiter<const MARKER: char, const LENGTH: u8, const SPLIT: bool
 
 /// Builds one emphasis-style inline pair inside a [`PluginSpec`].
 ///
-/// A pair wraps its parsed children in an HTML tag, using the same delimiter
+/// A pair contains parsed inline children, using the same delimiter
 /// scanner and matching algorithm as [`emph_pair`](crate::parser::inline::helpers::emph_pair).
 /// [`delimiter`](Self::delimiter), [`value`](Self::value) and
-/// [`html_tag`](Self::html_tag) are required before [`finish`](Self::finish) is
-/// available.
+/// a renderer ([`html_tag`](Self::html_tag) or [`render_with`](Self::render_with))
+/// are required before [`finish`](Self::finish) is available.
 ///
 /// Delimiter parameters are compile-time constants; the value factory may
 /// capture runtime configuration. Installation registers the corresponding
-/// low-level `EmphPairScanner` and its HTML renderer.
+/// low-level `EmphPairScanner` and the configured renderers.
 #[must_use = "call finish() to add this pair to its plugin"]
-pub struct InlinePairBuilder<T: NodeValue, D = (), V = (), H = ()> {
+pub struct InlinePairBuilder<T: NodeValue, D = (), V = (), R = ()> {
     plugin: PluginSpec,
     rule: String,
     value: V,
-    html_tag: H,
+    render: R,
+    renderers: Renderers,
     state: PhantomData<fn() -> (T, D)>,
 }
 
@@ -36,19 +38,20 @@ impl<T: NodeValue> InlinePairBuilder<T> {
             plugin,
             rule,
             value: (),
-            html_tag: (),
+            render: (),
+            renderers: Renderers::default(),
             state: PhantomData,
         }
     }
 }
 
-impl<T: NodeValue, D, V, H> InlinePairBuilder<T, D, V, H> {
+impl<T: NodeValue, D, V, R> InlinePairBuilder<T, D, V, R> {
     /// Set the delimiter, length (1, 2 or 3), and whether it may split words.
     ///
     /// These parameters select the low-level emphasis rule at compile time.
     pub fn delimiter<const MARKER: char, const LENGTH: u8, const SPLIT: bool>(
         self,
-    ) -> InlinePairBuilder<T, PairDelimiter<MARKER, LENGTH, SPLIT>, V, H> {
+    ) -> InlinePairBuilder<T, PairDelimiter<MARKER, LENGTH, SPLIT>, V, R> {
         assert!(
             (1..=3).contains(&LENGTH),
             "inline pair delimiter length must be 1, 2 or 3"
@@ -57,13 +60,14 @@ impl<T: NodeValue, D, V, H> InlinePairBuilder<T, D, V, H> {
             plugin: self.plugin,
             rule: self.rule,
             value: self.value,
-            html_tag: self.html_tag,
+            render: self.render,
+            renderers: self.renderers,
             state: PhantomData,
         }
     }
 
     /// Set the value stored in each pair node.
-    pub fn value<F>(self, value: F) -> InlinePairBuilder<T, D, F, H>
+    pub fn value<F>(self, value: F) -> InlinePairBuilder<T, D, F, R>
     where
         F: Fn() -> T + Send + Sync + 'static,
     {
@@ -71,50 +75,94 @@ impl<T: NodeValue, D, V, H> InlinePairBuilder<T, D, V, H> {
             plugin: self.plugin,
             rule: self.rule,
             value,
-            html_tag: self.html_tag,
+            render: self.render,
+            renderers: self.renderers,
             state: PhantomData,
         }
     }
 
-    /// Set the HTML tag used to render the pair's children.
-    pub fn html_tag(self, tag: impl Into<String>) -> InlinePairBuilder<T, D, V, String> {
+    /// Register an HTML renderer that wraps the pair's children in `tag`.
+    ///
+    /// This is a shortcut for [`render_with`](Self::render_with). The last
+    /// renderer registered for a payload type and format wins.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `tag` is not a valid ASCII HTML tag name.
+    pub fn html_tag(self, tag: impl Into<String>) -> InlinePairBuilder<T, D, V, WithRenderer> {
+        let tag = tag.into();
+        super::html::validate_tag(&tag);
+        self.render_with("html", InlinePairRenderer { tag })
+    }
+
+    /// Register a low-level renderer for an output format.
+    ///
+    /// May be called repeatedly for different formats. The last registration
+    /// for a payload type and format wins, just like [`MarkdownIt::add_renderer`].
+    /// The renderer can use [`RenderContext::render_children`] to emit the
+    /// pair's parsed children in the active output format.
+    ///
+    /// ```
+    /// use markdown_it::{MarkdownIt, NodeRef, NodeRenderer, PluginSpec, RenderContext, Writer};
+    ///
+    /// #[derive(Debug)]
+    /// struct Spoiler;
+    /// struct SpoilerRenderer;
+    /// impl NodeRenderer<Spoiler> for SpoilerRenderer {
+    ///     fn render(&self, node: NodeRef<'_>, _: &Spoiler, cx: &mut RenderContext<'_>, out: &mut Writer) {
+    ///         out.write_str("<span class=\"spoiler\">");
+    ///         cx.render_children(node.id(), out);
+    ///         out.write_str("</span>");
+    ///     }
+    /// }
+    ///
+    /// let spoiler = PluginSpec::new("spoiler")
+    ///     .inline_pair::<Spoiler>("spoiler")
+    ///     .delimiter::<'|', 2, true>()
+    ///     .value(|| Spoiler)
+    ///     .render_with("html", SpoilerRenderer)
+    ///     .finish();
+    /// let md = MarkdownIt::builder().plugin(spoiler).build();
+    /// assert_eq!(md.render("||**secret**||"),
+    ///     "<p><span class=\"spoiler\"><strong>secret</strong></span></p>\n");
+    /// ```
+    pub fn render_with<N: NodeRenderer<T>>(
+        mut self,
+        format: impl Into<String>,
+        renderer: N,
+    ) -> InlinePairBuilder<T, D, V, WithRenderer> {
+        self.renderers.add::<T, _>(format, renderer);
         InlinePairBuilder {
             plugin: self.plugin,
             rule: self.rule,
             value: self.value,
-            html_tag: tag.into(),
+            render: WithRenderer,
+            renderers: self.renderers,
             state: PhantomData,
         }
     }
 }
 
 impl<T, V, const MARKER: char, const LENGTH: u8, const SPLIT: bool>
-    InlinePairBuilder<T, PairDelimiter<MARKER, LENGTH, SPLIT>, V, String>
+    InlinePairBuilder<T, PairDelimiter<MARKER, LENGTH, SPLIT>, V, WithRenderer>
 where
     T: NodeValue,
     V: Fn() -> T + Send + Sync + 'static,
 {
     /// Add the pair to its owning plugin and resume building that plugin.
     pub fn finish(self) -> PluginSpec {
-        self.plugin.with_installer(Box::new(ConfiguredInlinePair::<
-            T,
-            V,
-            MARKER,
-            LENGTH,
-            SPLIT,
-        > {
+        let installer = ConfiguredInlinePair::<T, V, MARKER, LENGTH, SPLIT> {
             rule: self.rule,
             value: self.value,
-            html_tag: self.html_tag,
             payload: PhantomData,
-        }))
+        };
+        self.plugin.with_installer(self.renderers.attach(installer))
     }
 }
 
 struct ConfiguredInlinePair<T, V, const MARKER: char, const LENGTH: u8, const SPLIT: bool> {
     rule: String,
     value: V,
-    html_tag: String,
     payload: PhantomData<fn() -> T>,
 }
 
@@ -137,15 +185,6 @@ where
             (1..=3).contains(&LENGTH),
             "inline pair delimiter length must be 1, 2 or 3"
         );
-        assert!(
-            !self.html_tag.is_empty()
-                && self
-                    .html_tag
-                    .chars()
-                    .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ':')),
-            "invalid HTML tag name: {:?}",
-            self.html_tag
-        );
     }
 
     fn validate_registration(&self, md: &MarkdownIt, context: &mut RegistrationContext) {
@@ -162,7 +201,6 @@ where
             md,
             move |document: &mut Document| -> NodeId { document.create_node(value()) },
         );
-        md.add_renderer::<T, _>("html", InlinePairRenderer { tag: self.html_tag });
     }
 }
 

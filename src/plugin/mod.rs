@@ -5,12 +5,16 @@
 //! - [`InlinePlugin`]: a static inline leaf that parses and renders itself.
 //! - [`PluginSpec`]: groups leaves, adds dependency ordering and installs them.
 //!
-//! Configured leaves are added to a [`PluginSpec`] with
-//! [`PluginSpec::inline_leaf`] or [`PluginSpec::block_leaf`].
+//! Configured syntax is added to a [`PluginSpec`] with
+//! [`PluginSpec::inline_leaf`], [`PluginSpec::block_leaf`] or
+//! [`PluginSpec::inline_pair`]. All three builders accept low-level
+//! [`NodeRenderer`](crate::NodeRenderer) implementations with
+//! `.render_with(format, renderer)`.
 //!
-//! A payload type has one HTML renderer per parser. Register a second plugin for
-//! the same payload type only when it uses the same rendering; use a newtype when
-//! the rendering differs.
+//! A payload type has one renderer per output format per parser. Register a
+//! second plugin for the same payload type only when it uses the same rendering;
+//! use a newtype when the rendering differs. Repeated registrations for a type
+//! and format use the last renderer, matching [`MarkdownIt::add_renderer`].
 //!
 //! Static leaf:
 //!
@@ -71,6 +75,7 @@ mod builder;
 mod html;
 mod inline;
 mod pair;
+mod renderer;
 mod spec;
 mod state;
 
@@ -79,6 +84,7 @@ pub use builder::MarkdownItBuilder;
 pub use html::{Html, HtmlElement};
 pub use inline::{InlineLeafBuilder, InlinePlugin, LeafRenderer, LeafRule};
 pub use pair::{InlinePairBuilder, PairDelimiter};
+pub use renderer::WithRenderer;
 pub use spec::PluginSpec;
 pub use state::InlinePluginState;
 
