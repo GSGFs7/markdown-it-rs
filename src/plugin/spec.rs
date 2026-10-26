@@ -18,7 +18,8 @@ struct InstalledPlugins(HashSet<String>);
 /// A plugin assembled from one or more leaves and optional ordering rules.
 ///
 /// ```
-/// use markdown_it::{MarkdownIt, PluginSpec};
+/// use markdown_it::MarkdownIt;
+/// use markdown_it::plugin::PluginSpec;
 ///
 /// #[derive(Debug)]
 /// struct Tag(String);
@@ -75,7 +76,8 @@ impl PluginSpec {
     /// The plugin name is taken from [`InlinePlugin::NAME`].
     ///
     /// ```
-    /// use markdown_it::{Html, InlinePlugin, InlinePluginState, MarkdownIt, PluginSpec};
+    /// use markdown_it::plugin::{Html, InlinePlugin, InlinePluginState, PluginSpec};
+    /// use markdown_it::MarkdownIt;
     ///
     /// #[derive(Debug)]
     /// struct Mark;
@@ -108,7 +110,8 @@ impl PluginSpec {
     /// their rule names must be unique within the plugin.
     ///
     /// ```
-    /// use markdown_it::{MarkdownIt, PluginSpec};
+    /// use markdown_it::MarkdownIt;
+    /// use markdown_it::plugin::PluginSpec;
     ///
     /// #[derive(Debug)]
     /// struct Emoji;
@@ -128,7 +131,7 @@ impl PluginSpec {
     /// Missing callbacks are rejected at compile time:
     ///
     /// ```compile_fail
-    /// use markdown_it::{PluginSpec};
+    /// use markdown_it::plugin::PluginSpec;
     /// #[derive(Debug)]
     /// struct Emoji;
     /// PluginSpec::new("emoji")
@@ -138,7 +141,7 @@ impl PluginSpec {
     /// ```
     ///
     /// ```compile_fail
-    /// use markdown_it::{PluginSpec};
+    /// use markdown_it::plugin::PluginSpec;
     /// #[derive(Debug)]
     /// struct Emoji;
     /// PluginSpec::new("emoji")
@@ -159,7 +162,8 @@ impl PluginSpec {
     /// start without a preceding blank line.
     ///
     /// ```
-    /// use markdown_it::{MarkdownIt, PluginSpec};
+    /// use markdown_it::MarkdownIt;
+    /// use markdown_it::plugin::PluginSpec;
     ///
     /// #[derive(Debug)]
     /// struct Notice(String);
@@ -187,7 +191,7 @@ impl PluginSpec {
     /// Missing callbacks are rejected at compile time:
     ///
     /// ```compile_fail
-    /// use markdown_it::PluginSpec;
+    /// use markdown_it::plugin::PluginSpec;
     /// #[derive(Debug)]
     /// struct Notice(String);
     /// PluginSpec::new("notice")
@@ -200,7 +204,7 @@ impl PluginSpec {
     /// ```
     ///
     /// ```compile_fail
-    /// use markdown_it::PluginSpec;
+    /// use markdown_it::plugin::PluginSpec;
     /// #[derive(Debug)]
     /// struct Notice(String);
     /// PluginSpec::new("notice")
@@ -222,7 +226,8 @@ impl PluginSpec {
     /// [`render_with`](InlinePairBuilder::render_with), then `.finish()`.
     ///
     /// ```
-    /// use markdown_it::{MarkdownIt, PluginSpec};
+    /// use markdown_it::MarkdownIt;
+    /// use markdown_it::plugin::PluginSpec;
     ///
     /// #[derive(Debug)]
     /// struct Mark;
@@ -241,7 +246,7 @@ impl PluginSpec {
     /// A delimiter must be selected before finishing the pair:
     ///
     /// ```compile_fail
-    /// use markdown_it::PluginSpec;
+    /// use markdown_it::plugin::PluginSpec;
     /// #[derive(Debug)]
     /// struct Mark;
     /// PluginSpec::new("highlight")
@@ -254,7 +259,7 @@ impl PluginSpec {
     /// A renderer must also be registered:
     ///
     /// ```compile_fail
-    /// use markdown_it::PluginSpec;
+    /// use markdown_it::plugin::PluginSpec;
     /// #[derive(Debug)]
     /// struct Mark;
     /// PluginSpec::new("highlight")
@@ -273,7 +278,8 @@ impl PluginSpec {
     /// parser configuration or register rules and renderers.
     ///
     /// ```
-    /// use markdown_it::{MarkdownIt, PluginSpec};
+    /// use markdown_it::MarkdownIt;
+    /// use markdown_it::plugin::PluginSpec;
     ///
     /// let limit = 7;
     /// let plugin = PluginSpec::custom("limit", move |md| {
@@ -299,7 +305,8 @@ impl PluginSpec {
     /// Name used for duplicate-plugin diagnostics.
     ///
     /// ```rust
-    /// use markdown_it::{MarkdownIt, PluginSpec};
+    /// use markdown_it::MarkdownIt;
+    /// use markdown_it::plugin::PluginSpec;
     ///
     /// let plugin = PluginSpec::custom("limit", |md| {
     ///     md.max_nesting = 7;

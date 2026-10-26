@@ -1,11 +1,11 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::*;
-use crate::document::{Root, Text};
+use crate::document::{NodeDraft, Root, Text};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
-use crate::{MarkdownIt, NodeDraft, plugins};
+use crate::{MarkdownIt, plugins};
 
 #[derive(Debug)]
 struct ReadOnlyText(String);

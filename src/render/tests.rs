@@ -1,8 +1,9 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::{NodeRenderer, RenderContext, RendererRegistry, Writer};
-use crate::document::Text;
-use crate::{Document, MarkdownIt, NodeDraft, NodeRef, RenderOptions};
+use crate::MarkdownIt;
+use crate::document::{Document, NodeDraft, NodeRef, Text};
+use crate::render::RenderOptions;
 
 #[derive(Debug)]
 struct UnknownContainer;
@@ -219,7 +220,7 @@ fn registered_paragraph_renderer_preserves_attributes() {
     let md = MarkdownIt::new();
     let mut document = md.parse("hello");
     let paragraph = document.children(document.root())[0];
-    let mut edits = crate::EditBatch::new();
+    let mut edits = crate::document::edit::EditBatch::new();
     edits.set_attribute(paragraph, "class", "one two");
     edits.commit(&mut document);
 
@@ -245,7 +246,7 @@ fn commonmark_block_renderers_match_render_api() {
 
     for mut md in [
         MarkdownIt::new(),
-        MarkdownIt::with_preset(crate::Preset::CommonMark),
+        MarkdownIt::with_preset(crate::plugins::presets::Preset::CommonMark),
     ] {
         md.render_options.lang_prefix = Some("lang-".into());
         for source in sources {

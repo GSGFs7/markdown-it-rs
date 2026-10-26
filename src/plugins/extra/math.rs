@@ -1,6 +1,7 @@
 // reference to exist CodeFence & CodeSpan rule in the code base
 
-use crate::document::{NodeId, NodeRef};
+use crate::MarkdownIt;
+use crate::document::{NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{
@@ -10,7 +11,6 @@ use crate::render::{
     write_html_open,
     write_html_text,
 };
-use crate::{MarkdownIt, NodeValue};
 
 #[derive(Debug)]
 struct MathBlock {
@@ -142,7 +142,7 @@ impl<T: NodeValue + AsRef<str>> NodeRenderer<T> for MathRenderer {
         node: NodeRef<'_>,
         value: &T,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         if self.block {
             context.cr(output);

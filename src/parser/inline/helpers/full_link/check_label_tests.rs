@@ -1,8 +1,8 @@
 use super::*;
-use crate::document::Text;
-use crate::parser::inline::InlineRule;
+use crate::MarkdownIt;
+use crate::document::{NodeId, Text};
+use crate::parser::inline::{InlineRule, InlineState};
 use crate::plugins::cmark::inline::link::Link;
-use crate::{InlineState, MarkdownIt, NodeId};
 
 // Register both brackets so the built-in text classifier stops at them.
 struct Bracket<const C: char>;
@@ -164,7 +164,7 @@ fn recursive_entry_at_depth_limit_yields_no_label() {
 
 #[test]
 fn registered_link_and_image_check_respect_remaining_depth() {
-    let mut document = crate::Document::new("", crate::Root::new(""));
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::link::add(&mut md);
     crate::plugins::cmark::inline::image::add(&mut md);
@@ -236,7 +236,8 @@ fn custom_prefix_policies_are_independent_of_marker_and_label_context() {
                 references.insert("foo".into(), "/url".into(), None);
                 let mut root_ext = crate::common::extset::RootExtSet::default();
                 root_ext.insert(references);
-                let mut document = crate::Document::new("", crate::Root::new(""));
+                let mut document =
+                    crate::document::Document::new("", crate::document::Root::new(""));
                 let rules = md.inline.rules();
                 let mut context =
                     InlineState::new(&mut document, &source, 0, source.len(), &md, rules, 0, 0);
@@ -309,7 +310,7 @@ fn label_scan_checks_unicode_prefixed_rule() {
 
 #[test]
 fn candidate_combines_label_target_and_reference() {
-    let mut document = crate::Document::new("", crate::Root::new(""));
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
     let md = parser::<false>();
     let ruleset = md.inline.rules();
     let mut references = ReferenceMap::default();
@@ -367,7 +368,7 @@ fn candidate_combines_label_target_and_reference() {
 
 #[test]
 fn candidate_offsets_are_relative_to_current_window() {
-    let mut document = crate::Document::new("", crate::Root::new(""));
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
     let md = parser::<false>();
     let ruleset = md.inline.rules();
     let source = "前雪[x](/url)";
@@ -409,7 +410,7 @@ fn candidate_offsets_are_relative_to_current_window() {
 
 #[test]
 fn candidate_combines_opaque_labels_with_target() {
-    let mut document = crate::Document::new("", crate::Root::new(""));
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
     let md = parser::<false>();
     let ruleset = md.inline.rules();
     for label in LABELS {
@@ -438,7 +439,7 @@ fn candidate_combines_opaque_labels_with_target() {
 
 #[test]
 fn candidate_requires_reference_map_and_label_window() {
-    let mut document = crate::Document::new("", crate::Root::new(""));
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
     let md = parser::<false>();
     let ruleset = md.inline.rules();
 
@@ -498,7 +499,7 @@ fn candidate_requires_reference_map_and_label_window() {
 
 #[test]
 fn candidate_respects_window_edges_and_parent_cursor() {
-    let mut document = crate::Document::new("", crate::Root::new(""));
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
     let md = parser::<false>();
     let ruleset = md.inline.rules();
 
@@ -564,7 +565,7 @@ fn candidate_respects_window_edges_and_parent_cursor() {
 
 #[test]
 fn registered_link_check_does_not_require_running_the_factory() {
-    let mut document = crate::Document::new("", crate::Root::new(""));
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     add::<false>(&mut md, |_, _, _| {
         panic!("check must not call arena node factory")
@@ -580,7 +581,7 @@ fn registered_link_check_does_not_require_running_the_factory() {
 
 #[test]
 fn registered_prefix_check_does_not_require_running_the_factory() {
-    let mut document = crate::Document::new("", crate::Root::new(""));
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     add_prefix::<'雪', true>(&mut md, |_, _, _| {
         panic!("check must not call arena node factory")
@@ -630,7 +631,8 @@ fn direct_prefix_uses_utf8_byte_offsets() {
             let links = document
                 .events(document.root())
                 .filter(|event| {
-                    matches!(event, crate::StructuralEvent::Enter(_)) && event.node().is::<Link>()
+                    matches!(event, crate::document::StructuralEvent::Enter(_))
+                        && event.node().is::<Link>()
                 })
                 .count();
             assert_eq!(links, link_count, "{source}");

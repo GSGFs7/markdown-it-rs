@@ -6,7 +6,9 @@ fn run(input: &str, output: &str) {
     } else {
         output.to_owned() + "\n"
     };
-    let md = &mut markdown_it::MarkdownIt::with_preset(markdown_it::Preset::CommonMark);
+    let md = &mut markdown_it::MarkdownIt::with_preset(
+        markdown_it::plugins::presets::Preset::CommonMark,
+    );
     let source = input.to_owned() + "\n";
     let node = md.parse(&source);
 

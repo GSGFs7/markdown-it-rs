@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 
-use markdown_it::{Document, EditBatch, NodeDraft, NodeId, RenderOptions, RendererRegistry, Text};
+use markdown_it::document::edit::EditBatch;
+use markdown_it::document::{Document, NodeDraft, NodeId, Text};
+use markdown_it::render::{RenderOptions, RendererRegistry};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 

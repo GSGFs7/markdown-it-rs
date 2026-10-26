@@ -28,7 +28,7 @@ impl NodeRenderer<CodeInline> for CodeInlineRenderer {
         node: NodeRef<'_>,
         _: &CodeInline,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         write_html_open(output, "code", node.attrs());
         context.render_children(node.id(), output);

@@ -27,7 +27,8 @@ You can check a [demo](https://gsgfs7.github.io/markdown-it-rs/) in your browser
 The `MarkdownItDefault` preset corresponds to markdown-it.js's default syntax:
 
 ```rust
-use markdown_it::{MarkdownIt, Preset};
+use markdown_it::MarkdownIt;
+use markdown_it::plugins::presets::Preset;
 
 fn main() {
     let md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
@@ -60,7 +61,8 @@ fn main() {
 > it is not available in the current published release yet.
 
 ```rust
-use markdown_it::{MarkdownIt, PluginSpec};
+use markdown_it::MarkdownIt;
+use markdown_it::plugin::PluginSpec;
 
 const EMOJIS: &[(&str, &str, &str)] = &[
     (":rocket:", "🚀", "rocket"),
@@ -113,7 +115,8 @@ The optional `cjk_friendly` plugin implements the delimiter amendments from
 emphasis next to Chinese, Japanese, or Korean punctuation works without spaces:
 
 ```rust
-use markdown_it::{MarkdownIt, Preset};
+use markdown_it::MarkdownIt;
+use markdown_it::plugins::presets::Preset;
 
 let mut md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
 markdown_it::plugins::cjk_friendly::add(&mut md);

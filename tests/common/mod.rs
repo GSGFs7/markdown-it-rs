@@ -1,4 +1,5 @@
-use markdown_it::{MarkdownIt, Preset};
+use markdown_it::MarkdownIt;
+use markdown_it::plugins::presets::Preset;
 
 pub fn markdown_it_fixture_parser() -> MarkdownIt {
     let mut md = MarkdownIt::with_preset(Preset::MarkdownItDefault);

@@ -1,22 +1,14 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use markdown_it::document::edit::EditBatch;
+use markdown_it::document::text::{TextBoundary, TextEvent, TextProjectionKind};
+use markdown_it::document::{Document, NodeDraft, NodeRef, StructuralEvent, Text};
 use markdown_it::parser::core::{CoreRule, CoreState};
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use markdown_it::plugins::html::html_inline::HtmlInline;
-use markdown_it::{
-    Document,
-    EditBatch,
-    MarkdownIt,
-    NodeDraft,
-    NodeRef,
-    StructuralEvent,
-    Text,
-    TextBoundary,
-    TextEvent,
-    TextProjectionKind,
-};
+use markdown_it::MarkdownIt;
 use markdown_it_benchmarks::corpus;
 
 macro_rules! empty_core_rule {
@@ -50,7 +42,7 @@ fn text_projection<'a>(document: &'a Document, node: NodeRef<'a>) -> TextProject
     }
 }
 
-fn one_edit_per_text_node(document: &markdown_it::Document) -> EditBatch {
+fn one_edit_per_text_node(document: &markdown_it::document::Document) -> EditBatch {
     let mut batch = EditBatch::new();
     let mut previous = None;
     for event in document.text_events(text_projection) {
@@ -71,7 +63,7 @@ fn one_edit_per_text_node(document: &markdown_it::Document) -> EditBatch {
     batch
 }
 
-fn one_attribute_per_node(document: &markdown_it::Document) -> EditBatch {
+fn one_attribute_per_node(document: &markdown_it::document::Document) -> EditBatch {
     let mut batch = EditBatch::new();
     for event in document.events(document.root()) {
         match event {
@@ -84,7 +76,7 @@ fn one_attribute_per_node(document: &markdown_it::Document) -> EditBatch {
     batch
 }
 
-fn remove_top_level_subtrees(document: &markdown_it::Document) -> EditBatch {
+fn remove_top_level_subtrees(document: &markdown_it::document::Document) -> EditBatch {
     let mut batch = EditBatch::new();
     for &child in document.children(document.root()) {
         batch.remove_node(child);
@@ -92,7 +84,7 @@ fn remove_top_level_subtrees(document: &markdown_it::Document) -> EditBatch {
     batch
 }
 
-fn insert_before_top_level_nodes(document: &markdown_it::Document) -> EditBatch {
+fn insert_before_top_level_nodes(document: &markdown_it::document::Document) -> EditBatch {
     let mut batch = EditBatch::new();
     for &child in document.children(document.root()) {
         batch.insert_before(
@@ -105,7 +97,7 @@ fn insert_before_top_level_nodes(document: &markdown_it::Document) -> EditBatch 
     batch
 }
 
-fn replace_top_level_subtrees(document: &markdown_it::Document) -> EditBatch {
+fn replace_top_level_subtrees(document: &markdown_it::document::Document) -> EditBatch {
     let mut batch = EditBatch::new();
     for &child in document.children(document.root()) {
         batch.replace_node(
@@ -118,7 +110,7 @@ fn replace_top_level_subtrees(document: &markdown_it::Document) -> EditBatch {
     batch
 }
 
-fn wrap_top_level_range(document: &markdown_it::Document) -> EditBatch {
+fn wrap_top_level_range(document: &markdown_it::document::Document) -> EditBatch {
     let mut batch = EditBatch::new();
     let children = document.children(document.root());
     if let (Some(&first), Some(&last)) = (children.first(), children.last()) {

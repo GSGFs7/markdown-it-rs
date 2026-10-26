@@ -1,7 +1,8 @@
-use markdown_it::parser::block::BlockRule;
+use markdown_it::MarkdownIt;
+use markdown_it::document::{NodeId, Text};
+use markdown_it::parser::block::{BlockRule, BlockState};
 use markdown_it::parser::core::{CoreRule, CoreState};
-use markdown_it::parser::inline::{InlineParserRule, InlineRule};
-use markdown_it::{BlockState, InlineState, MarkdownIt, NodeId, Text};
+use markdown_it::parser::inline::{InlineParserRule, InlineRule, InlineState};
 
 struct ConsumeBlock;
 impl BlockRule for ConsumeBlock {

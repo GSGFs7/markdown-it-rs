@@ -106,10 +106,10 @@ fn invalid_node_access_panics_in_all_builds() {
     let old = document.children(document.root())[0];
     let kept = document.children(document.root())[1];
 
-    let mut edits = crate::EditBatch::new();
+    let mut edits = crate::document::edit::EditBatch::new();
     edits.remove_node(old);
     edits.commit(&mut document);
-    let mut edits = crate::EditBatch::new();
+    let mut edits = crate::document::edit::EditBatch::new();
     edits.insert_before(
         kept,
         NodeDraft::new(Text {

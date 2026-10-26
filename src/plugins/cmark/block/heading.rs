@@ -26,7 +26,7 @@ impl NodeRenderer<ATXHeading> for ATXHeadingRenderer {
         node: NodeRef<'_>,
         heading: &ATXHeading,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         static TAG: [&str; 6] = ["h1", "h2", "h3", "h4", "h5", "h6"];
         debug_assert!((1..=6).contains(&heading.level));

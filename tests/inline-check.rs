@@ -1,7 +1,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use markdown_it::parser::inline::InlineRule;
-use markdown_it::{InlineState, MarkdownIt, NodeId, Text};
+use markdown_it::MarkdownIt;
+use markdown_it::document::{NodeId, Text};
+use markdown_it::parser::inline::{InlineRule, InlineState};
 
 // A plugin only implementing run must still be opaque inside a link label.
 struct RunOnly;

@@ -230,7 +230,9 @@ impl Document {
     /// Project the whole document into a lazy text event stream.
     ///
     /// ```
-    /// use markdown_it::{Document, MarkdownIt, NodeRef, TextEvent, TextProjectionKind};
+    /// use markdown_it::document::{Document, NodeRef};
+    /// use markdown_it::MarkdownIt;
+    /// use markdown_it::document::text::{TextEvent, TextProjectionKind};
     ///
     /// fn classify<'a>(doc: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
     ///     match doc.text(node.id()) {

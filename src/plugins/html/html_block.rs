@@ -25,7 +25,7 @@ impl NodeRenderer<HtmlBlock> for HtmlBlockRenderer {
         _: NodeRef<'_>,
         value: &HtmlBlock,
         _: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         output.write_str(&value.content);
     }
@@ -39,7 +39,7 @@ impl NodeRenderer<HtmlBlock> for HtmlBlockTextRenderer {
         _: NodeRef<'_>,
         value: &HtmlBlock,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         context.cr(output);
         output.write_str(&value.content);

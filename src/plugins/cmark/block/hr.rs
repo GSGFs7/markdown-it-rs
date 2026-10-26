@@ -22,7 +22,7 @@ impl NodeRenderer<ThematicBreak> for ThematicBreakRenderer {
         node: NodeRef<'_>,
         _: &ThematicBreak,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         context.cr(output);
         write_html_self_close(output, "hr", node.attrs(), context.options().xhtml_out);

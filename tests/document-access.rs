@@ -1,22 +1,19 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use markdown_it::{
+use markdown_it::MarkdownIt;
+use markdown_it::document::edit::EditBatch;
+use markdown_it::document::text::{TextEvent, TextProjectionKind};
+use markdown_it::document::{
     Document,
-    EditBatch,
-    MarkdownIt,
     NodeDraft,
     NodeRef,
-    NodeRenderer,
-    RenderContext,
     Root,
     StructuralEvent,
     Text,
-    TextEvent,
-    TextProjectionKind,
     TextSpecial,
-    Writer,
 };
+use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 
 #[test]
 fn blanket_node_values_preserve_concrete_types() {

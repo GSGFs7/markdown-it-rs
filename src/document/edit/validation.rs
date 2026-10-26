@@ -2,8 +2,7 @@ use std::collections::HashSet;
 use std::ops::Range;
 
 use super::{EditBatch, ReplaceText, attribute_groups, text_groups};
-use crate::Node;
-use crate::document::{Document, NodeId, Text};
+use crate::document::{Document, Node, NodeId, Text};
 
 /// A validation failure that leaves the document unchanged.
 #[derive(Clone, Debug, Eq, PartialEq)]

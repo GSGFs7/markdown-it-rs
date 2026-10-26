@@ -33,7 +33,7 @@ impl NodeRenderer<HtmlInline> for HtmlInlineRenderer {
         _: NodeRef<'_>,
         value: &HtmlInline,
         _: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         output.write_str(&value.content);
     }
@@ -60,7 +60,9 @@ impl InlineRule for HtmlInlineScanner {
         Some(matched.consumed)
     }
 
-    fn run(state: &mut crate::InlineState<'_>) -> Option<(Option<crate::NodeId>, usize)> {
+    fn run(
+        state: &mut crate::parser::inline::InlineState<'_>,
+    ) -> Option<(Option<crate::document::NodeId>, usize)> {
         let matched =
             scan_html_inline(&state.src, state.pos, state.pos_max, &mut state.inline_ext)?;
 

@@ -26,7 +26,7 @@ impl NodeRenderer<Image> for ImageRenderer {
         node: NodeRef<'_>,
         image: &Image,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         let alt = collect_alt_text(context, node);
         let title = image.title.as_deref().filter(|title| !title.is_empty());

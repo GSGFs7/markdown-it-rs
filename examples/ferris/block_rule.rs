@@ -1,7 +1,8 @@
 // Replaces `(\/)-------(\/)` with a nice picture.
 
-use markdown_it::parser::block::BlockRule;
-use markdown_it::{BlockState, MarkdownIt, NodeId};
+use markdown_it::MarkdownIt;
+use markdown_it::document::NodeId;
+use markdown_it::parser::block::{BlockRule, BlockState};
 
 const CRAB_CLAW: &str = r#"(\/)"#;
 const CRAB_URL: &str = "https://upload.wikimedia.org/wikipedia/commons/0/0f/Original_Ferris.svg";
@@ -63,13 +64,13 @@ pub fn add(md: &mut MarkdownIt) {
 
 // This defines how your custom node should be rendered.
 struct BlockFerrisRenderer;
-impl markdown_it::NodeRenderer<BlockFerris> for BlockFerrisRenderer {
+impl markdown_it::render::NodeRenderer<BlockFerris> for BlockFerrisRenderer {
     fn render(
         &self,
-        _: markdown_it::NodeRef<'_>,
+        _: markdown_it::document::NodeRef<'_>,
         _: &BlockFerris,
-        ctx: &mut markdown_it::RenderContext<'_>,
-        out: &mut markdown_it::Writer,
+        ctx: &mut markdown_it::render::RenderContext<'_>,
+        out: &mut markdown_it::render::Writer,
     ) {
         ctx.cr(out);
         out.write_str("<div class=\"ferris-block\"><img src=\"");

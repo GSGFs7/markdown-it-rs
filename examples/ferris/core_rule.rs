@@ -31,13 +31,13 @@ impl CoreRule for FerrisCounterRule {
 }
 
 struct CounterRenderer;
-impl markdown_it::NodeRenderer<FerrisCounter> for CounterRenderer {
+impl markdown_it::render::NodeRenderer<FerrisCounter> for CounterRenderer {
     fn render(
         &self,
-        _: markdown_it::NodeRef<'_>,
+        _: markdown_it::document::NodeRef<'_>,
         counter: &FerrisCounter,
-        ctx: &mut markdown_it::RenderContext<'_>,
-        out: &mut markdown_it::Writer,
+        ctx: &mut markdown_it::render::RenderContext<'_>,
+        out: &mut markdown_it::render::Writer,
     ) {
         ctx.cr(out);
         out.write_str("<footer class=\"ferris-counter\">");

@@ -2,7 +2,8 @@
 //! defining your own.
 //!
 //! ```
-//! use markdown_it::{MarkdownIt, Preset};
+//! use markdown_it::MarkdownIt;
+//! use markdown_it::plugins::presets::Preset;
 //!
 //! let md = MarkdownIt::with_preset(Preset::CommonMark);          // built-in
 //! let md = MarkdownIt::with_preset(|md: &mut MarkdownIt| {       // custom
@@ -72,8 +73,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::{Preset, PresetConfig};
+    use crate::MarkdownIt;
     use crate::plugins::{cmark, extra};
-    use crate::{MarkdownIt, RenderOptions};
+    use crate::render::RenderOptions;
 
     #[test]
     fn markdown_it_default_enables_only_bundled_extensions() {

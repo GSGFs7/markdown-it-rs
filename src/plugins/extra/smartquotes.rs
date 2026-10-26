@@ -6,8 +6,11 @@
 
 use std::collections::HashMap;
 
+use crate::MarkdownIt;
 use crate::common::utils::{is_markdown_whitespace, is_punct_char};
-use crate::document::TextSpecial;
+use crate::document::edit::EditBatch;
+use crate::document::text::{TextBoundary, TextEvent, TextProjectionKind};
+use crate::document::{Document, NodeId, NodeRef, TextSpecial};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::helpers::full_link::IndependentLabelSource;
 use crate::plugins::cmark::block::heading::ATXHeading;
@@ -19,16 +22,6 @@ use crate::plugins::cmark::inline::image::Image;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::extra::tables::TableCell;
 use crate::plugins::html::html_inline::HtmlInline;
-use crate::{
-    Document,
-    EditBatch,
-    MarkdownIt,
-    NodeId,
-    NodeRef,
-    TextBoundary,
-    TextEvent,
-    TextProjectionKind,
-};
 
 const APOSTROPHE: char = '\u{2019}';
 const SINGLE_QUOTE: char = '\'';

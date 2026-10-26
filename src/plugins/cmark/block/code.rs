@@ -29,7 +29,7 @@ impl NodeRenderer<CodeBlock> for CodeBlockRenderer {
         node: NodeRef<'_>,
         code: &CodeBlock,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         context.cr(output);
         write_html_open(output, "pre", &[]);
@@ -49,7 +49,7 @@ impl NodeRenderer<CodeBlock> for CodeBlockTextRenderer {
         _: NodeRef<'_>,
         code: &CodeBlock,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         context.cr(output);
         output.write_str(&code.content);

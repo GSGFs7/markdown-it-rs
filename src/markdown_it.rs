@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use crate::MarkdownItBuilder;
 use crate::common::RuleMark;
 use crate::common::extset::MarkdownItExtSet;
 use crate::common::ruler::Ruler;
@@ -10,6 +9,7 @@ use crate::links::{LinkFormatter, MDLinkFormatter};
 use crate::parser::block::{self, BlockParser};
 use crate::parser::core::*;
 use crate::parser::inline::{self, InlineParser};
+use crate::plugin::MarkdownItBuilder;
 use crate::plugins::presets::{Preset, PresetConfig};
 use crate::render::{
     DebugTreeRenderer,

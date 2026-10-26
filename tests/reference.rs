@@ -1,4 +1,5 @@
-use markdown_it::{MarkdownIt, Preset};
+use markdown_it::MarkdownIt;
+use markdown_it::plugins::presets::Preset;
 
 #[test]
 fn adjacent_multiline_title_matches_markdown_it() {

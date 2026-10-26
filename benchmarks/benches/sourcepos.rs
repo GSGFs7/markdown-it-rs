@@ -1,8 +1,10 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use markdown_it::document::edit::EditBatch;
+use markdown_it::document::{Document, StructuralEvent};
 use markdown_it::plugins::sourcepos;
-use markdown_it::{Document, EditBatch, MarkdownIt, StructuralEvent};
+use markdown_it::MarkdownIt;
 use markdown_it_benchmarks::corpus;
 
 fn parser() -> MarkdownIt {

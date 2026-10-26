@@ -28,12 +28,12 @@ pub fn add(md: &mut crate::MarkdownIt) {
 pub(crate) type InlineCheckFn = fn(&mut InlineState<'_>) -> Option<usize>;
 // TODO: some nested some??
 pub(crate) type InlineRunFn =
-    fn(&mut crate::InlineState<'_>) -> Option<(Option<crate::NodeId>, usize)>;
+    fn(&mut InlineState<'_>) -> Option<(Option<crate::document::NodeId>, usize)>;
 
 // functions that cause heap allocation
 type DynamicCheckFn = dyn Fn(&mut InlineState<'_>) -> Option<usize> + Send + Sync;
 type DynamicRunFn =
-    dyn Fn(&mut InlineState<'_>) -> Option<(Option<crate::NodeId>, usize)> + Send + Sync;
+    dyn Fn(&mut InlineState<'_>) -> Option<(Option<crate::document::NodeId>, usize)> + Send + Sync;
 
 #[derive(Clone)]
 pub(crate) enum InlineCheckRunner {

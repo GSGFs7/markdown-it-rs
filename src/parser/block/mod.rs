@@ -10,9 +10,10 @@ pub use parser::BlockParserRule;
 pub use rule::*;
 pub use state::BlockState;
 
+use crate::MarkdownIt;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;
-use crate::{MarkdownIt, NodeId};
+use crate::document::NodeId;
 
 /// Register the core rule that drives block parsing.
 pub fn add(md: &mut MarkdownIt) {

@@ -26,7 +26,7 @@ impl NodeRenderer<Autolink> for AutolinkRenderer {
         node: NodeRef<'_>,
         link: &Autolink,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         render_html_link(node, &link.url, None, context, output);
     }
@@ -72,7 +72,9 @@ impl InlineRule for AutolinkScanner {
         }
     }
 
-    fn run(state: &mut crate::InlineState<'_>) -> Option<(Option<crate::NodeId>, usize)> {
+    fn run(
+        state: &mut crate::parser::inline::InlineState<'_>,
+    ) -> Option<(Option<crate::document::NodeId>, usize)> {
         let matched = scan_autolink(
             state.remaining(),
             state.markdown_it().link_formatter.as_ref(),
@@ -267,7 +269,7 @@ mod tests {
             if node.is::<super::Autolink>() {
                 found = true;
                 assert_eq!(node.srcmap().unwrap().get_byte_offsets(), (start, end + 1));
-            } else if let Some(text) = node.cast::<crate::TextSpecial>() {
+            } else if let Some(text) = node.cast::<crate::document::TextSpecial>() {
                 assert_eq!(text.content, "ab:é�x");
                 assert_eq!(node.srcmap().unwrap().get_byte_offsets(), (start + 1, end));
             }
@@ -278,8 +280,7 @@ mod tests {
     #[test]
     #[cfg(feature = "sourcemap")]
     fn direct_autolink_source_maps() {
-        use crate::StructuralEvent;
-        use crate::document::TextSpecial;
+        use crate::document::{StructuralEvent, TextSpecial};
 
         let md = parser();
         let document = md.parse("x <https://example.test> y");

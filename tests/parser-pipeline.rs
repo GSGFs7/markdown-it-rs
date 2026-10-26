@@ -1,5 +1,6 @@
+use markdown_it::MarkdownIt;
+use markdown_it::document::{Root, StructuralEvent};
 use markdown_it::plugins::html::html_block::HtmlBlock;
-use markdown_it::{MarkdownIt, Root, StructuralEvent};
 
 // KaTeX uses unordered attribute/style maps; normalize only their ordering.
 fn normalize_math_html(html: &str) -> String {
@@ -42,7 +43,10 @@ fn snapshot_config(md: &MarkdownIt, config: &str) -> String {
     )
 }
 
-fn snapshot_outputs(md: &MarkdownIt, document: &mut markdown_it::Document) -> [String; 4] {
+fn snapshot_outputs(
+    md: &MarkdownIt,
+    document: &mut markdown_it::document::Document,
+) -> [String; 4] {
     // The frozen legacy parser added a newline to HTML blocks at EOF.
     // Restore that payload only for baseline comparison; the HTML block unit
     // tests independently verify the corrected source-preserving output.
@@ -115,11 +119,11 @@ fn relocated_payload_paths() -> [(String, &'static str); 3] {
             "markdown_it::parser::core::root::Root",
         ),
         (
-            std::any::type_name::<markdown_it::TextSpecial>().to_owned(),
+            std::any::type_name::<markdown_it::document::TextSpecial>().to_owned(),
             "markdown_it::parser::inline::builtin::skip_text::TextSpecial",
         ),
         (
-            std::any::type_name::<markdown_it::Text>().to_owned(),
+            std::any::type_name::<markdown_it::document::Text>().to_owned(),
             "markdown_it::parser::inline::builtin::skip_text::Text",
         ),
     ]
@@ -179,7 +183,7 @@ fn relocated_payload_paths_are_rewritten_in_debug_trees() {
         assert!(normalized.contains(legacy), "missing legacy path: {legacy}");
     }
 }
-fn assert_document_structure(md: &MarkdownIt, source: &str) -> markdown_it::Document {
+fn assert_document_structure(md: &MarkdownIt, source: &str) -> markdown_it::document::Document {
     // parse replaces NUL with U+FFFD.
     let normalized = source.replace('\0', "\u{FFFD}");
     let document = md.parse(source);
@@ -228,7 +232,7 @@ fn assert_document_structure(md: &MarkdownIt, source: &str) -> markdown_it::Docu
 
 type Snapshot = (&'static str, &'static str, u64, u8, (u64, u64, u64, u64));
 
-fn assert_document_valid(md: &MarkdownIt, source: &str) -> markdown_it::Document {
+fn assert_document_valid(md: &MarkdownIt, source: &str) -> markdown_it::document::Document {
     assert_document_valid_with_config(md, source, "default")
 }
 
@@ -236,7 +240,7 @@ fn assert_document_valid_with_config(
     md: &MarkdownIt,
     source: &str,
     config: &str,
-) -> markdown_it::Document {
+) -> markdown_it::document::Document {
     let mut document = assert_document_structure(md, source);
     let snapshots: &[Snapshot] = include!("fixtures/document-parser-snapshots.rs");
     let thread = std::thread::current();
@@ -315,8 +319,8 @@ fn direct_text_fallback_matches_snapshots() {
 fn consume_only_block_rule_preserves_surrounding_nodes_and_source_maps() {
     #[cfg(feature = "sourcemap")]
     use markdown_it::common::sourcemap::SourcePos;
-    use markdown_it::parser::block::BlockRule;
-    use markdown_it::{BlockState, NodeId};
+    use markdown_it::document::NodeId;
+    use markdown_it::parser::block::{BlockRule, BlockState};
 
     struct ConsumeLine;
     impl BlockRule for ConsumeLine {
@@ -647,7 +651,7 @@ fn direct_code_spans_preserve_output_structure_and_source_maps() {
             }
             let node = event.node();
             if node.is::<markdown_it::plugins::cmark::inline::backticks::CodeInline>()
-                || node.is::<markdown_it::Text>()
+                || node.is::<markdown_it::document::Text>()
             {
                 Some((node.name(), node.srcmap().unwrap().get_byte_offsets()))
             } else {
@@ -672,7 +676,7 @@ fn direct_zero_nesting_matches_expected_output() {
 #[test]
 #[cfg(feature = "sourcemap")]
 fn trailing_space_removal_maps_inline_offsets_once() {
-    use markdown_it::Text;
+    use markdown_it::document::Text;
     let mut md = MarkdownIt::empty();
     markdown_it::plugins::cmark::block::paragraph::add(&mut md);
     markdown_it::plugins::cmark::inline::newline::add(&mut md);
@@ -821,7 +825,7 @@ fn direct_emphasis_uses_cjk_delimiter_override() {
 #[test]
 #[cfg(feature = "sourcemap")]
 fn direct_nested_emphasis_preserves_source_maps() {
-    use markdown_it::Text;
+    use markdown_it::document::Text;
     use markdown_it::plugins::cmark::inline::emphasis::{Em, Strong};
 
     let mut md = MarkdownIt::empty();
@@ -1002,8 +1006,8 @@ fn deferred_inline_fallback_preserves_sibling_order() {
 
 #[test]
 fn deferred_inline_fallback_handles_empty_and_multiple_replacements() {
-    use markdown_it::parser::inline::InlineRule;
-    use markdown_it::{InlineState, NodeId};
+    use markdown_it::document::NodeId;
+    use markdown_it::parser::inline::{InlineRule, InlineState};
 
     struct ConsumeLine;
     impl InlineRule for ConsumeLine {
@@ -1029,8 +1033,8 @@ fn deferred_inline_fallback_handles_empty_and_multiple_replacements() {
 
 #[test]
 fn deferred_single_placeholder_handles_empty_one_and_many_nodes() {
-    use markdown_it::parser::inline::InlineRule;
-    use markdown_it::{InlineState, NodeId};
+    use markdown_it::document::NodeId;
+    use markdown_it::parser::inline::{InlineRule, InlineState};
 
     struct ConsumeLine;
     impl InlineRule for ConsumeLine {
@@ -1997,8 +2001,9 @@ fn direct_directives_custom_renderers_match_expected_output() {
 #[test]
 fn direct_directive_callbacks_render_current_document_children() {
     use markdown_it::document::edit::EditBatch;
+    use markdown_it::document::{NodeRef, Text};
     use markdown_it::plugins::directives::{self, DirectiveKind, DirectiveNode, DirectiveRenderer};
-    use markdown_it::{NodeRef, NodeRenderer, RenderContext, Text, Writer};
+    use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 
     fn panel(
         _: DirectiveKind,

@@ -1,12 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
+use markdown_it::MarkdownIt;
+use markdown_it::document::edit::EditBatch;
+use markdown_it::document::{Document, StructuralEvent};
 use markdown_it::plugins::extra::heading_anchors::{
     EmptySlugPolicy,
     ExistingIdPolicy,
     is_heading,
     unique_slug,
 };
-use markdown_it::{Document, EditBatch, MarkdownIt, StructuralEvent};
 use pyo3::prelude::*;
 use pyo3::{PyAny, PyResult};
 
@@ -93,9 +95,9 @@ impl PythonHeadingAnchors {
                         return None;
                     }
                     let node = event.node();
-                    if let Some(text) = node.cast::<markdown_it::Text>() {
+                    if let Some(text) = node.cast::<markdown_it::document::Text>() {
                         Some(text.content.clone())
-                    } else if let Some(text) = node.cast::<markdown_it::TextSpecial>() {
+                    } else if let Some(text) = node.cast::<markdown_it::document::TextSpecial>() {
                         Some(text.content.clone())
                     } else if node.is::<markdown_it::plugins::cmark::inline::newline::Softbreak>() {
                         Some("\n".into())

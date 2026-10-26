@@ -77,7 +77,7 @@ struct BlockCheckSnapshot {
     node_name: &'static str,
     arena_len: usize,
     child_count: usize,
-    attrs: crate::HtmlAttributes,
+    attrs: crate::document::HtmlAttributes,
     extension_count: usize,
     #[cfg(feature = "sourcemap")]
     srcmap: Option<crate::common::sourcemap::SourcePos>,
@@ -116,12 +116,13 @@ impl BlockCheckSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MarkdownIt, Root, Text};
+    use crate::MarkdownIt;
+    use crate::document::{Root, Text};
 
     #[test]
     #[should_panic(expected = "check modified cursor or accumulated nodes")]
     fn inline_check_rejects_cursor_mutation_even_on_no_match() {
-        let mut document = crate::Document::new("", crate::Root::new(""));
+        let mut document = crate::document::Document::new("", crate::document::Root::new(""));
         let md = MarkdownIt::empty();
         let ruleset = md.inline.rules();
         let mut state = InlineState::new(&mut document, "xy", 0, 2, &md, ruleset, 0, 0);
@@ -134,7 +135,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "check modified cursor or accumulated nodes")]
     fn inline_check_rejects_node_mutation() {
-        let mut document = crate::Document::new("", crate::Root::new(""));
+        let mut document = crate::document::Document::new("", crate::document::Root::new(""));
         let md = MarkdownIt::empty();
         let ruleset = md.inline.rules();
         let mut state = InlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
@@ -150,7 +151,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "check modified cursor or accumulated nodes")]
     fn inline_check_rejects_detached_allocation_on_no_match() {
-        let mut document = crate::Document::new("", Root::new(""));
+        let mut document = crate::document::Document::new("", Root::new(""));
         let md = MarkdownIt::empty();
         let ruleset = md.inline.rules();
         let mut state = InlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
@@ -165,7 +166,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "check modified cursor or accumulated nodes")]
     fn inline_check_rejects_payload_mutation_through_id() {
-        let mut document = crate::Document::new("", Root::new(""));
+        let mut document = crate::document::Document::new("", Root::new(""));
         let md = MarkdownIt::empty();
         let ruleset = md.inline.rules();
         let mut state = InlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
@@ -190,7 +191,7 @@ mod tests {
     fn block_check_rejects_state_mutation_even_on_no_match() {
         let md = MarkdownIt::empty();
         let source = "hello";
-        let mut document = crate::Document::new(source, Root::new(source));
+        let mut document = crate::document::Document::new(source, Root::new(source));
         let mut state = BlockState::new(source, &md, &[], &mut document);
         check_block(&mut state, 0, |state| {
             state.blk_indent += 1;

@@ -1,11 +1,13 @@
 #![cfg(feature = "sourcemap")]
 
 use markdown_it::common::sourcemap::SourceWithLineStarts;
-use markdown_it::{Document, NodeRef};
+use markdown_it::document::{Document, NodeRef};
 
 #[test]
 fn text_fallback_maps_only_existing_source_bytes() {
-    use markdown_it::{EditBatch, MarkdownIt, StructuralEvent};
+    use markdown_it::MarkdownIt;
+    use markdown_it::document::StructuralEvent;
+    use markdown_it::document::edit::EditBatch;
 
     let md = MarkdownIt::empty();
     type Case = (&'static str, &'static [(usize, usize)], &'static str);

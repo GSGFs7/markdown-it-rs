@@ -112,7 +112,7 @@ fn main() {
     if show_tree {
         let mut depth = 0usize;
         for event in ast.events(ast.root()) {
-            if matches!(event, markdown_it::StructuralEvent::Exit(_)) {
+            if matches!(event, markdown_it::document::StructuralEvent::Exit(_)) {
                 depth -= 1;
                 continue;
             }
@@ -126,7 +126,7 @@ fn main() {
             } else {
                 println!("{name}");
             }
-            if matches!(event, markdown_it::StructuralEvent::Enter(_)) {
+            if matches!(event, markdown_it::document::StructuralEvent::Enter(_)) {
                 depth += 1;
             }
         }

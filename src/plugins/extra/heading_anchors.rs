@@ -12,13 +12,13 @@
 //! ```
 use std::collections::{HashMap, HashSet};
 
+use crate::MarkdownIt;
 use crate::document::edit::EditBatch;
-use crate::document::{Document, NodeRef, Text, TextSpecial};
+use crate::document::{Document, NodeRef, StructuralEvent, Text, TextSpecial};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
 use crate::plugins::cmark::inline::newline::Softbreak;
-use crate::{MarkdownIt, StructuralEvent};
 
 // --- pub method ---
 
@@ -324,7 +324,7 @@ fn edits(document: &Document, options: &HeadingAnchorsOptions) -> EditBatch {
 }
 
 struct Heading {
-    id: crate::NodeId,
+    id: crate::document::NodeId,
     has_id: bool,
     text: String,
 }

@@ -22,7 +22,7 @@ impl NodeRenderer<Link> for LinkRenderer {
         node: NodeRef<'_>,
         link: &Link,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         render_html_link(node, &link.url, link.title.as_deref(), context, output);
     }

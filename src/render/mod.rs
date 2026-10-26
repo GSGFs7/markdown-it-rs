@@ -31,10 +31,9 @@ use crate::document::{
 /// Renderer for one payload type in one output format.
 ///
 /// ```
-/// use markdown_it::{
-///     Document, NodeRenderer, RenderContext,
-///     Writer, MarkdownIt, NodeDraft, NodeRef,
-/// };
+/// use markdown_it::document::{Document, NodeDraft, NodeRef};
+/// use markdown_it::render::{NodeRenderer, RenderContext, Writer};
+/// use markdown_it::MarkdownIt;
 ///
 /// #[derive(Debug)]
 /// struct Badge(&'static str);

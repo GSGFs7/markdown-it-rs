@@ -18,7 +18,8 @@ use crate::render::{NodeRenderer, RenderContext, Writer};
 /// so registering the same payload type twice is rejected.
 ///
 /// ```
-/// use markdown_it::{Html, InlinePlugin, InlinePluginState, MarkdownIt};
+/// use markdown_it::plugin::{Html, InlinePlugin, InlinePluginState};
+/// use markdown_it::MarkdownIt;
 ///
 /// #[derive(Debug)]
 /// struct Mark;
@@ -61,7 +62,8 @@ pub trait InlinePlugin: NodeValue + Sized + 'static {
 /// A static leaf type can be registered directly as a plugin.
 ///
 /// ```
-/// use markdown_it::{Html, InlinePlugin, InlinePluginState, MarkdownIt};
+/// use markdown_it::plugin::{Html, InlinePlugin, InlinePluginState};
+/// use markdown_it::MarkdownIt;
 ///
 /// #[derive(Debug)]
 /// struct Emoji;
@@ -162,7 +164,8 @@ impl<T: NodeValue, P, R> InlineLeafBuilder<T, P, R> {
     /// payload type and format wins.
     ///
     /// ```
-    /// use markdown_it::{MarkdownIt, PluginSpec};
+    /// use markdown_it::MarkdownIt;
+    /// use markdown_it::plugin::PluginSpec;
     /// #[derive(Debug)]
     /// struct Emoji;
     /// let emoji = PluginSpec::new("emoji")
@@ -364,7 +367,7 @@ impl<P: InlinePlugin> Default for LeafRenderer<P> {
 impl<P: InlinePlugin> NodeRenderer<P> for LeafRenderer<P> {
     fn render(
         &self,
-        _node: crate::NodeRef<'_>,
+        _node: crate::document::NodeRef<'_>,
         value: &P,
         context: &mut RenderContext<'_>,
         output: &mut Writer,

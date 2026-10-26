@@ -54,7 +54,8 @@ fn inline_and_postpass_links_preserve_source_ranges() {
         let mut ranges = Vec::new();
         for event in document.events(document.root()) {
             let node = event.node();
-            if !matches!(event, crate::StructuralEvent::Enter(_)) || !node.is::<super::Linkified>()
+            if !matches!(event, crate::document::StructuralEvent::Enter(_))
+                || !node.is::<super::Linkified>()
             {
                 continue;
             }

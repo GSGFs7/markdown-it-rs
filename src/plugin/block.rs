@@ -186,7 +186,7 @@ impl<T: NodeValue, P, R> BlockLeafBuilder<T, P, R> {
     /// May be called repeatedly; the last renderer for a payload type and
     /// format wins, just like [`MarkdownIt::add_renderer`]. The renderer
     /// controls all output, including block line breaks. Use
-    /// [`RenderContext::cr`](crate::RenderContext::cr) when needed.
+    /// [`RenderContext::cr`](crate::render::RenderContext::cr) when needed.
     pub fn render_with<N: NodeRenderer<T>>(
         mut self,
         format: impl Into<String>,

@@ -32,7 +32,7 @@ impl NodeRenderer<CodeFence> for CodeFenceRenderer {
         node: NodeRef<'_>,
         fence: &CodeFence,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         let info = unescape_all(&fence.info);
         let lang_name = info
@@ -66,7 +66,7 @@ impl NodeRenderer<CodeFence> for CodeFenceTextRenderer {
         _: NodeRef<'_>,
         fence: &CodeFence,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         context.cr(output);
         output.write_str(&fence.content);

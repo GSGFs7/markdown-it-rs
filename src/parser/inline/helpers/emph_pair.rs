@@ -22,7 +22,9 @@
 //!
 //! ```rust
 //! use markdown_it::parser::inline::helpers::emph_pair;
-//! use markdown_it::{MarkdownIt, NodeId, NodeRef, NodeRenderer, RenderContext, Writer};
+//! use markdown_it::MarkdownIt;
+//! use markdown_it::document::{NodeId, NodeRef};
+//! use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 //! #[derive(Debug)]
 //! struct Superscript;
 //! struct CustomRenderer;
@@ -613,7 +615,7 @@ fn update_pair_sourcemaps(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Preset;
+    use crate::plugins::presets::Preset;
 
     #[test]
     fn literal_closers_stay_text_before_later_emphasis() {
@@ -886,13 +888,13 @@ mod tests {
     struct CustomEmphasis;
 
     struct CustomRenderer;
-    impl crate::NodeRenderer<CustomEmphasis> for CustomRenderer {
+    impl crate::render::NodeRenderer<CustomEmphasis> for CustomRenderer {
         fn render(
             &self,
-            node: crate::NodeRef<'_>,
+            node: crate::document::NodeRef<'_>,
             _: &CustomEmphasis,
-            ctx: &mut crate::RenderContext<'_>,
-            out: &mut crate::Writer,
+            ctx: &mut crate::render::RenderContext<'_>,
+            out: &mut crate::render::Writer,
         ) {
             out.write_str("<x>");
             ctx.render_children(node.id(), out);

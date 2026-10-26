@@ -28,7 +28,7 @@ impl NodeRenderer<Linkified> for LinkifiedRenderer {
         node: NodeRef<'_>,
         link: &Linkified,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         render_html_link(node, &link.url, None, context, output);
     }

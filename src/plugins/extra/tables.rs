@@ -38,7 +38,7 @@ impl NodeRenderer<Table> for TableRenderer {
         node: NodeRef<'_>,
         value: &Table,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         let old_context = context.ext().remove::<TableRenderContext>();
         context.ext().insert(TableRenderContext {
@@ -74,7 +74,7 @@ impl NodeRenderer<TableHead> for TableHeadRenderer {
         node: NodeRef<'_>,
         _: &TableHead,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         context
             .ext()
@@ -99,7 +99,7 @@ impl NodeRenderer<TableBody> for TableBodyRenderer {
         node: NodeRef<'_>,
         _: &TableBody,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         render_block_container(node, context, output, "tbody");
     }
@@ -116,7 +116,7 @@ impl NodeRenderer<TableRow> for TableRowRenderer {
         node: NodeRef<'_>,
         _: &TableRow,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         context
             .ext()
@@ -134,7 +134,7 @@ impl NodeRenderer<TableRow> for TableRowTextRenderer {
         node: NodeRef<'_>,
         _: &TableRow,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         context.cr(output);
         for (index, &cell) in node.children().iter().enumerate() {
@@ -158,7 +158,7 @@ impl NodeRenderer<TableCell> for TableCellRenderer {
         node: NodeRef<'_>,
         _: &TableCell,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         let table_context = context.ext().get_or_insert_default::<TableRenderContext>();
         let tag = if table_context.head { "th" } else { "td" };
@@ -187,7 +187,7 @@ impl NodeRenderer<TableCell> for TableCellRenderer {
 fn render_block_container(
     node: NodeRef<'_>,
     context: &mut RenderContext<'_>,
-    output: &mut crate::Writer,
+    output: &mut crate::render::Writer,
     tag: &str,
 ) {
     context.cr(output);

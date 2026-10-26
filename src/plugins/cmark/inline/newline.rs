@@ -20,7 +20,7 @@ impl NodeRenderer<Hardbreak> for HardbreakRenderer {
         _: NodeRef<'_>,
         _: &Hardbreak,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         write_html_self_close(output, "br", &[], context.options().xhtml_out);
         output.write_str("\n");
@@ -38,7 +38,7 @@ impl NodeRenderer<Softbreak> for SoftbreakRenderer {
         _: NodeRef<'_>,
         _: &Softbreak,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         if context.options().breaks {
             write_html_self_close(output, "br", &[], context.options().xhtml_out);
@@ -102,7 +102,8 @@ impl InlineRule for NewlineScanner {
 
 #[cfg(test)]
 mod test {
-    use crate::*;
+    use crate::render::RenderOptions;
+    use crate::{MarkdownIt, plugins};
 
     fn parser() -> MarkdownIt {
         let mut md = MarkdownIt::empty();

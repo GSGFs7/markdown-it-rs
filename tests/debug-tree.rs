@@ -1,6 +1,8 @@
+use markdown_it::MarkdownIt;
 #[cfg(feature = "sourcemap")]
 use markdown_it::common::sourcemap::SourcePos;
-use markdown_it::{Document, MarkdownIt, NodeDraft, Preset, Root};
+use markdown_it::document::{Document, NodeDraft, Root};
+use markdown_it::plugins::presets::Preset;
 
 #[derive(Debug)]
 struct CustomContainer;

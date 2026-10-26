@@ -1,7 +1,9 @@
 use super::Html;
 use super::html::render_html_fragment;
 use super::spec::{PluginInstaller, RegistrationContext};
-use crate::{MarkdownIt, NodeRef, NodeRenderer, NodeValue, RenderContext, Writer};
+use crate::MarkdownIt;
+use crate::document::{NodeRef, NodeValue};
+use crate::render::{NodeRenderer, RenderContext, Writer};
 
 /// Builder state indicating that at least one output renderer is configured.
 pub struct WithRenderer;

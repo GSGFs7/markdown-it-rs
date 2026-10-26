@@ -140,10 +140,11 @@ mod markdown_it_rs_extras {
 
     #[test]
     fn test_node_ext_propagation() {
-        use markdown_it::parser::block::BlockRule;
+        use markdown_it::MarkdownIt;
+        use markdown_it::document::{NodeId, Text};
+        use markdown_it::parser::block::{BlockRule, BlockState};
         use markdown_it::parser::core::{CoreRule, CoreState};
-        use markdown_it::parser::inline::InlineRule;
-        use markdown_it::{BlockState, InlineState, MarkdownIt, NodeId, Text};
+        use markdown_it::parser::inline::{InlineRule, InlineState};
 
         #[derive(Debug, Default)]
         struct NodeErrors(Vec<&'static str>);
@@ -205,7 +206,7 @@ mod markdown_it_rs_extras {
         let mut collected: Vec<&str> = vec![];
 
         for event in ast.events(ast.root()) {
-            if matches!(event, markdown_it::StructuralEvent::Exit(_)) {
+            if matches!(event, markdown_it::document::StructuralEvent::Exit(_)) {
                 continue;
             }
             let node = event.node();

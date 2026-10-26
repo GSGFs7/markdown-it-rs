@@ -19,7 +19,9 @@ fn run(input: &str, output: &str) {
 
 #[test]
 fn short_delimiter_failures_do_not_hide_longer_strikethrough_matches() {
-    let mut md = markdown_it::MarkdownIt::with_preset(markdown_it::Preset::MarkdownItDefault);
+    let mut md = markdown_it::MarkdownIt::with_preset(
+        markdown_it::plugins::presets::Preset::MarkdownItDefault,
+    );
     md.max_nesting = 3;
     for (source, expected) in [
         ("-~~~~;~\n文~~~~\n", "<p>-<s><s>;~\n文</s></s></p>\n"),
@@ -50,7 +52,9 @@ fn strikethrough_does_not_apply_the_emphasis_rule_of_three() {
 
 #[test]
 fn partially_matched_strikethrough_keeps_source_offsets() {
-    let md = markdown_it::MarkdownIt::with_preset(markdown_it::Preset::MarkdownItDefault);
+    let md = markdown_it::MarkdownIt::with_preset(
+        markdown_it::plugins::presets::Preset::MarkdownItDefault,
+    );
     let source = "雪 -~~~~;~~ 尾";
     let document = md.parse(source);
     let strike = document
@@ -69,7 +73,10 @@ fn partially_matched_strikethrough_keeps_source_offsets() {
         (content_start - 2, content_start + 3)
     );
     let text = document.node(strike.children()[0]);
-    assert_eq!(text.cast::<markdown_it::Text>().unwrap().content, ";");
+    assert_eq!(
+        text.cast::<markdown_it::document::Text>().unwrap().content,
+        ";"
+    );
     #[cfg(feature = "sourcemap")]
     assert_eq!(
         text.srcmap().unwrap().get_byte_offsets(),

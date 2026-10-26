@@ -1,12 +1,7 @@
-use markdown_it::{
-    MarkdownIt,
-    NodeRef,
-    NodeRenderer,
-    NodeValue,
-    PluginSpec,
-    RenderContext,
-    Writer,
-};
+use markdown_it::MarkdownIt;
+use markdown_it::document::{NodeRef, NodeValue};
+use markdown_it::plugin::PluginSpec;
+use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 
 #[derive(Debug)]
 struct Label(String);

@@ -13,7 +13,9 @@
 //!
 //! ```rust
 //! use markdown_it::parser::inline::helpers::code_pair;
-//! use markdown_it::{MarkdownIt, NodeId, NodeRef, NodeRenderer, RenderContext, Writer};
+//! use markdown_it::MarkdownIt;
+//! use markdown_it::document::{NodeId, NodeRef};
+//! use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 //! #[derive(Debug)]
 //! struct Ferris;
 //! struct CustomRenderer;

@@ -1,4 +1,5 @@
-use markdown_it::{MarkdownIt, Preset};
+use markdown_it::MarkdownIt;
+use markdown_it::plugins::presets::Preset;
 
 fn render(preset: Preset, source: &str) -> String {
     let md = MarkdownIt::with_preset(preset);

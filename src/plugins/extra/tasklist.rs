@@ -194,13 +194,13 @@ fn merged_class(attrs: &HtmlAttributes, class: &str) -> String {
 
 // render a checkbox `<input type="checkbox" ... />`
 struct TaskListMarkerRenderer;
-impl crate::NodeRenderer<TaskListMarker> for TaskListMarkerRenderer {
+impl crate::render::NodeRenderer<TaskListMarker> for TaskListMarkerRenderer {
     fn render(
         &self,
-        _: crate::NodeRef<'_>,
+        _: crate::document::NodeRef<'_>,
         marker: &TaskListMarker,
-        context: &mut crate::RenderContext<'_>,
-        output: &mut crate::Writer,
+        context: &mut crate::render::RenderContext<'_>,
+        output: &mut crate::render::Writer,
     ) {
         let mut attrs = vec![
             ("class".into(), "task-list-item-checkbox".into()),

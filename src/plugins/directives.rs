@@ -68,22 +68,24 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
+use crate::MarkdownIt;
 use crate::common::extset::{NodeExtSet, RenderExtSet};
 #[cfg(feature = "sourcemap")]
 use crate::common::sourcemap::SourcePos;
-use crate::document::{HtmlAttribute, NodeId, NodeRef};
+use crate::document::{Document, HtmlAttribute, NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{
     NodeRenderer,
     RenderContext,
+    RenderOptions,
     TransparentRenderer,
+    Writer,
     write_html_close,
     write_html_open,
     write_html_self_close,
     write_html_text,
 };
-use crate::{Document, MarkdownIt, NodeValue, RenderOptions, Writer};
 
 // --- render ---
 

@@ -1,10 +1,12 @@
+use markdown_it::MarkdownIt;
+use markdown_it::document::edit::EditBatch;
+use markdown_it::document::{Root, StructuralEvent, Text};
 use markdown_it::parser::block::BlockParserRule;
 use markdown_it::parser::core::{CoreRule, CoreState};
 use markdown_it::parser::inline::InlineParserRule;
 #[cfg(feature = "sourcemap")]
 use markdown_it::plugins::sourcepos;
 use markdown_it::plugins::{cmark, extra};
-use markdown_it::{EditBatch, MarkdownIt, Root, StructuralEvent, Text};
 
 #[derive(Default)]
 struct Observe<const POSITION: u8>;

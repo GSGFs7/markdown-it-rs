@@ -55,14 +55,14 @@ use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet
 use syntect::util::LinesWithEndings;
 use two_face::theme::LazyThemeSet;
 
+use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
 use crate::document::edit::EditBatch;
 use crate::document::{NodeRef, StructuralEvent};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::plugins::cmark::block::code::CodeBlock;
 use crate::plugins::cmark::block::fence::CodeFence;
-use crate::render::{NodeRenderer, RenderContext, write_html_close, write_html_open};
-use crate::{MarkdownIt, Writer};
+use crate::render::{NodeRenderer, RenderContext, Writer, write_html_close, write_html_open};
 
 // lazy load themes. it wast a lot of performance
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(two_face::syntax::extra_newlines);
@@ -582,7 +582,8 @@ fn push_scope_classes(html: &mut String, scope: Scope, prefix: &'static str) {
 
 #[cfg(test)]
 mod test {
-    use crate::*;
+    use crate::render::RenderOptions;
+    use crate::{MarkdownIt, plugins};
 
     fn parser() -> MarkdownIt {
         let mut md = MarkdownIt::empty();

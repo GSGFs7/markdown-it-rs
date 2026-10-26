@@ -1,8 +1,7 @@
 use super::*;
-use crate::Text;
 #[cfg(feature = "sourcemap")]
 use crate::common::sourcemap::SourcePos;
-use crate::document::Root;
+use crate::document::{Root, Text};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 
 fn document(texts: &[&str]) -> Document {

@@ -28,7 +28,7 @@ impl NodeRenderer<SetextHeader> for SetextHeaderRenderer {
         node: NodeRef<'_>,
         heading: &SetextHeader,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         static TAG: [&str; 2] = ["h1", "h2"];
         debug_assert!((1..=2).contains(&heading.level));

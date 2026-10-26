@@ -3,20 +3,11 @@ use std::hint::black_box;
 use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use markdown_it::parser::inline::InlineRule;
-use markdown_it::{
-    Html,
-    InlinePlugin,
-    InlinePluginState,
-    InlineState,
-    MarkdownIt,
-    NodeId,
-    NodeRef,
-    NodeRenderer,
-    PluginSpec,
-    RenderContext,
-    Writer,
-};
+use markdown_it::document::{NodeId, NodeRef};
+use markdown_it::parser::inline::{InlineRule, InlineState};
+use markdown_it::plugin::{Html, InlinePlugin, InlinePluginState, PluginSpec};
+use markdown_it::render::{NodeRenderer, RenderContext, Writer};
+use markdown_it::MarkdownIt;
 
 #[derive(Debug)]
 struct Emoji;

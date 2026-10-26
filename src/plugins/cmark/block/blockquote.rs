@@ -27,7 +27,7 @@ impl NodeRenderer<Blockquote> for BlockquoteRenderer {
         node: NodeRef<'_>,
         _: &Blockquote,
         context: &mut RenderContext<'_>,
-        output: &mut crate::Writer,
+        output: &mut crate::render::Writer,
     ) {
         context.cr(output);
         write_html_open(output, "blockquote", node.attrs());
@@ -251,7 +251,10 @@ impl BlockRule for BlockquoteScanner {
 mod tests {
     #[test]
     fn lists_terminate_blockquotes_without_paragraph_interrupt_restrictions() {
-        for preset in [crate::Preset::MarkdownItDefault, crate::Preset::CommonMark] {
+        for preset in [
+            crate::plugins::presets::Preset::MarkdownItDefault,
+            crate::plugins::presets::Preset::CommonMark,
+        ] {
             let mut md = crate::MarkdownIt::with_preset(preset);
             for limit in [3, 100] {
                 md.max_nesting = limit;
@@ -281,7 +284,10 @@ mod tests {
 
     #[test]
     fn tabs_after_nested_container_markers_use_correct_stop() {
-        for preset in [crate::Preset::MarkdownItDefault, crate::Preset::CommonMark] {
+        for preset in [
+            crate::plugins::presets::Preset::MarkdownItDefault,
+            crate::plugins::presets::Preset::CommonMark,
+        ] {
             let md = crate::MarkdownIt::with_preset(preset);
 
             // Nested containers shift the tab stop, so this tab is only two
@@ -313,7 +319,10 @@ mod tests {
 
     #[test]
     fn empty_blockquotes_have_no_inner_newline() {
-        for preset in [crate::Preset::MarkdownItDefault, crate::Preset::CommonMark] {
+        for preset in [
+            crate::plugins::presets::Preset::MarkdownItDefault,
+            crate::plugins::presets::Preset::CommonMark,
+        ] {
             let mut md = crate::MarkdownIt::with_preset(preset);
             for xhtml_out in [false, true] {
                 md.render_options.xhtml_out = xhtml_out;

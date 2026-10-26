@@ -1,10 +1,10 @@
-use markdown_it::{
+use markdown_it::MarkdownIt;
+use markdown_it::document::NodeValue;
+use markdown_it::plugin::{
     Html,
     InlinePlugin,
     InlinePluginState,
-    MarkdownIt,
     MarkdownItBuilder,
-    NodeValue,
     Plugin,
     PluginSpec,
 };
@@ -57,13 +57,13 @@ fn inline_pair_and_later_low_level_registration_share_the_scanner() {
     struct Two;
 
     struct OneRenderer;
-    impl markdown_it::NodeRenderer<One> for OneRenderer {
+    impl markdown_it::render::NodeRenderer<One> for OneRenderer {
         fn render(
             &self,
-            node: markdown_it::NodeRef<'_>,
+            node: markdown_it::document::NodeRef<'_>,
             _: &One,
-            context: &mut markdown_it::RenderContext<'_>,
-            output: &mut markdown_it::Writer,
+            context: &mut markdown_it::render::RenderContext<'_>,
+            output: &mut markdown_it::render::Writer,
         ) {
             output.write_str("<i>");
             context.render_children(node.id(), output);
@@ -423,7 +423,8 @@ fn removing_builtin_preserves_dynamic_marker_even_after_scanner_compilation() {
 
 #[test]
 fn explicit_renderer_after_install_overrides_all_payload_nodes() {
-    use markdown_it::{NodeRef, NodeRenderer, RenderContext, Writer};
+    use markdown_it::document::NodeRef;
+    use markdown_it::render::{NodeRenderer, RenderContext, Writer};
     struct Custom;
     impl NodeRenderer<Tag> for Custom {
         fn render(
@@ -518,8 +519,8 @@ fn low_level_dependency_errors_are_found_during_build() {
     impl InlineRule for Never {
         const MARKER: char = '~';
         fn run(
-            _: &mut markdown_it::InlineState<'_>,
-        ) -> Option<(Option<markdown_it::NodeId>, usize)> {
+            _: &mut markdown_it::parser::inline::InlineState<'_>,
+        ) -> Option<(Option<markdown_it::document::NodeId>, usize)> {
             None
         }
     }
@@ -607,7 +608,7 @@ static_tag!(C, "c", '@', "C");
 
 #[test]
 fn static_leaves_use_low_level_identity_and_keep_their_renderers() {
-    use markdown_it::LeafRule;
+    use markdown_it::plugin::LeafRule;
 
     let plugin = PluginSpec::new("static").with(A).with(B);
     let mut md = MarkdownIt::builder()
@@ -637,7 +638,7 @@ fn static_dependencies_order_the_low_level_rules() {
 
 #[test]
 fn static_wildcard_invalidates_warmed_scanners_and_can_be_removed() {
-    use markdown_it::LeafRule;
+    use markdown_it::plugin::LeafRule;
     for unicode in [false, true] {
         let mut md = MarkdownIt::new();
         if unicode {
@@ -675,7 +676,8 @@ fn duplicate_static_leaves_are_rejected_before_installation() {
 
 #[test]
 fn static_renderer_can_be_overridden_after_installation() {
-    use markdown_it::{NodeRef, NodeRenderer, RenderContext, Writer};
+    use markdown_it::document::NodeRef;
+    use markdown_it::render::{NodeRenderer, RenderContext, Writer};
     struct Custom;
     impl NodeRenderer<A> for Custom {
         fn render(&self, _: NodeRef<'_>, _: &A, _: &mut RenderContext<'_>, output: &mut Writer) {
@@ -713,7 +715,7 @@ fn static_leaf_rejects_success_without_consumption() {
 
 #[test]
 fn static_leaves_can_be_registered_with_only_low_level_apis() {
-    use markdown_it::{LeafRenderer, LeafRule};
+    use markdown_it::plugin::{LeafRenderer, LeafRule};
 
     let mut md = MarkdownIt::new();
     md.inline

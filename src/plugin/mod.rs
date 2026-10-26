@@ -8,7 +8,7 @@
 //! Configured syntax is added to a [`PluginSpec`] with
 //! [`PluginSpec::inline_leaf`], [`PluginSpec::block_leaf`] or
 //! [`PluginSpec::inline_pair`]. All three builders accept low-level
-//! [`NodeRenderer`](crate::NodeRenderer) implementations with
+//! [`NodeRenderer`](crate::render::NodeRenderer) implementations with
 //! `.render_with(format, renderer)`.
 //!
 //! A payload type has one renderer per output format per parser. Register a
@@ -19,7 +19,8 @@
 //! Static leaf:
 //!
 //! ```
-//! use markdown_it::{Html, InlinePlugin, InlinePluginState, MarkdownIt};
+//! use markdown_it::plugin::{Html, InlinePlugin, InlinePluginState};
+//! use markdown_it::MarkdownIt;
 //!
 //! #[derive(Debug)]
 //! struct Emoji;
@@ -44,7 +45,8 @@
 //! Configured leaf:
 //!
 //! ```
-//! use markdown_it::{Html, MarkdownIt, PluginSpec};
+//! use markdown_it::plugin::{Html, PluginSpec};
+//! use markdown_it::MarkdownIt;
 //!
 //! #[derive(Debug)]
 //! struct Badge(&'static str);

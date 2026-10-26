@@ -1,10 +1,12 @@
+use markdown_it::MarkdownIt;
 #[cfg(feature = "sourcemap")]
-use markdown_it::Root;
+use markdown_it::document::Root;
+use markdown_it::document::edit::EditBatch;
+use markdown_it::document::{Document, NodeDraft, StructuralEvent, Text};
 use markdown_it::parser::core::{CoreRule, CoreState};
 #[cfg(feature = "sourcemap")]
 use markdown_it::plugins::sourcepos;
 use markdown_it::plugins::{cmark, extra};
-use markdown_it::{Document, EditBatch, MarkdownIt, NodeDraft, StructuralEvent, Text};
 
 #[test]
 fn typographer_precedes_custom_smartquotes_in_reverse_registration_order() {

@@ -26,7 +26,7 @@ use crate::render::EmptyRenderer;
 ///
 /// ```rust
 /// use markdown_it::parser::block::BlockParserRule;
-/// use markdown_it::Root;
+/// use markdown_it::document::Root;
 /// use markdown_it::parser::core::{CoreRule, CoreState};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap, CustomReferenceMap};
 /// use markdown_it::{MarkdownIt};
@@ -75,7 +75,7 @@ use crate::render::EmptyRenderer;
 /// You can also view all references that user created by adding the following rule:
 ///
 /// ```rust
-/// use markdown_it::Root;
+/// use markdown_it::document::Root;
 /// use markdown_it::parser::core::{CoreRule, CoreState};
 /// use markdown_it::plugins::cmark::block::reference::{ReferenceMap, DefaultReferenceMap};
 /// use markdown_it::{MarkdownIt};

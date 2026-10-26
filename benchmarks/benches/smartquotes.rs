@@ -1,20 +1,21 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use markdown_it::document::{Document, NodeDraft};
 use markdown_it::parser::core::{CoreRule, CoreState};
 use markdown_it::plugins::extra::smartquotes::ClassicSmartQuotesRule;
-use markdown_it::{Document, MarkdownIt, NodeDraft};
+use markdown_it::MarkdownIt;
 
 fn synthetic(count: usize, split: bool) -> Document {
-    let mut root = NodeDraft::new(markdown_it::Root::new(String::new()));
+    let mut root = NodeDraft::new(markdown_it::document::Root::new(String::new()));
     if split {
         for _ in 0..count {
-            root.push_child(NodeDraft::new(markdown_it::Text {
+            root.push_child(NodeDraft::new(markdown_it::document::Text {
                 content: "\"word\" ".into(),
             }));
         }
     } else {
-        root.push_child(NodeDraft::new(markdown_it::Text {
+        root.push_child(NodeDraft::new(markdown_it::document::Text {
             content: "\"word\" ".repeat(count),
         }));
     }

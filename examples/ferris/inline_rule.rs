@@ -1,7 +1,9 @@
 // Replaces `(\/)` with `🦀`.
 
-use markdown_it::parser::inline::InlineRule;
-use markdown_it::{InlineState, MarkdownIt, NodeId, NodeRef, NodeRenderer, RenderContext, Writer};
+use markdown_it::MarkdownIt;
+use markdown_it::document::{NodeId, NodeRef};
+use markdown_it::parser::inline::{InlineRule, InlineState};
+use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 
 const CRAB_CLAW: &str = r#"(\/)"#;
 

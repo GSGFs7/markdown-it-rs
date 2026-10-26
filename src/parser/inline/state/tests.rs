@@ -168,7 +168,7 @@ fn check_parent_snapshot(state: &InlineState<'_>) -> CheckParentSnapshot {
 
 #[test]
 fn finishing_nodes_preserves_source_and_byte_mapping() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -220,7 +220,7 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
 
 #[test]
 fn finish_callbacks_see_flushed_nodes_in_registration_order() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -269,7 +269,7 @@ fn finish_callbacks_are_local_to_sessions_and_skipped_by_boundary_scans() {
             .get_or_insert_default::<Vec<u32>>()
             .push(depth);
     }
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -299,7 +299,7 @@ fn finish_callbacks_are_local_to_sessions_and_skipped_by_boundary_scans() {
 
 #[test]
 fn source_extensions_are_shared_by_children_but_isolated_between_inputs() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -320,7 +320,7 @@ fn source_extensions_are_shared_by_children_but_isolated_between_inputs() {
 
 #[test]
 fn top_level_plain_text_finishes_without_temporary_markers() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -348,7 +348,7 @@ fn top_level_plain_text_finishes_without_temporary_markers() {
 
 #[test]
 fn subrange_preserves_parent_whitespace_and_multiline_mapping() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -394,7 +394,7 @@ fn subrange_preserves_parent_whitespace_and_multiline_mapping() {
 
 #[test]
 fn subrange_validates_ranges_and_empty_output() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -414,7 +414,7 @@ fn subrange_validates_ranges_and_empty_output() {
 
 #[test]
 fn subrange_at_nesting_limit_emits_literal_text() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     md.max_nesting = 1;
     let ruleset = RuleSet {
@@ -436,7 +436,7 @@ fn subrange_at_nesting_limit_emits_literal_text() {
 
 #[test]
 fn normal_parse_does_not_call_check() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     fn emit(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let content = state.remaining().to_owned();
         Some((
@@ -463,7 +463,7 @@ fn normal_parse_does_not_call_check() {
 
 #[test]
 fn run_dispatch_skips_non_matching_markers() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     fn panic_run_with(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         panic!(
             "rule for another marker must not run on {:?}",
@@ -506,7 +506,7 @@ fn run_dispatch_skips_non_matching_markers() {
 
 #[test]
 fn run_dispatch_matches_unicode_marker() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     fn consume_snow(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         assert!(state.remaining().starts_with('雪'));
         Some((
@@ -564,7 +564,7 @@ fn run_dispatch_matches_unicode_marker() {
 
 #[test]
 fn run_dispatch_preserves_wildcard_order() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     fn consume_x(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         if !state.remaining().starts_with('x') {
             return None;
@@ -627,7 +627,7 @@ fn run_dispatch_preserves_wildcard_order() {
 
 #[test]
 fn check_advances_pending_text_between_tokens() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     fn check_sequence(context: &mut InlineState<'_>) -> Option<usize> {
         let remaining = context.remaining();
         if remaining.starts_with('a') {
@@ -663,7 +663,7 @@ fn check_advances_pending_text_between_tokens() {
 
 #[test]
 fn check_stops_at_nesting_limit() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     md.max_nesting = 1;
     let ruleset = RuleSet {
@@ -680,7 +680,7 @@ fn check_stops_at_nesting_limit() {
 
 #[test]
 fn nesting_limit_decision_is_shared_with_shallower_scans() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     md.max_nesting = 1;
     let ruleset = RuleSet {
@@ -703,7 +703,7 @@ fn nesting_limit_decision_is_shared_with_shallower_scans() {
 
 #[test]
 fn nesting_limit_decisions_are_isolated_by_range_end() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     md.max_nesting = 1;
     let ruleset = RuleSet {
@@ -725,7 +725,7 @@ fn nesting_limit_decisions_are_isolated_by_range_end() {
 
 #[test]
 fn check_no_match_falls_through_to_lower_priority_rules() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -754,7 +754,7 @@ fn check_no_match_falls_through_to_lower_priority_rules() {
 
 #[test]
 fn check_dispatch_skips_non_matching_markers() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -776,7 +776,7 @@ fn check_dispatch_skips_non_matching_markers() {
 #[test]
 #[should_panic(expected = "inline rule 0 reported invalid check length 0")]
 fn check_rejects_zero_length() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -791,7 +791,7 @@ fn check_rejects_zero_length() {
 #[test]
 #[should_panic(expected = "inline rule 0 reported invalid check length 2")]
 fn check_rejects_out_of_bounds_length() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -806,7 +806,7 @@ fn check_rejects_out_of_bounds_length() {
 #[test]
 #[should_panic(expected = "inline rule 0 reported invalid check length 1")]
 fn check_rejects_non_utf8_length() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -819,7 +819,7 @@ fn check_rejects_non_utf8_length() {
 
 #[test]
 fn child_state_validates_ranges_and_empty_output() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -845,7 +845,7 @@ fn child_state_validates_ranges_and_empty_output() {
 
 #[test]
 fn child_state_keeps_parent_state() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -874,7 +874,7 @@ fn child_state_keeps_parent_state() {
 
 #[test]
 fn check_matches_and_no_matches_keep_scratch_and_effects_private() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     fn check(context: &mut InlineState<'_>) -> Option<usize> {
         assert_eq!(context.root_ext.unwrap().get::<u16>(), Some(&73));
         context
@@ -962,7 +962,7 @@ fn check_matches_and_no_matches_keep_scratch_and_effects_private() {
 
 #[test]
 fn recursive_check_validates_ranges_and_empty_suffixes() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -1008,7 +1008,7 @@ fn recursive_check_validates_ranges_and_empty_suffixes() {
 
 #[test]
 fn recursive_check_depth_limit_is_exact() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     md.max_nesting = 3;
     let ruleset = RuleSet {
@@ -1037,7 +1037,7 @@ fn recursive_check_depth_limit_is_exact() {
 
 #[test]
 fn recursive_check_relative_ranges_keep_child_state_isolated() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -1065,7 +1065,7 @@ fn recursive_check_relative_ranges_keep_child_state_isolated() {
 
 #[test]
 fn recursive_check_inherits_current_link_level_and_isolates_effects() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
     let ruleset = md.inline.rules();
@@ -1088,7 +1088,7 @@ fn recursive_check_inherits_current_link_level_and_isolates_effects() {
 
 #[test]
 fn recursive_check_child_scratch_is_private() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     use crate::parser::inline::helpers::code_pair::CodePairScanner;
 
     let mut md = MarkdownIt::empty();
@@ -1114,7 +1114,7 @@ fn recursive_check_child_scratch_is_private() {
 
 #[test]
 fn recursive_check_same_range_terminates_at_depth_limit() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     use std::cell::Cell;
 
     thread_local! {
@@ -1153,7 +1153,7 @@ fn recursive_check_same_range_terminates_at_depth_limit() {
 
 #[test]
 fn recursive_check_long_chain_is_linear_and_stack_safe() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{Duration, Instant};
 
@@ -1197,7 +1197,7 @@ fn recursive_check_long_chain_is_linear_and_stack_safe() {
 
 #[test]
 fn check_dispatch_keeps_wildcard_position() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -1221,7 +1221,7 @@ fn check_dispatch_keeps_wildcard_position() {
 
 #[test]
 fn check_html_effects_stay_in_the_session() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::block::paragraph::add(&mut md);
     crate::plugins::html::html_inline::add(&mut md);
@@ -1244,7 +1244,7 @@ fn check_html_effects_stay_in_the_session() {
 
 #[test]
 fn invalid_check_effect_panics_and_preserves_context() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -1351,7 +1351,7 @@ impl LinkFormatter for RecordingFormatter {
 
 #[test]
 fn check_newline_consumes_one_byte_and_resets_pending() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::newline::add(&mut md);
     let ruleset = md.inline.rules();
@@ -1373,7 +1373,7 @@ fn check_newline_consumes_one_byte_and_resets_pending() {
 
 #[test]
 fn check_entity_uses_raw_byte_length() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::entity::add(&mut md);
     let ruleset = md.inline.rules();
@@ -1394,7 +1394,7 @@ fn check_entity_uses_raw_byte_length() {
 
 #[test]
 fn check_unknown_and_truncated_entities_fall_back_to_text() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::entity::add(&mut md);
     let ruleset = md.inline.rules();
@@ -1420,7 +1420,7 @@ fn check_unknown_and_truncated_entities_fall_back_to_text() {
 
 #[test]
 fn check_emphasis_defers_to_later_same_marker_rule() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::emphasis::add(&mut md);
     md.inline.add_rule::<LaterMarkerCheck>();
@@ -1442,7 +1442,7 @@ fn check_emphasis_defers_to_later_same_marker_rule() {
 
 #[test]
 fn check_emphasis_defers_for_unicode_marker() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     fn node(document: &mut Document) -> NodeId {
         document.create_node(Text {
             content: String::new(),
@@ -1461,7 +1461,7 @@ fn check_emphasis_defers_for_unicode_marker() {
 
 #[test]
 fn check_html_comment_cache_is_private_to_each_session() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
     let ruleset = md.inline.rules();
@@ -1492,7 +1492,7 @@ fn check_html_comment_cache_is_private_to_each_session() {
 #[cfg(debug_assertions)]
 #[test]
 fn invalid_check_length_panics_and_preserves_pending() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -1544,7 +1544,7 @@ fn invalid_check_length_panics_and_preserves_pending() {
 
 #[test]
 fn invalid_check_effect_underflow_panics_and_preserves_context() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let md = MarkdownIt::empty();
     let ruleset = RuleSet {
         runs: vec![],
@@ -1571,7 +1571,7 @@ fn invalid_check_effect_underflow_panics_and_preserves_context() {
 
 #[test]
 fn check_html_level_is_read_by_later_rules_and_inherited_from_parent() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
     md.inline.add_rule::<ExpectLinkLevelOne>();
@@ -1593,7 +1593,7 @@ fn check_html_level_is_read_by_later_rules_and_inherited_from_parent() {
 
 #[test]
 fn check_html_lone_closing_tag_keeps_negative_level() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
     let ruleset = md.inline.rules();
@@ -1611,7 +1611,7 @@ fn check_html_lone_closing_tag_keeps_negative_level() {
 
 #[test]
 fn check_autolink_email_normalizes_mailto_before_validate() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let calls = Arc::new(Mutex::new(Vec::new()));
     let mut md = MarkdownIt::empty();
     crate::plugins::cmark::inline::autolink::add(&mut md);
@@ -1650,7 +1650,7 @@ fn check_state_with_level<'a>(
 
 #[test]
 fn child_link_level_override_is_isolated() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     fn emit(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let initial = state.link_level;
         let len = state.remaining().len();
@@ -1722,7 +1722,7 @@ fn child_link_level_override_is_isolated() {
 
 #[test]
 fn child_link_level_override_keeps_range_and_depth_rules() {
-    let mut document = Document::new("", crate::Root::new(""));
+    let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     md.max_nesting = 1;
     let ruleset = RuleSet {
