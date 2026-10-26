@@ -2,7 +2,6 @@
     "type": "module",
     "license": "MIT",
     "private": true,
-    "packageManager": "pnpm@11.3.0",
     "scripts": {
         "build:wasm": "pnpm --dir ../bindings/wasm run build:full",
         "dev": "pnpm run build:wasm && vite",
@@ -14,7 +13,7 @@
         "@gsgfs/markdown-it-rs-wasm": "link:../bindings/wasm"
     },
     "devDependencies": {
-        "vite": "^8.0.0",
-        "vite-plugin-wasm": "^3.5.0"
+        "vite": "^8.3.5",
+        "vite-plugin-wasm": "^3.6.0"
     }
 }

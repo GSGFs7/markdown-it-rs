@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "linkify-it": "6.1.0",
-    "markdown-it": "15.0.2",
+    "markdown-it": "15.0.3",
     "uc.micro": "3.0.0"
   }
 }

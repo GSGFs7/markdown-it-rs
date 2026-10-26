@@ -7,7 +7,7 @@
     "test:tool": "node --test generator.test.mjs"
   },
   "dependencies": {
-    "markdown-it": "15.0.2",
+    "markdown-it": "15.0.3",
     "markdown-it-testgen": "0.1.6"
   }
 }

@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       markdown-it:
-        specifier: 15.0.2
-        version: 15.0.2
+        specifier: 15.0.3
+        version: 15.0.3
       markdown-it-testgen:
         specifier: 0.1.6
         version: 0.1.6
@@ -20,8 +20,8 @@ packages:
   argparse@1.0.10:
     resolution: {integrity: sha512-o5Roy6tNG4SL/FOkCAN6RzjiakZS25RLYFrcMttJqbdd8BWrnA+fGz57iN5Pb06pvBGvl5gQ0B48dJlslXvoTg==}
 
-  argparse@3.0.2:
-    resolution: {integrity: sha512-mFdDM6WqWKraGLsVb+C9CahPnzTXOefAOLq3jYcca2YZ8bEWpr++Tzj+zSaKW9+X9L5uSxcm1AZ3Y6aZJ09OhQ==}
+  argparse@3.0.4:
+    resolution: {integrity: sha512-fwWK3Zq22l4XJJjx5mcBHGikIk+hJqO+32dPm0Jur7+rtG5x1scOjSfdT9ZKeWHPpsya/l0HHK4tDImBkTrtvA==}
 
   assertion-error@1.0.0:
     resolution: {integrity: sha512-g/gZV+G476cnmtYI+Ko9d5khxSoCSoom/EaNmmCfwpOvBXEJ18qwFrxfP1/CsIqk2no1sAKKwxndV0tP7ROOFQ==}
@@ -52,8 +52,8 @@ packages:
   markdown-it-testgen@0.1.6:
     resolution: {integrity: sha512-hYC71G4Mcv3Y7fLTsi4PyoHKSs0P4UgkpzmGBtUYoR/TS83lFbfXUMaI71OiMJ9r4p3fbMhHBwdNTLhSDwmt6Q==}
 
-  markdown-it@15.0.2:
-    resolution: {integrity: sha512-q4IGxMv56jCqT4OCRCADBoDP3LO4MhmTXjFbphHPXs4g3j9Xg5RDnxqN8IF/3vIWEU+VCnUq+7JUg/cfy2E6Qw==}
+  markdown-it@15.0.3:
+    resolution: {integrity: sha512-+Az7Ojz3iRGu8KYMvJ6xVhvrxP3eE+vEtJX75Ow88XBpcQNV/0lGX5ZynIIBftREo4DC2jsveAMDaeltmm8QvQ==}
     hasBin: true
 
   mdurl@2.1.0:
@@ -82,7 +82,7 @@ snapshots:
     dependencies:
       sprintf-js: 1.0.3
 
-  argparse@3.0.2: {}
+  argparse@3.0.4: {}
 
   assertion-error@1.0.0: {}
 
@@ -114,9 +114,9 @@ snapshots:
       js-yaml: 3.15.2
       object-assign: 4.1.1
 
-  markdown-it@15.0.2:
+  markdown-it@15.0.3:
     dependencies:
-      argparse: 3.0.2
+      argparse: 3.0.4
       entities: 8.1.0
       linkify-it: 6.1.0
       mdurl: 2.1.0
