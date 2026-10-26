@@ -524,10 +524,11 @@ fn low_level_dependency_errors_are_found_during_build() {
         }
     }
     assert_panics(|| {
-        MarkdownItBuilder::with_preset(|md: &mut MarkdownIt| {
-            md.inline.add_rule::<Never>().require_named("absent");
-        })
-        .build();
+        MarkdownIt::builder()
+            .preset(|md: &mut MarkdownIt| {
+                md.inline.add_rule::<Never>().require_named("absent");
+            })
+            .build();
     });
 }
 

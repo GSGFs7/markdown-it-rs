@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use crate::MarkdownItBuilder;
 use crate::common::RuleMark;
 use crate::common::extset::MarkdownItExtSet;
 use crate::common::ruler::Ruler;
@@ -70,10 +71,48 @@ impl std::fmt::Debug for MarkdownIt {
 
 impl MarkdownIt {
     /// Create a parser using the markdown-it.js default preset.
+    ///
+    /// Equivalent to [`MarkdownIt::with_preset`]`(`[`Preset::MarkdownItDefault`]`)`
+    /// and [`MarkdownIt::default`].
+    ///
+    /// This preset enables CommonMark syntax plus tables and strikethrough.
+    /// Raw HTML, linkification and typographic replacements are disabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use markdown_it::MarkdownIt;
+    ///
+    /// let md = MarkdownIt::new();
+    ///
+    /// assert_eq!(
+    ///     md.render("**bold** ~~strike~~"),
+    ///     "<p><strong>bold</strong> <s>strike</s></p>\n"
+    /// );
+    /// assert_eq!(
+    ///     md.render("<em>escaped</em>"),
+    ///     "<p>&lt;em&gt;escaped&lt;/em&gt;</p>\n"
+    /// );
+    /// ```
     pub fn new() -> Self {
         Self::with_preset(Preset::MarkdownItDefault)
     }
 
+    /// Create a parser with no Markdown syntax installed.
+    ///
+    /// This still registers the core block and inline parsing rules
+    /// (as infrastructure) and it's `html`, `text` and `debug` renderers.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use markdown_it::{MarkdownIt, plugins::cmark};
+    ///
+    /// let mut md = MarkdownIt::empty();
+    ///
+    /// // no heading rule installed
+    /// assert_eq!(md.render("# heading"), "# heading\n");
+    /// ```
     pub fn empty() -> Self {
         let mut renderers = RendererRegistry::new();
         renderers.add::<Root, _>("html", TransparentRenderer);
@@ -100,6 +139,14 @@ impl MarkdownIt {
         block::add(&mut md);
         inline::add(&mut md);
 
+        md
+    }
+
+    /// Create a parser configured with a preset (e.g. `Preset::CommonMark`)
+    /// or a custom closure `|md| { ... }`.
+    pub fn with_preset(preset: impl PresetConfig) -> Self {
+        let mut md = Self::empty();
+        preset.configure(&mut md);
         md
     }
 
@@ -186,6 +233,7 @@ impl MarkdownIt {
             "core rule type is already registered: {:?}",
             std::any::type_name::<T>()
         );
+
         let item = self
             .ruler
             .add(RuleMark::of::<T>(), CoreRuleRunner::new(rule));
@@ -205,20 +253,23 @@ impl MarkdownIt {
         self.ruler.remove(RuleMark::of::<T>());
     }
 
-    pub(crate) fn validate_rules(&self) {
-        let _ = self.ruler.as_slice();
+    /// Start building a parser with high-level plugins.
+    ///
+    /// Starts from the markdown-it default preset. Use
+    /// [`MarkdownItBuilder::empty`] or [`MarkdownItBuilder::preset`]
+    /// to choose a different base.
+    pub fn builder() -> MarkdownItBuilder {
+        MarkdownItBuilder::new()
     }
 
-    /// Create a parser configured with a preset (e.g. `Preset::CommonMark`)
-    /// or a custom closure `|md| { ... }`.
-    pub fn with_preset(preset: impl PresetConfig) -> Self {
-        let mut md = Self::empty();
-        preset.configure(&mut md);
-        md
+    /// [`crate::plugin::MarkdownItBuilder::build`]
+    pub(crate) fn rules(&self) -> &[CoreRuleRunner] {
+        self.ruler.as_slice()
     }
 }
 
 impl Default for MarkdownIt {
+    /// Same as [`MarkdownIt::new`]
     fn default() -> Self {
         Self::new()
     }

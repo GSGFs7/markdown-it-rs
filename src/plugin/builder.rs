@@ -1,7 +1,7 @@
 use super::spec::install_plugins;
 use super::{Plugin, PluginSpec};
 use crate::MarkdownIt;
-use crate::plugins::presets::{Preset, PresetConfig};
+use crate::plugins::presets::PresetConfig;
 
 /// A parser configured with [`MarkdownIt::builder`].
 #[derive(Debug)]
@@ -19,7 +19,7 @@ impl MarkdownItBuilder {
         }
     }
 
-    /// Start from an empty parser. Equivalent to `with_preset(|_| {})`.
+    /// Start from an empty parser. Equivalent to `.preset(|_: &mut MarkdownIt| {})`.
     pub fn empty() -> Self {
         Self {
             md: MarkdownIt::empty(),
@@ -27,16 +27,8 @@ impl MarkdownItBuilder {
         }
     }
 
-    /// Start from a built-in or custom preset.
-    pub fn with_preset(preset: impl PresetConfig) -> Self {
-        Self {
-            md: MarkdownIt::with_preset(preset),
-            plugins: Vec::new(),
-        }
-    }
-
-    /// Use a built-in preset as the base parser.
-    pub fn preset(mut self, preset: Preset) -> Self {
+    /// Replace the base parser with a built-in or custom preset.
+    pub fn preset(mut self, preset: impl PresetConfig) -> Self {
         self.md = MarkdownIt::with_preset(preset);
         self
     }
@@ -63,7 +55,8 @@ impl MarkdownItBuilder {
             .flat_map(PluginSpec::expand)
             .collect();
         install_plugins(&mut self.md, plugins);
-        self.md.validate_rules();
+
+        let _ = self.md.rules();
         let _ = self.md.block.rules();
         let _ = self.md.inline.rules();
         let _ = self.md.inline.text_length("", 0, 0);
@@ -74,16 +67,5 @@ impl MarkdownItBuilder {
 impl Default for MarkdownItBuilder {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl MarkdownIt {
-    /// Start building a parser with high-level plugins.
-    ///
-    /// Starts from the markdown-it default preset. Use
-    /// [`MarkdownItBuilder::empty`] or [`MarkdownItBuilder::with_preset`]
-    /// to choose a different base.
-    pub fn builder() -> MarkdownItBuilder {
-        MarkdownItBuilder::new()
     }
 }
