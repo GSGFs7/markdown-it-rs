@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       baseline-ref:
-        description: "Baseline commit, tag, or branch (empty: previous commit)"
+        description: "Baseline ref (default: last successful branch run; PR: merge-base)"
         type: string
         default: ""
       rounds:
@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: benchmarks-${{ github.event_name }}-${{ github.ref }}
@@ -43,22 +44,70 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
+      - name: Find previous successful benchmark run
+        id: previous
+        if: ${{ inputs.baseline-ref == '' && github.event_name != 'pull_request' && startsWith(github.ref, 'refs/heads/') }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { data: currentRun } = await github.rest.actions.getWorkflowRun({
+              ...context.repo,
+              run_id: context.runId,
+            });
+            for await (const { data } of github.paginate.iterator(
+              github.rest.actions.listWorkflowRuns,
+              {
+                ...context.repo,
+                workflow_id: currentRun.workflow_id,
+                branch: currentRun.head_branch,
+                status: 'success',
+                per_page: 100,
+              },
+            )) {
+              const previous = data.workflow_runs.find(run =>
+                run.id < context.runId &&
+                ['push', 'schedule', 'workflow_dispatch'].includes(run.event) &&
+                run.head_repository?.full_name === context.payload.repository.full_name
+              );
+              if (previous) {
+                core.setOutput('sha', previous.head_sha);
+                core.setOutput('url', previous.html_url);
+                core.info(`Baseline: ${previous.head_sha} (${previous.html_url})`);
+                return;
+              }
+            }
+            core.notice('No previous successful benchmark run on this branch; using the fallback baseline.');
+
       - name: Resolve comparison commits
         id: refs
         working-directory: current
         env:
           BASELINE_REF: ${{ inputs.baseline-ref }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PREVIOUS_SHA: ${{ steps.previous.outputs.sha }}
+          PREVIOUS_URL: ${{ steps.previous.outputs.url }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           current=$(git rev-parse HEAD)
           if [[ -n "$BASELINE_REF" ]]; then
+            source="Explicit baseline-ref"
             if ! baseline=$(git rev-parse --verify --end-of-options "$BASELINE_REF^{commit}" 2>/dev/null); then
               baseline=$(git rev-parse --verify --end-of-options "refs/remotes/origin/$BASELINE_REF^{commit}")
             fi
           elif [[ -n "$PR_BASE_SHA" ]]; then
             baseline=$(git merge-base "$PR_BASE_SHA" "$current")
+            source="Pull request merge-base"
+          elif [[ -n "$PREVIOUS_SHA" ]]; then
+            baseline=$PREVIOUS_SHA
+            source="Previous successful benchmark run: $PREVIOUS_URL"
+          elif [[ -n "$PUSH_BEFORE_SHA" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+            baseline=$PUSH_BEFORE_SHA
+            source="No successful run found; commit before this push"
+          elif baseline=$(git rev-parse --verify HEAD^ 2>/dev/null); then
+            source="No successful run found; parent commit"
           else
-            baseline=$(git rev-parse HEAD^)
+            baseline=$current
+            source="No previous run or parent commit; initial self-comparison"
           fi
           echo "baseline=$baseline" >> "$GITHUB_OUTPUT"
           echo "current=$current" >> "$GITHUB_OUTPUT"
@@ -66,6 +115,8 @@ jobs:
           {
             printf '# Performance regression report\n\n'
             printf 'Baseline commit: %s\n\nCurrent commit: %s\n\n' "$baseline" "$current"
+            printf 'Baseline source: %s\n\n' "$source"
+            printf 'Both revisions are measured again on this runner using paired rounds.\n\n'
           } > "$REPORT_DIR/summary.md"
           {
             rustup --version
