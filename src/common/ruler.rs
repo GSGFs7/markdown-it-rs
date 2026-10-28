@@ -1,6 +1,7 @@
 //! Plugin manager with dependency resolution.
 
-use std::collections::{HashMap, HashSet};
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
 use std::hash::Hash;
 use std::slice::Iter;
@@ -50,7 +51,7 @@ use std::sync::OnceLock;
 ///
 pub struct Ruler<M, T> {
     deps: Vec<RuleItem<M, T>>,
-    compiled: OnceLock<(Vec<usize>, Vec<T>)>,
+    compiled: OnceLock<Vec<T>>,
 }
 
 impl<M, T> Ruler<M, T> {
@@ -91,69 +92,58 @@ impl<M: Eq + Hash + Clone + Debug, T: Clone> Ruler<M, T> {
 
     /// Borrow the cached ordered payloads without copying the rule table.
     pub(crate) fn as_slice(&self) -> &[T] {
-        &self.compiled.get_or_init(|| self.compile()).1
+        self.compiled.get_or_init(|| self.compile())
     }
 
-    fn compile(&self) -> (Vec<usize>, Vec<T>) {
-        // Topological Sort
+    /// Kahn Topological Sort (earlier joined at the front)
+    ///
+    /// it runs in expected O(E + V log V).
+    fn compile(&self) -> Vec<T> {
+        // Mark (including aliases) -> matching RuleItem indices
+        let mut rules_by_mark = HashMap::<M, Vec<usize>>::new();
 
-        // ID -> [RuleItem index]
-        let mut idhash = HashMap::<M, Vec<usize>>::new();
-
-        // RuleItem index -> [RuleItem index] - dependency graph, None if already inserted
+        // RuleItem index -> its prerequisites (must run before this rule)
         let mut deps_graph = vec![HashSet::new(); self.deps.len()];
 
-        // additional level of indirection that takes into account item priority
-        let mut deps_order = vec![];
-        let mut beforeall_len = 0;
-        let mut afterall_len = 0;
-
-        // compiled result
-        let mut result = vec![];
-        let mut result_idx = vec![];
-
-        // track which rules have been added already
-        let mut deps_inserted = vec![false; self.deps.len()];
-        let mut deps_remaining = self.deps.len();
-
+        // stable partition by priority
+        let mut before_all = Vec::new();
+        let mut normal = Vec::new();
+        let mut after_all = Vec::new();
         for (idx, dep) in self.deps.iter().enumerate() {
             match dep.prio {
-                RuleItemPriority::Normal => {
-                    deps_order.insert(deps_order.len() - afterall_len, idx);
-                }
-                RuleItemPriority::BeforeAll => {
-                    deps_order.insert(beforeall_len, idx);
-                    beforeall_len += 1;
-                }
-                RuleItemPriority::AfterAll => {
-                    deps_order.insert(deps_order.len(), idx);
-                    afterall_len += 1;
-                }
+                RuleItemPriority::BeforeAll => before_all.push(idx),
+                RuleItemPriority::Normal => normal.push(idx),
+                RuleItemPriority::AfterAll => after_all.push(idx),
             }
             for mark in &dep.marks {
-                idhash.entry(mark.clone()).or_default().push(idx);
+                rules_by_mark.entry(mark.clone()).or_default().push(idx);
             }
         }
+        let deps_order: Vec<usize> = before_all
+            .into_iter()
+            .chain(normal)
+            .chain(after_all)
+            .collect();
 
         // build dependency graph, replacing all after's with before's,
         // i.e. B.after(A) -> A.before(B)
         for idx in deps_order.iter().copied() {
-            let dep = self.deps.get(idx).unwrap();
+            let dep = &self.deps[idx];
             for constraint in &dep.cons {
                 match constraint {
                     RuleItemConstraint::Before(v) => {
-                        for depidx in idhash.get(v).into_iter().flatten() {
-                            deps_graph.get_mut(*depidx).unwrap().insert(idx);
+                        for depidx in rules_by_mark.get(v).into_iter().flatten() {
+                            deps_graph[*depidx].insert(idx);
                         }
                     }
                     RuleItemConstraint::After(v) => {
-                        for depidx in idhash.get(v).into_iter().flatten() {
-                            deps_graph.get_mut(idx).unwrap().insert(*depidx);
+                        for depidx in rules_by_mark.get(v).into_iter().flatten() {
+                            deps_graph[idx].insert(*depidx);
                         }
                     }
                     RuleItemConstraint::Require(v) => {
                         assert!(
-                            idhash.contains_key(v),
+                            rules_by_mark.contains_key(v),
                             "missing dependency: {:?} requires {:?}",
                             dep.marks.first().unwrap(),
                             v
@@ -163,96 +153,126 @@ impl<M: Eq + Hash + Clone + Debug, T: Clone> Ruler<M, T> {
             }
         }
 
-        // now go through the deps and push whatever doesn't have any
-        'outer: while deps_remaining > 0 {
-            for idx in deps_order.iter().copied() {
-                let inserted = deps_inserted.get_mut(idx).unwrap();
-                if *inserted {
-                    continue;
-                }
+        let mut indegree = vec![0usize; self.deps.len()];
+        let mut dependents = vec![Vec::new(); self.deps.len()];
+        for (idx, prereqs) in deps_graph.iter().enumerate() {
+            indegree[idx] = prereqs.len();
+            for &prereq in prereqs {
+                dependents[prereq].push(idx);
+            }
+        }
 
-                let dlist = deps_graph.get(idx).unwrap();
-                if dlist.is_empty() {
-                    let dep = self.deps.get(idx).unwrap();
-                    result.push(dep.value.clone());
-                    result_idx.push(idx);
-                    *inserted = true;
-                    deps_remaining -= 1;
-                    for d in deps_graph.iter_mut() {
-                        d.remove(&idx);
-                    }
-                    continue 'outer;
+        let mut position = vec![0usize; self.deps.len()];
+        for (pos, idx) in deps_order.iter().copied().enumerate() {
+            position[idx] = pos;
+        }
+
+        let mut available: BinaryHeap<_> = (0..self.deps.len())
+            .filter(|&idx| indegree[idx] == 0)
+            .map(|idx| Reverse((position[idx], idx)))
+            .collect();
+
+        // compiled result
+        let mut result = Vec::with_capacity(self.deps.len());
+        while let Some(Reverse((_, idx))) = available.pop() {
+            result.push(self.deps[idx].value.clone());
+
+            for &dependent in &dependents[idx] {
+                indegree[dependent] -= 1;
+                if indegree[dependent] == 0 {
+                    // BFS
+                    available.push(Reverse((position[dependent], dependent)));
                 }
             }
+        }
 
+        if result.len() != self.deps.len() {
             #[cfg(debug_assertions)]
-            {
-                // check cycles in dependency graph;
-                // this is very suboptimal, but only used to generate a nice panic message.
-                // in release mode we'll just simply panic
-                for idx in deps_order.iter().copied() {
-                    let mut seen = HashMap::new();
-                    let mut vec = vec![idx];
-                    while let Some(didx) = vec.pop() {
-                        let dlist = deps_graph.get(didx).unwrap();
-                        for x in dlist.iter() {
-                            if seen.contains_key(x) {
-                                continue;
-                            }
-                            vec.push(*x);
-                            seen.insert(*x, didx);
-                            if *x == idx {
-                                let mut backtrack = vec![];
-                                let mut curr = idx;
-                                while !backtrack.contains(&curr) {
-                                    backtrack.push(curr);
-                                    curr = *seen.get(&curr).unwrap();
-                                }
-                                backtrack.push(curr);
-                                let path = backtrack
-                                    .iter()
-                                    .rev()
-                                    .map(|x| {
-                                        format!(
-                                            "{:?}",
-                                            self.deps.get(*x).unwrap().marks.first().unwrap()
-                                        )
-                                    })
-                                    .collect::<Vec<String>>()
-                                    .join(" < ");
-                                panic!("cyclic dependency: {}", path);
-                            }
-                        }
-                    }
-                }
+            if let Some(path) = self.describe_cycle(&deps_order, &deps_graph, &indegree) {
+                panic!("cyclic dependency: {path}");
             }
 
             // if you see this in debug mode, report it as a bug
             panic!("cyclic dependency: (use debug mode for more details)");
         }
 
-        (result_idx, result)
+        result
+    }
+
+    // --- debug ---
+
+    #[cfg(debug_assertions)]
+    fn describe_cycle(
+        &self,
+        deps_order: &[usize],
+        deps_graph: &[HashSet<usize>],
+        indegree: &[usize],
+    ) -> Option<String> {
+        for &start in deps_order {
+            if indegree[start] == 0 {
+                continue;
+            }
+
+            let Some(path) = Self::find_cycle_from(start, deps_graph, indegree) else {
+                continue;
+            };
+
+            return Some(
+                path.iter()
+                    .map(|&idx| format!("{:?}", self.deps[idx].marks.first().unwrap()))
+                    .collect::<Vec<_>>()
+                    .join(" < "),
+            );
+        }
+
+        None
+    }
+
+    #[cfg(debug_assertions)]
+    fn find_cycle_from(
+        start: usize,
+        deps_graph: &[HashSet<usize>],
+        indegree: &[usize],
+    ) -> Option<Vec<usize>> {
+        let mut seen = HashMap::new();
+        let mut stack = vec![start];
+        while let Some(node) = stack.pop() {
+            for &prereq in &deps_graph[node] {
+                if indegree[prereq] == 0 || seen.contains_key(&prereq) {
+                    continue;
+                }
+
+                seen.insert(prereq, node);
+                if prereq == start {
+                    return Some(Self::reconstruct_cycle(start, &seen));
+                }
+
+                stack.push(prereq);
+            }
+        }
+
+        None
+    }
+
+    #[cfg(debug_assertions)]
+    fn reconstruct_cycle(start: usize, seen: &HashMap<usize, usize>) -> Vec<usize> {
+        let mut path = Vec::new();
+        let mut current = start;
+        while !path.contains(&current) {
+            path.push(current);
+            current = seen[&current];
+        }
+        path.push(current);
+        path.reverse();
+        path
     }
 }
 
-impl<M: Eq + Hash + Clone + Debug, T: Clone> Debug for Ruler<M, T> {
+impl<M: Debug, T> Debug for Ruler<M, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let vec: Vec<(usize, M)> = self
-            .compiled
-            .get_or_init(|| self.compile())
-            .0
-            .iter()
-            .map(|idx| {
-                (
-                    *idx,
-                    self.deps.get(*idx).unwrap().marks.first().unwrap().clone(),
-                )
-            })
-            .collect();
-
         f.debug_struct("Ruler")
             .field("deps", &self.deps)
-            .field("compiled", &vec)
+            .field("compiled", &self.compiled.get().is_some())
             .finish()
     }
 }
@@ -274,27 +294,6 @@ pub struct RuleItem<M, T> {
     value: T,
     prio: RuleItemPriority,
     cons: Vec<RuleItemConstraint<M>>,
-}
-
-impl<M: std::fmt::Debug, T> Debug for RuleItem<M, T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RuleItem")
-            .field("marks", &self.marks)
-            .field("prio", &self.prio)
-            .field("cons", &self.cons)
-            .finish()
-    }
-}
-
-impl<M, T> RuleItem<M, T> {
-    fn new(mark: M, value: T) -> Self {
-        Self {
-            marks: vec![mark],
-            value,
-            prio: RuleItemPriority::Normal,
-            cons: vec![],
-        }
-    }
 }
 
 impl<M: Clone, T> RuleItem<M, T> {
@@ -376,6 +375,27 @@ impl<M: Clone, T> RuleItem<M, T> {
     }
 }
 
+impl<M: std::fmt::Debug, T> Debug for RuleItem<M, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RuleItem")
+            .field("marks", &self.marks)
+            .field("prio", &self.prio)
+            .field("cons", &self.cons)
+            .finish()
+    }
+}
+
+impl<M, T> RuleItem<M, T> {
+    fn new(mark: M, value: T) -> Self {
+        Self {
+            marks: vec![mark],
+            value,
+            prio: RuleItemPriority::Normal,
+            cons: vec![],
+        }
+    }
+}
+
 #[derive(Debug)]
 enum RuleItemConstraint<M> {
     Before(M),
@@ -428,6 +448,79 @@ mod tests {
         r.add("B", ()).require("A");
         r.add("C", ()).require("Z");
         r.compile();
+    }
+
+    #[test]
+    fn newly_available_before_all_rule_precedes_waiting_normal_rule() {
+        let mut r = Ruler::new();
+        r.add("prerequisite", "prerequisite");
+        r.add("waiting", "waiting");
+        r.add("unlocked", "unlocked")
+            .after("prerequisite")
+            .before_all();
+
+        assert_eq!(
+            r.iter().copied().collect::<Vec<_>>(),
+            vec!["prerequisite", "unlocked", "waiting"]
+        );
+    }
+
+    #[test]
+    fn newly_available_rule_precedes_later_registered_waiting_rule() {
+        let mut r = Ruler::new();
+        r.add("unlocked", "unlocked").after("prerequisite");
+        r.add("prerequisite", "prerequisite");
+        r.add("waiting", "waiting");
+
+        assert_eq!(
+            r.iter().copied().collect::<Vec<_>>(),
+            vec!["prerequisite", "unlocked", "waiting"]
+        );
+    }
+
+    #[test]
+    fn priority_groups_preserve_registration_order() {
+        let mut r = Ruler::new();
+        r.add("after1", "after1").after_all();
+        r.add("normal1", "normal1");
+        r.add("before1", "before1").before_all();
+        r.add("after2", "after2").after_all();
+        r.add("normal2", "normal2");
+        r.add("before2", "before2").before_all();
+
+        assert_eq!(
+            r.iter().copied().collect::<Vec<_>>(),
+            vec![
+                "before1", "before2", "normal1", "normal2", "after1", "after2"
+            ]
+        );
+    }
+
+    #[test]
+    fn before_and_after_shared_alias_apply_to_every_member() {
+        let mut r = Ruler::new();
+        r.add("end", "end").after("group");
+        r.add("member1", "member1").alias("group");
+        r.add("member2", "member2").alias("group");
+        r.add("start", "start").before("group");
+
+        assert_eq!(
+            r.iter().copied().collect::<Vec<_>>(),
+            vec!["start", "member1", "member2", "end"]
+        );
+    }
+
+    #[test]
+    fn overlapping_constraints_and_repeated_aliases_count_as_one_edge() {
+        let mut r = Ruler::new();
+        r.add("A", "A").after("B").after("B").after("group");
+        r.add("B", "B")
+            .alias("group")
+            .alias("group")
+            .before("A")
+            .before("A");
+
+        assert_eq!(r.iter().copied().collect::<Vec<_>>(), vec!["B", "A"]);
     }
 
     #[test]
