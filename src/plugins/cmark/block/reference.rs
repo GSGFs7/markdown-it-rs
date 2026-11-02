@@ -391,9 +391,8 @@ fn scan_reference(state: &mut BlockState<'_>) -> Option<(Definition, usize)> {
     // [label]:   destination   'title'
     //                          ^^^^^^^ parse this
     let mut title = None;
-    if let Some(res) = parse_reference_title(state, &mut next_line, &mut str, pos) {
-        // markdown-it also accepts adjacent multiline titles.
-        if pos != start || res.lines > 0 {
+    if pos != start {
+        if let Some(res) = parse_reference_title(state, &mut next_line, &mut str, pos) {
             title = Some(res.str);
             pos = res.pos;
         } else {

@@ -1,4 +1,6 @@
 const regressions = [
+  // Adjacent multiline reference titles remain paragraph text in containers.
+  '> [foo]: <bar>"a\n> b"\n>  \t\n> \nar\n',
   // Valid table headers take precedence over opening code fences.
   ...['```', '~~~'].map((marker) => `${marker}|b|\n|---|---|\n|x|y|`),
   '![</a>\n    \n</a> [</a>](\u0000 "\n")](```\n[\t][id]\n\n[id]: /url "\t"\n```|c*!文; b |\n| --- | --- |\n| &amp;&#10; | x |)',

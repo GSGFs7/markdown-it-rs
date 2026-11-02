@@ -2,17 +2,17 @@ use markdown_it::MarkdownIt;
 use markdown_it::plugins::presets::Preset;
 
 #[test]
-fn adjacent_multiline_title_matches_markdown_it() {
+fn reference_title_requires_whitespace_after_destination() {
     let mut md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
     md.render_options.breaks = true;
     md.render_options.xhtml_out = true;
     assert_eq!(
-        md.render("[foo]: <bar>(\naz)\n\n[foo]\no]\n"),
+        md.render("[foo]: <bar> (\naz)\n\n[foo]\no]\n"),
         "<p><a href=\"bar\" title=\"\naz\">foo</a><br />\no]</p>\n",
     );
     for (open, close) in [('(', ')'), ('\'', '\''), ('"', '"')] {
         assert_eq!(
-            md.render(&format!("[foo]: <bar>{open}a\nb{close}\n\n[foo]\n")),
+            md.render(&format!("[foo]: <bar> {open}a\nb{close}\n\n[foo]\n")),
             "<p><a href=\"bar\" title=\"a\nb\">foo</a></p>\n",
         );
         let escaped_open = if open == '"' {
@@ -28,6 +28,37 @@ fn adjacent_multiline_title_matches_markdown_it() {
         assert_eq!(
             md.render(&format!("[foo]: <bar>{open}ab{close}\n\n[foo]\n")),
             format!("<p>[foo]: &lt;bar&gt;{escaped_open}ab{escaped_close}</p>\n<p>[foo]</p>\n"),
+        );
+        for prefix in ["", "> ", "- "] {
+            let continuation = if prefix == "- " { "  " } else { prefix };
+            let (before, after) = match prefix {
+                "> " => ("<blockquote>\n<p>", "</p>\n</blockquote>\n"),
+                "- " => ("<ul>\n<li>", "</li>\n</ul>\n"),
+                _ => ("<p>", "</p>\n"),
+            };
+            assert_eq!(
+                md.render(&format!(
+                    "{prefix}[foo]: <bar>{open}a\n{continuation}b{close}\n"
+                )),
+                format!("{before}[foo]: &lt;bar&gt;{escaped_open}a<br />\nb{escaped_close}{after}"),
+            );
+        }
+    }
+}
+
+#[test]
+fn adjacent_multiline_title_in_blockquote_remains_visible() {
+    for preset in [Preset::MarkdownItDefault, Preset::CommonMark] {
+        let md = MarkdownIt::with_preset(preset);
+        let destination = match preset {
+            Preset::CommonMark => "<bar>",
+            _ => "&lt;bar&gt;",
+        };
+        assert_eq!(
+            md.render("> [foo]: <bar>\"a\n> b\"\n>  \t\n> \nar\n"),
+            format!(
+                "<blockquote>\n<p>[foo]: {destination}&quot;a\nb&quot;</p>\n</blockquote>\n<p>ar</p>\n"
+            ),
         );
     }
 }
