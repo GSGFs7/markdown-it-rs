@@ -36,7 +36,7 @@ impl BlockParser {
     }
 
     pub(crate) fn rules(&self) -> &[BlockRuleFns] {
-        self.ruler.as_slice()
+        self.ruler.iter().as_slice()
     }
 
     pub fn add_rule<T: BlockRule>(&mut self) -> RuleBuilder<'_, BlockRuleFns> {

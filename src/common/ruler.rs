@@ -87,12 +87,7 @@ impl<M: Eq + Hash + Clone + Debug, T: Clone> Ruler<M, T> {
     /// Ordered iteration through rules.
     #[inline]
     pub fn iter(&self) -> Iter<'_, T> {
-        self.as_slice().iter()
-    }
-
-    /// Borrow the cached ordered payloads without copying the rule table.
-    pub(crate) fn as_slice(&self) -> &[T] {
-        self.compiled.get_or_init(|| self.compile())
+        self.compiled.get_or_init(|| self.compile()).iter()
     }
 
     /// Kahn Topological Sort (earlier joined at the front)

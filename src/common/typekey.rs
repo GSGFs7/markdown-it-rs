@@ -34,12 +34,10 @@ impl Hasher for TypeIdHasher {
     }
 }
 
-#[readonly::make]
-#[derive(Clone, Copy)]
-/// [std::any::TypeId] and [std::any::type_name] fused into one struct.
+/// A [`TypeId`] paired with its [`type_name`] for debugging.
 ///
-/// It acts as TypeId when hashed or compared, and it acts as type_name when printed.
-/// Used to improve debuggability of type ids in hashmaps in particular.
+/// Equality and hashing use only the type ID. Debug output uses only the type name.
+///
 /// ```
 /// # use markdown_it::common::TypeKey;
 /// struct A;
@@ -53,17 +51,18 @@ impl Hasher for TypeIdHasher {
 /// assert!(set.contains(&TypeKey::of::<A>()));
 /// dbg!(set);
 /// ```
+#[readonly::make]
+#[derive(Clone, Copy)]
 pub struct TypeKey {
-    /// type id (read only)
+    /// The type's identity (read-only).
     pub id: TypeId,
-    /// type name (read only)
+    /// The type's name for debugging (read-only).
     pub name: &'static str,
 }
 
 impl TypeKey {
+    /// Returns the type ID and debugging name of `T`.
     #[must_use]
-    /// Similar to [TypeId::of](TypeId::of), returns `TypeKey`
-    /// of the type this generic function has been instantiated with.
     pub fn of<T: ?Sized + 'static>() -> Self {
         Self {
             id: TypeId::of::<T>(),
@@ -88,21 +87,31 @@ impl Eq for TypeKey {}
 
 impl Debug for TypeKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "{}", self.name)
+        f.write_str(self.name)
     }
 }
 
+/// A rule identifier based on either a Rust type or a dynamic name.
+///
+/// Type-based and name-based identifiers are distinct, even when their debug
+/// names match.
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub enum RuleMark {
-    Type(TypeKey),  // rust or static rule
-    Name(Arc<str>), // python or dynamic rule
+    /// Identifies a rule by its Rust type.
+    Type(TypeKey),
+    /// Identifies a rule by a shared name, such as one supplied by a binding.
+    Name(Arc<str>),
 }
 
 impl RuleMark {
+    /// Returns a type-based rule identifier for `T`.
+    #[must_use]
     pub fn of<T: 'static>() -> Self {
         Self::Type(TypeKey::of::<T>())
     }
 
+    /// Returns a name-based rule identifier.
+    #[must_use]
     pub fn named(name: impl Into<Arc<str>>) -> Self {
         Self::Name(name.into())
     }
@@ -119,7 +128,12 @@ impl Debug for RuleMark {
 
 #[cfg(test)]
 mod tests {
-    use super::TypeKey;
+    use std::any::{TypeId, type_name};
+    use std::collections::HashSet;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{BuildHasher, BuildHasherDefault};
+
+    use super::{RuleMark, TypeIdHasher, TypeKey};
 
     #[test]
     fn typekey_eq() {
@@ -153,5 +167,67 @@ mod tests {
         struct B;
         assert_eq!(TypeKey::of::<A>(), TypeKey::of::<A>());
         assert_ne!(TypeKey::of::<A>(), TypeKey::of::<B>());
+    }
+
+    #[test]
+    fn typekey_hash_uses_only_id() {
+        let hasher = BuildHasherDefault::<DefaultHasher>::default();
+        let first = TypeKey {
+            id: TypeId::of::<str>(),
+            name: "first",
+        };
+        let second = TypeKey {
+            id: first.id,
+            name: "second",
+        };
+
+        assert_eq!(hasher.hash_one(first), hasher.hash_one(first.id));
+        assert_eq!(hasher.hash_one(first), hasher.hash_one(second));
+
+        let mut keys = HashSet::new();
+        assert!(keys.insert(first));
+        assert!(!keys.insert(second));
+        assert_eq!(keys.len(), 1);
+
+        let mut keys = HashSet::<_, BuildHasherDefault<TypeIdHasher>>::default();
+        assert!(keys.insert(first));
+        assert!(!keys.insert(second));
+        assert_eq!(keys.len(), 1);
+    }
+
+    #[test]
+    fn typekey_debug_uses_name() {
+        let key = TypeKey::of::<str>();
+        assert_eq!(key.id, TypeId::of::<str>());
+        assert_eq!(key.name, type_name::<str>());
+        assert_eq!(format!("{key:?}"), key.name);
+    }
+
+    #[test]
+    fn rulemark_identity() {
+        assert_eq!(RuleMark::of::<u32>(), RuleMark::of::<u32>());
+        assert_ne!(RuleMark::of::<u32>(), RuleMark::of::<u64>());
+        assert_eq!(
+            RuleMark::named("rule"),
+            RuleMark::named(String::from("rule"))
+        );
+        assert_ne!(RuleMark::named("first"), RuleMark::named("second"));
+        assert_ne!(RuleMark::of::<u32>(), RuleMark::named(type_name::<u32>()));
+
+        let mut marks = HashSet::new();
+        assert!(marks.insert(RuleMark::of::<u32>()));
+        assert!(!marks.insert(RuleMark::of::<u32>()));
+        assert!(marks.insert(RuleMark::named("rule")));
+        assert!(!marks.insert(RuleMark::named(String::from("rule"))));
+        assert_eq!(marks.len(), 2);
+    }
+
+    #[test]
+    fn rulemark_debug() {
+        let typed = RuleMark::of::<u32>();
+        let named = RuleMark::named("rule");
+
+        assert_eq!(format!("{typed:?}"), type_name::<u32>());
+        assert_eq!(format!("{named:?}"), "\"rule\"");
     }
 }

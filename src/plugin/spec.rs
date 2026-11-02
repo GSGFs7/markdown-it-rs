@@ -520,7 +520,7 @@ fn installation_order(md: &MarkdownIt, plugins: &[PluginSpec]) -> Vec<usize> {
             }
         }
     }
-    order.as_slice().to_vec()
+    order.iter().copied().collect()
 }
 
 pub(super) fn install_plugins(md: &mut MarkdownIt, plugins: Vec<PluginSpec>) {

@@ -264,7 +264,7 @@ impl MarkdownIt {
 
     /// [`crate::plugin::MarkdownItBuilder::build`]
     pub(crate) fn rules(&self) -> &[CoreRuleRunner] {
-        self.ruler.as_slice()
+        self.ruler.iter().as_slice()
     }
 }
 
