@@ -28,6 +28,8 @@ concurrency:
 jobs:
   benchmark:
     name: Compare Criterion benchmarks
+    # Baseline and PR code run here; deny cache writes at the token level.
+    cache-mode: read
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -139,7 +141,7 @@ jobs:
           workspaces: |
             baseline/benchmarks -> ../../benchmark-target/baseline
             current/benchmarks -> ../../benchmark-target/current
-          cache-on-failure: true
+          save-if: false
 
       - name: Record toolchain
         run: |
