@@ -25,6 +25,38 @@ pub fn add(md: &mut crate::MarkdownIt) {
     parser::add(md);
 }
 
+/// A plugin hook for source-wide scan side effects.
+///
+/// Link-label scanning has shortcuts that reject a candidate without running
+/// inline checks. A hook returns true when `[start..end)` still has to be
+/// checked even though the label may not close, preserving side effects such as
+/// disabling a construct for the rest of the inline source.
+pub(crate) type ScanHook = fn(&InlineState<'_>, usize, usize) -> bool;
+
+#[derive(Debug, Default)]
+pub(crate) struct ScanHooks(Vec<ScanHook>);
+
+/// Register a source-wide scan hook for an inline plugin.
+pub(crate) fn add_scan_hook(md: &mut crate::MarkdownIt, hook: ScanHook) {
+    md.ext.get_or_insert_default::<ScanHooks>().0.push(hook);
+}
+
+/// Whether any registered hook still needs `[start..end)` checked.
+pub(crate) fn scan_hooks_require_scan(state: &InlineState<'_>, start: usize, end: usize) -> bool {
+    let hook_count = state
+        .markdown_it()
+        .ext
+        .get::<ScanHooks>()
+        .map_or(0, |hooks| hooks.0.len());
+    for index in 0..hook_count {
+        let hook = state.markdown_it().ext.get::<ScanHooks>().unwrap().0[index];
+        if hook(state, start, end) {
+            return true;
+        }
+    }
+    false
+}
+
 pub(crate) type InlineCheckFn = fn(&mut InlineState<'_>) -> Option<usize>;
 // TODO: some nested some??
 pub(crate) type InlineRunFn =

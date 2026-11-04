@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
 use crate::document::{Document, NodeId};
-use crate::parser::inline::{InlineRule, InlineState};
+use crate::parser::inline::{InlineRule, InlineState, scan_hooks_require_scan};
 use crate::plugins::cmark::block::reference::ReferenceMap;
 
 #[derive(Debug)]
@@ -889,6 +889,10 @@ fn has_possible_link_label_close(
 
     let source = state.src.as_ref();
     let end = state.pos_max;
+    let open = state.pos + offset;
+    // Hooks may borrow the shared scan state, so run them before borrowing the
+    // cache, but always initialize link bounds before accepting their request.
+    let requires_scan = scan_hooks_require_scan(state, open, end);
     let mut shared = state.scan_limit_cache.borrow_mut();
     let cache = shared.link_bounds.get_or_insert_with(|| LinkLabelBounds {
         close_positions: source.match_indices(']').map(|(pos, _)| pos).collect(),
@@ -899,12 +903,18 @@ fn has_possible_link_label_close(
         failed_labels: HashSet::new(),
     });
 
-    let open = state.pos + offset;
+    // Preserve source-wide check side effects without bypassing memoization.
+    // Otherwise nested unclosed labels repeatedly scan overlapping suffixes.
+    if requires_scan {
+        return true;
+    }
+
     let last_before_end = |positions: &[usize]| {
         positions[..positions.partition_point(|&pos| pos < end)]
             .last()
             .copied()
     };
+
     if !last_before_end(&cache.target_positions).is_some_and(|last| last > open)
         && references.is_none()
     {

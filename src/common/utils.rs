@@ -78,6 +78,56 @@ pub fn get_entity_from_str(str: &str) -> Option<&'static str> {
     ENTITIES_HASH.get(str).copied()
 }
 
+/// Windows-1252 replacements for C1 controls in malformed numeric entities.
+///
+/// markdown-it falls back to `entities.decodeHTMLStrict()` when a numeric
+/// reference is too long for its own fast-path regex. That fallback applies the
+/// HTML C1 remapping, unlike the regular `is_valid_entity_code` path.
+const C1_REPLACEMENTS: [u32; 32] = [
+    8364, 0, 8218, 402, 8222, 8230, 8224, 8225, 710, 8240, 352, 8249, 338, 0, 381, 0, 0, 8216,
+    8217, 8220, 8221, 8226, 8211, 8212, 732, 8482, 353, 8250, 339, 0, 382, 376,
+];
+
+fn decode_long_numeric_entity(str: &str) -> Option<String> {
+    let body = str.strip_prefix("&#")?.strip_suffix(';')?;
+    let (digits, radix) = match body.strip_prefix('x').or_else(|| body.strip_prefix('X')) {
+        Some(hex) => (hex, 16),
+        None => (body, 10),
+    };
+    if digits.is_empty() {
+        return None;
+    }
+
+    let mut value = 0u64;
+    for byte in digits.bytes() {
+        let digit = match byte {
+            b'0'..=b'9' => u64::from(byte - b'0'),
+            b'a'..=b'f' => u64::from(byte - b'a' + 10),
+            b'A'..=b'F' => u64::from(byte - b'A' + 10),
+            _ => return None,
+        };
+        if digit >= radix {
+            return None;
+        }
+        value = value.saturating_mul(radix).saturating_add(digit);
+    }
+
+    let code = if value == 0 || value > 0x10FFFF || (0xD800..=0xDFFF).contains(&value) {
+        0xFFFD
+    } else if (128..=159).contains(&value) {
+        let replacement = C1_REPLACEMENTS[(value - 128) as usize];
+        if replacement == 0 {
+            value as u32
+        } else {
+            replacement
+        }
+    } else {
+        value as u32
+    };
+
+    char::from_u32(code).map(|c| c.to_string())
+}
+
 #[allow(clippy::from_str_radix_10)]
 fn replace_entity_pattern(str: &str) -> Option<String> {
     if let Some(entity) = get_entity_from_str(str) {
@@ -96,7 +146,9 @@ fn replace_entity_pattern(str: &str) -> Option<String> {
             None
         }
     } else {
-        None
+        // markdown-it's unescapeAll() falls back to decodeHTMLStrict() for
+        // entities that its own numeric regex rejects.
+        decode_long_numeric_entity(str)
     }
 }
 
@@ -494,6 +546,12 @@ mod tests {
         assert_eq!(replace_entity_pattern("&ffff;"), None);
         assert_eq!(replace_entity_pattern("&#3F;"), None);
         assert_eq!(replace_entity_pattern("&#xGG;"), None);
+        assert_eq!(
+            replace_entity_pattern("&#xfffffffff;"),
+            Some("\u{FFFD}".into())
+        );
+        assert_eq!(replace_entity_pattern("&#000000065;"), Some("A".into()));
+        assert_eq!(replace_entity_pattern("&#000000128;"), Some("€".into()));
     }
 
     #[test]

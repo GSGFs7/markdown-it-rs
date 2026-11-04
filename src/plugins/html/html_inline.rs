@@ -2,22 +2,61 @@
 //!
 //! <https://spec.commonmark.org/0.30/#raw-html>
 use super::anchor_delta;
-use super::utils::regexps::HTML_TAG_RE;
+use super::utils::regexps::HTML_OPEN_CLOSE_TAG_RE;
 use crate::MarkdownIt;
-use crate::common::extset::InlineRootExtSet;
 use crate::document::NodeRef;
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{NodeRenderer, RenderContext};
 
 pub fn add(md: &mut MarkdownIt) {
+    crate::parser::inline::add_scan_hook(md, special_html_scan_hook);
     md.inline.add_rule::<HtmlInlineScanner>();
     md.add_renderer::<HtmlInline, _>("html", HtmlInlineRenderer);
     md.add_renderer::<HtmlInline, _>("text", HtmlInlineRenderer);
 }
 
+/// Source-wide state for special HTML scanning.
 #[derive(Debug, Default)]
-struct HtmlInlineScanCache {
-    no_comment_closer_range: Option<(usize, usize)>,
+struct HtmlSpecialScan {
+    /// Once a special HTML token has no closing delimiter in this inline
+    /// source, markdown-it stops treating later `<!/<?` sequences as HTML.
+    disabled: bool,
+    /// Cached `<!/<?` starts, shared across nested inline sessions.
+    starts: Option<Vec<usize>>,
+}
+
+fn special_html_scan_hook(state: &InlineState<'_>, start: usize, end: usize) -> bool {
+    let mut shared = state.shared_ext();
+    let scan = shared.get_or_insert_default::<HtmlSpecialScan>();
+    if scan.disabled {
+        return false;
+    }
+    let starts = scan.starts.get_or_insert_with(|| {
+        state
+            .src
+            .as_bytes()
+            .windows(2)
+            .enumerate()
+            .filter(|(_, pair)| *pair == b"<!" || *pair == b"<?")
+            .map(|(pos, _)| pos)
+            .collect()
+    });
+    let next = starts.partition_point(|&pos| pos <= start);
+    starts.get(next).is_some_and(|&pos| pos < end)
+}
+
+fn special_html_disabled(state: &InlineState<'_>) -> bool {
+    state
+        .shared_ext()
+        .get::<HtmlSpecialScan>()
+        .is_some_and(|scan| scan.disabled)
+}
+
+fn disable_special_html(state: &InlineState<'_>) {
+    state
+        .shared_ext()
+        .get_or_insert_default::<HtmlSpecialScan>()
+        .disabled = true;
 }
 
 #[derive(Debug)]
@@ -46,25 +85,17 @@ impl InlineRule for HtmlInlineScanner {
     const MARKER: char = '<';
     const NAMES: &'static [&'static str] = &["html_inline"];
 
-    fn check(context: &mut InlineState<'_>) -> Option<usize> {
-        let matched = scan_html_inline(
-            &context.src,
-            context.pos,
-            context.pos_max,
-            &mut context.inline_ext,
-        )?;
-        context.link_level = context
+    fn check(state: &mut InlineState<'_>) -> Option<usize> {
+        let matched = scan_html_inline(state)?;
+        state.link_level = state
             .link_level
             .checked_add(matched.link_level_delta)
             .expect("check link level overflow");
         Some(matched.consumed)
     }
 
-    fn run(
-        state: &mut crate::parser::inline::InlineState<'_>,
-    ) -> Option<(Option<crate::document::NodeId>, usize)> {
-        let matched =
-            scan_html_inline(&state.src, state.pos, state.pos_max, &mut state.inline_ext)?;
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<crate::document::NodeId>, usize)> {
+        let matched = scan_html_inline(state)?;
 
         state.link_level += matched.link_level_delta;
 
@@ -84,52 +115,73 @@ struct HtmlInlineMatch {
     link_level_delta: i32,
 }
 
-fn scan_html_inline(
-    src: &str,
-    pos: usize,
-    pos_max: usize,
-    inline_ext: &mut InlineRootExtSet,
-) -> Option<HtmlInlineMatch> {
-    let rest = &src[pos..pos_max];
-    let mut chars = rest.chars();
-    // Check start
-    if chars.next()? != '<' {
+fn scan_html_inline(state: &mut InlineState<'_>) -> Option<HtmlInlineMatch> {
+    let pos = state.pos;
+    let pos_max = state.pos_max;
+
+    // Keep the same minimum length as markdown-it: `<` plus two bytes.
+    if pos + 2 >= pos_max {
         return None;
     }
 
-    // Quick fail on second char
-    let Some('!' | '?' | '/' | 'A'..='Z' | 'a'..='z') = chars.next() else {
+    let second = state.src.as_bytes()[pos + 1];
+    let end = if second == b'!' || second == b'?' {
+        scan_special(state, pos)?
+    } else if second == b'/' || second.is_ascii_alphabetic() {
+        let capture = HTML_OPEN_CLOSE_TAG_RE
+            .find(&state.src[pos..pos_max])?
+            .as_str();
+        pos + capture.len()
+    } else {
         return None;
     };
 
-    // this avoid complexity reach O(n^2)
-    // <!--<!--<!--...-->...
-    // ^^^^           ^^^
-    //   |             |
-    // only find there two, skip the middle part.
-    if rest.starts_with("<!--") && !rest.starts_with("<!-->") && !rest.starts_with("<!--->") {
-        let cached_miss = inline_ext
-            .get::<HtmlInlineScanCache>()
-            .and_then(|cache| cache.no_comment_closer_range)
-            .is_some_and(|(start, end)| pos >= start && pos_max <= end);
-        if cached_miss {
-            return None;
-        }
-
-        if !rest.contains("-->") {
-            inline_ext
-                .get_or_insert_default::<HtmlInlineScanCache>()
-                .no_comment_closer_range = Some((pos, pos_max));
-            return None;
-        }
-    }
-
-    let capture = HTML_TAG_RE.find(rest)?.as_str();
-
+    let capture = &state.src[pos..end];
     Some(HtmlInlineMatch {
         consumed: capture.len(),
         link_level_delta: anchor_delta(capture),
     })
+}
+
+/// Scan comments, CDATA sections, processing instructions, and declarations.
+///
+/// This mirrors markdown-it's `scanSpecial`: a missing terminator disables all
+/// later special HTML tokens for the rest of this inline source. Short comments
+/// (`<!-->` and `<!--->`) bypass that cutoff, as they do in markdown-it.
+fn scan_special(state: &mut InlineState<'_>, pos: usize) -> Option<usize> {
+    let pos_max = state.pos_max;
+    let src = &state.src;
+    let rest = &src[pos..pos_max];
+
+    let (start, terminator) = if rest.starts_with("<!--") {
+        // `<!-->` and `<!--->` are complete short comments.
+        if rest.as_bytes().get(4) == Some(&b'>') {
+            return Some(pos + 5);
+        }
+        if rest.as_bytes().get(4) == Some(&b'-') && rest.as_bytes().get(5) == Some(&b'>') {
+            return Some(pos + 6);
+        }
+        (pos + 4, "-->")
+    } else if rest.starts_with("<![CDATA[") {
+        (pos + 9, "]]>")
+    } else if rest.as_bytes().get(1) == Some(&b'?') {
+        (pos + 2, "?>")
+    } else if rest.as_bytes().get(2).is_some_and(u8::is_ascii_alphabetic) {
+        (pos + 3, ">")
+    } else {
+        return None;
+    };
+
+    if special_html_disabled(state) {
+        return None;
+    }
+
+    let Some(offset) = src[start..pos_max].find(terminator) else {
+        disable_special_html(state);
+        return None;
+    };
+
+    Some(start + offset + terminator.len())
 }
 
 #[cfg(test)]
@@ -186,5 +238,43 @@ mod tests {
         ] {
             assert_eq!(render(input), expected);
         }
+    }
+
+    #[test]
+    fn comment_closer_may_overlap_internal_hyphens() {
+        for comment in ["<!----->", "<!------>", "<!------------>"] {
+            assert_eq!(
+                render(&format!("foo {comment}")),
+                format!("<p>foo {comment}</p>\n"),
+            );
+        }
+    }
+
+    #[test]
+    fn failed_special_html_disables_later_special_html() {
+        assert_eq!(render("~<?<!a>"), "<p>~&lt;?&lt;!a&gt;</p>\n",);
+        assert_eq!(render("[<??><?3"), "<p>[&lt;??&gt;&lt;?3</p>\n",);
+    }
+
+    #[test]
+    fn failed_link_scans_disable_special_html_with_parentheses() {
+        for html in ["<!a>", "<??>", "<!--ok-->", "<![CDATA[ok]]>"] {
+            for prefix in ["[", "!["] {
+                for references in ["", "\n\n[r]: /url"] {
+                    let input = format!("{prefix}{html}(<?l{references}");
+                    let escaped = crate::common::utils::escape_html(html);
+                    assert_eq!(
+                        render(&input),
+                        format!("<p>{prefix}{escaped}(&lt;?l</p>\n"),
+                        "{input:?}",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn short_comments_bypass_disabled_special_html() {
+        assert_eq!(render("a <?x <!--> y"), "<p>a &lt;?x <!--> y</p>\n",);
     }
 }

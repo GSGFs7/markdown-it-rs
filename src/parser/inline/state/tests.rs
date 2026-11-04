@@ -1460,7 +1460,7 @@ fn check_emphasis_defers_for_unicode_marker() {
 }
 
 #[test]
-fn check_html_comment_cache_is_private_to_each_session() {
+fn check_html_special_cutoff_is_shared_across_sessions() {
     let mut document = Document::new("", crate::document::Root::new(""));
     let mut md = MarkdownIt::empty();
     crate::plugins::html::html_inline::add(&mut md);
@@ -1473,17 +1473,23 @@ fn check_html_comment_cache_is_private_to_each_session() {
     state.nodes.push(node);
     let before = check_parent_snapshot(&state);
 
+    // The short window has no comment closer, which disables special HTML for
+    // the rest of the root inline source, matching markdown-it.
     let mut short = scan(&mut state, 0..5).unwrap();
     while short.skip_token().is_some() {}
 
     let scan_end = state.pos_max;
     let mut long = scan(&mut state, 0..scan_end).unwrap();
-    assert_eq!(long.skip_token().unwrap(), 10);
-    assert!(long.skip_token().is_none());
+    assert_eq!(long.skip_token(), Some(1));
+    let mut consumed = 1;
+    while let Some(len) = long.skip_token() {
+        consumed += len;
+    }
+    assert_eq!(consumed, scan_end);
 
     let scan_end = state.pos_max;
     let mut long_first = scan(&mut state, 0..scan_end).unwrap();
-    assert_eq!(long_first.skip_token().unwrap(), 10);
+    assert_eq!(long_first.skip_token(), Some(1));
     let mut short_after = scan(&mut state, 0..5).unwrap();
     while short_after.skip_token().is_some() {}
     assert_eq!(check_parent_snapshot(&state), before);

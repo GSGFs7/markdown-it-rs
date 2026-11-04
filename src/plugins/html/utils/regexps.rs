@@ -22,20 +22,7 @@ const attribute: &str = formatcp!(
 );
 
 const open_tag: &str = formatcp!("<[A-Za-z][A-Za-z0-9\\-]*{attribute}*{HTML_WHITESPACE}*/?>");
-
 const close_tag: &str = formatcp!("</[A-Za-z][A-Za-z0-9\\-]*{HTML_WHITESPACE}*>");
-const comment: &str = r#"<!---?>|<!--(?:[^-]|-[^-]|--[^>])*-->"#;
-const processing: &str = r#"<[?][\s\S]*?[?]>"#;
-const declaration: &str = r#"<![A-Za-z][^>]*>"#;
-const cdata: &str = r#"<!\[CDATA\[[\s\S]*?\]\]>"#;
-
-#[allow(clippy::double_parens)]
-pub static HTML_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(formatcp!(
-        "^(?:{open_tag}|{close_tag}|{comment}|{processing}|{declaration}|{cdata})"
-    ))
-    .unwrap()
-});
 
 #[allow(clippy::double_parens)]
 pub static HTML_OPEN_CLOSE_TAG_RE: LazyLock<Regex> =

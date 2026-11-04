@@ -1,5 +1,42 @@
 use super::*;
 
+#[test]
+fn special_html_link_scans_have_bounded_work() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Debug)]
+    struct ScanBudget {
+        calls: AtomicUsize,
+        limit: usize,
+    }
+
+    fn count_scan(state: &InlineState<'_>, _: usize, _: usize) -> bool {
+        let budget = state.markdown_it().ext.get::<ScanBudget>().unwrap();
+        assert!(
+            budget.calls.fetch_add(1, Ordering::Relaxed) < budget.limit,
+            "special HTML caused repeated overlapping link scans"
+        );
+        false
+    }
+
+    for n in [32, 128, 512] {
+        for opener in ["[a", "![a"] {
+            for html in ["<!-- ok -->", "<?ok?>", "<![CDATA[ok]]>", "<!a>"] {
+                let source = format!("{} {html}", opener.repeat(n));
+                let mut md = MarkdownIt::new();
+                md.ext.insert(ScanBudget {
+                    calls: AtomicUsize::new(0),
+                    limit: source.len() * 256,
+                });
+                // Count every probe, including those the HTML hook accepts.
+                crate::parser::inline::add_scan_hook(&mut md, count_scan);
+                crate::plugins::html::add(&mut md);
+                assert_eq!(md.render(&source), format!("<p>{source}</p>\n"));
+            }
+        }
+    }
+}
+
 /// Built-in check that is deliberately left uncached: its `check` mutates the
 /// shared inline-footnote scan budget, so the same probe can return different
 /// results under budget pressure.
