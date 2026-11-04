@@ -64,7 +64,7 @@ jobs:
                 per_page: 100,
               },
             )) {
-              const previous = data.workflow_runs.find(run =>
+              const previous = data.find(run =>
                 run.id < context.runId &&
                 ['push', 'schedule', 'workflow_dispatch'].includes(run.event) &&
                 run.head_repository?.full_name === context.payload.repository.full_name
