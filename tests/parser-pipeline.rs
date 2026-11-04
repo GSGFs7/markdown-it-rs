@@ -2,7 +2,8 @@ use markdown_it::MarkdownIt;
 use markdown_it::document::{Root, StructuralEvent};
 use markdown_it::plugins::html::html_block::HtmlBlock;
 
-// KaTeX uses unordered attribute/style maps; normalize only their ordering.
+// Normalize map ordering and the known KaTeX 0.18 class renames for the
+// frozen pre-migration snapshots. Math unit tests check current markup.
 fn normalize_math_html(html: &str) -> String {
     #[cfg(not(feature = "katex"))]
     {
@@ -10,8 +11,21 @@ fn normalize_math_html(html: &str) -> String {
     }
     #[cfg(feature = "katex")]
     {
+        let classes = regex::Regex::new(r#"class="([^"]*)""#).unwrap();
+        let html = classes.replace_all(html, |caps: &regex::Captures| {
+            let values: Vec<_> = caps[1]
+                .split_whitespace()
+                .map(|class| match class {
+                    "katex-base" => "base",
+                    "katex-strut" => "strut",
+                    "katex-sizing" => "sizing",
+                    _ => class,
+                })
+                .collect();
+            format!(r#"class="{}""#, values.join(" "))
+        });
         let styles = regex::Regex::new(r#"style="([^"]+)""#).unwrap();
-        let html = styles.replace_all(html, |caps: &regex::Captures| {
+        let html = styles.replace_all(&html, |caps: &regex::Captures| {
             let mut values: Vec<_> = caps[1]
                 .split(';')
                 .map(str::trim)

@@ -55,9 +55,9 @@ const_format = ">= 0.1.0, < 0.3"
 derive_more = { version = ">= 0.99.0, < 3", features = ["deref", "deref_mut"] }
 downcast-rs = ">= 1.0.2, < 3"
 entities = ">= 0.1.0, < 2"
-html-escape = ">= 0.1.0, < 0.3"
+html-escape = ">= 0.1.0, < 0.4"
 linkify = { package = "markdown-it-rs-linkify", version = "0.1.0", path = "crates/markdown-it-rs-linkify", optional = true }
-katex-rs = { version = "0.2.4", optional = true }
+katex-rs = { version = "0.3", optional = true }
 memchr = ">= 2.0.0, < 3"
 mdurl = { package = "markdown-it-rs-url", version = "0.1.0", path = "crates/markdown-it-rs-url" }
 readonly = ">= 0.2.0, < 0.3"
@@ -68,7 +68,7 @@ syntect = { version = ">= 5.0.0, < 6", optional = true, default-features = false
     "html",
 ] }
 unicode-general-category = ">= 0.1.0, < 1.2"
-two-face = {version = "0.5.2", optional = true, default-features = false, features = ["syntect-fancy"]}
+two-face = { version = ">= 0.5.0, < 0.6", optional = true, default-features = false, features = ["syntect-fancy"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

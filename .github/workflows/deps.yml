@@ -24,3 +24,5 @@ jobs:
         run: cargo +nightly -Z minimal-versions update
       - name: Test minimum dependency versions on a single thread
         run: cargo +nightly test --locked --no-default-features --features linkify -- --test-threads=1
+      - name: Test minimum dependency versions with all features
+        run: cargo +nightly test --locked --all-features -- --test-threads=1

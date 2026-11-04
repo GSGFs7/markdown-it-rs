@@ -2,7 +2,7 @@ use markdown_it::plugins::extra::front_matter::{FrontMatter, FrontMatterKind};
 use pyo3::pyclass;
 
 #[derive(Clone)]
-#[pyclass(name = "FrontMatter", skip_from_py_object)]
+#[pyclass(name = "FrontMatter")]
 pub(crate) struct PyFrontMatter {
     #[pyo3(get)]
     kind: String,
