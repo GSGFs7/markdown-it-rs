@@ -24,7 +24,7 @@ impl<'a> InlineState<'a> {
         link_level: i32,
     ) -> Self {
         #[cfg(debug_assertions)]
-        crate::parser::validation::inline_range(source, start, end);
+        super::super::validation::inline_range(source, start, end);
         Self {
             src: Cow::Borrowed(source),
             pos: start,
@@ -1767,4 +1767,144 @@ fn test_mapping(entries: &[(usize, usize)]) -> crate::parser::InlineMapping {
         let _ = entries;
         crate::parser::InlineMapping
     }
+}
+
+#[cfg(debug_assertions)]
+#[test]
+fn run_contract_rejects_invalid_consumption() {
+    let cases: &[(&str, InlineRunFn, &str)] = &[
+        ("zero", |_| Some((None, 0)), "invalid run length"),
+        ("past window", |_| Some((None, 3)), "invalid run length"),
+        (
+            "overflow",
+            |_| Some((None, usize::MAX)),
+            "invalid run length",
+        ),
+        ("split UTF-8", |_| Some((None, 1)), "invalid run length"),
+        (
+            "rewind without progress",
+            |s| {
+                s.pos = 0;
+                Some((None, 1))
+            },
+            "invalid run length",
+        ),
+        (
+            "invalid start",
+            |s| {
+                s.pos = 2;
+                Some((None, 1))
+            },
+            "invalid run length",
+        ),
+        (
+            "failed cursor",
+            |s| {
+                s.pos += 1;
+                None
+            },
+            "changed cursor on no match",
+        ),
+        (
+            "success window",
+            |s| {
+                s.pos_max += 1;
+                Some((None, 1))
+            },
+            "changed the source window",
+        ),
+        (
+            "failed window",
+            |s| {
+                s.pos_max -= 1;
+                None
+            },
+            "changed the source window",
+        ),
+    ];
+    for &(name, run, expected) in cases {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let md = MarkdownIt::empty();
+            let mut document = Document::new("", crate::document::Root::new(""));
+            let ruleset = RuleSet {
+                runs: vec![run_rule(run)],
+                checks: vec![],
+            };
+            // Window contains only é; the following x must remain inaccessible.
+            let mut state = InlineState::new(&mut document, "aéx", 1, 3, &md, &ruleset, 0, 0);
+            state.tokenize();
+        }));
+        let panic = result.expect_err(name);
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap_or("");
+        assert!(message.contains(expected), "{name}: {message}");
+    }
+}
+
+#[test]
+fn run_contract_allows_rewind_with_progress_and_consume_only() {
+    let md = MarkdownIt::empty();
+    let mut document = Document::new("", crate::document::Root::new(""));
+    let ruleset = RuleSet {
+        runs: vec![run_rule(|s| {
+            s.pos -= 1;
+            Some((None, 3))
+        })],
+        checks: vec![],
+    };
+    let mut state = InlineState::new(&mut document, "aé", 1, 3, &md, &ruleset, 0, 0);
+    state.tokenize();
+    assert_eq!(state.pos, 3);
+    assert!(state.nodes().is_empty());
+}
+
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "inline rule 0 reported invalid check length")]
+fn check_rejects_overflow_length() {
+    let md = MarkdownIt::empty();
+    let mut document = Document::new("", crate::document::Root::new(""));
+    let ruleset = RuleSet {
+        runs: vec![],
+        checks: vec![check_rule(|_| Some(usize::MAX))],
+    };
+    let mut state = InlineState::new(&mut document, "xy", 1, 2, &md, &ruleset, 0, 0);
+    state.skip_token();
+}
+
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "inline rule 0 check")]
+fn check_rejects_cursor_change_on_no_match() {
+    let md = MarkdownIt::empty();
+    let mut document = Document::new("", crate::document::Root::new(""));
+    let ruleset = RuleSet {
+        runs: vec![],
+        checks: vec![check_rule(|s| {
+            s.pos += 1;
+            None
+        })],
+    };
+    let mut state = check_state(&mut document, &md, &ruleset, "xy");
+    state.skip_token();
+}
+
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "inline rule 0 check")]
+fn check_rejects_window_change_on_match() {
+    let md = MarkdownIt::empty();
+    let mut document = Document::new("", crate::document::Root::new(""));
+    let ruleset = RuleSet {
+        runs: vec![],
+        checks: vec![check_rule(|s| {
+            s.pos_max -= 1;
+            Some(1)
+        })],
+    };
+    let mut state = check_state(&mut document, &md, &ruleset, "xy");
+    state.skip_token();
 }

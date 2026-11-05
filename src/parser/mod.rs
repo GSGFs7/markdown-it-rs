@@ -11,9 +11,6 @@ pub mod inline;
 pub(crate) mod pipeline;
 mod rule;
 
-#[cfg(debug_assertions)]
-mod validation;
-
 /// Mapping from inline byte offsets to document byte offsets.
 ///
 /// Without the `sourcemap` feature this is a zero-sized carrier; custom block

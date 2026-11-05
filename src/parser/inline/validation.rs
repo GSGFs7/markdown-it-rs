@@ -1,26 +1,36 @@
-use super::block::BlockState;
-use super::inline::InlineState;
+use super::InlineState;
+use crate::document::NodeId;
 
+/// Validate rule consumption only in builds with debug assertions enabled.
 #[inline]
-pub(super) fn inline_range(source: &str, start: usize, end: usize) {
-    debug_assert!(start <= end && end <= source.len());
-    debug_assert!(source.is_char_boundary(start) && source.is_char_boundary(end));
-}
-
-#[inline]
-pub(super) fn check_block(
-    state: &mut BlockState<'_>,
-    _index: usize,
-    check: fn(&mut BlockState<'_>) -> Option<()>,
-) -> Option<()> {
-    let before = BlockCheckSnapshot::capture(state);
-    let matched = check(state);
+pub(super) fn run_inline(
+    state: &mut InlineState<'_>,
+    index: usize,
+    run: impl FnOnce(&mut InlineState<'_>) -> Option<(Option<NodeId>, usize)>,
+) -> Option<(Option<NodeId>, usize)> {
+    let before = (state.pos, state.pos_max);
+    let result = run(state);
     assert_eq!(
-        before,
-        BlockCheckSnapshot::capture(state),
-        "block rule {_index} check modified cursor, indentation or accumulated nodes"
+        state.pos_max, before.1,
+        "inline rule {index} changed the source window"
     );
-    matched
+    if let Some((_, len)) = result {
+        assert!(
+            len > 0
+                && state.pos.checked_add(len).is_some_and(|end| {
+                    end > before.0 && end <= before.1 && state.src.get(state.pos..end).is_some()
+                }),
+            "inline rule {index} reported invalid run length {len} at {} (started at {})",
+            state.pos,
+            before.0
+        );
+    } else {
+        assert_eq!(
+            state.pos, before.0,
+            "inline rule {index} changed cursor on no match"
+        );
+    }
+    result
 }
 
 #[inline]
@@ -70,47 +80,10 @@ impl InlineCheckSnapshot {
     }
 }
 
-#[derive(Debug, PartialEq)]
-struct BlockCheckSnapshot {
-    cursor: (usize, usize, usize, Option<u32>, u32, bool),
-    current_line: Option<(usize, usize, usize, i32)>,
-    node_name: &'static str,
-    arena_len: usize,
-    child_count: usize,
-    attrs: crate::document::HtmlAttributes,
-    extension_count: usize,
-    #[cfg(feature = "sourcemap")]
-    srcmap: Option<crate::common::sourcemap::SourcePos>,
-}
-
-impl BlockCheckSnapshot {
-    fn capture(state: &BlockState<'_>) -> Self {
-        Self {
-            cursor: (
-                state.line,
-                state.line_max,
-                state.blk_indent,
-                state.list_indent,
-                state.level,
-                state.tight,
-            ),
-            current_line: state.line_offsets.get(state.line).map(|line| {
-                (
-                    line.line_start,
-                    line.line_end,
-                    line.first_nonspace,
-                    line.indent_nonspace,
-                )
-            }),
-            node_name: state.document.node(state.node).name(),
-            arena_len: state.document.len(),
-            child_count: state.document.node(state.node).children().len(),
-            attrs: state.document.node(state.node).attrs().clone(),
-            extension_count: state.document.node(state.node).ext().len(),
-            #[cfg(feature = "sourcemap")]
-            srcmap: state.document.node(state.node).srcmap(),
-        }
-    }
+#[inline]
+pub(super) fn inline_range(source: &str, start: usize, end: usize) {
+    debug_assert!(start <= end && end <= source.len());
+    debug_assert!(source.is_char_boundary(start) && source.is_char_boundary(end));
 }
 
 #[cfg(test)]
@@ -122,7 +95,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "check modified cursor or accumulated nodes")]
     fn inline_check_rejects_cursor_mutation_even_on_no_match() {
-        let mut document = crate::document::Document::new("", crate::document::Root::new(""));
+        let mut document = crate::document::Document::new("", Root::new(""));
         let md = MarkdownIt::empty();
         let ruleset = md.inline.rules();
         let mut state = InlineState::new(&mut document, "xy", 0, 2, &md, ruleset, 0, 0);
@@ -135,7 +108,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "check modified cursor or accumulated nodes")]
     fn inline_check_rejects_node_mutation() {
-        let mut document = crate::document::Document::new("", crate::document::Root::new(""));
+        let mut document = crate::document::Document::new("", Root::new(""));
         let md = MarkdownIt::empty();
         let ruleset = md.inline.rules();
         let mut state = InlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
@@ -182,19 +155,6 @@ mod tests {
                 .cast_mut::<Text>()
                 .unwrap()
                 .content = "changed".into();
-            None
-        });
-    }
-
-    #[test]
-    #[should_panic(expected = "check modified cursor, indentation or accumulated nodes")]
-    fn block_check_rejects_state_mutation_even_on_no_match() {
-        let md = MarkdownIt::empty();
-        let source = "hello";
-        let mut document = crate::document::Document::new(source, Root::new(source));
-        let mut state = BlockState::new(source, &md, &[], &mut document);
-        check_block(&mut state, 0, |state| {
-            state.blk_indent += 1;
             None
         });
     }

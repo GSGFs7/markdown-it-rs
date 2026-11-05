@@ -254,15 +254,24 @@ impl<'a> InlineState<'a> {
         while self.pos < self.pos_max {
             let marker = self.src[self.pos..self.pos_max].chars().next().unwrap();
             let mut matched = None;
-            for rule in &self.ruleset.runs {
+            for index in 0..self.ruleset.runs.len() {
+                let rule = &self.ruleset.runs[index];
                 if !rule.matches_marker(marker) {
                     continue;
                 }
 
-                let result = match &rule.run {
-                    InlineRunRunner::Static(run) => run(self),
-                    InlineRunRunner::Dynamic(run) => run(self),
+                let run = |state: &mut InlineState<'_>| match &rule.run {
+                    InlineRunRunner::Static(run) => run(state),
+                    InlineRunRunner::Dynamic(run) => run(state),
                 };
+
+                // additional checks
+                #[cfg(debug_assertions)]
+                let result = super::validation::run_inline(self, index, run);
+
+                // normal, faster
+                #[cfg(not(debug_assertions))]
+                let result = run(self);
 
                 if let Some(result) = result {
                     matched = Some(result);
@@ -344,7 +353,7 @@ impl<'a> InlineState<'a> {
             let check = |state: &mut InlineState<'_>| entry.check.call(state);
 
             #[cfg(debug_assertions)]
-            let matched = crate::parser::validation::check_inline(self, rule_index, check);
+            let matched = super::validation::check_inline(self, rule_index, check);
             #[cfg(not(debug_assertions))]
             let matched = check(self);
 
@@ -400,7 +409,7 @@ impl<'a> InlineState<'a> {
         let end = self.pos + range.end;
 
         #[cfg(debug_assertions)]
-        crate::parser::validation::inline_range(self.src.as_ref(), start, end);
+        super::validation::inline_range(self.src.as_ref(), start, end);
 
         Some(InlineState {
             src: Cow::Borrowed(self.src.as_ref()),

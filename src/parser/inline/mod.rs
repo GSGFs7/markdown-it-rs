@@ -5,6 +5,8 @@ mod parser;
 mod rule;
 mod state;
 mod text_scanner;
+#[cfg(debug_assertions)]
+mod validation;
 
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};

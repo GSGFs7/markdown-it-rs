@@ -98,7 +98,16 @@ impl<'a> BlockState<'a> {
                 let mut matched = None;
                 for index in 0..self.rules.len() {
                     let run = self.rules[index].1;
-                    if let Some(result) = run(self) {
+
+                    // additional checks
+                    #[cfg(debug_assertions)]
+                    let result = super::validation::run_block(self, index, run);
+
+                    // normal, faster
+                    #[cfg(not(debug_assertions))]
+                    let result = run(self);
+
+                    if let Some(result) = result {
                         matched = Some(result);
                         break;
                     }
@@ -165,7 +174,7 @@ impl<'a> BlockState<'a> {
 
             // debug checks
             #[cfg(debug_assertions)]
-            let matched = crate::parser::validation::check_block(self, index, check);
+            let matched = super::validation::check_block(self, index, check);
 
             #[cfg(not(debug_assertions))]
             let matched = check(self);

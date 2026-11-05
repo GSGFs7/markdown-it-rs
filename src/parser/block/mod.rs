@@ -4,6 +4,9 @@ mod lines;
 mod parser;
 mod rule;
 mod state;
+#[cfg(debug_assertions)]
+mod validation;
+
 pub(crate) use document::parse_document;
 pub use lines::*;
 pub use parser::BlockParserRule;
