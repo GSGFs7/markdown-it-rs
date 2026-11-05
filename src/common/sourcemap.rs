@@ -1,4 +1,28 @@
 //! Tools to work with source positions and mapping.
+//!
+//! The `sourcemap` Cargo feature makes the parser record source byte ranges on
+//! AST nodes, which can be read with `Node::srcmap` and converted to
+//! `line:column` positions with [`SourcePos::get_positions`].
+//!
+//! If you need source positions as HTML attributes (`data-sourcepos`), enable
+//! the feature and add the [`crate::plugins::sourcepos`] plugin:
+//!
+//! ```rust
+//! let md = &mut markdown_it::MarkdownIt::empty();
+//! markdown_it::plugins::cmark::add(md);
+//! markdown_it::plugins::sourcepos::add(md);
+//!
+//! assert_eq!(
+//!     md.render("# hello").trim(),
+//!     r#"<h1 data-sourcepos="1:1-1:7">hello</h1>"#,
+//! );
+//! ```
+//!
+//! Enable the feature in `Cargo.toml`:
+//!
+//! ```toml
+//! markdown-it-rs = { version = "0.7", features = ["sourcemap"] }
+//! ```
 
 #[derive(Debug)]
 /// Holds source code, allows to calculate `line:column` from byte offset.

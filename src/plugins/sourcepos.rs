@@ -1,4 +1,15 @@
 //! Add source mapping to resulting HTML, looks like this: `<stuff data-sourcepos="1:1-2:3">`.
+//!
+//! Enabling the `sourcemap` Cargo feature makes the parser record source
+//! positions on AST nodes. This plugin is what turns those recorded positions
+//! into HTML attributes; without it the rendered HTML has no source positions.
+//! If you only need positions in the AST, enable the feature without adding this
+//! plugin. See [`crate::common::sourcemap`] for details.
+//!
+//! ```toml
+//! markdown-it-rs = { version = "0.7", features = ["sourcemap"] }
+//! ```
+//!
 //! ```rust
 //! let md = &mut markdown_it::MarkdownIt::empty();
 //! markdown_it::plugins::cmark::add(md);
