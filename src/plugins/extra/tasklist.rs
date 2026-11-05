@@ -1,8 +1,6 @@
 //! Task list syntax, like `- [ ] todo` and `- [x] done`.
 
 use crate::MarkdownIt;
-#[cfg(feature = "sourcemap")]
-use crate::common::sourcemap::SourcePos;
 use crate::document::edit::EditBatch;
 use crate::document::{Document, HtmlAttributes, NodeDraft, NodeId, StructuralEvent, Text};
 use crate::parser::core::{CoreRule, CoreState};
@@ -59,7 +57,7 @@ struct TaskItemPlan {
     marker_len: usize,
     text_len: usize,
     #[cfg(feature = "sourcemap")]
-    source_map: Option<SourcePos>,
+    source_map: Option<crate::common::sourcemap::SourcePos>,
 }
 
 /// Converts task-list markers.
@@ -106,15 +104,20 @@ pub fn edits(document: &Document) -> EditBatch {
                 // remove task list marker text; it is replaced by a checkbox
                 // at render time
                 edits.replace_text(plan.text, 0..plan.marker_len, "");
+
                 #[cfg(feature = "sourcemap")]
                 if let Some(source_map) = plan.source_map {
                     let (start, end) = source_map.get_byte_offsets();
                     // update source map
                     edits.set_source_map(
                         plan.text,
-                        Some(SourcePos::new(start + plan.marker_len, end)),
+                        Some(crate::common::sourcemap::SourcePos::new(
+                            start + plan.marker_len,
+                            end,
+                        )),
                     );
                 }
+
                 edits.insert_before(plan.marker_target, marker_draft(plan.checked));
             }
 

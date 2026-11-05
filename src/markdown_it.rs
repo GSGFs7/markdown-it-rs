@@ -6,9 +6,9 @@ use crate::common::extset::MarkdownItExtSet;
 use crate::common::ruler::Ruler;
 use crate::document::{Document, NodeValue, Root, Text, TextSpecial};
 use crate::links::{LinkFormatter, MDLinkFormatter};
-use crate::parser::block::{self, BlockParser};
-use crate::parser::core::*;
-use crate::parser::inline::{self, InlineParser};
+use crate::parser::block::BlockParser;
+use crate::parser::core::{CoreRule, CoreRuleRunner, CoreState, RuleBuilder};
+use crate::parser::inline::InlineParser;
 use crate::plugin::MarkdownItBuilder;
 use crate::plugins::presets::{Preset, PresetConfig};
 use crate::render::{
@@ -136,8 +136,8 @@ impl MarkdownIt {
         };
 
         // infrastructure
-        block::add(&mut md);
-        inline::add(&mut md);
+        crate::parser::block::add(&mut md);
+        crate::parser::inline::add(&mut md);
 
         md
     }

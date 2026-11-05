@@ -3,8 +3,6 @@ use std::any::TypeId;
 use super::NodeId;
 use super::data::NodeData;
 use crate::common::extset::NodeExtSet;
-#[cfg(feature = "sourcemap")]
-use crate::common::sourcemap::SourcePos;
 use crate::document::{HtmlAttributes, NodeEmpty, NodeValue};
 
 /// Borrowed view of a node produced by a structural traversal.
@@ -33,12 +31,12 @@ impl Node {
     }
 
     #[cfg(feature = "sourcemap")]
-    pub fn srcmap(&self) -> Option<SourcePos> {
+    pub fn srcmap(&self) -> Option<crate::common::sourcemap::SourcePos> {
         self.data.srcmap
     }
 
     #[cfg(feature = "sourcemap")]
-    pub fn set_srcmap(&mut self, srcmap: Option<SourcePos>) {
+    pub fn set_srcmap(&mut self, srcmap: Option<crate::common::sourcemap::SourcePos>) {
         self.data.srcmap = srcmap;
     }
 
@@ -117,12 +115,12 @@ impl NodeDraft {
     }
 
     #[cfg(feature = "sourcemap")]
-    pub fn srcmap(&self) -> Option<SourcePos> {
+    pub fn srcmap(&self) -> Option<crate::common::sourcemap::SourcePos> {
         self.data.srcmap
     }
 
     #[cfg(feature = "sourcemap")]
-    pub fn set_srcmap(&mut self, srcmap: Option<SourcePos>) {
+    pub fn set_srcmap(&mut self, srcmap: Option<crate::common::sourcemap::SourcePos>) {
         self.data.srcmap = srcmap;
     }
 

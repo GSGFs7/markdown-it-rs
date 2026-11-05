@@ -70,8 +70,6 @@ use std::fmt::Debug;
 
 use crate::MarkdownIt;
 use crate::common::extset::{NodeExtSet, RenderExtSet};
-#[cfg(feature = "sourcemap")]
-use crate::common::sourcemap::SourcePos;
 use crate::document::{Document, HtmlAttribute, NodeId, NodeRef, NodeValue};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::inline::{InlineRule, InlineState};
@@ -349,22 +347,28 @@ impl<'a> DirectiveNode<'a> {
     pub fn name(self) -> &'static str {
         self.node.name()
     }
+
     pub fn is<T: NodeValue>(self) -> bool {
         self.node.is::<T>()
     }
+
     pub fn cast<T: NodeValue>(self) -> Option<&'a T> {
         self.node.cast::<T>()
     }
+
     pub fn attrs(self) -> &'a [HtmlAttribute] {
         self.node.attrs()
     }
+
     #[cfg(feature = "sourcemap")]
-    pub fn srcmap(self) -> Option<SourcePos> {
+    pub fn srcmap(self) -> Option<crate::common::sourcemap::SourcePos> {
         self.node.srcmap()
     }
+
     pub fn ext(self) -> &'a NodeExtSet {
         self.node.ext()
     }
+
     pub fn children(self) -> impl ExactSizeIterator<Item = Self> + 'a {
         self.node.children().iter().map(move |&id| Self {
             document: self.document,

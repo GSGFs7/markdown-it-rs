@@ -2,14 +2,12 @@ use std::any::TypeId;
 
 use crate::common::TypeKey;
 use crate::common::extset::NodeExtSet;
-#[cfg(feature = "sourcemap")]
-use crate::common::sourcemap::SourcePos;
 use crate::document::{HtmlAttributes, NodeValue};
 
 #[derive(Debug)]
 pub(super) struct NodeData {
     #[cfg(feature = "sourcemap")]
-    pub(super) srcmap: Option<SourcePos>,
+    pub(super) srcmap: Option<crate::common::sourcemap::SourcePos>,
     pub(super) ext: NodeExtSet,
     pub(super) attrs: HtmlAttributes,
     node_type: TypeKey,
