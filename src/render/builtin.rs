@@ -80,15 +80,19 @@ impl<T: NodeValue> NodeRenderer<T> for PlainTextBreakRenderer {
 ///
 /// It owns the complete structural traversal so custom descendant payloads do
 /// not need a per-type `"debug"` registration.
+///
+/// `"# heading *em*"` renders roughly as (with the `sourcemap` feature):
+///
+/// ```text
+/// container type=markdown_it::document::root::Root id=NodeId(0:0) srcmap=0..15 attrs=[]
+///   container type=markdown_it::plugins::cmark::block::heading::ATXHeading id=NodeId(1:0) srcmap=0..14 attrs=[]
+///     leaf type=markdown_it::document::text::Text id=NodeId(3:0) srcmap=2..10 attrs=[]
+///     container type=markdown_it::plugins::cmark::inline::emphasis::Em id=NodeId(7:0) srcmap=10..14 attrs=[]
+///       leaf type=markdown_it::document::text::Text id=NodeId(5:0) srcmap=11..13 attrs=[]
+/// ```
 pub(crate) struct DebugTreeRenderer;
 
 impl NodeRenderer<Root> for DebugTreeRenderer {
-    // in "# heading *em*" it like:
-    // container type=markdown_it::document::root::Root id=NodeId(0:0) srcmap=0..14 attrs=[]
-    //   container type=markdown_it::plugins::cmark::block::heading::ATXHeading id=NodeId(1:0) srcmap=0..14 attrs=[]
-    //     leaf type=markdown_it::document::text::Text id=NodeId(2:0) srcmap=2..10 attrs=[]
-    //       container type=markdown_it::plugins::cmark::inline::emphasis::Em id=NodeId(3:0) srcmap=10..14 attrs=[]
-    //         leaf type=markdown_it::document::text::Text id=NodeId(11..13)
     fn render(&self, node: &Node, _: &Root, context: &mut RenderContext<'_>, output: &mut Writer) {
         let mut depth = 0;
         for event in context.document().events(node.id()) {
@@ -111,21 +115,24 @@ impl NodeRenderer<Root> for DebugTreeRenderer {
                 current.id()
             );
             #[cfg(feature = "sourcemap")]
-            {
-                output.write_str(" srcmap=");
-                if let Some(srcmap) = current.srcmap() {
-                    let (start, end) = srcmap.get_byte_offsets();
-                    write!(output, "{start}..{end}");
-                } else {
-                    output.write_char('-');
-                }
-            }
+            write_srcmap(output, current);
             writeln!(output, " attrs={:?}", current.attrs());
 
             if matches!(event, StructuralEvent::Enter(_)) {
                 depth += 1;
             }
         }
+    }
+}
+
+#[cfg(feature = "sourcemap")]
+fn write_srcmap(output: &mut Writer, node: &Node) {
+    output.write_str(" srcmap=");
+    if let Some(srcmap) = node.srcmap() {
+        let (start, end) = srcmap.get_byte_offsets();
+        write!(output, "{start}..{end}");
+    } else {
+        output.write_char('-');
     }
 }
 

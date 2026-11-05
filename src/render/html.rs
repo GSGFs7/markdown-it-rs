@@ -27,38 +27,41 @@ pub(crate) fn render_html_link(
 }
 
 pub(crate) fn write_html_attrs(output: &mut Writer, attrs: &[HtmlAttribute]) {
-    if attrs.is_empty() {
-        return;
-    }
     write_html_attrs_with(output, attrs, &[]);
 }
 
-// avoid attr clone
+/// Write attributes, merging same-named `class`/`style` values and keeping every
+/// other duplicate as its own attribute.
+///
+/// Values in `extra` are appended after `attrs` without cloning either list.
 pub(crate) fn write_html_attrs_with(
     output: &mut Writer,
     attrs: &[HtmlAttribute],
     extra: &[(&str, &str)],
 ) {
+    /// Below this many attributes a linear scan beats building a map.
     const LINEAR_SCAN_LIMIT: usize = 8;
 
     let count = attrs.len() + extra.len();
+    if count == 0 {
+        return;
+    }
+
     let attrs = attrs
         .iter()
         .map(|(name, value)| (name.as_str(), value.as_str()))
         .chain(extra.iter().copied());
-
-    // small list, using linear scan. avoid hashmap overhead.
-    // O(n^2), but very fast with small data.
     if count <= LINEAR_SCAN_LIMIT {
+        // O(n^2), but with no allocation and a tiny `n`.
         for (index, (name, _)) in attrs.clone().enumerate() {
-            // deduplication
-            if attrs
+            let seen_before = attrs
                 .clone()
                 .take(index)
-                .any(|(previous, _)| previous == name)
-            {
+                .any(|(previous, _)| previous == name);
+            if seen_before {
                 continue;
             }
+
             write_html_attr_group(
                 output,
                 name,
@@ -70,17 +73,22 @@ pub(crate) fn write_html_attrs_with(
         return;
     }
 
+    // Large lists: group by name in one pass, remembering first-seen order.
     let mut values = HashMap::<&str, Vec<&str>>::new();
     let mut order = Vec::with_capacity(count);
     for (name, value) in attrs {
-        values.entry(name).or_default().push(value);
-        order.push(name);
+        values
+            .entry(name)
+            .or_insert_with(|| {
+                order.push(name);
+                Vec::new()
+            })
+            .push(value);
     }
     for name in order {
-        let Some(parts) = values.remove(name) else {
-            continue;
-        };
-        write_html_attr_group(output, name, parts.into_iter());
+        if let Some(parts) = values.remove(name) {
+            write_html_attr_group(output, name, parts.into_iter());
+        }
     }
 }
 
@@ -142,4 +150,38 @@ pub(crate) fn write_html_self_close(
 
 pub(crate) fn write_html_text(output: &mut Writer, value: &str) {
     output.write_escaped_html(value);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write_html_attrs;
+    use crate::render::Writer;
+
+    #[test]
+    fn html_attrs_preserve_grouping_order_and_escaping_on_both_paths() {
+        let small = vec![
+            ("class".into(), "first".into()),
+            ("id".into(), "one".into()),
+            ("class".into(), "second".into()),
+            ("style".into(), "color:<red>".into()),
+            ("title".into(), "<&>".into()),
+            ("style".into(), "display:block".into()),
+            ("id".into(), "two".into()),
+        ];
+        let mut output = Writer::new();
+        write_html_attrs(&mut output, &small);
+        assert_eq!(
+            output.finish(),
+            " class=\"first second\" id=\"one\" id=\"two\" style=\"color:&lt;red&gt;;display:block\" title=\"&lt;&amp;&gt;\""
+        );
+
+        let mut large = small;
+        large.extend([("data-a".into(), "a".into()), ("data-b".into(), "b".into())]);
+        let mut output = Writer::new();
+        write_html_attrs(&mut output, &large);
+        assert_eq!(
+            output.finish(),
+            " class=\"first second\" id=\"one\" id=\"two\" style=\"color:&lt;red&gt;;display:block\" title=\"&lt;&amp;&gt;\" data-a=\"a\" data-b=\"b\""
+        );
+    }
 }

@@ -69,3 +69,90 @@ impl fmt::Write for Writer {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    use super::Writer;
+    use crate::render::tests::{FailingDisplay, panic_message};
+
+    #[test]
+    fn escaped_writes_match_legacy_encoding_across_fast_path_boundary() {
+        for len in [0, 1, 31, 32, 33, 64, 1024] {
+            let plain = "a".repeat(len);
+            for marker in ['&', '<', '>', '"', '\'', '/', '\0', '雪', '🦀'] {
+                for pos in [0, len / 2, len] {
+                    let mut input = plain.clone();
+                    input.insert(pos, marker);
+                    let mut output = Writer::new();
+                    output.write_str("prefix:");
+                    output.write_escaped_html(&input);
+                    output.write_escaped_html("&\"");
+                    output.write_str(":suffix");
+                    assert_eq!(
+                        output.finish(),
+                        format!(
+                            "prefix:{}&amp;&quot;:suffix",
+                            crate::common::utils::escape_html(&input),
+                        ),
+                        "escaping differs for {input:?}",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn writer_supports_inherent_string_char_and_format_writes() {
+        let mut output = Writer::new();
+        output.write_str("hé");
+        output.write_char('🦀');
+        write!(output, "{}", 42);
+        let suffix = "end";
+        writeln!(output, "-{suffix}");
+
+        assert_eq!(output.finish(), "hé🦀42-end\n");
+    }
+
+    #[test]
+    fn inherent_write_fmt_panics_on_formatting_error() {
+        let mut output = Writer::new();
+
+        let panic = catch_unwind(AssertUnwindSafe(|| {
+            write!(output, "{}", FailingDisplay);
+        }))
+        .expect_err("inherent write_fmt must panic when formatting fails");
+        let message = panic_message(panic);
+
+        assert!(message.contains("failed"), "{message}");
+    }
+
+    fn write_through_generic<W: std::fmt::Write>(writer: &mut W) {
+        writer.write_str("generic").unwrap();
+        write!(writer, "-{}", 7).unwrap();
+    }
+
+    #[test]
+    fn writer_interoperates_with_generic_and_trait_object_fmt_write() {
+        let mut output = Writer::new();
+        write_through_generic(&mut output);
+        output.write_char('|');
+
+        let dyn_writer: &mut dyn std::fmt::Write = &mut output;
+        dyn_writer.write_str("dyn").unwrap();
+        write!(dyn_writer, "-{}", 9).unwrap();
+
+        assert_eq!(output.finish(), "generic-7|dyn-9");
+    }
+
+    #[test]
+    fn trait_write_fmt_propagates_formatting_error() {
+        let mut output = Writer::new();
+
+        let result =
+            <Writer as std::fmt::Write>::write_fmt(&mut output, format_args!("{}", FailingDisplay));
+
+        assert!(result.is_err());
+    }
+}

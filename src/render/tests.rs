@@ -6,13 +6,7 @@ use crate::document::{Document, NodeDraft, NodeRef, Text};
 use crate::render::RenderOptions;
 
 #[derive(Debug)]
-struct UnknownContainer;
-
-#[derive(Debug)]
-struct UnknownLeaf(&'static str);
-
-#[derive(Debug)]
-struct FailingDisplay;
+pub(super) struct FailingDisplay;
 
 impl std::fmt::Display for FailingDisplay {
     fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -20,7 +14,7 @@ impl std::fmt::Display for FailingDisplay {
     }
 }
 
-fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+pub(super) fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     if let Some(message) = payload.downcast_ref::<String>() {
         message.clone()
     } else if let Some(message) = payload.downcast_ref::<&str>() {
@@ -29,6 +23,12 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
         "<non-string panic payload>".to_owned()
     }
 }
+
+#[derive(Debug)]
+struct UnknownContainer;
+
+#[derive(Debug)]
+struct UnknownLeaf(&'static str);
 
 struct UnknownLeafRenderer(&'static str);
 
@@ -91,60 +91,6 @@ fn cr_observes_direct_renderer_writes_without_duplicate_line_endings() {
     assert_eq!(
         registry.render(&document, "html", &RenderOptions::default()),
         "first\nsecond\n"
-    );
-}
-
-#[test]
-fn escaped_writes_match_legacy_encoding_across_fast_path_boundary() {
-    for len in [0, 1, 31, 32, 33, 64, 1024] {
-        let plain = "a".repeat(len);
-        for marker in ['&', '<', '>', '"', '\'', '/', '\0', '雪', '🦀'] {
-            for pos in [0, len / 2, len] {
-                let mut input = plain.clone();
-                input.insert(pos, marker);
-                let mut output = Writer::new();
-                output.write_str("prefix:");
-                output.write_escaped_html(&input);
-                output.write_escaped_html("&\"");
-                output.write_str(":suffix");
-                assert_eq!(
-                    output.finish(),
-                    format!(
-                        "prefix:{}&amp;&quot;:suffix",
-                        crate::common::utils::escape_html(&input),
-                    ),
-                    "escaping differs for {input:?}",
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn html_attrs_preserve_grouping_order_and_escaping_on_both_paths() {
-    let small = vec![
-        ("class".into(), "first".into()),
-        ("id".into(), "one".into()),
-        ("class".into(), "second".into()),
-        ("style".into(), "color:<red>".into()),
-        ("title".into(), "<&>".into()),
-        ("style".into(), "display:block".into()),
-        ("id".into(), "two".into()),
-    ];
-    let mut output = Writer::new();
-    super::html::write_html_attrs(&mut output, &small);
-    assert_eq!(
-        output.finish(),
-        " class=\"first second\" id=\"one\" id=\"two\" style=\"color:&lt;red&gt;;display:block\" title=\"&lt;&amp;&gt;\""
-    );
-
-    let mut large = small;
-    large.extend([("data-a".into(), "a".into()), ("data-b".into(), "b".into())]);
-    let mut output = Writer::new();
-    super::html::write_html_attrs(&mut output, &large);
-    assert_eq!(
-        output.finish(),
-        " class=\"first second\" id=\"one\" id=\"two\" style=\"color:&lt;red&gt;;display:block\" title=\"&lt;&amp;&gt;\" data-a=\"a\" data-b=\"b\""
     );
 }
 
@@ -418,57 +364,4 @@ fn missing_format_panics_with_requested_format() {
         "{message}"
     );
     assert!(message.contains("NodeId(0:0)"), "{message}");
-}
-
-#[test]
-fn writer_supports_inherent_string_char_and_format_writes() {
-    let mut output = Writer::new();
-    output.write_str("hé");
-    output.write_char('🦀');
-    write!(output, "{}", 42);
-    let suffix = "end";
-    writeln!(output, "-{suffix}");
-
-    assert_eq!(output.finish(), "hé🦀42-end\n");
-}
-
-#[test]
-fn inherent_write_fmt_panics_on_formatting_error() {
-    let mut output = Writer::new();
-
-    let panic = catch_unwind(AssertUnwindSafe(|| {
-        write!(output, "{}", FailingDisplay);
-    }))
-    .expect_err("inherent write_fmt must panic when formatting fails");
-    let message = panic_message(panic);
-
-    assert!(message.contains("failed"), "{message}");
-}
-
-fn write_through_generic<W: std::fmt::Write>(writer: &mut W) {
-    writer.write_str("generic").unwrap();
-    write!(writer, "-{}", 7).unwrap();
-}
-
-#[test]
-fn writer_interoperates_with_generic_and_trait_object_fmt_write() {
-    let mut output = Writer::new();
-    write_through_generic(&mut output);
-    output.write_char('|');
-
-    let dyn_writer: &mut dyn std::fmt::Write = &mut output;
-    dyn_writer.write_str("dyn").unwrap();
-    write!(dyn_writer, "-{}", 9).unwrap();
-
-    assert_eq!(output.finish(), "generic-7|dyn-9");
-}
-
-#[test]
-fn trait_write_fmt_propagates_formatting_error() {
-    let mut output = Writer::new();
-
-    let result =
-        <Writer as std::fmt::Write>::write_fmt(&mut output, format_args!("{}", FailingDisplay));
-
-    assert!(result.is_err());
 }
