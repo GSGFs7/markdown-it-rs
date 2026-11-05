@@ -132,7 +132,7 @@ fn html_attrs_preserve_grouping_order_and_escaping_on_both_paths() {
         ("id".into(), "two".into()),
     ];
     let mut output = Writer::new();
-    super::write_html_attrs(&mut output, &small);
+    super::html::write_html_attrs(&mut output, &small);
     assert_eq!(
         output.finish(),
         " class=\"first second\" id=\"one\" id=\"two\" style=\"color:&lt;red&gt;;display:block\" title=\"&lt;&amp;&gt;\""
@@ -141,7 +141,7 @@ fn html_attrs_preserve_grouping_order_and_escaping_on_both_paths() {
     let mut large = small;
     large.extend([("data-a".into(), "a".into()), ("data-b".into(), "b".into())]);
     let mut output = Writer::new();
-    super::write_html_attrs(&mut output, &large);
+    super::html::write_html_attrs(&mut output, &large);
     assert_eq!(
         output.finish(),
         " class=\"first second\" id=\"one\" id=\"two\" style=\"color:&lt;red&gt;;display:block\" title=\"&lt;&amp;&gt;\" data-a=\"a\" data-b=\"b\""
