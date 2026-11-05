@@ -401,26 +401,14 @@ pub fn is_punct_char(ch: char) -> bool {
     use unicode_general_category::GeneralCategory::*;
     use unicode_general_category::get_general_category;
 
-    match get_general_category(ch) {
+    matches!(
+        get_general_category(ch),
         // P
         ConnectorPunctuation | DashPunctuation | OpenPunctuation | ClosePunctuation |
         InitialPunctuation | FinalPunctuation | OtherPunctuation |
         // S (in CommonMark 0.31, symbol also refers to punctuation)
-        MathSymbol | CurrencySymbol | ModifierSymbol | OtherSymbol => true,
-
-        // L
-        UppercaseLetter | LowercaseLetter | TitlecaseLetter | ModifierLetter | OtherLetter |
-        // M
-        NonspacingMark | SpacingMark | EnclosingMark |
-        // N
-        DecimalNumber | LetterNumber | OtherNumber |
-        // Z
-        SpaceSeparator | LineSeparator | ParagraphSeparator |
-        // C
-        Control | Format | Surrogate | PrivateUse | Unassigned => false,
-
-        _ => false
-    }
+        MathSymbol | CurrencySymbol | ModifierSymbol | OtherSymbol
+    )
 }
 
 #[cfg(test)]
