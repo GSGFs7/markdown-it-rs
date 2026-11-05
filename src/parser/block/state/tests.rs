@@ -144,6 +144,19 @@ fn run_contract_rejects_invalid_consumption() {
 }
 
 #[test]
+#[should_panic(expected = "block rule 0 reported invalid run length 0")]
+fn run_rejects_zero_consumption_in_all_builds() {
+    let md = MarkdownIt::empty();
+    let source = "a\nb\nc";
+    let mut document = Document::new(source, crate::document::Root::new(source));
+    let rules: [super::super::BlockRuleFns; 1] = [(|_| None, |_| Some((None, 0)))];
+    let mut state = BlockState::new(source, &md, &rules, &mut document);
+    state.line = 1;
+    state.line_max = 2;
+    state.tokenize();
+}
+
+#[test]
 fn run_contract_allows_rewind_with_progress_and_consume_only() {
     let md = MarkdownIt::empty();
     let source = "a\nb";

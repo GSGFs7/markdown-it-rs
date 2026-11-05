@@ -27,6 +27,9 @@ pub trait InlineRule: 'static {
     /// Probes the current position while scanning text, returning the number of
     /// bytes this construct consumes when it starts here.
     ///
+    /// Return `Some(n)` only when `n > 0`; a zero-length success panics, even in
+    /// release builds.
+    ///
     /// The default reuses [`run`](InlineRule::run) and discards its node, which
     /// is fine for simple matches; override it when `run` has side effects or
     /// when matching conditions differ.
@@ -43,6 +46,9 @@ pub trait InlineRule: 'static {
     /// Returns the node to insert (if any) and the number of UTF-8 bytes
     /// consumed. Return `Some((None, n))` to consume `n` bytes without adding a
     /// node, or `None` if the construct does not match.
+    ///
+    /// Every success, even without a node, must report a length greater than
+    /// zero; a zero-length success panics, even in release builds.
     fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)>;
 }
 

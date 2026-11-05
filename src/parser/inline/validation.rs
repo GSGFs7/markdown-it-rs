@@ -1,7 +1,8 @@
 use super::InlineState;
 use crate::document::NodeId;
 
-/// Validate rule consumption only in builds with debug assertions enabled.
+/// Check the debug-only rule invariants; run length is validated by the
+/// always-on progress check in [`InlineState::tokenize`].
 #[inline]
 pub(super) fn run_inline(
     state: &mut InlineState<'_>,
@@ -14,17 +15,7 @@ pub(super) fn run_inline(
         state.pos_max, before.1,
         "inline rule {index} changed the source window"
     );
-    if let Some((_, len)) = result {
-        assert!(
-            len > 0
-                && state.pos.checked_add(len).is_some_and(|end| {
-                    end > before.0 && end <= before.1 && state.src.get(state.pos..end).is_some()
-                }),
-            "inline rule {index} reported invalid run length {len} at {} (started at {})",
-            state.pos,
-            before.0
-        );
-    } else {
+    if result.is_none() {
         assert_eq!(
             state.pos, before.0,
             "inline rule {index} changed cursor on no match"
@@ -46,12 +37,6 @@ pub(super) fn check_inline(
         InlineCheckSnapshot::capture(state),
         "inline rule {index} check modified cursor or accumulated nodes"
     );
-    if let Some(len) = matched {
-        assert!(
-            len > 0 && state.remaining().get(..len).is_some(),
-            "inline rule {index} reported invalid check length {len}"
-        );
-    }
     matched
 }
 

@@ -772,7 +772,6 @@ fn check_dispatch_skips_non_matching_markers() {
     assert_eq!(context.skip_token(), None);
 }
 
-#[cfg(debug_assertions)]
 #[test]
 #[should_panic(expected = "inline rule 0 reported invalid check length 0")]
 fn check_rejects_zero_length() {
@@ -787,7 +786,6 @@ fn check_rejects_zero_length() {
     let _ = context.skip_token();
 }
 
-#[cfg(debug_assertions)]
 #[test]
 #[should_panic(expected = "inline rule 0 reported invalid check length 2")]
 fn check_rejects_out_of_bounds_length() {
@@ -802,7 +800,6 @@ fn check_rejects_out_of_bounds_length() {
     let _ = context.skip_token();
 }
 
-#[cfg(debug_assertions)]
 #[test]
 #[should_panic(expected = "inline rule 0 reported invalid check length 1")]
 fn check_rejects_non_utf8_length() {
@@ -1845,6 +1842,19 @@ fn run_contract_rejects_invalid_consumption() {
 }
 
 #[test]
+#[should_panic(expected = "inline rule 0 reported invalid run length 0")]
+fn run_rejects_zero_consumption_in_all_builds() {
+    let md = MarkdownIt::empty();
+    let mut document = Document::new("", crate::document::Root::new(""));
+    let ruleset = RuleSet {
+        runs: vec![run_rule(|_| Some((None, 0)))],
+        checks: vec![],
+    };
+    let mut state = InlineState::new(&mut document, "aéx", 1, 3, &md, &ruleset, 0, 0);
+    state.tokenize();
+}
+
+#[test]
 fn run_contract_allows_rewind_with_progress_and_consume_only() {
     let md = MarkdownIt::empty();
     let mut document = Document::new("", crate::document::Root::new(""));
@@ -1861,7 +1871,6 @@ fn run_contract_allows_rewind_with_progress_and_consume_only() {
     assert!(state.nodes().is_empty());
 }
 
-#[cfg(debug_assertions)]
 #[test]
 #[should_panic(expected = "inline rule 0 reported invalid check length")]
 fn check_rejects_overflow_length() {

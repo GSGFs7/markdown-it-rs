@@ -98,6 +98,7 @@ impl<'a> BlockState<'a> {
                 let mut matched = None;
                 for index in 0..self.rules.len() {
                     let run = self.rules[index].1;
+                    let start = self.line;
 
                     // additional checks
                     #[cfg(debug_assertions)]
@@ -108,6 +109,14 @@ impl<'a> BlockState<'a> {
                     let result = run(self);
 
                     if let Some(result) = result {
+                        block_progress(
+                            index,
+                            start,
+                            self.line,
+                            self.line_max,
+                            self.line_offsets.len(),
+                            result.1,
+                        );
                         matched = Some(result);
                         break;
                     }
@@ -297,6 +306,27 @@ impl<'a> BlockState<'a> {
             self.line_offsets[end_line].line_end,
         ))
     }
+}
+
+/// Assert that a successful block rule advances from `start` and stays within
+/// the current window. Also enforced in release builds, since a zero-length
+/// success would loop forever.
+#[inline]
+fn block_progress(
+    index: usize,
+    start: usize,
+    line: usize,
+    line_max: usize,
+    line_count: usize,
+    len: usize,
+) {
+    assert!(
+        len > 0
+            && line
+                .checked_add(len)
+                .is_some_and(|end| { end > start && end <= line_max && end <= line_count }),
+        "block rule {index} reported invalid run length {len} at {line} (started at {start})"
+    );
 }
 
 #[cfg(test)]

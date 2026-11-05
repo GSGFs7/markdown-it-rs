@@ -1,7 +1,8 @@
 use super::BlockState;
 use crate::document::NodeId;
 
-/// Validate rule consumption only in builds with debug assertions enabled.
+/// Check the debug-only rule invariants; run length is validated by the
+/// always-on progress check in [`BlockState::tokenize`].
 #[inline]
 pub(super) fn run_block(
     state: &mut BlockState<'_>,
@@ -14,17 +15,7 @@ pub(super) fn run_block(
         state.line_max, before.1,
         "block rule {index} changed the source window"
     );
-    if let Some((_, len)) = result {
-        assert!(
-            len > 0
-                && state.line.checked_add(len).is_some_and(|end| {
-                    end > before.0 && end <= before.1 && end <= state.line_offsets.len()
-                }),
-            "block rule {index} reported invalid run length {len} at {} (started at {})",
-            state.line,
-            before.0
-        );
-    } else {
+    if result.is_none() {
         assert_eq!(
             state.line, before.0,
             "block rule {index} changed cursor on no match"

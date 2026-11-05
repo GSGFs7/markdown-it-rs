@@ -264,6 +264,7 @@ impl<'a> InlineState<'a> {
                     InlineRunRunner::Static(run) => run(state),
                     InlineRunRunner::Dynamic(run) => run(state),
                 };
+                let start = self.pos;
 
                 // additional checks
                 #[cfg(debug_assertions)]
@@ -274,6 +275,14 @@ impl<'a> InlineState<'a> {
                 let result = run(self);
 
                 if let Some(result) = result {
+                    inline_progress(
+                        index,
+                        self.src.as_ref(),
+                        start,
+                        self.pos,
+                        self.pos_max,
+                        result.1,
+                    );
                     matched = Some(result);
                     break;
                 }
@@ -358,6 +367,7 @@ impl<'a> InlineState<'a> {
             let matched = check(self);
 
             if let Some(len) = matched {
+                check_progress(rule_index, self.remaining(), len);
                 // Extend the pending text when the match is contiguous;
                 // otherwise start an opaque token.
                 if self
@@ -526,6 +536,29 @@ impl<'a> InlineState<'a> {
             self.source_pos(end),
         ))
     }
+}
+
+/// Assert that a successful rule advances from `start` and stays within the
+/// source window on a UTF-8 boundary. Also enforced in release builds, since a
+/// zero-length success would rerun the rule forever.
+#[inline]
+fn inline_progress(index: usize, src: &str, start: usize, pos: usize, pos_max: usize, len: usize) {
+    assert!(
+        len > 0
+            && pos
+                .checked_add(len)
+                .is_some_and(|end| end > start && end <= pos_max && src.get(pos..end).is_some()),
+        "inline rule {index} reported invalid run length {len} at {pos} (started at {start})"
+    );
+}
+
+/// Assert that a successful check consumes a non-empty, in-bounds UTF-8 span.
+#[inline]
+fn check_progress(index: usize, remaining: &str, len: usize) {
+    assert!(
+        len > 0 && remaining.get(..len).is_some(),
+        "inline rule {index} reported invalid check length {len}"
+    );
 }
 
 #[cfg(test)]
