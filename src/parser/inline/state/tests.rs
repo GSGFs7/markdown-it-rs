@@ -47,7 +47,7 @@ impl<'a> InlineState<'a> {
 
 // Test shorthand for a nested boundary scan; production uses child_state directly.
 fn scan<'s>(state: &'s mut InlineState<'_>, range: Range<usize>) -> Option<InlineState<'s>> {
-    state.child_state(range, state.depth.checked_add(1)?, state.link_level)
+    state.child_state(range)
 }
 
 fn check_rule(check: InlineCheckFn) -> InlineRuleFns {
@@ -194,7 +194,7 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
         pending_text: Some((4, 7)),
     };
 
-    state.finish_nodes();
+    state.flush_text();
 
     assert_eq!(state.src, "前x雪尾");
     #[cfg(feature = "sourcemap")]
@@ -283,7 +283,7 @@ fn finish_callbacks_are_local_to_sessions_and_skipped_by_boundary_scans() {
         while boundary.skip_token().is_some() {}
     }
     state
-        .parse_child(0..5, 1, 0, |child| child.on_finish(record))
+        .parse_child_at(0..5, 1, 0, |child| child.on_finish(record))
         .unwrap();
     state.tokenize();
     state.finish();
@@ -689,12 +689,12 @@ fn nesting_limit_decision_is_shared_with_shallower_scans() {
     };
     let mut state = check_state(&mut document, &md, &ruleset, "前abc");
     {
-        let mut deep = state.child_state(3..6, 2, 0).unwrap();
+        let mut deep = state.child_state_at(3..6, 2, 0).unwrap();
         assert_eq!(deep.skip_token(), Some(3));
     }
     // A different start with the same end still observes the absolute cursor
     // recorded by the nested scan.
-    let mut shallow = state.child_state(0..6, 0, 0).unwrap();
+    let mut shallow = state.child_state_at(0..6, 0, 0).unwrap();
     shallow.pos = 3;
     assert_eq!(shallow.skip_token(), Some(3));
     assert_eq!(shallow.trailing_text(), "abc");
@@ -714,10 +714,10 @@ fn nesting_limit_decisions_are_isolated_by_range_end() {
     for (truncated_end, other_end) in [(5, 7), (7, 5)] {
         let mut state = check_state(&mut document, &md, &ruleset, "前abcd");
         {
-            let mut deep = state.child_state(3..truncated_end, 2, 0).unwrap();
+            let mut deep = state.child_state_at(3..truncated_end, 2, 0).unwrap();
             assert_eq!(deep.skip_token(), Some(truncated_end - 3));
         }
-        let mut shallow = state.child_state(3..other_end, 0, 0).unwrap();
+        let mut shallow = state.child_state_at(3..other_end, 0, 0).unwrap();
         assert_eq!(shallow.skip_token(), Some(1));
         assert_eq!(shallow.remaining().len(), other_end - 4);
     }
@@ -931,10 +931,10 @@ fn check_matches_and_no_matches_keep_scratch_and_effects_private() {
     for session in 0..4 {
         let mut context = match session {
             0 => state
-                .child_state(0..state.remaining().len(), state.depth, state.link_level)
+                .child_state_at(0..state.remaining().len(), state.depth, state.link_level)
                 .expect("current source range is valid"),
             1 => state
-                .child_state(0..state.remaining().len(), state.depth, state.link_level)
+                .child_state_at(0..state.remaining().len(), state.depth, state.link_level)
                 .expect("scan offset is valid"),
             _ => scan(&mut state, 0..11).unwrap(),
         };
@@ -1690,7 +1690,9 @@ fn child_link_level_override_is_isolated() {
     );
 
     for level in [3, -1] {
-        let children = state.parse_subrange_with_link_level(1..10, level).unwrap();
+        let children = state
+            .parse_child_at(1..10, state.depth.saturating_add(1), level, |_| {})
+            .unwrap();
         assert_eq!(children.len(), 1);
         assert_eq!(
             state
@@ -1733,15 +1735,25 @@ fn child_link_level_override_keeps_range_and_depth_rules() {
         checks: vec![],
     };
     let mut state = parent_state(&mut document, &md, &ruleset);
-    assert!(state.parse_subrange_with_link_level(0..12, 3).is_none());
-    assert!(state.parse_subrange_with_link_level(3..4, 3).is_none());
     assert!(
         state
-            .parse_subrange_with_link_level(0..0, 3)
+            .parse_child_at(0..12, state.depth.saturating_add(1), 3, |_| {})
+            .is_none()
+    );
+    assert!(
+        state
+            .parse_child_at(3..4, state.depth.saturating_add(1), 3, |_| {})
+            .is_none()
+    );
+    assert!(
+        state
+            .parse_child_at(0..0, state.depth.saturating_add(1), 3, |_| {})
             .unwrap()
             .is_empty()
     );
-    let children = state.parse_subrange_with_link_level(0..11, 3).unwrap();
+    let children = state
+        .parse_child_at(0..11, state.depth.saturating_add(1), 3, |_| {})
+        .unwrap();
     assert_eq!(
         state
             .document

@@ -204,8 +204,7 @@ fn scan_link_label(mut context: InlineState<'_>, enable_nested: bool) -> Option<
     let memoize = context
         .scan_limit_cache
         .borrow()
-        .link_bounds
-        .as_ref()
+        .link_bounds()
         .is_some_and(|bounds| bounds.can_memoize_labels(start, context.pos_max));
     let initial_key = LabelScanKey {
         start,
@@ -216,7 +215,7 @@ fn scan_link_label(mut context: InlineState<'_>, enable_nested: bool) -> Option<
     };
     if memoize {
         let shared = context.scan_limit_cache.borrow();
-        if shared.link_bounds.as_ref()?.failed_labels.contains(&(
+        if shared.link_bounds()?.failed_labels.contains(&(
             initial_key.start,
             initial_key.end,
             initial_key.link_level,
@@ -224,7 +223,7 @@ fn scan_link_label(mut context: InlineState<'_>, enable_nested: bool) -> Option<
         )) {
             return None;
         }
-        if let Some(&(epoch, close)) = shared.link_bounds.as_ref()?.labels.get(&initial_key) {
+        if let Some(&(epoch, close)) = shared.link_bounds()?.labels.get(&initial_key) {
             // Additional nesting cutoffs can invalidate a successful boundary.
             if epoch == shared.epoch() {
                 return Some(close - start);
@@ -259,8 +258,7 @@ fn scan_link_label(mut context: InlineState<'_>, enable_nested: bool) -> Option<
                     && context
                         .scan_limit_cache
                         .borrow()
-                        .link_bounds
-                        .as_ref()
+                        .link_bounds()
                         .is_some_and(|bounds| {
                             bounds.failed_labels.contains(&(
                                 context.pos,
@@ -309,8 +307,7 @@ fn cache_label_scan(context: &InlineState<'_>, key: LabelScanKey, close: Option<
     let epoch = shared.epoch();
     // Only reached while `memoize` is set, which requires `link_bounds`.
     let bounds = shared
-        .link_bounds
-        .as_mut()
+        .link_bounds_mut()
         .expect("label memoization requires link bounds");
     if close.is_none() {
         bounds
@@ -582,11 +579,10 @@ fn scan_link_candidate(
     }
 
     let source = context.remaining();
-    let child_depth = context.depth.checked_add(1)?;
     let label_start = pos + 1;
     let label_end = label_start
         + scan_link_label(
-            context.child_state(label_start..source.len(), child_depth, context.link_level)?,
+            context.child_state(label_start..source.len())?,
             enable_nested,
         )?;
 
@@ -621,11 +617,7 @@ fn scan_link_candidate(
     let reference_end = if source.as_bytes().get(reference_pos) == Some(&b'[') {
         let reference_start = reference_pos + 1;
         context
-            .child_state(
-                reference_start..source.len(),
-                child_depth,
-                context.link_level,
-            )
+            .child_state(reference_start..source.len())
             .and_then(|child| scan_link_label(child, true))
             .map(|close| (reference_start, reference_start + close))
     } else {
@@ -669,7 +661,7 @@ fn link_run(
     let label_range = candidate.label_start..candidate.label_end;
     // Parse the label directly (extensions survive) before allocating the node.
     let children = match options.label_context {
-        LabelContext::Independent => state.parse_child(label_range.clone(), 0, 0, |label| {
+        LabelContext::Independent => state.parse_child_at(label_range.clone(), 0, 0, |label| {
             label
                 .inline_ext
                 .insert(super::delimiters::EmphasisSourceStart(label.pos));
@@ -679,7 +671,7 @@ fn link_run(
                 .link_level
                 .checked_add(1)
                 .expect("inline link nesting level overflow");
-            state.parse_child(
+            state.parse_child_at(
                 label_range.clone(),
                 state.depth.saturating_add(1),
                 child_link_level,
@@ -894,7 +886,7 @@ fn has_possible_link_label_close(
     // cache, but always initialize link bounds before accepting their request.
     let requires_scan = scan_hooks_require_scan(state, open, end);
     let mut shared = state.scan_limit_cache.borrow_mut();
-    let cache = shared.link_bounds.get_or_insert_with(|| LinkLabelBounds {
+    let cache = shared.link_bounds_or_insert_with(|| LinkLabelBounds {
         close_positions: source.match_indices(']').map(|(pos, _)| pos).collect(),
         plain_closes: plain_label_closes(source, source.len(), state.ruleset),
         target_positions: source.match_indices('(').map(|(pos, _)| pos).collect(),

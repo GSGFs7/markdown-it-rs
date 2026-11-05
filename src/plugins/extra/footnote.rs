@@ -592,7 +592,7 @@ impl InlineRule for FootnoteInlineScanner {
         if !state.remaining().starts_with("^[") {
             return None;
         }
-        let scanned = scan_inline_footnote_end(state.child_state(
+        let scanned = scan_inline_footnote_end(state.child_state_at(
             2..state.remaining().len(),
             state.depth,
             state.link_level,
@@ -622,7 +622,12 @@ impl InlineRule for FootnoteInlineScanner {
             allocate_inline(&mut env)
         };
 
-        let children = state.parse_subrange_at_current_depth(content_start..content_end)?;
+        let children = state.parse_child_at(
+            content_start..content_end,
+            state.depth,
+            state.link_level,
+            |_| {},
+        )?;
         let paragraph = state
             .document
             .create_node(crate::plugins::cmark::block::paragraph::Paragraph);
@@ -649,7 +654,7 @@ impl InlineRule for FootnoteInlineScanner {
         if !context.remaining().starts_with("^[") {
             return None;
         }
-        let scanned = scan_inline_footnote_end(context.child_state(
+        let scanned = scan_inline_footnote_end(context.child_state_at(
             2..context.remaining().len(),
             context.depth,
             context.link_level,

@@ -2,7 +2,7 @@ use super::InlineState;
 use crate::document::NodeId;
 
 /// Check the debug-only rule invariants; run length is validated by the
-/// always-on progress check in [`InlineState::tokenize`].
+/// always-on progress check in the inline tokenizer.
 #[inline]
 pub(super) fn run_inline(
     state: &mut InlineState<'_>,
@@ -101,7 +101,7 @@ mod tests {
             let node = state.document.create_node(Text {
                 content: "bad".into(),
             });
-            state.nodes_mut().push(node);
+            state.push_node(node);
             Some(1)
         });
     }
@@ -131,7 +131,7 @@ mod tests {
         let text = state.document.create_node(Text {
             content: "kept".into(),
         });
-        state.nodes_mut().push(text);
+        state.push_node(text);
         check_inline(&mut state, 0, |state| {
             let text = state.nodes()[0];
             state

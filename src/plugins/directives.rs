@@ -132,13 +132,14 @@ impl InlineRule for TextDirective {
         let preceded_by_colon = state.pos > 0 && state.src[..state.pos].ends_with(':');
         let (name, attrs, len) = scan_text_directive(state.remaining(), preceded_by_colon)?;
 
+        let md = state.markdown_it();
         let node = state.document.create_node(TextDirective {
             name: name.clone(),
             attrs,
         });
         attach_render(
             state.document.node_mut(node).ext_mut(),
-            state.md,
+            md,
             DirectiveKind::Text,
             &name,
         );

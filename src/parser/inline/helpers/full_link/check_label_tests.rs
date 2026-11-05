@@ -25,15 +25,9 @@ impl<const NESTED: bool> InlineRule for Consumer<NESTED> {
         }
         let len = state.remaining().len();
         let expected_source = state.remaining()[1..].to_owned();
-        let mut parent = state
-            .child_state(1..len, state.depth.saturating_add(1), state.link_level)
-            .unwrap();
+        let mut parent = state.child_state(1..len).unwrap();
         let result = parent
-            .child_state(
-                1..parent.remaining().len(),
-                parent.depth.saturating_add(1),
-                parent.link_level,
-            )
+            .child_state(1..parent.remaining().len())
             .and_then(|child| scan_link_label(child, NESTED));
         assert_eq!(parent.remaining(), expected_source);
         assert_eq!(parent.trailing_text(), "");
@@ -485,7 +479,7 @@ fn candidate_requires_reference_map_and_label_window() {
     );
 
     let mut nested = root
-        .child_state(
+        .child_state_at(
             0..source.len(),
             root.depth.saturating_add(2),
             root.link_level,

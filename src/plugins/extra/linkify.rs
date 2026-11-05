@@ -635,7 +635,9 @@ fn run_candidate(
             &[][..]
         } else {
             cache
-                .get_or_insert_with(|| LinkifyPositions(scan_positions(&state.src, state.md)))
+                .get_or_insert_with(|| {
+                    LinkifyPositions(scan_positions(&state.src, state.markdown_it()))
+                })
                 .0
                 .as_slice()
         };

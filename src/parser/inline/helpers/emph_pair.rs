@@ -264,7 +264,7 @@ impl<const MARKER: char, const CAN_SPLIT_WORD: bool> InlineRule
 
         // scan_and_match may set a map spanning earlier delimiters. Push directly
         // so tokenize does not overwrite it with this delimiter's span.
-        state.nodes_mut().push(closer);
+        state.push_node(closer);
         Some((None, scanned_bytes))
     }
 }
@@ -403,7 +403,7 @@ fn scan_and_match<const MARKER: char>(state: &mut InlineState, closer_token: Nod
                 opener.remaining -= marker_len;
 
                 let new_token = marker_fn.create(state.document);
-                let children = state.nodes_mut().split_off(idx + 1);
+                let children = state.split_off_nodes(idx + 1);
                 state.document.attach_children(new_token, children);
 
                 #[cfg(feature = "sourcemap")]
@@ -420,12 +420,12 @@ fn scan_and_match<const MARKER: char>(state: &mut InlineState, closer_token: Nod
 
                 // Drop the opener once fully matched.
                 if opener.remaining == 0 {
-                    let removed = state.nodes_mut().pop().unwrap();
+                    let removed = state.pop_node().unwrap();
                     state.document.discard_node(removed);
                 }
 
                 removed_from = Some(removed_from.map_or(idx, |earliest| earliest.min(idx)));
-                state.nodes_mut().push(new_token);
+                state.push_node(new_token);
             }
         }
 
@@ -462,7 +462,7 @@ fn scan_and_match<const MARKER: char>(state: &mut InlineState, closer_token: Nod
         closer_token
     } else {
         state.document.discard_node(closer_token);
-        state.nodes_mut().pop().unwrap()
+        state.pop_node().unwrap()
     }
 }
 
