@@ -62,7 +62,7 @@ readonly = ">= 0.2.0, < 0.3"
 regex = ">= 1.0.0, < 2"
 stacker = ">= 0.1.2, < 0.2"
 syntect = { version = ">= 5.0.0, < 6", optional = true, default-features = false, features = [
-    "default-fancy",
+    "regex-fancy",
     "html",
 ] }
 unicode-general-category = ">= 0.1.0, < 1.2"
