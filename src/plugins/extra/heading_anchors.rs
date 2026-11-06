@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::MarkdownIt;
 use crate::document::edit::EditBatch;
-use crate::document::{Document, NodeRef, StructuralEvent, Text, TextSpecial};
+use crate::document::{Document, Node, StructuralEvent, Text, TextSpecial};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::plugins::cmark::block::heading::ATXHeading;
 use crate::plugins::cmark::block::lheading::SetextHeader;
@@ -144,7 +144,7 @@ pub fn github_slugify_fn(s: &str) -> String {
     result
 }
 
-pub fn is_heading(node: NodeRef<'_>) -> bool {
+pub fn is_heading(node: &Node) -> bool {
     node.is::<ATXHeading>() || node.is::<SetextHeader>()
 }
 
@@ -330,7 +330,7 @@ struct Heading {
 }
 
 impl Heading {
-    fn new(node: NodeRef<'_>) -> Self {
+    fn new(node: &Node) -> Self {
         Self {
             id: node.id(),
             has_id: node.attrs().iter().any(|(name, _)| name == "id"),
@@ -339,7 +339,7 @@ impl Heading {
     }
 }
 
-fn append_text(node: NodeRef<'_>, active_headings: &[usize], headings: &mut [Heading]) {
+fn append_text(node: &Node, active_headings: &[usize], headings: &mut [Heading]) {
     let content = if let Some(text) = node.cast::<Text>() {
         Some(text.content.as_str())
     } else if let Some(text) = node.cast::<TextSpecial>() {

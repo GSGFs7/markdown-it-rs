@@ -2,7 +2,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::{NodeRenderer, RenderContext, RendererRegistry, Writer};
 use crate::MarkdownIt;
-use crate::document::{Document, NodeDraft, NodeRef, Text};
+use crate::document::{Document, Node, NodeDraft, Text};
 use crate::render::RenderOptions;
 
 #[derive(Debug)]
@@ -35,7 +35,7 @@ struct UnknownLeafRenderer(&'static str);
 impl NodeRenderer<UnknownLeaf> for UnknownLeafRenderer {
     fn render(
         &self,
-        _: NodeRef<'_>,
+        _: &Node,
         value: &UnknownLeaf,
         _: &mut RenderContext<'_>,
         output: &mut Writer,
@@ -49,7 +49,7 @@ struct DirectWriteAndCrRenderer;
 impl NodeRenderer<UnknownLeaf> for DirectWriteAndCrRenderer {
     fn render(
         &self,
-        _: NodeRef<'_>,
+        _: &Node,
         _: &UnknownLeaf,
         context: &mut RenderContext<'_>,
         output: &mut Writer,

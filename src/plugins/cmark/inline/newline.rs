@@ -5,7 +5,7 @@
 //!  - <https://spec.commonmark.org/0.30/#hard-line-breaks>
 //!  - <https://spec.commonmark.org/0.30/#soft-line-breaks>
 use crate::MarkdownIt;
-use crate::document::{NodeId, NodeRef};
+use crate::document::{Node, NodeId};
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{NodeRenderer, PlainTextBreakRenderer, RenderContext, write_html_self_close};
 
@@ -17,7 +17,7 @@ struct HardbreakRenderer;
 impl NodeRenderer<Hardbreak> for HardbreakRenderer {
     fn render(
         &self,
-        _: NodeRef<'_>,
+        _: &Node,
         _: &Hardbreak,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -35,7 +35,7 @@ struct SoftbreakRenderer;
 impl NodeRenderer<Softbreak> for SoftbreakRenderer {
     fn render(
         &self,
-        _: NodeRef<'_>,
+        _: &Node,
         _: &Softbreak,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,

@@ -200,7 +200,7 @@ struct TaskListMarkerRenderer;
 impl crate::render::NodeRenderer<TaskListMarker> for TaskListMarkerRenderer {
     fn render(
         &self,
-        _: crate::document::NodeRef<'_>,
+        _: &crate::document::Node,
         marker: &TaskListMarker,
         context: &mut crate::render::RenderContext<'_>,
         output: &mut crate::render::Writer,

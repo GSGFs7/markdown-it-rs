@@ -81,15 +81,14 @@ mod renderer;
 mod spec;
 mod state;
 
-pub use block::{BlockLeafBuilder, BlockPluginState};
-pub use builder::MarkdownItBuilder;
-pub use html::{Html, HtmlElement};
-pub use inline::{InlineLeafBuilder, InlinePlugin, LeafRenderer, LeafRule};
-pub use pair::{InlinePairBuilder, PairDelimiter};
-pub use renderer::WithRenderer;
-pub use spec::PluginSpec;
-pub use state::InlinePluginState;
-
+pub use self::block::{BlockLeafBuilder, BlockPluginState};
+pub use self::builder::MarkdownItBuilder;
+pub use self::html::{Html, HtmlElement};
+pub use self::inline::{InlineLeafBuilder, InlinePlugin, LeafRenderer, LeafRule};
+pub use self::pair::{InlinePairBuilder, PairDelimiter};
+pub use self::renderer::WithRenderer;
+pub use self::spec::PluginSpec;
+pub use self::state::InlinePluginState;
 use crate::MarkdownIt;
 
 /// A plugin that can be queued on a [`MarkdownItBuilder`].

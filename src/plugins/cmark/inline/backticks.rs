@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#code-span>
 use crate::MarkdownIt;
-use crate::document::NodeRef;
+use crate::document::Node;
 use crate::parser::inline::helpers::code_pair;
 use crate::render::{
     NodeRenderer,
@@ -25,7 +25,7 @@ struct CodeInlineRenderer;
 impl NodeRenderer<CodeInline> for CodeInlineRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         _: &CodeInline,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,

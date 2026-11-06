@@ -2,12 +2,12 @@
 use std::hint::black_box;
 use std::time::Duration;
 
-use criterion::{criterion_group, criterion_main, Criterion};
-use markdown_it::document::{NodeId, NodeRef};
+use criterion::{Criterion, criterion_group, criterion_main};
+use markdown_it::MarkdownIt;
+use markdown_it::document::{Node, NodeId};
 use markdown_it::parser::inline::{InlineRule, InlineState};
 use markdown_it::plugin::{Html, InlinePlugin, InlinePluginState, PluginSpec};
 use markdown_it::render::{NodeRenderer, RenderContext, Writer};
-use markdown_it::MarkdownIt;
 
 #[derive(Debug)]
 struct Emoji;
@@ -46,7 +46,7 @@ impl InlineRule for LowRule {
 
 struct LowRenderer;
 impl NodeRenderer<Emoji> for LowRenderer {
-    fn render(&self, _: NodeRef<'_>, _: &Emoji, _: &mut RenderContext<'_>, out: &mut Writer) {
+    fn render(&self, _: &Node, _: &Emoji, _: &mut RenderContext<'_>, out: &mut Writer) {
         // Same tag/attribute/text escaping work as the Html builder, without
         // allocating a temporary tree. Avoid a precomputed markup shortcut.
         out.write_str("<");

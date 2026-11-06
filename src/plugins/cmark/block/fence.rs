@@ -5,7 +5,7 @@
 //! <https://spec.commonmark.org/0.30/#code-fence>
 use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
-use crate::document::{NodeId, NodeRef};
+use crate::document::{Node, NodeId};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::render::{
     NodeRenderer,
@@ -29,7 +29,7 @@ struct CodeFenceRenderer;
 impl NodeRenderer<CodeFence> for CodeFenceRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         fence: &CodeFence,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -63,7 +63,7 @@ struct CodeFenceTextRenderer;
 impl NodeRenderer<CodeFence> for CodeFenceTextRenderer {
     fn render(
         &self,
-        _: NodeRef<'_>,
+        _: &Node,
         fence: &CodeFence,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,

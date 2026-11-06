@@ -23,13 +23,13 @@
 //! ```rust
 //! use markdown_it::parser::inline::helpers::emph_pair;
 //! use markdown_it::MarkdownIt;
-//! use markdown_it::document::{NodeId, NodeRef};
+//! use markdown_it::document::{NodeId, Node};
 //! use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 //! #[derive(Debug)]
 //! struct Superscript;
 //! struct CustomRenderer;
 //! impl NodeRenderer<Superscript> for CustomRenderer {
-//!     fn render(&self, node: NodeRef<'_>, _: &Superscript, ctx: &mut RenderContext<'_>, out: &mut Writer) {
+//!     fn render(&self, node: &Node, _: &Superscript, ctx: &mut RenderContext<'_>, out: &mut Writer) {
 //!         out.write_str("<sup>"); ctx.render_children(node.id(), out); out.write_str("</sup>");
 //!     }
 //! }
@@ -891,7 +891,7 @@ mod tests {
     impl crate::render::NodeRenderer<CustomEmphasis> for CustomRenderer {
         fn render(
             &self,
-            node: crate::document::NodeRef<'_>,
+            node: &crate::document::Node,
             _: &CustomEmphasis,
             ctx: &mut crate::render::RenderContext<'_>,
             out: &mut crate::render::Writer,

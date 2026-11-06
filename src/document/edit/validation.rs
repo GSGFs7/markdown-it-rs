@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::ops::Range;
 
-use super::{EditBatch, ReplaceText, attribute_groups, text_groups};
+use super::{EditAttribute, EditBatch, NodePatchSet, ReplaceText, text_groups};
 use crate::document::{Document, Node, NodeId, Text};
 
 /// A validation failure that leaves the document unchanged.
@@ -576,7 +576,33 @@ impl EditBatch {
     }
 }
 
-// helper
+impl NodePatchSet {
+    fn edited_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
+        let nodes = self
+            .text
+            .iter()
+            .map(|edit| edit.node)
+            .chain(self.attributes.iter().map(|edit| edit.node));
+        #[cfg(feature = "sourcemap")]
+        let nodes = nodes.chain(self.source_maps.iter().map(|edit| edit.node));
+        nodes.chain(self.values.iter().map(|edit| edit.node))
+    }
+}
+
+fn attribute_groups(edits: &[EditAttribute]) -> impl Iterator<Item = &[EditAttribute]> {
+    let mut remaining = edits;
+    std::iter::from_fn(move || {
+        let first = remaining.first()?;
+        let end = remaining
+            .iter()
+            .position(|edit| edit.node != first.node || edit.name != first.name)
+            .unwrap_or(remaining.len());
+        let (group, rest) = remaining.split_at(end);
+        remaining = rest;
+        Some(group)
+    })
+}
+
 fn checked_node(document: &Document, id: NodeId) -> Result<&Node, ValidationError> {
     document
         .get_node(id)

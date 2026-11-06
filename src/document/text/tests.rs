@@ -12,7 +12,7 @@ struct ReadOnlyText(String);
 
 static CLASSIFICATIONS: AtomicUsize = AtomicUsize::new(0);
 
-fn classify<'a>(document: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+fn classify<'a>(document: &'a Document, node: &'a Node) -> TextProjectionKind<'a> {
     if let Some(text) = document.text(node.id()) {
         TextProjectionKind::Writable(text)
     } else if let Some(text) = node.cast::<ReadOnlyText>() {
@@ -24,7 +24,7 @@ fn classify<'a>(document: &'a Document, node: NodeRef<'a>) -> TextProjectionKind
     }
 }
 
-fn smartquotes_like<'a>(document: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+fn smartquotes_like<'a>(document: &'a Document, node: &'a Node) -> TextProjectionKind<'a> {
     if let Some(text) = document.text(node.id()) {
         TextProjectionKind::Writable(text)
     } else if let Some(html) = node.cast::<HtmlInline>() {
@@ -36,7 +36,7 @@ fn smartquotes_like<'a>(document: &'a Document, node: NodeRef<'a>) -> TextProjec
     }
 }
 
-fn count_classifications<'a>(_: &'a Document, _: NodeRef<'a>) -> TextProjectionKind<'a> {
+fn count_classifications<'a>(_: &'a Document, _: &'a Node) -> TextProjectionKind<'a> {
     CLASSIFICATIONS.fetch_add(1, Ordering::Relaxed);
     TextProjectionKind::Transparent
 }

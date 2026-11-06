@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::MarkdownIt;
-use crate::document::{NodeRef, TextSpecial};
+use crate::document::{Node, TextSpecial};
 use crate::links::LinkFormatter;
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, render_html_link};
@@ -23,7 +23,7 @@ struct AutolinkRenderer;
 impl NodeRenderer<Autolink> for AutolinkRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         link: &Autolink,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,

@@ -5,7 +5,7 @@
 //! and fonts; older stylesheets use incompatible class names.
 
 use crate::MarkdownIt;
-use crate::document::{NodeId, NodeRef, NodeValue};
+use crate::document::{Node, NodeId, NodeValue};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{
@@ -143,7 +143,7 @@ struct MathRenderer {
 impl<T: NodeValue + AsRef<str>> NodeRenderer<T> for MathRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         value: &T,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,

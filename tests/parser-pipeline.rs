@@ -2015,7 +2015,7 @@ fn direct_directives_custom_renderers_match_expected_output() {
 #[test]
 fn direct_directive_callbacks_render_current_document_children() {
     use markdown_it::document::edit::EditBatch;
-    use markdown_it::document::{NodeRef, Text};
+    use markdown_it::document::{Node, Text};
     use markdown_it::plugins::directives::{self, DirectiveKind, DirectiveNode, DirectiveRenderer};
     use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 
@@ -2034,13 +2034,7 @@ fn direct_directive_callbacks_render_current_document_children() {
 
     struct CustomTextRenderer;
     impl NodeRenderer<Text> for CustomTextRenderer {
-        fn render(
-            &self,
-            _: NodeRef<'_>,
-            text: &Text,
-            _: &mut RenderContext<'_>,
-            output: &mut Writer,
-        ) {
+        fn render(&self, _: &Node, text: &Text, _: &mut RenderContext<'_>, output: &mut Writer) {
             output.write_str(&format!("custom:{}", text.content));
         }
     }

@@ -1,5 +1,5 @@
 use markdown_it::MarkdownIt;
-use markdown_it::document::{NodeRef, NodeValue};
+use markdown_it::document::{Node, NodeValue};
 use markdown_it::plugin::PluginSpec;
 use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 
@@ -9,7 +9,7 @@ struct Label(String);
 struct LabelRenderer;
 
 impl NodeRenderer<Label> for LabelRenderer {
-    fn render(&self, _: NodeRef<'_>, value: &Label, _: &mut RenderContext<'_>, out: &mut Writer) {
+    fn render(&self, _: &Node, value: &Label, _: &mut RenderContext<'_>, out: &mut Writer) {
         out.write_str(&value.0);
     }
 }
@@ -17,7 +17,7 @@ impl NodeRenderer<Label> for LabelRenderer {
 struct Literal(&'static str);
 
 impl<T: NodeValue> NodeRenderer<T> for Literal {
-    fn render(&self, _: NodeRef<'_>, _: &T, _: &mut RenderContext<'_>, out: &mut Writer) {
+    fn render(&self, _: &Node, _: &T, _: &mut RenderContext<'_>, out: &mut Writer) {
         out.write_str(self.0);
     }
 }
@@ -214,13 +214,7 @@ struct PairRenderer;
 struct Visits(usize);
 
 impl NodeRenderer<Label> for PairRenderer {
-    fn render(
-        &self,
-        node: NodeRef<'_>,
-        value: &Label,
-        cx: &mut RenderContext<'_>,
-        out: &mut Writer,
-    ) {
+    fn render(&self, node: &Node, value: &Label, cx: &mut RenderContext<'_>, out: &mut Writer) {
         let visits = cx.ext().get_or_insert_default::<Visits>();
         visits.0 += 1;
         // Render state is new for each render, while the document, node

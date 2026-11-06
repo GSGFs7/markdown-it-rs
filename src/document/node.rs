@@ -5,9 +5,6 @@ use super::data::NodeData;
 use crate::common::extset::NodeExtSet;
 use crate::document::{HtmlAttributes, NodeEmpty, NodeValue};
 
-/// Borrowed view of a node produced by a structural traversal.
-pub type NodeRef<'a> = &'a Node;
-
 /// Data for one document node.
 #[derive(Debug)]
 pub struct Node {

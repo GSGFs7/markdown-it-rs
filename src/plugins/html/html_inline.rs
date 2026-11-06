@@ -4,7 +4,7 @@
 use super::anchor_delta;
 use super::utils::regexps::HTML_OPEN_CLOSE_TAG_RE;
 use crate::MarkdownIt;
-use crate::document::NodeRef;
+use crate::document::Node;
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{NodeRenderer, RenderContext};
 
@@ -69,7 +69,7 @@ struct HtmlInlineRenderer;
 impl NodeRenderer<HtmlInline> for HtmlInlineRenderer {
     fn render(
         &self,
-        _: NodeRef<'_>,
+        _: &Node,
         value: &HtmlInline,
         _: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,

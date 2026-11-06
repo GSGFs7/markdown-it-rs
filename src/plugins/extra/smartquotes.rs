@@ -10,7 +10,7 @@ use crate::MarkdownIt;
 use crate::common::utils::{is_markdown_whitespace, is_punct_char};
 use crate::document::edit::EditBatch;
 use crate::document::text::{TextBoundary, TextEvent, TextProjectionKind};
-use crate::document::{Document, NodeId, NodeRef, TextSpecial};
+use crate::document::{Document, Node, NodeId, TextSpecial};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::helpers::full_link::IndependentLabelSource;
 use crate::plugins::cmark::block::heading::ATXHeading;
@@ -449,7 +449,7 @@ fn relevant_event(document: &Document, event: TextEvent) -> Option<RelevantEvent
     }
 }
 
-fn smartquotes_projection<'a>(document: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+fn smartquotes_projection<'a>(document: &'a Document, node: &'a Node) -> TextProjectionKind<'a> {
     if node.is::<Image>()
         && let Some(source) = node.ext().get::<IndependentLabelSource>()
     {

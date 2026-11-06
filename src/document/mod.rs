@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use self::arena::Arena;
 pub use self::arena::NodeId;
-pub use self::events::{StructuralEvent, StructuralEvents};
-pub use self::node::{Node, NodeDraft, NodeRef};
+pub use self::events::StructuralEvent;
+pub use self::node::{Node, NodeDraft};
 pub use self::root::Root;
 pub(crate) use self::structure::SiblingPosition;
 pub use self::text::{Text, TextSpecial};

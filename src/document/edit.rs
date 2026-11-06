@@ -84,18 +84,6 @@ impl NodePatchSet {
         let empty = empty && self.source_maps.is_empty();
         empty
     }
-
-    #[cfg(debug_assertions)]
-    fn edited_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
-        let nodes = self
-            .text
-            .iter()
-            .map(|edit| edit.node)
-            .chain(self.attributes.iter().map(|edit| edit.node));
-        #[cfg(feature = "sourcemap")]
-        let nodes = nodes.chain(self.source_maps.iter().map(|edit| edit.node));
-        nodes.chain(self.values.iter().map(|edit| edit.node))
-    }
 }
 
 #[derive(Debug)]
@@ -260,24 +248,6 @@ impl EditBatch {
         });
     }
 
-    fn push(&mut self, node: NodeId, range: Range<usize>, replacement: TextReplacement) {
-        self.node_patches.text.push(ReplaceText {
-            node,
-            range,
-            replacement,
-            sequence: self.node_patches.text.len(),
-        });
-    }
-
-    fn normalize(&mut self) {
-        self.sort_text_edits();
-        self.sort_attribute_edits();
-        #[cfg(feature = "sourcemap")]
-        self.sort_source_map_edits();
-        self.sort_removed_nodes();
-        self.sort_node_replacements();
-    }
-
     /// Apply a batch of edits supplied by a plugin.
     ///
     /// The caller must provide a valid batch. With debug assertions enabled,
@@ -308,6 +278,24 @@ impl EditBatch {
         #[cfg(feature = "sourcemap")]
         self.apply_source_maps(document);
         self.apply_attributes(document);
+    }
+
+    fn push(&mut self, node: NodeId, range: Range<usize>, replacement: TextReplacement) {
+        self.node_patches.text.push(ReplaceText {
+            node,
+            range,
+            replacement,
+            sequence: self.node_patches.text.len(),
+        });
+    }
+
+    fn normalize(&mut self) {
+        self.sort_text_edits();
+        self.sort_attribute_edits();
+        #[cfg(feature = "sourcemap")]
+        self.sort_source_map_edits();
+        self.sort_removed_nodes();
+        self.sort_node_replacements();
     }
 
     fn sort_text_edits(&mut self) {
@@ -470,21 +458,6 @@ fn text_groups(edits: &[ReplaceText]) -> impl Iterator<Item = &[ReplaceText]> {
         let end = remaining
             .iter()
             .position(|edit| edit.node != first.node)
-            .unwrap_or(remaining.len());
-        let (group, rest) = remaining.split_at(end);
-        remaining = rest;
-        Some(group)
-    })
-}
-
-#[cfg(debug_assertions)]
-fn attribute_groups(edits: &[EditAttribute]) -> impl Iterator<Item = &[EditAttribute]> {
-    let mut remaining = edits;
-    std::iter::from_fn(move || {
-        let first = remaining.first()?;
-        let end = remaining
-            .iter()
-            .position(|edit| edit.node != first.node || edit.name != first.name)
             .unwrap_or(remaining.len());
         let (group, rest) = remaining.split_at(end);
         remaining = rest;

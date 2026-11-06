@@ -7,7 +7,6 @@
 pub mod block;
 pub mod core;
 pub mod inline;
-
 pub(crate) mod pipeline;
 mod rule;
 

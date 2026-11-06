@@ -367,7 +367,7 @@ impl<P: InlinePlugin> Default for LeafRenderer<P> {
 impl<P: InlinePlugin> NodeRenderer<P> for LeafRenderer<P> {
     fn render(
         &self,
-        _node: crate::document::NodeRef<'_>,
+        _node: &crate::document::Node,
         value: &P,
         context: &mut RenderContext<'_>,
         output: &mut Writer,

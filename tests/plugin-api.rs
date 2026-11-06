@@ -60,7 +60,7 @@ fn inline_pair_and_later_low_level_registration_share_the_scanner() {
     impl markdown_it::render::NodeRenderer<One> for OneRenderer {
         fn render(
             &self,
-            node: markdown_it::document::NodeRef<'_>,
+            node: &markdown_it::document::Node,
             _: &One,
             context: &mut markdown_it::render::RenderContext<'_>,
             output: &mut markdown_it::render::Writer,
@@ -423,17 +423,11 @@ fn removing_builtin_preserves_dynamic_marker_even_after_scanner_compilation() {
 
 #[test]
 fn explicit_renderer_after_install_overrides_all_payload_nodes() {
-    use markdown_it::document::NodeRef;
+    use markdown_it::document::Node;
     use markdown_it::render::{NodeRenderer, RenderContext, Writer};
     struct Custom;
     impl NodeRenderer<Tag> for Custom {
-        fn render(
-            &self,
-            _: NodeRef<'_>,
-            tag: &Tag,
-            _: &mut RenderContext<'_>,
-            output: &mut Writer,
-        ) {
+        fn render(&self, _: &Node, tag: &Tag, _: &mut RenderContext<'_>, output: &mut Writer) {
             output.write_str(&format!("CUSTOM({})", tag.0));
         }
     }
@@ -676,11 +670,11 @@ fn duplicate_static_leaves_are_rejected_before_installation() {
 
 #[test]
 fn static_renderer_can_be_overridden_after_installation() {
-    use markdown_it::document::NodeRef;
+    use markdown_it::document::Node;
     use markdown_it::render::{NodeRenderer, RenderContext, Writer};
     struct Custom;
     impl NodeRenderer<A> for Custom {
-        fn render(&self, _: NodeRef<'_>, _: &A, _: &mut RenderContext<'_>, output: &mut Writer) {
+        fn render(&self, _: &Node, _: &A, _: &mut RenderContext<'_>, output: &mut Writer) {
             output.write_str("CUSTOM");
         }
     }

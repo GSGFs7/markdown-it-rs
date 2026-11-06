@@ -67,7 +67,7 @@ struct BlockFerrisRenderer;
 impl markdown_it::render::NodeRenderer<BlockFerris> for BlockFerrisRenderer {
     fn render(
         &self,
-        _: markdown_it::document::NodeRef<'_>,
+        _: &markdown_it::document::Node,
         _: &BlockFerris,
         ctx: &mut markdown_it::render::RenderContext<'_>,
         out: &mut markdown_it::render::Writer,

@@ -7,12 +7,12 @@ use std::marker::PhantomData;
 
 use super::{RenderContext, Writer};
 use crate::common::typekey::TypeIdHasher;
-use crate::document::{NodeRef, NodeValue};
+use crate::document::{Node, NodeValue};
 
 /// Renderer for one payload type in one output format.
 ///
 /// ```
-/// use markdown_it::document::{Document, NodeDraft, NodeRef};
+/// use markdown_it::document::{Document, NodeDraft, Node};
 /// use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 /// use markdown_it::MarkdownIt;
 ///
@@ -23,7 +23,7 @@ use crate::document::{NodeRef, NodeValue};
 /// impl NodeRenderer<Badge> for BadgeRenderer {
 ///     fn render(
 ///         &self,
-///         _: NodeRef<'_>,
+///         _: &Node,
 ///         badge: &Badge,
 ///         _: &mut RenderContext<'_>,
 ///         output: &mut Writer,
@@ -38,17 +38,11 @@ use crate::document::{NodeRef, NodeValue};
 /// assert_eq!(md.render_document(&document, "html"), "new");
 /// ```
 pub trait NodeRenderer<T: NodeValue>: Send + Sync + 'static {
-    fn render(
-        &self,
-        node: NodeRef<'_>,
-        value: &T,
-        context: &mut RenderContext<'_>,
-        output: &mut Writer,
-    );
+    fn render(&self, node: &Node, value: &T, context: &mut RenderContext<'_>, output: &mut Writer);
 }
 
 pub(super) trait ErasedNodeRenderer: Send + Sync {
-    fn render(&self, node: NodeRef<'_>, context: &mut RenderContext<'_>, output: &mut Writer);
+    fn render(&self, node: &Node, context: &mut RenderContext<'_>, output: &mut Writer);
 }
 
 // --- machinery ---
@@ -66,7 +60,7 @@ where
     T: NodeValue,
     R: NodeRenderer<T>,
 {
-    fn render(&self, node: NodeRef<'_>, context: &mut RenderContext<'_>, output: &mut Writer) {
+    fn render(&self, node: &Node, context: &mut RenderContext<'_>, output: &mut Writer) {
         let value = node
             .cast::<T>()
             .expect("renderer registry type and payload type must agree");

@@ -3,7 +3,7 @@
 use std::iter::FusedIterator;
 use std::str::CharIndices;
 
-use crate::document::{Document, NodeId, NodeRef};
+use crate::document::{Document, Node, NodeId};
 
 #[derive(Debug)]
 /// Plain text AST node.
@@ -86,7 +86,7 @@ pub enum TextProjectionKind<'a> {
 
 /// Classifies a node, optionally using the document for text, payloads, or source.
 /// Writable content must match the node's editable text and byte offsets.
-pub type TextClassifier = for<'a> fn(&'a Document, NodeRef<'a>) -> TextProjectionKind<'a>;
+pub type TextClassifier = for<'a> fn(&'a Document, &'a Node) -> TextProjectionKind<'a>;
 
 enum FrameProjection<'a> {
     Writable(CharIndices<'a>),
@@ -131,7 +131,7 @@ impl<'a> TextEvents<'a> {
         events
     }
 
-    fn push(&mut self, node: NodeRef<'a>, nesting_level: u32) {
+    fn push(&mut self, node: &'a Node, nesting_level: u32) {
         let projection = match (self.classifier)(self.document, node) {
             TextProjectionKind::Writable(content) => {
                 FrameProjection::Writable(content.char_indices())
@@ -230,11 +230,11 @@ impl Document {
     /// Project the whole document into a lazy text event stream.
     ///
     /// ```
-    /// use markdown_it::document::{Document, NodeRef};
+    /// use markdown_it::document::{Document, Node};
     /// use markdown_it::MarkdownIt;
     /// use markdown_it::document::text::{TextEvent, TextProjectionKind};
     ///
-    /// fn classify<'a>(doc: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+    /// fn classify<'a>(doc: &'a Document, node: &'a Node) -> TextProjectionKind<'a> {
     ///     match doc.text(node.id()) {
     ///         Some(text) => TextProjectionKind::Writable(text),
     ///         None => TextProjectionKind::Transparent,

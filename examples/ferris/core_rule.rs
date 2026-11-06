@@ -34,7 +34,7 @@ struct CounterRenderer;
 impl markdown_it::render::NodeRenderer<FerrisCounter> for CounterRenderer {
     fn render(
         &self,
-        _: markdown_it::document::NodeRef<'_>,
+        _: &markdown_it::document::Node,
         counter: &FerrisCounter,
         ctx: &mut markdown_it::render::RenderContext<'_>,
         out: &mut markdown_it::render::Writer,

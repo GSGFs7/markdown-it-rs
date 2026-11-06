@@ -87,7 +87,7 @@ impl markdown_it::render::NodeRenderer<markdown_it::plugins::html::html_inline::
 {
     fn render(
         &self,
-        _: markdown_it::document::NodeRef<'_>,
+        _: &markdown_it::document::Node,
         value: &markdown_it::plugins::html::html_inline::HtmlInline,
         _: &mut markdown_it::render::RenderContext<'_>,
         output: &mut markdown_it::render::Writer,

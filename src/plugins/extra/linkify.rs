@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use linkify::{LinkKind, Linkify};
 
 use crate::MarkdownIt;
-use crate::document::{Document, NodeId, NodeRef, StructuralEvent, Text, TextSpecial};
+use crate::document::{Document, Node, NodeId, StructuralEvent, Text, TextSpecial};
 use crate::links::LinkFormatter;
 use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::{InlineParserRule, InlineRule, InlineState};
@@ -25,7 +25,7 @@ struct LinkifiedRenderer;
 impl NodeRenderer<Linkified> for LinkifiedRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         link: &Linkified,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,

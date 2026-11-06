@@ -5,7 +5,7 @@
 //! <https://spec.commonmark.org/0.30/#block-quotes>
 use crate::MarkdownIt;
 use crate::common::utils::find_indent_of_from_column;
-use crate::document::{NodeId, NodeRef};
+use crate::document::{Node, NodeId};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::plugins::cmark::block::reference::Definition;
 use crate::render::{
@@ -24,7 +24,7 @@ struct BlockquoteRenderer;
 impl NodeRenderer<Blockquote> for BlockquoteRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         _: &Blockquote,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,

@@ -8,7 +8,7 @@
 //!  - <https://spec.commonmark.org/0.30/#list-items>
 use crate::MarkdownIt;
 use crate::common::utils::find_indent_of_from_column;
-use crate::document::{Document, NodeId, NodeRef};
+use crate::document::{Document, Node, NodeId};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::plugins::cmark::block::hr::HrScanner;
 use crate::plugins::cmark::block::paragraph::{Paragraph, ParagraphInterrupt};
@@ -31,7 +31,7 @@ struct OrderedListRenderer;
 impl NodeRenderer<OrderedList> for OrderedListRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         list: &OrderedList,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -54,7 +54,7 @@ struct BulletListRenderer;
 impl NodeRenderer<BulletList> for BulletListRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         _: &BulletList,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -71,7 +71,7 @@ struct ListItemRenderer;
 impl NodeRenderer<ListItem> for ListItemRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         _: &ListItem,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -99,7 +99,7 @@ impl NodeRenderer<ListItem> for ListItemRenderer {
 }
 
 fn render_list_container(
-    node: NodeRef<'_>,
+    node: &Node,
     context: &mut RenderContext<'_>,
     output: &mut crate::render::Writer,
     tag: &str,

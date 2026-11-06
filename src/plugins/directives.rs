@@ -70,7 +70,7 @@ use std::fmt::Debug;
 
 use crate::MarkdownIt;
 use crate::common::extset::{NodeExtSet, RenderExtSet};
-use crate::document::{Document, HtmlAttribute, NodeId, NodeRef, NodeValue};
+use crate::document::{Document, HtmlAttribute, Node, NodeId, NodeValue};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{
@@ -341,7 +341,7 @@ pub type DirectiveRenderFn =
 #[derive(Clone, Copy, Debug)]
 pub struct DirectiveNode<'a> {
     document: &'a Document,
-    node: NodeRef<'a>,
+    node: &'a Node,
 }
 
 impl<'a> DirectiveNode<'a> {
@@ -678,7 +678,7 @@ struct DirectiveNodeRenderer;
 impl NodeRenderer<TextDirective> for DirectiveNodeRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         value: &TextDirective,
         context: &mut RenderContext<'_>,
         output: &mut Writer,
@@ -699,7 +699,7 @@ impl NodeRenderer<TextDirective> for DirectiveNodeRenderer {
 impl NodeRenderer<LeafDirective> for DirectiveNodeRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         value: &LeafDirective,
         context: &mut RenderContext<'_>,
         output: &mut Writer,
@@ -720,7 +720,7 @@ impl NodeRenderer<LeafDirective> for DirectiveNodeRenderer {
 impl NodeRenderer<ContainerDirective> for DirectiveNodeRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         value: &ContainerDirective,
         context: &mut RenderContext<'_>,
         output: &mut Writer,

@@ -1,6 +1,6 @@
 use std::iter::FusedIterator;
 
-use super::node::NodeRef;
+use super::node::Node;
 use super::{Document, NodeId};
 
 /// One step in a depth-first structural traversal.
@@ -9,13 +9,13 @@ use super::{Document, NodeId};
 /// without children produce exactly one `Leaf` event.
 #[derive(Clone, Copy, Debug)]
 pub enum StructuralEvent<'a> {
-    Enter(NodeRef<'a>),
-    Leaf(NodeRef<'a>),
-    Exit(NodeRef<'a>),
+    Enter(&'a Node),
+    Leaf(&'a Node),
+    Exit(&'a Node),
 }
 
 impl<'a> StructuralEvent<'a> {
-    pub fn node(&self) -> NodeRef<'a> {
+    pub fn node(&self) -> &'a Node {
         match self {
             Self::Enter(node) | Self::Leaf(node) | Self::Exit(node) => node,
         }
@@ -24,7 +24,7 @@ impl<'a> StructuralEvent<'a> {
 
 #[derive(Clone, Debug)]
 struct EventFrame<'a> {
-    node: NodeRef<'a>,
+    node: &'a Node,
     children: std::slice::Iter<'a, NodeId>,
 }
 
@@ -34,7 +34,7 @@ struct EventFrame<'a> {
 /// depth. The document's parent/children links remain the sole structural
 /// source of truth.
 #[derive(Debug)]
-pub struct StructuralEvents<'a> {
+struct StructuralEvents<'a> {
     document: &'a Document,
     stack: Vec<EventFrame<'a>>,
     pending: Option<StructuralEvent<'a>>,
@@ -80,7 +80,10 @@ impl Document {
     /// # Panics
     /// Panics if the root ID is invalid or stale.
     #[track_caller]
-    pub fn events(&self, root: NodeId) -> StructuralEvents<'_> {
+    pub fn events(
+        &self,
+        root: NodeId,
+    ) -> impl FusedIterator<Item = StructuralEvent<'_>> + std::fmt::Debug + '_ {
         let root = self.node(root);
         let mut stack = Vec::with_capacity(16);
         let pending = if root.children.is_empty() {

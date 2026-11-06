@@ -2,7 +2,7 @@
 //!
 //! <https://github.github.com/gfm/#tables-extension->
 use crate::MarkdownIt;
-use crate::document::{NodeId, NodeRef};
+use crate::document::{Node, NodeId};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::plugins::cmark::block::blockquote::{BlockquoteInterrupt, BlockquoteScanner};
 use crate::plugins::cmark::block::fence::FenceScanner;
@@ -35,7 +35,7 @@ struct TableRenderer;
 impl NodeRenderer<Table> for TableRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         value: &Table,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -71,7 +71,7 @@ struct TableHeadRenderer;
 impl NodeRenderer<TableHead> for TableHeadRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         _: &TableHead,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -96,7 +96,7 @@ struct TableBodyRenderer;
 impl NodeRenderer<TableBody> for TableBodyRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         _: &TableBody,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -113,7 +113,7 @@ struct TableRowRenderer;
 impl NodeRenderer<TableRow> for TableRowRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         _: &TableRow,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -131,7 +131,7 @@ struct TableRowTextRenderer;
 impl NodeRenderer<TableRow> for TableRowTextRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         _: &TableRow,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -155,7 +155,7 @@ struct TableCellRenderer;
 impl NodeRenderer<TableCell> for TableCellRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         _: &TableCell,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -185,7 +185,7 @@ impl NodeRenderer<TableCell> for TableCellRenderer {
 }
 
 fn render_block_container(
-    node: NodeRef<'_>,
+    node: &Node,
     context: &mut RenderContext<'_>,
     output: &mut crate::render::Writer,
     tag: &str,

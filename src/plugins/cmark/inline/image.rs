@@ -6,7 +6,7 @@
 use std::borrow::Cow;
 
 use crate::MarkdownIt;
-use crate::document::{NodeRef, StructuralEvent, Text, TextSpecial};
+use crate::document::{Node, StructuralEvent, Text, TextSpecial};
 use crate::parser::inline::helpers::full_link;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
@@ -23,7 +23,7 @@ struct ImageRenderer;
 impl NodeRenderer<Image> for ImageRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         image: &Image,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -54,7 +54,7 @@ impl NodeRenderer<Image> for ImageRenderer {
 // raw: "![a *b* c](x)"
 // children: [text "a ", emph(text "b"), text " c"]
 // result: "a b c"
-fn collect_alt_text<'a>(context: &RenderContext<'a>, image: NodeRef<'_>) -> Cow<'a, str> {
+fn collect_alt_text<'a>(context: &RenderContext<'a>, image: &Node) -> Cow<'a, str> {
     match image.children() {
         [] => return Cow::Borrowed(""),
         [child] => {
@@ -82,7 +82,7 @@ fn collect_alt_text<'a>(context: &RenderContext<'a>, image: NodeRef<'_>) -> Cow<
     Cow::Owned(result)
 }
 
-fn append_alt_node(result: &mut String, node: NodeRef<'_>, nested_image: bool) {
+fn append_alt_node(result: &mut String, node: &Node, nested_image: bool) {
     if let Some(text) = node.cast::<Text>() {
         result.push_str(&text.content);
     } else if let Some(text) = node.cast::<TextSpecial>() {

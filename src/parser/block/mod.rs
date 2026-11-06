@@ -7,12 +7,11 @@ mod state;
 #[cfg(debug_assertions)]
 mod validation;
 
-pub(crate) use document::parse_document;
-pub use lines::*;
-pub use parser::BlockParserRule;
-pub use rule::*;
-pub use state::BlockState;
-
+pub(crate) use self::document::parse_document;
+pub use self::lines::*;
+pub use self::parser::BlockParserRule;
+pub use self::rule::*;
+pub use self::state::BlockState;
 use crate::MarkdownIt;
 use crate::common::RuleMark;
 use crate::common::ruler::Ruler;

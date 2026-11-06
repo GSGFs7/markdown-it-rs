@@ -58,7 +58,7 @@ use two_face::theme::LazyThemeSet;
 use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
 use crate::document::edit::EditBatch;
-use crate::document::{NodeRef, StructuralEvent};
+use crate::document::{Node, StructuralEvent};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::plugins::cmark::block::code::CodeBlock;
 use crate::plugins::cmark::block::fence::CodeFence;
@@ -113,7 +113,7 @@ struct SyntectHtmlRenderer;
 impl NodeRenderer<SyntectSnippet> for SyntectHtmlRenderer {
     fn render(
         &self,
-        _: NodeRef<'_>,
+        _: &Node,
         value: &SyntectSnippet,
         context: &mut RenderContext<'_>,
         output: &mut Writer,
@@ -135,7 +135,7 @@ struct SyntectTextRenderer;
 impl NodeRenderer<SyntectSnippet> for SyntectTextRenderer {
     fn render(
         &self,
-        _: NodeRef<'_>,
+        _: &Node,
         value: &SyntectSnippet,
         context: &mut RenderContext<'_>,
         output: &mut Writer,

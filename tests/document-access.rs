@@ -4,15 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use markdown_it::MarkdownIt;
 use markdown_it::document::edit::EditBatch;
 use markdown_it::document::text::{TextEvent, TextProjectionKind};
-use markdown_it::document::{
-    Document,
-    NodeDraft,
-    NodeRef,
-    Root,
-    StructuralEvent,
-    Text,
-    TextSpecial,
-};
+use markdown_it::document::{Document, Node, NodeDraft, Root, StructuralEvent, Text, TextSpecial};
 use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 
 #[test]
@@ -43,7 +35,7 @@ struct Badge {
     drops: Arc<AtomicUsize>,
 }
 
-fn document_projection<'a>(doc: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+fn document_projection<'a>(doc: &'a Document, node: &'a Node) -> TextProjectionKind<'a> {
     if let Some(text) = doc.text(node.id()) {
         TextProjectionKind::Writable(text)
     } else {
@@ -115,7 +107,7 @@ fn document_projection_preserves_subtree_depth_and_edit_offsets() {
 #[derive(Debug)]
 struct SourceContext(std::ops::Range<usize>);
 
-fn source_projection<'a>(doc: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+fn source_projection<'a>(doc: &'a Document, node: &'a Node) -> TextProjectionKind<'a> {
     if let Some(context) = doc.value::<SourceContext>(node.id()) {
         TextProjectionKind::ReadOnly(&doc.source()[context.0.clone()])
     } else {
@@ -186,7 +178,7 @@ struct BadgeRenderer;
 impl NodeRenderer<Badge> for BadgeRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         value: &Badge,
         context: &mut RenderContext<'_>,
         output: &mut Writer,

@@ -4,10 +4,10 @@ use std::collections::HashMap;
 
 use super::{RenderContext, Writer};
 use crate::common::utils::escape_html;
-use crate::document::{HtmlAttribute, NodeRef};
+use crate::document::{HtmlAttribute, Node};
 
 pub(crate) fn render_html_link(
-    node: NodeRef<'_>,
+    node: &Node,
     url: &str,
     title: Option<&str>,
     context: &mut RenderContext<'_>,

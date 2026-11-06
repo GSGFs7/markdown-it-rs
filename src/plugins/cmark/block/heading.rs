@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#atx-heading>
 use crate::MarkdownIt;
-use crate::document::{NodeId, NodeRef};
+use crate::document::{Node, NodeId};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::render::{
     HtmlBlockElementRenderer,
@@ -23,7 +23,7 @@ struct ATXHeadingRenderer;
 impl NodeRenderer<ATXHeading> for ATXHeadingRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         heading: &ATXHeading,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,

@@ -3,7 +3,7 @@ use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use markdown_it::document::edit::EditBatch;
 use markdown_it::document::text::{TextBoundary, TextEvent, TextProjectionKind};
-use markdown_it::document::{Document, NodeDraft, NodeRef, StructuralEvent, Text};
+use markdown_it::document::{Document, Node, NodeDraft, StructuralEvent, Text};
 use markdown_it::parser::core::{CoreRule, CoreState};
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
@@ -30,7 +30,7 @@ empty_core_rule!(EmptyCoreRule3);
 empty_core_rule!(EmptyCoreRule4);
 empty_core_rule!(EmptyCoreRule5);
 
-fn text_projection<'a>(document: &'a Document, node: NodeRef<'a>) -> TextProjectionKind<'a> {
+fn text_projection<'a>(document: &'a Document, node: &'a Node) -> TextProjectionKind<'a> {
     if let Some(text) = document.text(node.id()) {
         TextProjectionKind::Writable(text)
     } else if let Some(html) = node.cast::<HtmlInline>() {

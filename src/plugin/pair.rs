@@ -104,7 +104,7 @@ impl<T: NodeValue, D, V, R> InlinePairBuilder<T, D, V, R> {
     ///
     /// ```
     /// use markdown_it::MarkdownIt;
-    /// use markdown_it::document::NodeRef;
+    /// use markdown_it::document::Node;
     /// use markdown_it::render::{NodeRenderer, RenderContext, Writer};
     /// use markdown_it::plugin::PluginSpec;
     ///
@@ -112,7 +112,7 @@ impl<T: NodeValue, D, V, R> InlinePairBuilder<T, D, V, R> {
     /// struct Spoiler;
     /// struct SpoilerRenderer;
     /// impl NodeRenderer<Spoiler> for SpoilerRenderer {
-    ///     fn render(&self, node: NodeRef<'_>, _: &Spoiler, cx: &mut RenderContext<'_>, out: &mut Writer) {
+    ///     fn render(&self, node: &Node, _: &Spoiler, cx: &mut RenderContext<'_>, out: &mut Writer) {
     ///         out.write_str("<span class=\"spoiler\">");
     ///         cx.render_children(node.id(), out);
     ///         out.write_str("</span>");
@@ -214,7 +214,7 @@ struct InlinePairRenderer {
 impl<T: NodeValue> NodeRenderer<T> for InlinePairRenderer {
     fn render(
         &self,
-        node: crate::document::NodeRef<'_>,
+        node: &crate::document::Node,
         _value: &T,
         context: &mut RenderContext<'_>,
         output: &mut Writer,

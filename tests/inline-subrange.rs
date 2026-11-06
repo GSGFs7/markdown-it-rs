@@ -89,7 +89,7 @@ struct ContainerRenderer;
 impl markdown_it::render::NodeRenderer<TestContainer> for ContainerRenderer {
     fn render(
         &self,
-        node: markdown_it::document::NodeRef<'_>,
+        node: &markdown_it::document::Node,
         _: &TestContainer,
         ctx: &mut markdown_it::render::RenderContext<'_>,
         out: &mut markdown_it::render::Writer,

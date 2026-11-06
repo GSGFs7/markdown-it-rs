@@ -1,7 +1,7 @@
 // Replaces `(\/)` with `🦀`.
 
 use markdown_it::MarkdownIt;
-use markdown_it::document::{NodeId, NodeRef};
+use markdown_it::document::{Node, NodeId};
 use markdown_it::parser::inline::{InlineRule, InlineState};
 use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 
@@ -15,13 +15,7 @@ pub struct InlineFerris;
 struct InlineFerrisRenderer;
 
 impl NodeRenderer<InlineFerris> for InlineFerrisRenderer {
-    fn render(
-        &self,
-        _: NodeRef<'_>,
-        _: &InlineFerris,
-        _: &mut RenderContext<'_>,
-        output: &mut Writer,
-    ) {
+    fn render(&self, _: &Node, _: &InlineFerris, _: &mut RenderContext<'_>, output: &mut Writer) {
         output.write_str("<span class=\"ferris-inline\">🦀</span>");
     }
 }

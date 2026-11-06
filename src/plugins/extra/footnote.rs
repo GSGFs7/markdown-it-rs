@@ -54,7 +54,7 @@ use std::sync::{Arc, Mutex};
 use crate::MarkdownIt;
 use crate::common::extset::RootExtSet;
 use crate::common::utils::normalize_reference;
-use crate::document::{Document, NodeId, NodeRef};
+use crate::document::{Document, Node, NodeId};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::{InlineRule, InlineState};
@@ -803,7 +803,7 @@ struct FootnoteReferenceRenderer;
 impl NodeRenderer<FootnoteReference> for FootnoteReferenceRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         value: &FootnoteReference,
         _context: &mut RenderContext<'_>,
         output: &mut Writer,
@@ -831,7 +831,7 @@ struct FootnoteSectionRenderer;
 impl NodeRenderer<FootnoteSection> for FootnoteSectionRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         _value: &FootnoteSection,
         context: &mut RenderContext<'_>,
         output: &mut Writer,
@@ -862,7 +862,7 @@ struct FootnoteItemRenderer;
 impl NodeRenderer<FootnoteItem> for FootnoteItemRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         value: &FootnoteItem,
         context: &mut RenderContext<'_>,
         output: &mut Writer,
@@ -884,7 +884,7 @@ struct FootnoteBackrefRenderer;
 impl NodeRenderer<FootnoteBackref> for FootnoteBackrefRenderer {
     fn render(
         &self,
-        _node: NodeRef<'_>,
+        _node: &Node,
         value: &FootnoteBackref,
         _context: &mut RenderContext<'_>,
         output: &mut Writer,

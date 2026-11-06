@@ -11,8 +11,7 @@ mod validation;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
-pub(crate) use document::parse_document;
-
+pub(crate) use self::document::parse_document;
 pub use self::parser::InlineParserRule;
 pub use self::rule::*;
 pub use self::state::InlineState;

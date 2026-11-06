@@ -14,13 +14,13 @@
 //! ```rust
 //! use markdown_it::parser::inline::helpers::code_pair;
 //! use markdown_it::MarkdownIt;
-//! use markdown_it::document::{NodeId, NodeRef};
+//! use markdown_it::document::{NodeId, Node};
 //! use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 //! #[derive(Debug)]
 //! struct Ferris;
 //! struct CustomRenderer;
 //! impl NodeRenderer<Ferris> for CustomRenderer {
-//!     fn render(&self, node: NodeRef<'_>, _: &Ferris, ctx: &mut RenderContext<'_>, out: &mut Writer) {
+//!     fn render(&self, node: &Node, _: &Ferris, ctx: &mut RenderContext<'_>, out: &mut Writer) {
 //!         out.write_str("🦀"); ctx.render_children(node.id(), out); out.write_str("🦀");
 //!     }
 //! }

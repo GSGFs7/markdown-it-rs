@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#indented-code-block>
 use crate::MarkdownIt;
-use crate::document::{NodeId, NodeRef};
+use crate::document::{Node, NodeId};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::render::{
     NodeRenderer,
@@ -26,7 +26,7 @@ struct CodeBlockRenderer;
 impl NodeRenderer<CodeBlock> for CodeBlockRenderer {
     fn render(
         &self,
-        node: NodeRef<'_>,
+        node: &Node,
         code: &CodeBlock,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,
@@ -46,7 +46,7 @@ struct CodeBlockTextRenderer;
 impl NodeRenderer<CodeBlock> for CodeBlockTextRenderer {
     fn render(
         &self,
-        _: NodeRef<'_>,
+        _: &Node,
         code: &CodeBlock,
         context: &mut RenderContext<'_>,
         output: &mut crate::render::Writer,

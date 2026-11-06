@@ -21,8 +21,7 @@ pub mod html_block;
 pub mod html_inline;
 mod utils;
 
-pub(crate) use utils::anchor_delta;
-
+pub(crate) use self::utils::anchor_delta;
 use crate::MarkdownIt;
 
 pub fn add(md: &mut MarkdownIt) {

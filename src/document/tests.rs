@@ -91,7 +91,7 @@ fn structural_events_can_start_at_a_subtree_or_leaf() {
 
 #[test]
 fn invalid_node_access_panics_in_all_builds() {
-    fn transparent_text_projection<'a>(_: &'a Document, _: NodeRef<'a>) -> TextProjectionKind<'a> {
+    fn transparent_text_projection<'a>(_: &'a Document, _: &'a Node) -> TextProjectionKind<'a> {
         TextProjectionKind::Transparent
     }
 

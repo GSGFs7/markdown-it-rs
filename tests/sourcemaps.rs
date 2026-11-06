@@ -1,7 +1,7 @@
 #![cfg(feature = "sourcemap")]
 
 use markdown_it::common::sourcemap::SourceWithLineStarts;
-use markdown_it::document::{Document, NodeRef};
+use markdown_it::document::{Document, Node};
 
 #[test]
 fn text_fallback_maps_only_existing_source_bytes() {
@@ -79,7 +79,7 @@ fn run(input: &str, f: fn(&Document, SourceWithLineStarts)) {
     }
     f(&document, SourceWithLineStarts::new(input));
 }
-fn getmap(node: NodeRef<'_>, map: &SourceWithLineStarts) -> ((u32, u32), (u32, u32)) {
+fn getmap(node: &Node, map: &SourceWithLineStarts) -> ((u32, u32), (u32, u32)) {
     node.srcmap().unwrap().get_positions(map)
 }
 

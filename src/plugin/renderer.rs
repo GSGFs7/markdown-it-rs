@@ -2,7 +2,7 @@ use super::Html;
 use super::html::render_html_fragment;
 use super::spec::{PluginInstaller, RegistrationContext};
 use crate::MarkdownIt;
-use crate::document::{NodeRef, NodeValue};
+use crate::document::{Node, NodeValue};
 use crate::render::{NodeRenderer, RenderContext, Writer};
 
 /// Builder state indicating that at least one output renderer is configured.
@@ -72,7 +72,7 @@ where
     T: NodeValue,
     F: Fn(&T, &mut Html) + Send + Sync + 'static,
 {
-    fn render(&self, _: NodeRef<'_>, value: &T, cx: &mut RenderContext<'_>, out: &mut Writer) {
+    fn render(&self, _: &Node, value: &T, cx: &mut RenderContext<'_>, out: &mut Writer) {
         if BLOCK {
             cx.cr(out);
         }
@@ -91,7 +91,7 @@ where
     T: NodeValue,
     F: Fn(&T, &mut Writer) + Send + Sync + 'static,
 {
-    fn render(&self, _: NodeRef<'_>, value: &T, cx: &mut RenderContext<'_>, out: &mut Writer) {
+    fn render(&self, _: &Node, value: &T, cx: &mut RenderContext<'_>, out: &mut Writer) {
         if BLOCK {
             cx.cr(out);
         }
