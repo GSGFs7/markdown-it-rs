@@ -3,6 +3,192 @@ use std::any::TypeId;
 use super::*;
 
 #[test]
+fn rejected_link_windows_leave_pairing_index_uninitialized() {
+    use super::super::cache::has_possible_link_label_close;
+
+    let md = MarkdownIt::new();
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
+    for source in [
+        "[unclosed",
+        "[unclosed(target",
+        "[closed]",
+        "(target) [unclosed",
+    ] {
+        let start = source.find('[').unwrap();
+        let mut state = InlineState::new(
+            &mut document,
+            source,
+            start,
+            source.len(),
+            &md,
+            md.inline.rules(),
+            0,
+            0,
+        );
+        assert!(
+            !has_possible_link_label_close(&mut state, 0, None),
+            "{source}"
+        );
+        let cache = state.scan_limit_cache.borrow();
+        let bounds = cache.link_bounds().unwrap();
+        assert!(bounds.plain_closes.is_none(), "{source}");
+        assert!(bounds.can_memoize_labels(start, source.len()));
+    }
+
+    // A rejected child window must not prevent a later parent candidate from
+    // initializing the source-wide index shared by both sessions.
+    let source = "[no] [yes](url)";
+    let mut state = InlineState::new(
+        &mut document,
+        source,
+        0,
+        source.len(),
+        &md,
+        md.inline.rules(),
+        0,
+        0,
+    );
+    {
+        let mut child = state.child_state(0..4).unwrap();
+        assert!(!has_possible_link_label_close(&mut child, 0, None));
+    }
+    assert!(
+        state
+            .scan_limit_cache
+            .borrow()
+            .link_bounds()
+            .unwrap()
+            .plain_closes
+            .is_none()
+    );
+    state.pos = 5;
+    assert!(has_possible_link_label_close(&mut state, 0, None));
+    let cache = state.scan_limit_cache.borrow();
+    assert_eq!(
+        cache
+            .link_bounds()
+            .unwrap()
+            .plain_closes
+            .as_ref()
+            .unwrap()
+            .get(&5),
+        Some(&9)
+    );
+}
+
+#[test]
+fn unsupported_pairing_source_caches_the_failed_index_attempt() {
+    use super::super::cache::has_possible_link_label_close;
+
+    let md = MarkdownIt::new();
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
+    let source = "[*a*](url) [b](url)";
+    let mut state = InlineState::new(
+        &mut document,
+        source,
+        0,
+        source.len(),
+        &md,
+        md.inline.rules(),
+        0,
+        0,
+    );
+    for start in [0, 11] {
+        state.pos = start;
+        assert!(has_possible_link_label_close(&mut state, 0, None));
+        assert!(
+            state
+                .scan_limit_cache
+                .borrow()
+                .link_bounds()
+                .unwrap()
+                .plain_closes
+                .as_ref()
+                .is_some_and(std::collections::HashMap::is_empty)
+        );
+    }
+}
+
+#[test]
+fn close_outside_child_window_does_not_trigger_pairing_index() {
+    use super::super::cache::has_possible_link_label_close;
+
+    let md = MarkdownIt::new();
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
+    let source = "[no(url) ] [yes](url)";
+    let mut state = InlineState::new(
+        &mut document,
+        source,
+        0,
+        source.len(),
+        &md,
+        md.inline.rules(),
+        0,
+        0,
+    );
+    {
+        let mut child = state.child_state(0..8).unwrap();
+        assert!(!has_possible_link_label_close(&mut child, 0, None));
+        assert!(
+            child
+                .scan_limit_cache
+                .borrow()
+                .link_bounds()
+                .unwrap()
+                .plain_closes
+                .is_none()
+        );
+    }
+    state.pos = source.find("[yes]").unwrap();
+    assert!(has_possible_link_label_close(&mut state, 0, None));
+}
+
+#[test]
+fn forced_label_scans_keep_memoization_without_building_pairing_index() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::super::cache::has_possible_link_label_close;
+
+    #[derive(Debug, Default)]
+    struct Calls(AtomicUsize);
+    fn force_scan(state: &InlineState<'_>, _: usize, _: usize) -> bool {
+        state
+            .markdown_it()
+            .ext
+            .get::<Calls>()
+            .unwrap()
+            .0
+            .fetch_add(1, Ordering::Relaxed);
+        true
+    }
+
+    let mut md = MarkdownIt::new();
+    md.ext.insert(Calls::default());
+    crate::parser::inline::add_scan_hook(&mut md, force_scan);
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
+    let source = "[unclosed";
+    let mut state = InlineState::new(
+        &mut document,
+        source,
+        0,
+        source.len(),
+        &md,
+        md.inline.rules(),
+        0,
+        0,
+    );
+    for _ in 0..2 {
+        assert!(has_possible_link_label_close(&mut state, 0, None));
+        assert!(scan_link_label(state.child_state(1..source.len()).unwrap(), false).is_none());
+    }
+    assert_eq!(md.ext.get::<Calls>().unwrap().0.load(Ordering::Relaxed), 2);
+    let cache = state.scan_limit_cache.borrow();
+    let bounds = cache.link_bounds().unwrap();
+    assert!(bounds.plain_closes.is_none());
+    assert!(!bounds.failed_labels.is_empty());
+}
+
+#[test]
 fn special_html_link_scans_have_bounded_work() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 

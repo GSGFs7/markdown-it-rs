@@ -83,4 +83,9 @@ name = "memchr_scans"
 path = "benches/memchr_scans.rs"
 harness = false
 
+[[bench]]
+name = "link_preflight"
+path = "benches/link_preflight.rs"
+harness = false
+
 [workspace]

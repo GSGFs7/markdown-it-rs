@@ -214,7 +214,7 @@ pub(super) fn has_possible_link_label_close(
     let mut shared = state.scan_limit_cache.borrow_mut();
     let cache = shared.link_bounds_or_insert_with(|| LinkLabelBounds {
         close_positions: memchr::memchr_iter(b']', source.as_bytes()).collect(),
-        plain_closes: plain_label_closes(source, source.len(), state.ruleset),
+        plain_closes: None,
         target_positions: memchr::memchr_iter(b'(', source.as_bytes()).collect(),
         non_memoizable_positions: non_memoizable_positions(source, state),
         labels: HashMap::new(),
@@ -239,28 +239,37 @@ pub(super) fn has_possible_link_label_close(
         return false;
     }
 
-    if let Some(closes) = &cache.plain_closes {
-        let Some(&close) = closes.get(&open).filter(|&&close| close < end) else {
-            return last_before_end(&cache.close_positions).is_some_and(|last| last > open);
-        };
-
-        if state.depth >= state.markdown_it().max_nesting || source[open + 1..close].contains('[') {
-            return true;
-        }
-
-        if source[close + 1..end].starts_with(['(', '[']) {
-            return true;
-        }
-
-        return references.is_some_and(|map| {
-            map.downcast_ref::<crate::plugins::cmark::block::reference::DefaultReferenceMap>()
-                .is_none_or(|map| {
-                    use crate::plugins::cmark::block::reference::CustomReferenceMap;
-                    map.get(&source[open + 1..close]).is_some()
-                })
-        });
+    // Reject impossible candidates before building the optional pairing index.
+    // Keep link bounds and memoization available even when a hook requires a
+    // scan, but do not build an index that the hook path never consults.
+    if cache.plain_closes.is_none()
+        && !last_before_end(&cache.close_positions).is_some_and(|last| last > open)
+    {
+        return false;
     }
-    last_before_end(&cache.close_positions).is_some_and(|last| last > open)
+
+    let closes = cache.plain_closes.get_or_insert_with(|| {
+        plain_label_closes(source, source.len(), state.ruleset).unwrap_or_default()
+    });
+    let Some(&close) = closes.get(&open).filter(|&&close| close < end) else {
+        return last_before_end(&cache.close_positions).is_some_and(|last| last > open);
+    };
+
+    if state.depth >= state.markdown_it().max_nesting || source[open + 1..close].contains('[') {
+        return true;
+    }
+
+    if source[close + 1..end].starts_with(['(', '[']) {
+        return true;
+    }
+
+    references.is_some_and(|map| {
+        map.downcast_ref::<crate::plugins::cmark::block::reference::DefaultReferenceMap>()
+            .is_none_or(|map| {
+                use crate::plugins::cmark::block::reference::CustomReferenceMap;
+                map.get(&source[open + 1..close]).is_some()
+            })
+    })
 }
 
 pub(super) fn cache_label_scan(context: &InlineState<'_>, key: LabelScanKey, close: Option<usize>) {
