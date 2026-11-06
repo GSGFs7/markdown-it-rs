@@ -159,7 +159,7 @@ fn replace_entity_pattern(str: &str) -> Option<String> {
 /// assert_eq!(unescape_all("\\&"), "&");
 /// ```
 pub fn unescape_all(str: &str) -> Cow<'_, str> {
-    if !str.contains('\\') && !str.contains('&') {
+    if memchr::memchr2(b'\\', b'&', str.as_bytes()).is_none() {
         return Cow::Borrowed(str);
     }
 

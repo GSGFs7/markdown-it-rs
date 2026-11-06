@@ -213,9 +213,9 @@ pub(super) fn has_possible_link_label_close(
     let requires_scan = scan_hooks_require_scan(state, open, end);
     let mut shared = state.scan_limit_cache.borrow_mut();
     let cache = shared.link_bounds_or_insert_with(|| LinkLabelBounds {
-        close_positions: source.match_indices(']').map(|(pos, _)| pos).collect(),
+        close_positions: memchr::memchr_iter(b']', source.as_bytes()).collect(),
         plain_closes: plain_label_closes(source, source.len(), state.ruleset),
-        target_positions: source.match_indices('(').map(|(pos, _)| pos).collect(),
+        target_positions: memchr::memchr_iter(b'(', source.as_bytes()).collect(),
         non_memoizable_positions: non_memoizable_positions(source, state),
         labels: HashMap::new(),
         failed_labels: HashSet::new(),

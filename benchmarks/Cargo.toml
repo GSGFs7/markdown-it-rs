@@ -78,4 +78,9 @@ name = "scan_hooks"
 path = "benches/scan_hooks.rs"
 harness = false
 
+[[bench]]
+name = "memchr_scans"
+path = "benches/memchr_scans.rs"
+harness = false
+
 [workspace]

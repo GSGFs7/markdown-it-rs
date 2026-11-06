@@ -109,22 +109,12 @@ fn scan_autolink(src: &str, formatter: &dyn LinkFormatter) -> Option<AutolinkMat
         return None;
     }
 
-    let mut closing = None;
-    for (offset, ch) in src[1..].char_indices() {
-        let offset = offset + 1;
-        match ch {
-            '<' => return None,
-            '>' => {
-                closing = Some(offset);
-                break;
-            }
-            _ => {}
-        }
+    let label_end = 1 + memchr::memchr2(b'<', b'>', &src.as_bytes()[1..])?;
+    if src.as_bytes()[label_end] == b'<' {
+        return None;
     }
 
-    let label_end = closing?;
     let raw = &src[1..label_end];
-
     let is_uri = AUTOLINK_RE.is_match(raw);
     let is_email = EMAIL_RE.is_match(raw);
     if !is_uri && !is_email {
