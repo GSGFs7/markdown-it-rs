@@ -106,17 +106,11 @@ fn invalid_node_access_panics_in_all_builds() {
     let old = document.children(document.root())[0];
     let kept = document.children(document.root())[1];
 
-    let mut edits = crate::document::edit::EditBatch::new();
-    edits.remove_node(old);
-    edits.commit(&mut document);
-    let mut edits = crate::document::edit::EditBatch::new();
-    edits.insert_before(
-        kept,
-        NodeDraft::new(Text {
-            content: "new".into(),
-        }),
-    );
-    edits.commit(&mut document);
+    document.remove_node(old);
+    let new = document.create_node(Text {
+        content: "new".into(),
+    });
+    document.insert_before(kept, new);
     let new = document.children(document.root())[0];
     assert_eq!(old.slot(), new.slot());
     assert_ne!(old.generation(), new.generation());
@@ -294,6 +288,7 @@ fn arena_builder_moves_ids_and_metadata_without_recreating_nodes() {
 }
 
 #[test]
+#[cfg(debug_assertions)]
 fn arena_builder_rejects_cycles_before_modifying_links() {
     let mut document = Document::new("", Root::new(""));
     let outer = document.create_node(Paragraph);

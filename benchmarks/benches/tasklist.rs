@@ -36,29 +36,11 @@ fn benchmark(c: &mut Criterion) {
     {
         let mut group = c.benchmark_group(format!("tasklist-transform/corpus/{name}"));
         group.throughput(Throughput::Bytes(source.len() as u64));
-        group.bench_function("build-and-commit-edits", |b| {
+        group.bench_function("process-document", |b| {
             b.iter_batched(
                 || parser.parse(source),
                 |mut document| {
-                    tasklist::edits(black_box(&document)).commit(black_box(&mut document));
-                    black_box(document);
-                },
-                BatchSize::SmallInput,
-            )
-        });
-        group.bench_function("document-build-edits", |b| {
-            let document = parser.parse(source);
-            b.iter(|| black_box(tasklist::edits(black_box(&document))))
-        });
-        group.bench_function("document-commit", |b| {
-            b.iter_batched(
-                || {
-                    let document = parser.parse(source);
-                    let edits = tasklist::edits(&document);
-                    (document, edits)
-                },
-                |(mut document, edits)| {
-                    edits.commit(black_box(&mut document));
+                    tasklist::process(black_box(&mut document));
                     black_box(document);
                 },
                 BatchSize::SmallInput,

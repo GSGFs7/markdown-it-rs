@@ -226,9 +226,7 @@ fn external_payload_mutation_replacement_and_removal_preserve_ownership() {
     assert_eq!(doc.node(id).attrs()[0].1, "badge");
     assert_eq!(md.render_document(&doc, "html"), "old!");
 
-    let mut edits = EditBatch::new();
-    edits.remove_node(id);
-    edits.commit(&mut doc);
+    doc.remove_node(id);
     assert_eq!(drops.load(Ordering::SeqCst), 2);
     let reused = doc.append_child(root, NodeDraft::new(badge()));
     assert_ne!(reused, id);

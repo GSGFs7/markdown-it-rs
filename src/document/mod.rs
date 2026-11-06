@@ -17,7 +17,6 @@ pub use self::arena::NodeId;
 pub use self::events::StructuralEvent;
 pub use self::node::{Node, NodeDraft};
 pub use self::root::Root;
-pub(crate) use self::structure::SiblingPosition;
 pub use self::text::{Text, TextSpecial};
 pub(crate) use self::value::NodeEmpty;
 pub use self::value::{HtmlAttribute, HtmlAttributes, NodeValue};
@@ -59,20 +58,18 @@ impl Document {
     }
 
     /// Attach a detached node to a parent.
+    ///
+    /// The caller must ensure attaching would not create a cycle. Ancestor
+    /// cycles are checked only with debug assertions enabled.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either ID is invalid, `child` is not detached or is the root,
+    /// or `parent` equals `child`. Ancestor cycles panic before mutation only
+    /// with debug assertions enabled.
+    #[track_caller]
     pub fn push_child(&mut self, parent: NodeId, child: NodeId) {
-        assert_ne!(child, self.root, "cannot attach the document root");
-        assert_ne!(parent, child, "cannot attach a node to itself");
-
-        self.node(parent);
-        if !self.children(child).is_empty() {
-            let mut ancestor = Some(parent);
-            while let Some(id) = ancestor {
-                assert_ne!(id, child, "cannot create a cycle");
-                ancestor = self.parent(id);
-            }
-        }
-
-        assert!(self.node(child).parent.is_none(), "child must be detached");
+        self.check_attachment(parent, child);
 
         self.node_mut(child).parent = Some(parent);
         self.node_mut(parent).children.push(child);
@@ -89,15 +86,15 @@ impl Document {
 
     /// Attach an ordered sequence of detached children to an empty `parent`.
     pub(crate) fn attach_children(&mut self, parent: NodeId, children: Vec<NodeId>) {
-        assert!(
+        debug_assert!(
             self.children(parent).is_empty(),
             "parent must have no children"
         );
 
         for &child in &children {
-            assert_ne!(child, self.root, "cannot attach the document root");
-            assert_ne!(child, parent, "cannot attach a node to itself");
-            assert!(self.node(child).parent.is_none(), "child must be detached");
+            debug_assert_ne!(child, self.root, "cannot attach the document root");
+            debug_assert_ne!(child, parent, "cannot attach a node to itself");
+            debug_assert!(self.node(child).parent.is_none(), "child must be detached");
             self.node_mut(child).parent = Some(parent);
         }
         self.node_mut(parent).children = children;
@@ -136,7 +133,11 @@ impl Document {
     }
 
     /// Append a generated subtree to a valid parent, returning its new ID.
+    ///
+    /// # Panics
+    ///
     /// Panics if `parent` is invalid or stale.
+    #[track_caller]
     pub fn append_child(&mut self, parent: NodeId, draft: NodeDraft) -> NodeId {
         self.node(parent);
         let child = self.insert_draft_with_parent(Some(parent), draft);

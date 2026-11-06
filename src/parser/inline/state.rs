@@ -230,7 +230,7 @@ impl<'a> InlineState<'a> {
             return;
         }
         let (start, end) = self.pending_text.expect("trailing text must exist");
-        assert!(count <= end - start && self.src.is_char_boundary(end - count));
+        debug_assert!(count <= end - start && self.src.is_char_boundary(end - count));
         self.pending_text = (start < end - count).then_some((start, end - count));
     }
 

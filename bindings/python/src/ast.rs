@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 
-use markdown_it::document::edit::EditBatch;
 use markdown_it::document::{Document, NodeDraft, NodeId, Text};
 use markdown_it::render::{RenderOptions, RendererRegistry};
 use pyo3::exceptions::PyRuntimeError;
@@ -93,12 +92,8 @@ impl PyNode {
     fn clear_children(&self, py: Python<'_>) -> PyResult<()> {
         let ast = self.ast.borrow(py);
         let mut doc = ast.root.borrow_mut();
-        let node = doc.get_node(self.id).ok_or_else(stale)?;
-        let mut edits = EditBatch::new();
-        for &id in node.children() {
-            edits.remove_node(id);
-        }
-        edits.commit(&mut doc);
+        doc.get_node(self.id).ok_or_else(stale)?;
+        doc.replace_children(self.id, Vec::new());
         Ok(())
     }
 }

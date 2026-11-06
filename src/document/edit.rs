@@ -3,7 +3,7 @@
 use std::ops::Range;
 
 use crate::document::data::NodeData;
-use crate::document::{Document, NodeDraft, NodeId, NodeValue, SiblingPosition};
+use crate::document::{Document, NodeId, NodeValue};
 
 #[derive(Clone, Debug)]
 enum TextReplacement {
@@ -86,41 +86,13 @@ impl NodePatchSet {
     }
 }
 
-#[derive(Debug)]
-struct InsertSibling {
-    target: NodeId,
-    position: SiblingPosition,
-    draft: NodeDraft,
-}
-
-#[derive(Debug)]
-struct ReplaceNode {
-    target: NodeId,
-    draft: NodeDraft,
-}
-
-#[derive(Debug, Default)]
-struct StructuralEditSet {
-    removals: Vec<NodeId>,
-    insertions: Vec<InsertSibling>,
-    replacements: Vec<ReplaceNode>,
-}
-
-impl StructuralEditSet {
-    fn len(&self) -> usize {
-        self.removals.len() + self.insertions.len() + self.replacements.len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.removals.is_empty() && self.insertions.is_empty() && self.replacements.is_empty()
-    }
-}
-
-/// A batch of document edits supplied by a plugin.
+/// A batch of content edits supplied by a plugin.
+///
+/// Structural changes go through [`Document`] immediately. Text ranges refer to
+/// the text before commit, and targets must stay valid until then.
 #[derive(Debug, Default)]
 pub struct EditBatch {
     node_patches: NodePatchSet,
-    structural_edits: StructuralEditSet,
 }
 
 impl EditBatch {
@@ -129,11 +101,11 @@ impl EditBatch {
     }
 
     pub fn len(&self) -> usize {
-        self.node_patches.len() + self.structural_edits.len()
+        self.node_patches.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.node_patches.is_empty() && self.structural_edits.is_empty()
+        self.node_patches.is_empty()
     }
 
     /// Replace a node's payload, preserving its ID, children and metadata.
@@ -196,44 +168,13 @@ impl EditBatch {
             .push(EditSourceMap { node, source_map });
     }
 
-    /// Remove a non-root node and its complete subtree.
-    pub fn remove_node(&mut self, node: NodeId) {
-        self.structural_edits.removals.push(node);
-    }
-
-    /// Insert an owned draft immediately before `target` when the batch
-    /// commits. Insertions at the same target preserve call order.
-    pub fn insert_before(&mut self, target: NodeId, draft: NodeDraft) {
-        self.structural_edits.insertions.push(InsertSibling {
-            target,
-            position: SiblingPosition::Before,
-            draft,
-        });
-    }
-
-    /// Insert an owned draft immediately after `target` when the batch
-    /// commits. Insertions at the same target preserve call order.
-    pub fn insert_after(&mut self, target: NodeId, draft: NodeDraft) {
-        self.structural_edits.insertions.push(InsertSibling {
-            target,
-            position: SiblingPosition::After,
-            draft,
-        });
-    }
-
-    /// Replace a non-root node and its complete subtree with an owned draft.
-    pub fn replace_node(&mut self, target: NodeId, draft: NodeDraft) {
-        self.structural_edits
-            .replacements
-            .push(ReplaceNode { target, draft });
-    }
-
     /// Apply a batch of edits supplied by a plugin.
     ///
-    /// The caller must provide a valid batch. With debug assertions enabled,
-    /// invalid batches panic before application. Otherwise, invalid batches
-    /// have unspecified logical results and may panic after partial changes.
-    /// No rollback or recovery guarantee is provided for invalid batches.
+    /// # Panics
+    ///
+    /// With debug assertions enabled, invalid batches panic before application.
+    /// Otherwise, invalid batches may panic after partial changes; no rollback
+    /// is guaranteed.
     #[track_caller]
     pub fn commit(mut self, document: &mut Document) {
         if self.is_empty() {
@@ -251,9 +192,6 @@ impl EditBatch {
         for edit in self.node_patches.values.drain(..) {
             document.node_mut(edit.node).data.replace_value(edit.value);
         }
-        self.apply_removals(document);
-        self.apply_replacements(document);
-        self.apply_insertions(document);
         #[cfg(feature = "sourcemap")]
         self.apply_source_maps(document);
         self.apply_attributes(document);
@@ -273,8 +211,6 @@ impl EditBatch {
         self.sort_attribute_edits();
         #[cfg(feature = "sourcemap")]
         self.sort_source_map_edits();
-        self.sort_removed_nodes();
-        self.sort_node_replacements();
     }
 
     fn sort_text_edits(&mut self) {
@@ -306,20 +242,6 @@ impl EditBatch {
         self.node_patches
             .source_maps
             .sort_unstable_by_key(|edit| (edit.node.slot(), edit.node.generation()));
-    }
-
-    fn sort_removed_nodes(&mut self) {
-        self.structural_edits
-            .removals
-            .sort_unstable_by_key(|node| (node.slot(), node.generation()));
-    }
-
-    fn sort_node_replacements(&mut self) {
-        self.structural_edits
-            .replacements
-            .sort_unstable_by_key(|replacement| {
-                (replacement.target.slot(), replacement.target.generation())
-            });
     }
 
     fn apply_text(&self, document: &mut Document) {
@@ -390,32 +312,6 @@ impl EditBatch {
     fn apply_source_maps(&mut self, document: &mut Document) {
         for edit in self.node_patches.source_maps.drain(..) {
             document.node_mut(edit.node).set_srcmap(edit.source_map);
-        }
-    }
-
-    fn apply_removals(&self, document: &mut Document) {
-        if !self.structural_edits.removals.is_empty() {
-            document.remove_subtrees(&self.structural_edits.removals);
-        }
-    }
-
-    fn apply_insertions(&mut self, document: &mut Document) {
-        if !self.structural_edits.insertions.is_empty() {
-            let insertions = std::mem::take(&mut self.structural_edits.insertions)
-                .into_iter()
-                .map(|insertion| (insertion.target, insertion.position, insertion.draft))
-                .collect();
-            document.insert_siblings(insertions);
-        }
-    }
-
-    fn apply_replacements(&mut self, document: &mut Document) {
-        if !self.structural_edits.replacements.is_empty() {
-            let replacements = std::mem::take(&mut self.structural_edits.replacements)
-                .into_iter()
-                .map(|replacement| (replacement.target, replacement.draft))
-                .collect();
-            document.replace_subtrees(replacements);
         }
     }
 }

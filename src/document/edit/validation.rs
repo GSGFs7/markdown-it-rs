@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::ops::Range;
 
-use super::{EditAttribute, EditBatch, NodePatchSet, ReplaceText, text_groups};
+use super::{EditAttribute, EditBatch, ReplaceText, text_groups};
 use crate::document::{Document, Node, NodeId, Text};
 
 /// A validation failure that leaves the document unchanged.
@@ -33,39 +33,6 @@ pub(super) enum ValidationError {
         node: NodeId,
         start: usize,
         end: usize,
-    },
-    CannotRemoveRoot(NodeId),
-    DuplicateNodeRemoval(NodeId),
-    OverlappingNodeRemovals {
-        ancestor: NodeId,
-        descendant: NodeId,
-    },
-    EditTargetsRemovedNode {
-        removed: NodeId,
-        edited: NodeId,
-    },
-    CannotInsertSiblingOfRoot(NodeId),
-    InsertionTargetsRemovedNode {
-        removed: NodeId,
-        target: NodeId,
-    },
-    CannotReplaceRoot(NodeId),
-    DuplicateNodeReplacement(NodeId),
-    OverlappingNodeReplacements {
-        ancestor: NodeId,
-        descendant: NodeId,
-    },
-    ConflictingNodeRemovalAndReplacement {
-        removed: NodeId,
-        replaced: NodeId,
-    },
-    EditTargetsReplacedNode {
-        replaced: NodeId,
-        edited: NodeId,
-    },
-    InsertionTargetsReplacedNode {
-        replaced: NodeId,
-        target: NodeId,
     },
 }
 
@@ -107,55 +74,6 @@ impl std::fmt::Display for ValidationError {
             Self::InvalidSourceMap { node, start, end } => {
                 write!(f, "invalid source map {start}..{end} for node {node:?}")
             }
-            Self::CannotRemoveRoot(node) => {
-                write!(f, "cannot remove document root {node:?}")
-            }
-            Self::DuplicateNodeRemoval(node) => {
-                write!(f, "node {node:?} is removed more than once")
-            }
-            Self::OverlappingNodeRemovals {
-                ancestor,
-                descendant,
-            } => write!(
-                f,
-                "cannot remove both ancestor {ancestor:?} and descendant {descendant:?}"
-            ),
-            Self::EditTargetsRemovedNode { removed, edited } => write!(
-                f,
-                "edit targets node {edited:?} inside removed subtree {removed:?}"
-            ),
-            Self::CannotInsertSiblingOfRoot(node) => {
-                write!(f, "cannot insert a sibling of document root {node:?}")
-            }
-            Self::InsertionTargetsRemovedNode { removed, target } => write!(
-                f,
-                "insertion targets node {target:?} inside removed subtree {removed:?}"
-            ),
-            Self::CannotReplaceRoot(node) => {
-                write!(f, "cannot replace document root {node:?}")
-            }
-            Self::DuplicateNodeReplacement(node) => {
-                write!(f, "node {node:?} is replaced more than once")
-            }
-            Self::OverlappingNodeReplacements {
-                ancestor,
-                descendant,
-            } => write!(
-                f,
-                "cannot replace both ancestor {ancestor:?} and descendant {descendant:?}"
-            ),
-            Self::ConflictingNodeRemovalAndReplacement { removed, replaced } => write!(
-                f,
-                "cannot remove subtree {removed:?} and replace overlapping node {replaced:?}"
-            ),
-            Self::EditTargetsReplacedNode { replaced, edited } => write!(
-                f,
-                "edit targets node {edited:?} inside replaced subtree {replaced:?}"
-            ),
-            Self::InsertionTargetsReplacedNode { replaced, target } => write!(
-                f,
-                "insertion targets node {target:?} inside replaced subtree {replaced:?}"
-            ),
         }
     }
 }
@@ -173,15 +91,6 @@ impl EditBatch {
         self.validate_attributes(document)?;
         #[cfg(feature = "sourcemap")]
         self.validate_source_maps(document)?;
-        if !self.structural_edits.removals.is_empty() {
-            self.validate_removals(document)?;
-        }
-        if !self.structural_edits.insertions.is_empty() {
-            self.validate_insertions(document)?;
-        }
-        if !self.structural_edits.replacements.is_empty() {
-            self.validate_replacements(document)?;
-        }
         Ok(())
     }
 
@@ -265,140 +174,6 @@ impl EditBatch {
         }
         Ok(())
     }
-
-    fn validate_removals(&self, document: &Document) -> Result<(), ValidationError> {
-        let mut removals = HashSet::with_capacity(self.structural_edits.removals.len());
-        for &node in &self.structural_edits.removals {
-            checked_node(document, node)?;
-            if node == document.root() {
-                return Err(ValidationError::CannotRemoveRoot(node));
-            }
-            if !removals.insert(node) {
-                return Err(ValidationError::DuplicateNodeRemoval(node));
-            }
-        }
-
-        for &descendant in &self.structural_edits.removals {
-            if let Some(node) = find_ancestor(
-                document,
-                checked_node(document, descendant)?.parent(),
-                &removals,
-            )? {
-                return Err(ValidationError::OverlappingNodeRemovals {
-                    ancestor: node,
-                    descendant,
-                });
-            }
-        }
-
-        for edited in self.node_patches.edited_nodes() {
-            if let Some(node) = find_ancestor(document, Some(edited), &removals)? {
-                return Err(ValidationError::EditTargetsRemovedNode {
-                    removed: node,
-                    edited,
-                });
-            }
-        }
-        Ok(())
-    }
-
-    fn validate_insertions(&self, document: &Document) -> Result<(), ValidationError> {
-        let removals: HashSet<_> = self.structural_edits.removals.iter().copied().collect();
-        for insertion in &self.structural_edits.insertions {
-            let target = checked_node(document, insertion.target)?;
-            if target.parent().is_none() {
-                return Err(ValidationError::CannotInsertSiblingOfRoot(insertion.target));
-            }
-
-            if let Some(node) = find_ancestor(document, Some(insertion.target), &removals)? {
-                return Err(ValidationError::InsertionTargetsRemovedNode {
-                    removed: node,
-                    target: insertion.target,
-                });
-            }
-        }
-        Ok(())
-    }
-
-    fn validate_replacements(&self, document: &Document) -> Result<(), ValidationError> {
-        let mut replacements = HashSet::with_capacity(self.structural_edits.replacements.len());
-        for replacement in &self.structural_edits.replacements {
-            checked_node(document, replacement.target)?; // check InvalidNode
-            if replacement.target == document.root() {
-                return Err(ValidationError::CannotReplaceRoot(replacement.target));
-            }
-            if !replacements.insert(replacement.target) {
-                return Err(ValidationError::DuplicateNodeReplacement(
-                    replacement.target,
-                ));
-            }
-        }
-
-        // not allow ancestor/descendant overlap
-        for replacement in &self.structural_edits.replacements {
-            if let Some(node) = find_ancestor(
-                document,
-                checked_node(document, replacement.target)?.parent(),
-                &replacements,
-            )? {
-                return Err(ValidationError::OverlappingNodeReplacements {
-                    ancestor: node,
-                    descendant: replacement.target,
-                });
-            }
-        }
-
-        // bidirectional detection with delete
-        let removals: HashSet<_> = self.structural_edits.removals.iter().copied().collect();
-        for replacement in &self.structural_edits.replacements {
-            if let Some(node) = find_ancestor(document, Some(replacement.target), &removals)? {
-                return Err(ValidationError::ConflictingNodeRemovalAndReplacement {
-                    removed: node,
-                    replaced: replacement.target,
-                });
-            }
-        }
-        for &removed in &self.structural_edits.removals {
-            if let Some(node) = find_ancestor(document, Some(removed), &replacements)? {
-                return Err(ValidationError::ConflictingNodeRemovalAndReplacement {
-                    removed,
-                    replaced: node,
-                });
-            }
-        }
-
-        for edited in self.node_patches.edited_nodes() {
-            if let Some(node) = find_ancestor(document, Some(edited), &replacements)? {
-                return Err(ValidationError::EditTargetsReplacedNode {
-                    replaced: node,
-                    edited,
-                });
-            }
-        }
-
-        for insertion in &self.structural_edits.insertions {
-            if let Some(node) = find_ancestor(document, Some(insertion.target), &replacements)? {
-                return Err(ValidationError::InsertionTargetsReplacedNode {
-                    replaced: node,
-                    target: insertion.target,
-                });
-            }
-        }
-        Ok(())
-    }
-}
-
-impl NodePatchSet {
-    fn edited_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
-        let nodes = self
-            .text
-            .iter()
-            .map(|edit| edit.node)
-            .chain(self.attributes.iter().map(|edit| edit.node));
-        #[cfg(feature = "sourcemap")]
-        let nodes = nodes.chain(self.source_maps.iter().map(|edit| edit.node));
-        nodes.chain(self.values.iter().map(|edit| edit.node))
-    }
 }
 
 fn attribute_groups(edits: &[EditAttribute]) -> impl Iterator<Item = &[EditAttribute]> {
@@ -419,19 +194,4 @@ fn checked_node(document: &Document, id: NodeId) -> Result<&Node, ValidationErro
     document
         .get_node(id)
         .ok_or(ValidationError::InvalidNode(id))
-}
-
-// Search from `current` inclusively; pass the parent to exclude the target itself.
-fn find_ancestor(
-    document: &Document,
-    mut current: Option<NodeId>,
-    candidates: &HashSet<NodeId>,
-) -> Result<Option<NodeId>, ValidationError> {
-    while let Some(node) = current {
-        if candidates.contains(&node) {
-            return Ok(Some(node));
-        }
-        current = checked_node(document, node)?.parent();
-    }
-    Ok(None)
 }

@@ -3,7 +3,7 @@ use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use markdown_it::document::edit::EditBatch;
 use markdown_it::document::text::{TextBoundary, TextEvent, TextProjectionKind};
-use markdown_it::document::{Document, Node, NodeDraft, StructuralEvent, Text};
+use markdown_it::document::{Document, Node, StructuralEvent, Text};
 use markdown_it::parser::core::{CoreRule, CoreState};
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
@@ -76,38 +76,34 @@ fn one_attribute_per_node(document: &markdown_it::document::Document) -> EditBat
     batch
 }
 
-fn remove_top_level_subtrees(document: &markdown_it::document::Document) -> EditBatch {
-    let mut batch = EditBatch::new();
-    for &child in document.children(document.root()) {
-        batch.remove_node(child);
-    }
-    batch
+fn remove_top_level_subtrees(document: &mut Document) {
+    document.replace_children(document.root(), Vec::new());
 }
 
-fn insert_before_top_level_nodes(document: &markdown_it::document::Document) -> EditBatch {
-    let mut batch = EditBatch::new();
-    for &child in document.children(document.root()) {
-        batch.insert_before(
-            child,
-            NodeDraft::new(Text {
-                content: "generated".to_owned(),
-            }),
-        );
+fn insert_before_top_level_nodes(document: &mut Document) {
+    let root = document.root();
+    let old = document.children(root).to_vec();
+    let mut children = Vec::with_capacity(old.len() * 2);
+    for child in old {
+        let inserted = document.create_node(Text {
+            content: "generated".to_owned(),
+        });
+        children.extend([inserted, child]);
     }
-    batch
+    document.replace_children(root, children);
 }
 
-fn replace_top_level_subtrees(document: &markdown_it::document::Document) -> EditBatch {
-    let mut batch = EditBatch::new();
-    for &child in document.children(document.root()) {
-        batch.replace_node(
-            child,
-            NodeDraft::new(Text {
+fn replace_top_level_subtrees(document: &mut Document) {
+    let root = document.root();
+    let count = document.children(root).len();
+    let children = (0..count)
+        .map(|_| {
+            document.create_node(Text {
                 content: "generated".to_owned(),
-            }),
-        );
-    }
-    batch
+            })
+        })
+        .collect();
+    document.replace_children(root, children);
 }
 
 fn parser() -> markdown_it::MarkdownIt {
@@ -144,6 +140,31 @@ fn benchmark(c: &mut Criterion) {
         b.iter(|| five_rules.parse(black_box("")))
     });
     group.finish();
+
+    // Wide sibling lists make repeated immediate edits quadratic;
+    // replace_children rebuilds each list once.
+    for count in [100, 1_000, 10_000] {
+        let source = "paragraph\n\n".repeat(count);
+        let mut group = c.benchmark_group(format!("document-wide/{count}"));
+        group.throughput(Throughput::Elements(count as u64));
+        for (name, apply) in [
+            ("remove", remove_top_level_subtrees as fn(&mut Document)),
+            ("insert", insert_before_top_level_nodes),
+            ("replace", replace_top_level_subtrees),
+        ] {
+            group.bench_function(name, |b| {
+                b.iter_batched(
+                    || md.parse(&source),
+                    |mut document| {
+                        apply(&mut document);
+                        black_box(document)
+                    },
+                    BatchSize::SmallInput,
+                )
+            });
+        }
+        group.finish();
+    }
 
     for corpus in corpus::standard() {
         let source = corpus.source();
@@ -228,20 +249,16 @@ fn benchmark(c: &mut Criterion) {
 
         let removed_count = document.len() - 1;
         let mut edited = md.parse(source);
-        remove_top_level_subtrees(&edited).commit(&mut edited);
+        remove_top_level_subtrees(&mut edited);
         assert_eq!(edited.len(), 1);
         assert!(edited.children(edited.root()).is_empty());
         let mut group = c.benchmark_group(format!("document-subtree-remove/{}", corpus.name));
         group.throughput(Throughput::Elements(removed_count as u64));
-        group.bench_function("validate-and-commit", |b| {
+        group.bench_function("immediate-edit", |b| {
             b.iter_batched(
-                || {
-                    let document = md.parse(source);
-                    let batch = remove_top_level_subtrees(&document);
-                    (document, batch)
-                },
-                |(mut document, batch)| {
-                    batch.commit(&mut document);
+                || md.parse(source),
+                |mut document| {
+                    remove_top_level_subtrees(&mut document);
                     black_box(document)
                 },
                 BatchSize::SmallInput,
@@ -252,7 +269,7 @@ fn benchmark(c: &mut Criterion) {
         let inserted_count = document.children(document.root()).len();
         let mut edited = md.parse(source);
         let original_children = edited.children(edited.root()).to_vec();
-        insert_before_top_level_nodes(&edited).commit(&mut edited);
+        insert_before_top_level_nodes(&mut edited);
         let edited_children = edited.children(edited.root());
         assert_eq!(edited_children.len(), original_children.len() * 2);
         let (pairs, remainder) = edited_children.as_chunks::<2>();
@@ -266,15 +283,11 @@ fn benchmark(c: &mut Criterion) {
         }
         let mut group = c.benchmark_group(format!("document-sibling-insert/{}", corpus.name));
         group.throughput(Throughput::Elements(inserted_count as u64));
-        group.bench_function("validate-and-commit", |b| {
+        group.bench_function("immediate-edit", |b| {
             b.iter_batched(
-                || {
-                    let document = md.parse(source);
-                    let batch = insert_before_top_level_nodes(&document);
-                    (document, batch)
-                },
-                |(mut document, batch)| {
-                    batch.commit(&mut document);
+                || md.parse(source),
+                |mut document| {
+                    insert_before_top_level_nodes(&mut document);
                     black_box(document)
                 },
                 BatchSize::SmallInput,
@@ -285,7 +298,7 @@ fn benchmark(c: &mut Criterion) {
         let replaced_node_count = document.len() - 1;
         let mut edited = md.parse(source);
         let old_roots = edited.children(edited.root()).to_vec();
-        replace_top_level_subtrees(&edited).commit(&mut edited);
+        replace_top_level_subtrees(&mut edited);
         assert_eq!(edited.len(), old_roots.len() + 1);
         assert!(old_roots
             .iter()
@@ -298,15 +311,11 @@ fn benchmark(c: &mut Criterion) {
         }
         let mut group = c.benchmark_group(format!("document-subtree-replace/{}", corpus.name));
         group.throughput(Throughput::Elements(replaced_node_count as u64));
-        group.bench_function("validate-and-commit", |b| {
+        group.bench_function("immediate-edit", |b| {
             b.iter_batched(
-                || {
-                    let document = md.parse(source);
-                    let batch = replace_top_level_subtrees(&document);
-                    (document, batch)
-                },
-                |(mut document, batch)| {
-                    batch.commit(&mut document);
+                || md.parse(source),
+                |mut document| {
+                    replace_top_level_subtrees(&mut document);
                     black_box(document)
                 },
                 BatchSize::SmallInput,

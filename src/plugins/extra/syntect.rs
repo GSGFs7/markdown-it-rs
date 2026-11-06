@@ -7,7 +7,7 @@
 //! This plugin use `InspiredGitHub` theme and render inline styles by default.
 //! Use [`set_theme`] to select another built-in theme (syntect defaults plus
 //! two-face extras, e.g. `Nord`, `Dracula`, `Catppuccin Mocha`, `Solarized (dark)`).
-//! It will panic when get an unknown theme.
+//! Unknown themes panic during rendering.
 //! Use [`available_themes`] to view all available themes.
 //!
 //! Use [`set_to_classed`] or [`set_to_classed_with_prefix`] to switch classed mode.
@@ -376,8 +376,11 @@ pub fn available_themes() -> Vec<String> {
 
 /// Set the theme used for syntax highlighting.
 ///
-/// The names should match one of returned by [`available_themes`].
-/// If not, it will panic.
+/// The name must match one returned by [`available_themes`].
+///
+/// # Panics
+///
+/// Rendering or [`theme_css`] panics if the theme is unknown.
 pub fn set_theme(md: &mut MarkdownIt, theme: impl Into<String>) {
     update_syntect_settings(md, |settings| settings.theme = theme.into());
 }

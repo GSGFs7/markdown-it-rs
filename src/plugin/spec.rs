@@ -408,6 +408,8 @@ impl PluginSpec {
 
     /// Validate and install this plugin into an existing parser.
     ///
+    /// # Panics
+    ///
     /// Panics before registration if the plugin is invalid, a dependency is
     /// missing or cyclic, or the plugin is already installed.
     pub fn install(self, md: &mut MarkdownIt) {

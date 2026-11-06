@@ -27,8 +27,11 @@ pub trait InlineRule: 'static {
     /// Probes the current position while scanning text, returning the number of
     /// bytes this construct consumes when it starts here.
     ///
-    /// Return `Some(n)` only when `n > 0`; a zero-length success panics, even in
-    /// release builds.
+    /// Return `Some(n)` only when `n > 0`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a match returns a zero length, even in release builds.
     ///
     /// The default reuses [`run`](InlineRule::run) and discards its node, which
     /// is fine for simple matches; override it when `run` has side effects or
@@ -48,7 +51,11 @@ pub trait InlineRule: 'static {
     /// node, or `None` if the construct does not match.
     ///
     /// Every success, even without a node, must report a length greater than
-    /// zero; a zero-length success panics, even in release builds.
+    /// zero.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a zero-length success, even in release builds.
     fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)>;
 }
 

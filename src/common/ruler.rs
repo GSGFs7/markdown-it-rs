@@ -363,7 +363,11 @@ impl<M: Clone, T> RuleItem<M, T> {
         self
     }
 
-    /// Require another rule identified by `mark`, panic if not found.
+    /// Require another rule identified by `mark`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `mark` is not found.
     pub fn require(&mut self, mark: M) -> &mut Self {
         self.cons.push(RuleItemConstraint::Require(mark));
         self

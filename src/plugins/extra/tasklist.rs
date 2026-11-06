@@ -1,8 +1,7 @@
 //! Task list syntax, like `- [ ] todo` and `- [x] done`.
 
 use crate::MarkdownIt;
-use crate::document::edit::EditBatch;
-use crate::document::{Document, HtmlAttributes, NodeDraft, NodeId, StructuralEvent, Text};
+use crate::document::{Document, HtmlAttributes, NodeId, StructuralEvent, Text};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::plugins::cmark::block::list::{BulletList, ListItem, OrderedList};
 use crate::plugins::cmark::block::paragraph::Paragraph;
@@ -50,14 +49,13 @@ impl TaskListScanner {
 
 #[derive(Clone, Copy, Debug)]
 struct TaskItemPlan {
+    list: NodeId,
     item: NodeId,
     text: NodeId,
     marker_target: NodeId,
     checked: bool,
     marker_len: usize,
     text_len: usize,
-    #[cfg(feature = "sourcemap")]
-    source_map: Option<crate::common::sourcemap::SourcePos>,
 }
 
 /// Converts task-list markers.
@@ -68,16 +66,13 @@ impl CoreRule for TaskListRule {
     const NAMES: &'static [&'static str] = &["extra::tasklist", "tasklist", "task_list"];
 
     fn run(&self, state: &mut CoreState<'_>) {
-        let document = &mut *state.document;
-        let edits = edits(document);
-        edits.commit(document);
+        process(state.document);
     }
 }
 
-/// Build task-list edits for a finished document.
-pub fn edits(document: &Document) -> EditBatch {
-    let mut edits = EditBatch::new();
-
+/// Transform task-list markers in place.
+pub fn process(document: &mut Document) {
+    let mut plans = Vec::new();
     for event in document.events(document.root()) {
         let list = match event {
             StructuralEvent::Enter(node) if node.is::<BulletList>() || node.is::<OrderedList>() => {
@@ -85,66 +80,59 @@ pub fn edits(document: &Document) -> EditBatch {
             }
             _ => continue,
         };
-
-        let mut contains_task = false;
         for &item in list.children() {
-            let Some(plan) = task_item_plan(document, item) else {
-                continue;
-            };
-            contains_task = true;
-
-            if plan.marker_len == plan.text_len {
-                if plan.marker_target == plan.text {
-                    edits.replace_node(plan.text, marker_draft(plan.checked));
-                } else {
-                    edits.remove_node(plan.text);
-                    edits.insert_before(plan.marker_target, marker_draft(plan.checked));
-                }
-            } else {
-                // remove task list marker text; it is replaced by a checkbox
-                // at render time
-                edits.replace_text(plan.text, 0..plan.marker_len, "");
-
-                #[cfg(feature = "sourcemap")]
-                if let Some(source_map) = plan.source_map {
-                    let (start, end) = source_map.get_byte_offsets();
-                    // update source map
-                    edits.set_source_map(
-                        plan.text,
-                        Some(crate::common::sourcemap::SourcePos::new(
-                            start + plan.marker_len,
-                            end,
-                        )),
-                    );
-                }
-
-                edits.insert_before(plan.marker_target, marker_draft(plan.checked));
+            if let Some(plan) = task_item_plan(document, list.id(), item) {
+                plans.push(plan);
             }
-
-            let item_node = document.node(plan.item);
-            edits.set_attribute(
-                plan.item,
-                "class",
-                merged_class(item_node.attrs(), "task-list-item"),
-            );
-        }
-
-        if contains_task {
-            edits.set_attribute(
-                list.id(),
-                "class",
-                merged_class(list.attrs(), "contains-task-list"),
-            );
         }
     }
 
-    edits
+    // Scan first: plans touch distinct leading text, so edits do not
+    // invalidate later plans.
+    let mut marked_list = None;
+    for plan in plans {
+        // Plans are grouped by list; merge the list class once.
+        if marked_list != Some(plan.list) {
+            add_class(
+                document.node_mut(plan.list).attrs_mut(),
+                "contains-task-list",
+            );
+            marked_list = Some(plan.list);
+        }
+        add_class(document.node_mut(plan.item).attrs_mut(), "task-list-item");
+
+        if plan.marker_len != plan.text_len {
+            document
+                .materialize_text(plan.text)
+                .expect("task marker text must remain a Text node")
+                .replace_range(0..plan.marker_len, "");
+            #[cfg(feature = "sourcemap")]
+            if let Some(source_map) = document.node(plan.text).srcmap() {
+                let (start, end) = source_map.get_byte_offsets();
+                document.node_mut(plan.text).set_srcmap(Some(
+                    crate::common::sourcemap::SourcePos::new(start + plan.marker_len, end),
+                ));
+            }
+        }
+
+        let marker = document.create_node(TaskListMarker {
+            checked: plan.checked,
+        });
+        if plan.marker_len == plan.text_len && plan.marker_target == plan.text {
+            document.replace_node(plan.text, marker);
+        } else {
+            document.insert_before(plan.marker_target, marker);
+            if plan.marker_len == plan.text_len {
+                document.remove_node(plan.text);
+            }
+        }
+    }
 }
 
 // --- helper ---
 
 // check if it is a task list item
-fn task_item_plan(document: &Document, item: NodeId) -> Option<TaskItemPlan> {
+fn task_item_plan(document: &Document, list: NodeId, item: NodeId) -> Option<TaskItemPlan> {
     let item_node = document.node(item);
     if !item_node.is::<ListItem>() {
         return None;
@@ -163,19 +151,32 @@ fn task_item_plan(document: &Document, item: NodeId) -> Option<TaskItemPlan> {
     let (checked, marker_len) = TaskListScanner::marker_len(&text_value.content)?;
 
     Some(TaskItemPlan {
+        list,
         item,
         text,
         marker_target,
         checked,
         marker_len,
         text_len: text_value.content.len(),
-        #[cfg(feature = "sourcemap")]
-        source_map: text_node.srcmap(),
     })
 }
 
-fn marker_draft(checked: bool) -> NodeDraft {
-    NodeDraft::new(TaskListMarker { checked })
+fn add_class(attrs: &mut HtmlAttributes, class: &str) {
+    let value = merged_class(attrs, class);
+    if let Some(index) = attrs.iter().position(|(name, _)| name == "class") {
+        attrs[index].1 = value;
+        let mut seen = false;
+        attrs.retain(|(name, _)| {
+            if name != "class" {
+                return true;
+            }
+            let keep = !seen;
+            seen = true;
+            keep
+        });
+    } else {
+        attrs.push(("class".into(), value));
+    }
 }
 
 fn merged_class(attrs: &HtmlAttributes, class: &str) -> String {
@@ -329,5 +330,111 @@ mod tests {
     #[test]
     fn not_at_start() {
         run("- a [x] task", "<ul>\n<li>a [x] task</li>\n</ul>\n");
+    }
+
+    #[test]
+    fn direct_processing_merges_classes_without_changing_unrelated_attributes() {
+        let md = MarkdownIt::new();
+        let mut document = md.parse("- [x] done\n- ordinary");
+        let list = document.children(document.root())[0];
+        let items = document.children(list).to_vec();
+        document.node_mut(list).attrs_mut().extend([
+            ("data-before".into(), "list".into()),
+            ("class".into(), "contains-task-list-extra".into()),
+            ("class".into(), "theme".into()),
+            ("id".into(), "list".into()),
+        ]);
+        document.node_mut(items[0]).attrs_mut().extend([
+            ("id".into(), "task".into()),
+            ("class".into(), "task-list-item".into()),
+            ("class".into(), "extra".into()),
+            ("data-after".into(), "item".into()),
+        ]);
+        document
+            .node_mut(items[1])
+            .attrs_mut()
+            .push(("class".into(), "ordinary".into()));
+
+        process(&mut document);
+
+        assert_eq!(
+            document.node(list).attrs(),
+            &vec![
+                ("data-before".into(), "list".into()),
+                (
+                    "class".into(),
+                    "contains-task-list-extra theme contains-task-list".into()
+                ),
+                ("id".into(), "list".into()),
+            ]
+        );
+        assert_eq!(
+            document.node(items[0]).attrs(),
+            &vec![
+                ("id".into(), "task".into()),
+                ("class".into(), "task-list-item extra".into()),
+                ("data-after".into(), "item".into()),
+            ]
+        );
+        assert_eq!(
+            document.node(items[1]).attrs(),
+            &vec![("class".into(), "ordinary".into())]
+        );
+    }
+
+    #[test]
+    fn direct_processing_is_idempotent_for_loose_nested_and_empty_items() {
+        let mut md = MarkdownIt::new();
+        let mut document = md.parse("- [ ]\n\n- [x] **done**\n\n  details\n\n  - [X] nested\n");
+        add(&mut md);
+        process(&mut document);
+        let html = md.render_document(&document, "html");
+        let text = md.render_document(&document, "text");
+        let snapshot = format!("{document:?}");
+        let markers = document
+            .events(document.root())
+            .filter(
+                |event| matches!(event, StructuralEvent::Leaf(node) if node.is::<TaskListMarker>()),
+            )
+            .count();
+        assert_eq!(markers, 3);
+        assert_eq!(html.matches("type=\"checkbox\"").count(), 3);
+        assert!(!text.contains("[ ]"));
+        assert!(!text.contains("[x]"));
+        assert!(!text.contains("[X]"));
+
+        process(&mut document);
+
+        assert_eq!(format!("{document:?}"), snapshot);
+        assert_eq!(md.render_document(&document, "html"), html);
+        assert_eq!(md.render_document(&document, "text"), text);
+    }
+
+    #[test]
+    #[cfg(feature = "sourcemap")]
+    fn direct_processing_preserves_text_identity_and_advances_its_source_map() {
+        let md = MarkdownIt::new();
+        let mut document = md.parse("- [x] 雪🦀");
+        let list = document.children(document.root())[0];
+        let item = document.children(list)[0];
+        let text = document.children(item)[0];
+        let (start, end) = document.node(text).srcmap().unwrap().get_byte_offsets();
+        document
+            .node_mut(text)
+            .attrs_mut()
+            .push(("data-kept".into(), "yes".into()));
+
+        process(&mut document);
+
+        assert_eq!(document.value::<Text>(text).unwrap().content, "雪🦀");
+        assert_eq!(document.node(text).attrs()[0].1, "yes");
+        let map = document.node(text).srcmap().unwrap().get_byte_offsets();
+        assert_eq!(map, (start + 4, end));
+        assert_eq!(&document.source()[map.0..map.1], "雪🦀");
+        let marker = document.children(item)[0];
+        assert!(document.node(marker).is::<TaskListMarker>());
+        assert_eq!(document.parent(marker), Some(item));
+        assert!(document.node(marker).srcmap().is_none());
+        assert_eq!(document.children(item)[1], text);
     }
 }

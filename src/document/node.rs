@@ -80,9 +80,8 @@ impl Node {
 
 /// Owned node data waiting to be inserted into a [`Document`](super::Document).
 ///
-/// A draft does not have a [`NodeId`] until its edit batch commits. New drafts
-/// intentionally have no source mapping: generated nodes must not pretend to
-/// originate from a range in the original Markdown source.
+/// A draft has no [`NodeId`] until inserted. Drafts intentionally have no source
+/// mapping: generated nodes must not claim a range in the source.
 #[derive(Debug)]
 pub struct NodeDraft {
     pub(super) children: Vec<NodeDraft>,
