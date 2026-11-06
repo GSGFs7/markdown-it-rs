@@ -15,7 +15,6 @@ static DIGITAL_ENTITY_TEST_RE: LazyLock<Regex> =
 static UNESCAPE_ALL_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!("{UNESCAPE_MD_RE}|{ENTITY_RE}")).unwrap());
 
-#[allow(clippy::manual_range_contains)]
 /// Return true if a `code` you got from `&#xHHHH;` entity is a valid charcode.
 ///
 /// It returns false for surrogates and non-printables, so it's a subset of `char::from_u32`.
@@ -26,6 +25,7 @@ static UNESCAPE_ALL_RE: LazyLock<Regex> =
 /// assert_eq!(is_valid_entity_code(1), false);
 /// assert_eq!(is_valid_entity_code(32), true);
 /// ```
+#[allow(clippy::manual_range_contains)]
 pub fn is_valid_entity_code(code: u32) -> bool {
     // broken sequence
     if code >= 0xD800 && code <= 0xDFFF {
@@ -183,7 +183,46 @@ pub fn unescape_all(str: &str) -> Cow<'_, str> {
 /// assert_eq!(escape_html("&\""), "&amp;&quot;");
 /// ```
 pub fn escape_html(str: &str) -> Cow<'_, str> {
-    html_escape::encode_double_quoted_attribute(str)
+    let bytes = str.as_bytes();
+    let first = if bytes.len() < 32 {
+        bytes
+            .iter()
+            .position(|b| matches!(b, b'&' | b'<' | b'>' | b'"'))
+    } else {
+        let other = memchr::memchr3(b'&', b'<', b'>', bytes).unwrap_or(bytes.len());
+        memchr::memchr(b'"', &bytes[..other]).or_else(|| (other < bytes.len()).then_some(other))
+    };
+    let Some(first) = first else {
+        return Cow::Borrowed(str);
+    };
+
+    // '"' -> "&quot;"
+    let mut output = String::with_capacity(str.len() + 5);
+    output.push_str(&str[..first]);
+
+    let mut start = first;
+    for (offset, byte) in str[first..].bytes().enumerate() {
+        let index = first + offset;
+        macro_rules! append_escape {
+            ($entity:literal) => {{
+                if start != index {
+                    output.push_str(&str[start..index]);
+                }
+                output.push_str($entity);
+                start = index + 1;
+            }};
+        }
+        match byte {
+            b'&' => append_escape!("&amp;"),
+            b'<' => append_escape!("&lt;"),
+            b'>' => append_escape!("&gt;"),
+            b'"' => append_escape!("&quot;"),
+            _ => {}
+        }
+    }
+
+    output.push_str(&str[start..]);
+    Cow::Owned(output)
 }
 
 /// Unicode case folding + space normalization, used for for reference labels.
