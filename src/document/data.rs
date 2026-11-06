@@ -27,11 +27,11 @@ impl NodeData {
     }
 
     pub(super) fn name(&self) -> &'static str {
-        self.node_type.name
+        self.node_type.name()
     }
 
     pub(super) fn type_id(&self) -> TypeId {
-        self.node_type.id
+        self.node_type.id()
     }
 
     pub(super) fn is<T: NodeValue>(&self) -> bool {

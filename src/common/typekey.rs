@@ -51,13 +51,12 @@ impl Hasher for TypeIdHasher {
 /// assert!(set.contains(&TypeKey::of::<A>()));
 /// dbg!(set);
 /// ```
-#[readonly::make]
 #[derive(Clone, Copy)]
 pub struct TypeKey {
-    /// The type's identity (read-only).
-    pub id: TypeId,
-    /// The type's name for debugging (read-only).
-    pub name: &'static str,
+    /// The type's identity.
+    id: TypeId,
+    /// The type's name for debugging.
+    name: &'static str,
 }
 
 impl TypeKey {
@@ -68,6 +67,16 @@ impl TypeKey {
             id: TypeId::of::<T>(),
             name: type_name::<T>(),
         }
+    }
+
+    #[must_use]
+    pub const fn id(&self) -> TypeId {
+        self.id
+    }
+
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        self.name
     }
 }
 
