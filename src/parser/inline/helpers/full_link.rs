@@ -730,6 +730,10 @@ fn non_memoizable_positions(source: &str, state: &InlineState<'_>) -> Option<Vec
         .iter()
         .filter(|rule| !is_memoizable_check(rule.type_id))
         .collect();
+    if uncached_rules.is_empty() {
+        return Some(Vec::new());
+    }
+
     Some(
         source
             .char_indices()
@@ -832,7 +836,7 @@ fn is_plain_label_source(source: &str) -> bool {
 /// Whether every check rule triggered by this source is handled by the index pass.
 fn has_only_supported_checks(source: &str, rules: &crate::parser::inline::RuleSet) -> bool {
     rules.checks.iter().all(|rule| {
-        !source.chars().any(|ch| rule.matches_marker(ch)) || is_index_supported(rule.type_id)
+        is_index_supported(rule.type_id) || !source.chars().any(|ch| rule.matches_marker(ch))
     })
 }
 
