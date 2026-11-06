@@ -7,6 +7,3 @@ repository = "https://github.com/GSGFs7/markdown-it-rs"
 keywords = ["url", "markdown"]
 license = "MIT"
 edition = "2024"
-
-[dependencies]
-idna = "1.1"

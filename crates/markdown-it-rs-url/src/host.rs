@@ -16,7 +16,7 @@ pub(crate) fn normalize_host(host: &str) -> Option<Cow<'_, str>> {
             result.push_str(label);
         } else {
             result.push_str("xn--");
-            result.push_str(&idna::punycode::encode_str(label)?);
+            result.push_str(&crate::punycode::encode_str(label)?);
         }
     }
     Some(Cow::Owned(result))
@@ -35,7 +35,7 @@ pub(crate) fn display_host(host: &str) -> String {
             if !encoded.is_ascii() {
                 return host.to_owned();
             }
-            let Some(display) = idna::punycode::decode_to_string(&encoded.to_ascii_lowercase())
+            let Some(display) = crate::punycode::decode_to_string(&encoded.to_ascii_lowercase())
             else {
                 return host.to_owned();
             };

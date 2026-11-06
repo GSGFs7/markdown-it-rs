@@ -7,6 +7,7 @@ mod host;
 mod normalize;
 mod parse;
 mod percent;
+mod punycode;
 pub mod urlencode;
 
 pub use display::{decode_url_for_display, format_url_for_humans};
