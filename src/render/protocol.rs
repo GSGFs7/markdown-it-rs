@@ -12,7 +12,7 @@ use crate::document::{Node, NodeValue};
 /// Renderer for one payload type in one output format.
 ///
 /// ```
-/// use markdown_it::document::{Document, NodeDraft, Node};
+/// use markdown_it::document::{Document, Node};
 /// use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 /// use markdown_it::MarkdownIt;
 ///
@@ -34,7 +34,7 @@ use crate::document::{Node, NodeValue};
 ///
 /// let mut md = MarkdownIt::empty();
 /// md.add_renderer::<Badge, _>("html", BadgeRenderer);
-/// let document = Document::from_draft("", NodeDraft::new(Badge("new")));
+/// let document = Document::new("", Badge("new"));
 /// assert_eq!(md.render_document(&document, "html"), "new");
 /// ```
 pub trait NodeRenderer<T: NodeValue>: Send + Sync + 'static {

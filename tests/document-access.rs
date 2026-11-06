@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use markdown_it::MarkdownIt;
 use markdown_it::document::edit::EditBatch;
 use markdown_it::document::text::{TextEvent, TextProjectionKind};
-use markdown_it::document::{Document, Node, NodeDraft, Root, StructuralEvent, Text, TextSpecial};
+use markdown_it::document::{Document, Node, Root, StructuralEvent, Text, TextSpecial};
 use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 
 #[test]
@@ -117,12 +117,13 @@ fn source_projection<'a>(doc: &'a Document, node: &'a Node) -> TextProjectionKin
 
 #[test]
 fn external_classifier_can_borrow_document_source_as_read_only_context() {
-    let mut root = NodeDraft::new(Root::new("前雪尾"));
-    root.push_child(NodeDraft::new(SourceContext(3..6)));
-    root.push_child(NodeDraft::new(Text {
+    let mut doc = Document::new("前雪尾", Root::new("前雪尾"));
+    let context = doc.create_node(SourceContext(3..6));
+    doc.push_child(doc.root(), context);
+    let text = doc.create_node(Text {
         content: "edited".into(),
-    }));
-    let doc = Document::from_draft("前雪尾", root);
+    });
+    doc.push_child(doc.root(), text);
     let context = doc.children(doc.root())[0];
     let text = doc.children(doc.root())[1];
     let chars: Vec<_> = doc
@@ -201,15 +202,14 @@ fn external_payload_mutation_replacement_and_removal_preserve_ownership() {
     };
     let mut md = MarkdownIt::empty();
     md.add_renderer::<Badge, _>("html", BadgeRenderer);
-    let mut doc = Document::from_draft("", NodeDraft::new(Root::new("")));
+    let mut doc = Document::new("", Root::new(""));
     let root = doc.root();
-    let id = doc.append_child(root, NodeDraft::new(badge()));
-    let child = doc.append_child(
-        id,
-        NodeDraft::new(Text {
-            content: "!".into(),
-        }),
-    );
+    let id = doc.create_node(badge());
+    doc.push_child(root, id);
+    let child = doc.create_node(Text {
+        content: "!".into(),
+    });
+    doc.push_child(id, child);
     doc.node_mut(id)
         .attrs_mut()
         .push(("data-kind".into(), "badge".into()));
@@ -228,7 +228,8 @@ fn external_payload_mutation_replacement_and_removal_preserve_ownership() {
 
     doc.remove_node(id);
     assert_eq!(drops.load(Ordering::SeqCst), 2);
-    let reused = doc.append_child(root, NodeDraft::new(badge()));
+    let reused = doc.create_node(badge());
+    doc.push_child(root, reused);
     assert_ne!(reused, id);
     assert!(doc.get_node(id).is_none());
     assert!(
@@ -273,17 +274,17 @@ fn borrowed_unicode_text_can_produce_edits_without_copying_the_input() {
 }
 
 #[test]
-fn owned_text_snapshot_and_generated_draft_outlive_the_source_document() {
+fn owned_text_snapshot_and_generated_node_outlive_the_source_document() {
     let snapshot = {
-        let doc = Document::from_draft(
+        let doc = Document::new(
             "unrelated source",
-            NodeDraft::new(Text {
+            Text {
                 content: "decoded & edited 雪".into(),
-            }),
+            },
         );
         doc.text(doc.root()).unwrap().to_owned()
     };
-    let mut doc = Document::from_draft("", NodeDraft::new(Text { content: snapshot }));
+    let mut doc = Document::new("", Text { content: snapshot });
     let id = doc.root();
     assert_eq!(doc.text(id), Some("decoded & edited 雪"));
     let md = MarkdownIt::empty();

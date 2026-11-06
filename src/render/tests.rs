@@ -2,7 +2,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::{NodeRenderer, RenderContext, RendererRegistry, Writer};
 use crate::MarkdownIt;
-use crate::document::{Document, Node, NodeDraft, Text};
+use crate::document::{Document, Node, Text};
 use crate::render::RenderOptions;
 
 #[derive(Debug)]
@@ -86,7 +86,7 @@ fn renders_minimal_html_directly_without_consuming_document() {
 fn cr_observes_direct_renderer_writes_without_duplicate_line_endings() {
     let mut registry = RendererRegistry::new();
     registry.add::<UnknownLeaf, _>("html", DirectWriteAndCrRenderer);
-    let document = Document::from_draft("", NodeDraft::new(UnknownLeaf("unused")));
+    let document = Document::new("", UnknownLeaf("unused"));
 
     assert_eq!(
         registry.render(&document, "html", &RenderOptions::default()),
@@ -104,40 +104,49 @@ fn generated_link_and_image_attrs_preserve_duplicates_and_escaping() {
             let mut md = MarkdownIt::new();
             md.render_options.xhtml_out = xhtml;
             for image in [false, true] {
-                let mut draft = if image {
-                    NodeDraft::new(Image {
-                        url: "/image?a&b".into(),
-                        title: Some("generated <title>".into()),
-                    })
+                let mut document = if image {
+                    Document::new(
+                        "",
+                        Image {
+                            url: "/image?a&b".into(),
+                            title: Some("generated <title>".into()),
+                        },
+                    )
                 } else {
-                    NodeDraft::new(Link {
-                        url: "/link?a&b".into(),
-                        title: Some("generated <title>".into()),
-                    })
+                    Document::new(
+                        "",
+                        Link {
+                            url: "/link?a&b".into(),
+                            title: Some("generated <title>".into()),
+                        },
+                    )
                 };
-                draft.push_child(NodeDraft::new(Text {
+                let root = document.root();
+                let text = document.create_node(Text {
                     content: "a & b".into(),
-                }));
+                });
+                document.push_child(root, text);
                 let target = if image { "src" } else { "href" };
-                draft.attrs_mut().extend([
+                document.node_mut(root).attrs_mut().extend([
                     ("title".into(), "custom & title".into()),
                     (target.into(), "custom <url>".into()),
                     ("class".into(), "one".into()),
                     ("class".into(), "two".into()),
                 ]);
                 if image {
-                    draft
+                    document
+                        .node_mut(root)
                         .attrs_mut()
                         .push(("alt".into(), "custom <alt>".into()));
                 }
                 let mut extra_html = String::new();
                 for index in 0..padding {
-                    draft
+                    document
+                        .node_mut(root)
                         .attrs_mut()
                         .push((format!("data-{index}"), "value".into()));
                     extra_html.push_str(&format!(" data-{index}=\"value\""));
                 }
-                let document = Document::from_draft("", draft);
                 let tag = if image { "img" } else { "a" };
                 let url = if image { "image" } else { "link" };
                 let alt = if image {
@@ -282,11 +291,11 @@ fn inline_renderers_preserve_transform_attributes() {
 #[test]
 fn unknown_container_transparently_renders_children() {
     let md = MarkdownIt::empty();
-    let mut root = NodeDraft::new(UnknownContainer);
-    root.push_child(NodeDraft::new(Text {
+    let mut document = Document::new("", UnknownContainer);
+    let text = document.create_node(Text {
         content: "child".into(),
-    }));
-    let document = Document::from_draft("", root);
+    });
+    document.push_child(document.root(), text);
 
     assert_eq!(md.render_document(&document, "html"), "child");
     assert_eq!(md.render_document(&document, "text"), "child");
@@ -294,7 +303,7 @@ fn unknown_container_transparently_renders_children() {
 
 #[test]
 fn custom_renderer_can_be_registered_and_overridden_per_format() {
-    let document = Document::from_draft("", NodeDraft::new(UnknownLeaf("value")));
+    let document = Document::new("", UnknownLeaf("value"));
     let mut registry = RendererRegistry::new();
 
     assert!(!registry.add::<UnknownLeaf, _>("plain", UnknownLeafRenderer("first")));
@@ -315,7 +324,7 @@ fn custom_renderer_can_be_registered_and_overridden_per_format() {
 
 #[test]
 fn markdown_it_selects_and_isolates_renderer_formats() {
-    let document = Document::from_draft("", NodeDraft::new(UnknownLeaf("value")));
+    let document = Document::new("", UnknownLeaf("value"));
     let mut md = MarkdownIt::empty();
     md.add_renderer::<UnknownLeaf, _>("html", UnknownLeafRenderer("html"));
     md.add_renderer::<UnknownLeaf, _>("text", UnknownLeafRenderer("text"));
@@ -331,7 +340,7 @@ fn markdown_it_selects_and_isolates_renderer_formats() {
 #[test]
 fn unknown_leaf_panics_with_format_type_and_node_id() {
     let md = MarkdownIt::empty();
-    let document = Document::from_draft("", NodeDraft::new(UnknownLeaf("value")));
+    let document = Document::new("", UnknownLeaf("value"));
 
     let panic = catch_unwind(AssertUnwindSafe(|| {
         let _ = md.render_document(&document, "html");
@@ -350,7 +359,7 @@ fn unknown_leaf_panics_with_format_type_and_node_id() {
 #[test]
 fn missing_format_panics_with_requested_format() {
     let md = MarkdownIt::empty();
-    let document = Document::from_draft("", NodeDraft::new(UnknownLeaf("value")));
+    let document = Document::new("", UnknownLeaf("value"));
 
     let panic = catch_unwind(AssertUnwindSafe(|| {
         let _ = md.render_document(&document, "missing");

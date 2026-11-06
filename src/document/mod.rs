@@ -15,10 +15,9 @@ use std::sync::Arc;
 use self::arena::Arena;
 pub use self::arena::NodeId;
 pub use self::events::StructuralEvent;
-pub use self::node::{Node, NodeDraft};
+pub use self::node::Node;
 pub use self::root::Root;
 pub use self::text::{Text, TextSpecial};
-pub(crate) use self::value::NodeEmpty;
 pub use self::value::{HtmlAttribute, HtmlAttributes, NodeValue};
 
 /// A parsed Markdown document and its source text.
@@ -32,13 +31,26 @@ pub struct Document {
 
 impl Document {
     /// Create a document with its root allocated directly in the arena.
-    pub(crate) fn new<T: NodeValue>(source: impl Into<Arc<str>>, value: T) -> Self {
+    ///
+    /// The source is stored verbatim. The root may contain any [`NodeValue`];
+    /// it starts with no children, attributes, extensions, or source mapping.
+    /// Add nodes with [`Self::create_node`] and [`Self::push_child`].
+    ///
+    /// ```
+    /// use markdown_it::document::{Document, Root, Text};
+    ///
+    /// let mut document = Document::new("hello", Root::new("hello"));
+    /// let text = document.create_node(Text { content: "hello".into() });
+    /// document.push_child(document.root(), text);
+    /// assert_eq!(document.parent(text), Some(document.root()));
+    /// ```
+    pub fn new<T: NodeValue>(source: impl Into<Arc<str>>, value: T) -> Self {
         let mut arena = Arena::new();
         let root = arena.insert_with(|id| Node {
             id,
             parent: None,
             children: Vec::new(),
-            data: data::NodeData::new(value),
+            data: self::data::NodeData::new(value),
         });
         Self {
             source: source.into(),
@@ -57,106 +69,6 @@ impl Document {
         })
     }
 
-    /// Attach a detached node to a parent.
-    ///
-    /// The caller must ensure attaching would not create a cycle. Ancestor
-    /// cycles are checked only with debug assertions enabled.
-    ///
-    /// # Panics
-    ///
-    /// Panics if either ID is invalid, `child` is not detached or is the root,
-    /// or `parent` equals `child`. Ancestor cycles panic before mutation only
-    /// with debug assertions enabled.
-    #[track_caller]
-    pub fn push_child(&mut self, parent: NodeId, child: NodeId) {
-        self.check_attachment(parent, child);
-
-        self.node_mut(child).parent = Some(parent);
-        self.node_mut(parent).children.push(child);
-    }
-
-    /// Detach all children, preserving their order and IDs.
-    pub(crate) fn take_children(&mut self, parent: NodeId) -> Vec<NodeId> {
-        let children = std::mem::take(&mut self.node_mut(parent).children);
-        for &child in &children {
-            self.node_mut(child).parent = None;
-        }
-        children
-    }
-
-    /// Attach an ordered sequence of detached children to an empty `parent`.
-    pub(crate) fn attach_children(&mut self, parent: NodeId, children: Vec<NodeId>) {
-        debug_assert!(
-            self.children(parent).is_empty(),
-            "parent must have no children"
-        );
-
-        for &child in &children {
-            debug_assert_ne!(child, self.root, "cannot attach the document root");
-            debug_assert_ne!(child, parent, "cannot attach a node to itself");
-            debug_assert!(self.node(child).parent.is_none(), "child must be detached");
-            self.node_mut(child).parent = Some(parent);
-        }
-        self.node_mut(parent).children = children;
-    }
-
-    /// Detach `parent`'s children, run `rewrite`, then reattach the result.
-    ///
-    /// Children removed by `rewrite` must be discarded by the caller before
-    /// `rewrite` returns; the resulting sequence is reattached in order.
-    pub(crate) fn rewrite_children<R>(
-        &mut self,
-        parent: NodeId,
-        rewrite: impl FnOnce(&mut Document, &mut Vec<NodeId>) -> R,
-    ) -> R {
-        let mut children = self.take_children(parent);
-        let result = rewrite(self, &mut children);
-        self.attach_children(parent, children);
-        result
-    }
-
-    /// Build a document from a draft tree and its source text.
-    ///
-    /// The source is kept for source mapping and access via [`Document::source`].
-    pub fn from_draft(source: impl Into<Arc<str>>, root: NodeDraft) -> Self {
-        let mut document = Self {
-            source: source.into(),
-            arena: Arena::new(),
-            // Replaced before this constructor returns.
-            root: NodeId {
-                slot: u32::MAX,
-                generation: u32::MAX,
-            },
-        };
-        document.root = document.insert_draft_with_parent(None, root);
-        document
-    }
-
-    /// Append a generated subtree to a valid parent, returning its new ID.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `parent` is invalid or stale.
-    #[track_caller]
-    pub fn append_child(&mut self, parent: NodeId, draft: NodeDraft) -> NodeId {
-        self.node(parent);
-        let child = self.insert_draft_with_parent(Some(parent), draft);
-        self.node_mut(parent).children.push(child);
-        child
-    }
-
-    pub(crate) fn trim_unused_tail(&mut self) {
-        self.arena.trim_unused_tail();
-    }
-
-    /// Markdown source owned by this document, used for byte source maps.
-    ///
-    /// [`crate::MarkdownIt::parse`] stores it with NUL replaced by
-    /// U+FFFD; [`Document::from_draft`] stores it verbatim.
-    pub fn source(&self) -> &str {
-        &self.source
-    }
-
     /// ID of the document root, which remains present for the document's life.
     pub fn root(&self) -> NodeId {
         self.root
@@ -167,6 +79,7 @@ impl Document {
         self.arena.len()
     }
 
+    /// Whether the `Document` holds no live nodes.
     pub fn is_empty(&self) -> bool {
         self.arena.len() == 0
     }
@@ -189,6 +102,10 @@ impl Document {
         }
     }
 
+    /// Mutably access a node whose ID must be valid in this document.
+    ///
+    /// # Panics
+    /// Panics if the slot is unknown or the generation is stale.
     #[track_caller]
     pub fn node_mut(&mut self, id: NodeId) -> &mut Node {
         match self.arena.get_mut(id) {
@@ -235,6 +152,77 @@ impl Document {
     #[track_caller]
     pub fn children(&self, id: NodeId) -> &[NodeId] {
         self.node(id).children()
+    }
+
+    /// Attach a detached node to a parent.
+    ///
+    /// The caller must ensure attaching would not create a cycle. Ancestor
+    /// cycles are checked only with debug assertions enabled.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either ID is invalid, `child` is not detached or is the root,
+    /// or `parent` equals `child`. Ancestor cycles panic before mutation only
+    /// with debug assertions enabled.
+    #[track_caller]
+    pub fn push_child(&mut self, parent: NodeId, child: NodeId) {
+        self.check_attachment(parent, child);
+
+        self.node_mut(child).parent = Some(parent);
+        self.node_mut(parent).children.push(child);
+    }
+
+    /// Markdown source owned by this document, used for byte source maps.
+    ///
+    /// [`crate::MarkdownIt::parse`] stores it with NUL replaced by
+    /// U+FFFD; [`Document::new`] stores it verbatim.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// Detach all children, preserving their order and IDs.
+    pub(crate) fn take_children(&mut self, parent: NodeId) -> Vec<NodeId> {
+        let children = std::mem::take(&mut self.node_mut(parent).children);
+        for &child in &children {
+            self.node_mut(child).parent = None;
+        }
+        children
+    }
+
+    /// Attach an ordered sequence of detached children to an empty `parent`.
+    pub(crate) fn attach_children(&mut self, parent: NodeId, children: Vec<NodeId>) {
+        debug_assert!(
+            self.children(parent).is_empty(),
+            "parent must have no children"
+        );
+
+        for &child in &children {
+            debug_assert_ne!(child, self.root, "cannot attach the document root");
+            debug_assert_ne!(child, parent, "cannot attach a node to itself");
+            debug_assert!(self.node(child).parent.is_none(), "child must be detached");
+            self.node_mut(child).parent = Some(parent);
+        }
+        self.node_mut(parent).children = children;
+    }
+
+    /// Detach `parent`'s children, run `rewrite`, then reattach the result.
+    ///
+    /// Children removed by `rewrite` must be discarded by the caller before
+    /// `rewrite` returns; the resulting sequence is reattached in order.
+    pub(crate) fn rewrite_children<R>(
+        &mut self,
+        parent: NodeId,
+        rewrite: impl FnOnce(&mut Document, &mut Vec<NodeId>) -> R,
+    ) -> R {
+        let mut children = self.take_children(parent);
+        let result = rewrite(self, &mut children);
+        self.attach_children(parent, children);
+        result
+    }
+
+    /// Release unused arena slots at the end of the backing storage.
+    pub(crate) fn trim_unused_tail(&mut self) {
+        self.arena.trim_unused_tail();
     }
 }
 

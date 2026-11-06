@@ -1,7 +1,7 @@
 use markdown_it::MarkdownIt;
 #[cfg(feature = "sourcemap")]
 use markdown_it::common::sourcemap::SourcePos;
-use markdown_it::document::{Document, NodeDraft, Root};
+use markdown_it::document::{Document, Root};
 use markdown_it::plugins::presets::Preset;
 
 #[derive(Debug)]
@@ -13,19 +13,29 @@ struct CustomLeaf;
 #[test]
 #[cfg(feature = "sourcemap")]
 fn debug_format_records_hierarchy_identity_source_and_attributes() {
-    let mut root = NodeDraft::new(Root::new("abcdef"));
-    root.set_srcmap(Some(SourcePos::new(0, 6)));
+    let mut document = Document::new("abcdef", Root::new("abcdef"));
+    let root = document.root();
+    document
+        .node_mut(root)
+        .set_srcmap(Some(SourcePos::new(0, 6)));
 
-    let mut container = NodeDraft::new(CustomContainer);
-    container.set_srcmap(Some(SourcePos::new(1, 5)));
-    container.attrs_mut().push(("class".into(), "outer".into()));
+    let container = document.create_node(CustomContainer);
+    document
+        .node_mut(container)
+        .set_srcmap(Some(SourcePos::new(1, 5)));
+    document
+        .node_mut(container)
+        .attrs_mut()
+        .push(("class".into(), "outer".into()));
 
-    let mut leaf = NodeDraft::new(CustomLeaf);
-    leaf.attrs_mut().push(("data-value".into(), "<&>".into()));
-    container.push_child(leaf);
-    root.push_child(container);
+    let leaf = document.create_node(CustomLeaf);
+    document
+        .node_mut(leaf)
+        .attrs_mut()
+        .push(("data-value".into(), "<&>".into()));
+    document.push_child(container, leaf);
+    document.push_child(root, container);
 
-    let document = Document::from_draft("abcdef", root);
     let output = MarkdownIt::empty().render_document(&document, "debug");
 
     let expected = format!(
@@ -61,13 +71,16 @@ fn debug_format_covers_standard_presets_without_syntax_registrations() {
 #[cfg(not(feature = "sourcemap"))]
 #[test]
 fn debug_format_without_source_maps_preserves_generated_nodes() {
-    let mut root = NodeDraft::new(Root::new(""));
-    let mut container = NodeDraft::new(CustomContainer);
-    let mut leaf = NodeDraft::new(CustomLeaf);
-    leaf.attrs_mut().push(("id".into(), "generated".into()));
-    container.push_child(leaf);
-    root.push_child(container);
-    let document = Document::from_draft("", root);
+    let mut document = Document::new("", Root::new(""));
+    let root = document.root();
+    let container = document.create_node(CustomContainer);
+    let leaf = document.create_node(CustomLeaf);
+    document
+        .node_mut(leaf)
+        .attrs_mut()
+        .push(("id".into(), "generated".into()));
+    document.push_child(container, leaf);
+    document.push_child(root, container);
     let debug = MarkdownIt::empty().render_document(&document, "debug");
     assert_eq!(debug.lines().count(), 3);
     assert!(debug.contains(std::any::type_name::<CustomContainer>()));

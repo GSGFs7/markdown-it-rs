@@ -3,11 +3,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use markdown_it::document::edit::EditBatch;
-use markdown_it::document::{Document, NodeDraft, NodeId, Root, Text};
+use markdown_it::document::{Document, NodeId, Root, Text};
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 
 fn document() -> Document {
-    Document::from_draft("", NodeDraft::new(Root::new("")))
+    Document::new("", Root::new(""))
 }
 
 fn text(document: &mut Document, content: &str) -> NodeId {
@@ -22,6 +22,7 @@ fn immediate_insertions_preserve_ids_metadata_and_current_positions() {
     let root = doc.root();
     let target = text(&mut doc, "target");
     doc.push_child(root, target);
+
     let before1 = doc.create_node(Paragraph);
     let child = text(&mut doc, "child");
     doc.push_child(before1, child);
@@ -32,13 +33,16 @@ fn immediate_insertions_preserve_ids_metadata_and_current_positions() {
     #[cfg(feature = "sourcemap")]
     doc.node_mut(before1)
         .set_srcmap(Some(markdown_it::common::sourcemap::SourcePos::new(0, 0)));
+
     let before2 = text(&mut doc, "before2");
     let after1 = text(&mut doc, "after1");
     let after2 = text(&mut doc, "after2");
+
     doc.insert_before(target, before1);
     doc.insert_before(target, before2);
     doc.insert_after(target, after1);
     doc.insert_after(target, after2);
+
     assert_eq!(
         doc.children(root),
         &[before1, before2, target, after2, after1]
@@ -76,7 +80,9 @@ fn replacement_and_removal_drop_whole_subtrees_and_invalidate_old_ids() {
     let replacement = doc.create_node(Payload(drops.clone()));
     let child = text(&mut doc, "new child");
     doc.push_child(replacement, child);
+
     doc.replace_node(old, replacement);
+
     assert_eq!(drops.load(Ordering::SeqCst), 2);
     assert!(doc.get_node(old).is_none());
     assert!(doc.get_node(old_child).is_none());
@@ -84,7 +90,9 @@ fn replacement_and_removal_drop_whole_subtrees_and_invalidate_old_ids() {
     assert_eq!(doc.children(replacement), &[child]);
     assert_eq!(doc.parent(child), Some(replacement));
     assert_eq!(doc.parent(replacement), Some(root));
+
     doc.remove_node(replacement);
+
     assert_eq!(drops.load(Ordering::SeqCst), 3);
     assert!(doc.get_node(child).is_none());
     assert!(doc.get_node(replacement).is_none());
@@ -109,6 +117,7 @@ fn invalid_structural_operations_panic_before_mutation_in_all_builds() {
     let detached = text(&mut doc, "detached");
     let stale = text(&mut doc, "stale");
     doc.discard_node(stale);
+
     for invalid_target in [root, detached, stale] {
         assert_rejected(&mut doc, |d| d.remove_node(invalid_target));
         assert_rejected(&mut doc, |d| d.insert_before(invalid_target, detached));
@@ -120,6 +129,7 @@ fn invalid_structural_operations_panic_before_mutation_in_all_builds() {
         assert_rejected(&mut doc, |d| d.insert_after(target, invalid_child));
         assert_rejected(&mut doc, |d| d.replace_node(target, invalid_child));
     }
+
     doc.insert_before(target, detached);
     assert_eq!(doc.children(root), &[detached, target]);
 }
@@ -135,6 +145,7 @@ fn sibling_edits_reject_ancestor_cycles_before_mutation() {
     let descendant = text(&mut doc, "descendant");
     doc.push_child(ancestor, parent);
     doc.push_child(parent, descendant);
+
     for child in [ancestor, parent] {
         assert_rejected(&mut doc, |d| d.insert_before(descendant, child));
         assert_rejected(&mut doc, |d| d.insert_after(descendant, child));
@@ -155,6 +166,7 @@ fn deep_subtrees_can_be_inserted_replaced_and_removed_without_recursion() {
         doc.push_child(parent, subtree);
         subtree = parent;
     }
+
     doc.insert_before(target, subtree);
     assert_eq!(doc.parent(subtree), Some(root));
     let replacement = text(&mut doc, "replacement");
@@ -173,11 +185,13 @@ fn content_batches_can_commit_before_structural_changes() {
     let target = text(&mut doc, "target");
     doc.push_child(root, target);
     let inserted = text(&mut doc, "inserted");
+
     let mut edits = EditBatch::new();
     edits.replace_text(target, 0..1, "T");
     edits.set_attribute(target, "class", "edited");
     edits.commit(&mut doc);
     doc.insert_before(target, inserted);
+
     assert_eq!(doc.node(target).cast::<Text>().unwrap().content, "Target");
     assert_eq!(doc.node(target).attrs()[0].1, "edited");
     assert_eq!(doc.children(root), &[inserted, target]);
@@ -245,6 +259,7 @@ fn bulk_replacement_deletes_only_omitted_subtrees_and_clear_releases_the_rest() 
     let reused = text(&mut doc, "reused slot");
     assert!(doc.get_node(omitted).is_none());
     assert!(doc.get_node(descendant).is_none());
+
     doc.discard_node(reused);
     doc.replace_children(root, Vec::new());
     assert_eq!(drops.load(Ordering::SeqCst), 4);
@@ -284,10 +299,12 @@ fn bulk_replacement_rejects_invalid_lists_before_changing_links_or_dropping_payl
         assert_eq!(doc.parent(new), None);
         assert_eq!(doc.children(parent), &[kept]);
     }
+
     assert_rejected(&mut doc, |d| d.replace_children(stale, vec![new]));
     assert_rejected(&mut doc, |d| d.replace_children(stale, Vec::new()));
     // A descendant cannot escape an omitted subtree implicitly.
     assert_rejected(&mut doc, |d| d.replace_children(root, vec![kept]));
+
     doc.replace_children(parent, vec![new, kept]);
     assert_eq!(doc.children(parent), &[new, kept]);
 }
@@ -302,6 +319,7 @@ fn bulk_replacement_rejects_cycles_in_detached_trees() {
     doc.push_child(ancestor, parent);
     doc.push_child(parent, leaf);
     let new = text(&mut doc, "new");
+
     assert_rejected(&mut doc, |d| {
         d.replace_children(parent, vec![new, ancestor])
     });
@@ -309,6 +327,7 @@ fn bulk_replacement_rejects_cycles_in_detached_trees() {
     assert_rejected(&mut doc, |d| d.replace_children(parent, vec![parent]));
     assert_eq!(doc.parent(ancestor), None);
     assert_eq!(doc.parent(new), None);
+
     doc.replace_children(parent, vec![new, leaf]);
     assert_eq!(doc.children(parent), &[new, leaf]);
     doc.discard_node(ancestor);
@@ -331,8 +350,10 @@ fn bulk_replacement_handles_wide_and_deep_removed_subtrees_iteratively() {
         children.push(text(&mut doc, "wide leaf"));
     }
     let kept = children[5000];
+
     doc.replace_children(root, children);
     assert_eq!(doc.children(root).len(), 10_001);
+
     doc.replace_children(root, vec![kept]);
     assert_eq!(doc.len(), 2);
     assert_eq!(doc.children(root), &[kept]);

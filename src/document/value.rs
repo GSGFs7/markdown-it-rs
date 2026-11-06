@@ -13,7 +13,3 @@ pub type HtmlAttributes = Vec<HtmlAttribute>;
 pub trait NodeValue: Debug + Downcast + Send + Sync {}
 impl<T: Debug + Downcast + Send + Sync> NodeValue for T {}
 impl_downcast!(NodeValue);
-
-#[derive(Debug)]
-/// Temporary payload used when moving data out of a draft during destruction.
-pub(crate) struct NodeEmpty;

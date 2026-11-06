@@ -3,7 +3,7 @@ use std::any::TypeId;
 use super::NodeId;
 use super::data::NodeData;
 use crate::common::extset::NodeExtSet;
-use crate::document::{HtmlAttributes, NodeEmpty, NodeValue};
+use crate::document::{HtmlAttributes, NodeValue};
 
 /// Data for one document node.
 #[derive(Debug)]
@@ -75,98 +75,5 @@ impl Node {
 
     pub(crate) fn replace_value<T: NodeValue>(&mut self, value: T) {
         self.data.replace_value(NodeData::new(value));
-    }
-}
-
-/// Owned node data waiting to be inserted into a [`Document`](super::Document).
-///
-/// A draft has no [`NodeId`] until inserted. Drafts intentionally have no source
-/// mapping: generated nodes must not claim a range in the source.
-#[derive(Debug)]
-pub struct NodeDraft {
-    pub(super) children: Vec<NodeDraft>,
-    pub(super) data: NodeData,
-}
-
-impl NodeDraft {
-    /// Create a generated node with no children, attributes, extensions, or
-    /// source mapping.
-    pub fn new<T: NodeValue>(value: T) -> Self {
-        Self {
-            children: Vec::new(),
-            data: NodeData::new(value),
-        }
-    }
-
-    pub fn children(&self) -> &[NodeDraft] {
-        &self.children
-    }
-
-    pub fn children_mut(&mut self) -> &mut Vec<NodeDraft> {
-        &mut self.children
-    }
-
-    pub fn push_child(&mut self, child: NodeDraft) {
-        self.children.push(child);
-    }
-
-    #[cfg(feature = "sourcemap")]
-    pub fn srcmap(&self) -> Option<crate::common::sourcemap::SourcePos> {
-        self.data.srcmap
-    }
-
-    #[cfg(feature = "sourcemap")]
-    pub fn set_srcmap(&mut self, srcmap: Option<crate::common::sourcemap::SourcePos>) {
-        self.data.srcmap = srcmap;
-    }
-
-    pub fn ext(&self) -> &NodeExtSet {
-        &self.data.ext
-    }
-
-    pub fn ext_mut(&mut self) -> &mut NodeExtSet {
-        &mut self.data.ext
-    }
-
-    pub fn attrs(&self) -> &HtmlAttributes {
-        &self.data.attrs
-    }
-
-    pub fn attrs_mut(&mut self) -> &mut HtmlAttributes {
-        &mut self.data.attrs
-    }
-
-    pub fn name(&self) -> &'static str {
-        self.data.name()
-    }
-
-    pub fn is<T: NodeValue>(&self) -> bool {
-        self.data.is::<T>()
-    }
-
-    pub fn cast<T: NodeValue>(&self) -> Option<&T> {
-        self.data.cast::<T>()
-    }
-
-    pub fn cast_mut<T: NodeValue>(&mut self) -> Option<&mut T> {
-        self.data.cast_mut::<T>()
-    }
-
-    pub(super) fn into_parts(mut self) -> (Vec<NodeDraft>, NodeData) {
-        // Drop prevents moving fields out directly
-        let children = std::mem::take(&mut self.children);
-        let data = std::mem::replace(&mut self.data, NodeData::new(NodeEmpty));
-        (children, data)
-    }
-}
-
-impl Drop for NodeDraft {
-    fn drop(&mut self) {
-        let mut pending = std::mem::take(&mut self.children);
-        // use iteration instead of recursion
-        // avoid stack overflow when nested deeply
-        while let Some(mut child) = pending.pop() {
-            pending.append(&mut child.children);
-        }
     }
 }

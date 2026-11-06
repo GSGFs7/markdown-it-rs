@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::{Document, NodeDraft, NodeId};
+use super::{Document, NodeId};
 
 impl Document {
     /// Delete a detached subtree, invalidating its IDs.
@@ -12,6 +12,7 @@ impl Document {
     pub fn discard_node(&mut self, node: NodeId) {
         assert_ne!(node, self.root, "cannot discard the document root");
         assert!(self.node(node).parent.is_none(), "node must be detached");
+
         self.delete_subtree(node);
     }
 
@@ -135,9 +136,10 @@ impl Document {
             return;
         }
 
-        let mut retained = HashSet::with_capacity(children.len());
         #[cfg(debug_assertions)]
         let mut check_ancestors = false;
+
+        let mut retained = HashSet::with_capacity(children.len());
         for &child in &children {
             assert_ne!(child, self.root, "cannot attach the document root");
             assert_ne!(child, parent, "cannot attach a node to itself");
@@ -154,6 +156,7 @@ impl Document {
                 check_ancestors |= node.parent.is_none() && !node.children.is_empty();
             }
         }
+
         #[cfg(debug_assertions)]
         if check_ancestors {
             let mut ancestor = self.parent(parent);
@@ -223,39 +226,5 @@ impl Document {
                 .remove(node)
                 .expect("collected subtree node must still exist");
         }
-    }
-
-    pub(super) fn insert_draft_with_parent(
-        &mut self,
-        root_parent: Option<NodeId>,
-        draft: NodeDraft,
-    ) -> NodeId {
-        let mut pending = vec![(root_parent, false, draft)];
-        let mut root = None;
-        while let Some((parent, link_to_parent, draft)) = pending.pop() {
-            let (children, data) = draft.into_parts();
-            let id = self.arena.insert_with(|id| super::node::Node {
-                id,
-                parent,
-                children: Vec::with_capacity(children.len()),
-                data,
-            });
-            if link_to_parent {
-                self.arena
-                    .get_mut(parent.expect("a linked draft always has a parent"))
-                    .expect("new draft parent remains present")
-                    .children
-                    .push(id);
-            } else {
-                root = Some(id);
-            }
-            pending.extend(
-                children
-                    .into_iter()
-                    .rev()
-                    .map(|child| (Some(id), true, child)),
-            );
-        }
-        root.expect("a draft always contains a root node")
     }
 }

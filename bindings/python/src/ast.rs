@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use markdown_it::document::{Document, NodeDraft, NodeId, Text};
+use markdown_it::document::{Document, NodeId, NodeValue, Text};
 use markdown_it::render::{RenderOptions, RendererRegistry};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
@@ -74,18 +74,18 @@ impl PyNode {
     fn append_text(&self, py: Python<'_>, text: &str) -> PyResult<()> {
         self.append(
             py,
-            NodeDraft::new(Text {
+            Text {
                 content: text.to_owned(),
-            }),
+            },
         )
     }
 
     fn append_html(&self, py: Python<'_>, html: &str) -> PyResult<()> {
         self.append(
             py,
-            NodeDraft::new(markdown_it::plugins::html::html_inline::HtmlInline {
+            markdown_it::plugins::html::html_inline::HtmlInline {
                 content: html.to_owned(),
-            }),
+            },
         )
     }
 
@@ -99,11 +99,12 @@ impl PyNode {
 }
 
 impl PyNode {
-    fn append(&self, py: Python<'_>, draft: NodeDraft) -> PyResult<()> {
+    fn append<T: NodeValue>(&self, py: Python<'_>, value: T) -> PyResult<()> {
         let ast = self.ast.borrow(py);
         let mut doc = ast.root.borrow_mut();
         doc.get_node(self.id).ok_or_else(stale)?;
-        doc.append_child(self.id, draft);
+        let child = doc.create_node(value);
+        doc.push_child(self.id, child);
         Ok(())
     }
 }

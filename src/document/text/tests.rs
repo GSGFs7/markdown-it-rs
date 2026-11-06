@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::*;
-use crate::document::{NodeDraft, Root, Text};
+use crate::document::{Root, Text};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
@@ -42,16 +42,16 @@ fn count_classifications<'a>(_: &'a Document, _: &'a Node) -> TextProjectionKind
 }
 
 fn document() -> Document {
-    let mut root = NodeDraft::new(Root::new("a雪<q>".to_owned()));
-    let mut paragraph = NodeDraft::new(Paragraph);
-    paragraph.push_child(NodeDraft::new(Text {
+    let mut document = Document::new("a雪<q>", Root::new("a雪<q>"));
+    let paragraph = document.create_node(Paragraph);
+    document.push_child(document.root(), paragraph);
+    let text = document.create_node(Text {
         content: "a雪".to_owned(),
-    }));
-    paragraph
-        .children
-        .push(NodeDraft::new(ReadOnlyText("<q>".to_owned())));
-    root.push_child(paragraph);
-    Document::from_draft("a雪<q>", root)
+    });
+    document.push_child(paragraph, text);
+    let read_only = document.create_node(ReadOnlyText("<q>".to_owned()));
+    document.push_child(paragraph, read_only);
+    document
 }
 
 #[test]

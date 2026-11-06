@@ -1,17 +1,18 @@
 use super::*;
 #[cfg(feature = "sourcemap")]
 use crate::common::sourcemap::SourcePos;
-use crate::document::{NodeDraft, Root, Text};
+use crate::document::{Root, Text};
 use crate::plugins::cmark::block::paragraph::Paragraph;
 
 fn document(texts: &[&str]) -> Document {
-    let mut root = NodeDraft::new(Root::new(texts.join("")));
+    let mut document = Document::new(texts.join(""), Root::new(texts.join("")));
     for content in texts {
-        root.push_child(NodeDraft::new(Text {
+        let text = document.create_node(Text {
             content: (*content).to_owned(),
-        }));
+        });
+        document.push_child(document.root(), text);
     }
-    Document::from_draft(texts.join(""), root)
+    document
 }
 
 fn content(document: &Document, node: NodeId) -> &str {
@@ -20,35 +21,39 @@ fn content(document: &Document, node: NodeId) -> &str {
 
 #[cfg(debug_assertions)]
 fn branched_document() -> Document {
-    let mut root = NodeDraft::new(Root::new("ab".to_owned()));
+    let mut document = Document::new("ab", Root::new("ab"));
     for content in ["a", "b"] {
-        let mut paragraph = NodeDraft::new(Paragraph);
-        paragraph.push_child(NodeDraft::new(Text {
+        let paragraph = document.create_node(Paragraph);
+        document.push_child(document.root(), paragraph);
+        let text = document.create_node(Text {
             content: content.to_owned(),
-        }));
-        root.push_child(paragraph);
+        });
+        document.push_child(paragraph, text);
     }
-    Document::from_draft("ab", root)
+    document
 }
 
 #[test]
 fn payload_replacement_preserves_identity_children_and_metadata() {
     #[derive(Debug, PartialEq)]
     struct Marker(u8);
-    let mut root = NodeDraft::new(Root::new("abc".to_owned()));
-    let mut paragraph = NodeDraft::new(Paragraph);
+    let mut document = Document::new("abc", Root::new("abc"));
+    let paragraph = document.create_node(Paragraph);
     #[cfg(feature = "sourcemap")]
     {
-        paragraph.data.srcmap = Some(SourcePos::new(0, 3));
+        document.node_mut(paragraph).data.srcmap = Some(SourcePos::new(0, 3));
     }
-    paragraph.data.attrs.push(("id".into(), "keep".into()));
-    paragraph.data.ext.insert(Marker(42));
-    paragraph.push_child(NodeDraft::new(Text {
+    document
+        .node_mut(paragraph)
+        .data
+        .attrs
+        .push(("id".into(), "keep".into()));
+    document.node_mut(paragraph).data.ext.insert(Marker(42));
+    let text = document.create_node(Text {
         content: "abc".into(),
-    }));
-    root.push_child(paragraph);
-    let mut document = Document::from_draft("abc", root);
-    let paragraph = document.children(document.root())[0];
+    });
+    document.push_child(paragraph, text);
+    document.push_child(document.root(), paragraph);
     let child = document.children(paragraph)[0];
     let mut batch = EditBatch::new();
     batch.replace_value(
@@ -141,19 +146,17 @@ fn empty_batch_is_a_no_op() {
 
 #[test]
 fn sets_removes_and_normalizes_attributes() {
-    let mut root = NodeDraft::new(Root::new("text".to_owned()));
-    let mut text = NodeDraft::new(Text {
+    let mut document = Document::new("text", Root::new("text"));
+    let text = document.create_node(Text {
         content: "text".to_owned(),
     });
-    text.data.attrs = vec![
+    document.node_mut(text).data.attrs = vec![
         ("class".to_owned(), "old".to_owned()),
         ("id".to_owned(), "remove-me".to_owned()),
         ("class".to_owned(), "duplicate".to_owned()),
         ("data-key".to_owned(), "kept".to_owned()),
     ];
-    root.push_child(text);
-    let mut document = Document::from_draft("text", root);
-    let text = document.children(document.root())[0];
+    document.push_child(document.root(), text);
     let mut batch = EditBatch::new();
     batch.set_attribute(text, "class", "new");
     batch.remove_attribute(text, "id");
@@ -304,7 +307,7 @@ mod validation_tests {
             ValidationError::NotEditableText(root),
         );
 
-        let paragraph = Document::from_draft("", NodeDraft::new(Paragraph));
+        let paragraph = Document::new("", Paragraph);
         let paragraph_id = paragraph.root();
         let mut wrong_type = EditBatch::new();
         wrong_type.replace_text(paragraph_id, 0..0, "x");

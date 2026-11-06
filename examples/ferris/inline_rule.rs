@@ -35,7 +35,7 @@ impl InlineRule for FerrisInlineScanner {
     // appears at the current position.
     //
     // If custom structure is found, it:
-    //  - creates a new `NodeDraft`
+    //  - creates a node in the document and returns its `NodeId`
     //  - returns length of it
     //
     fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {

@@ -5,15 +5,15 @@ use crate::plugins::cmark::block::paragraph::Paragraph;
 use crate::{MarkdownIt, plugins};
 
 #[test]
-fn draft_insertion_preserves_tree_and_payloads() {
-    let mut root = NodeDraft::new(Root::new("hello".to_owned()));
-    let mut paragraph = NodeDraft::new(Paragraph);
-    paragraph.push_child(NodeDraft::new(Text {
+fn arena_construction_preserves_tree_and_payloads() {
+    let mut document = Document::new("hello", Root::new("hello"));
+    let root = document.root();
+    let paragraph = document.create_node(Paragraph);
+    let text = document.create_node(Text {
         content: "hello".to_owned(),
-    }));
-    root.push_child(paragraph);
-
-    let document = Document::from_draft("hello", root);
+    });
+    document.push_child(paragraph, text);
+    document.push_child(root, paragraph);
     let root_id = document.root();
     let paragraph_id = document.children(root_id)[0];
     let text_id = document.children(paragraph_id)[0];
@@ -30,17 +30,18 @@ fn draft_insertion_preserves_tree_and_payloads() {
 
 #[test]
 fn structural_events_are_ordered_and_balanced() {
-    let mut root = NodeDraft::new(Root::new("hello".to_owned()));
-    let mut paragraph = NodeDraft::new(Paragraph);
-    paragraph.push_child(NodeDraft::new(Text {
+    let mut document = Document::new("hello", Root::new("hello"));
+    let root = document.root();
+    let paragraph = document.create_node(Paragraph);
+    let text = document.create_node(Text {
         content: "first".to_owned(),
-    }));
-    paragraph.push_child(NodeDraft::new(Text {
+    });
+    document.push_child(paragraph, text);
+    let text = document.create_node(Text {
         content: "second".to_owned(),
-    }));
-    root.push_child(paragraph);
-
-    let document = Document::from_draft("hello", root);
+    });
+    document.push_child(paragraph, text);
+    document.push_child(root, paragraph);
     let root = document.root();
     let paragraph = document.children(root)[0];
     let children = document.children(paragraph);
@@ -68,14 +69,14 @@ fn structural_events_are_ordered_and_balanced() {
 
 #[test]
 fn structural_events_can_start_at_a_subtree_or_leaf() {
-    let mut root = NodeDraft::new(Root::new("hello".to_owned()));
-    let mut paragraph = NodeDraft::new(Paragraph);
-    paragraph.push_child(NodeDraft::new(Text {
+    let mut document = Document::new("hello", Root::new("hello"));
+    let root = document.root();
+    let paragraph = document.create_node(Paragraph);
+    let text = document.create_node(Text {
         content: "hello".to_owned(),
-    }));
-    root.push_child(paragraph);
-
-    let document = Document::from_draft("hello", root);
+    });
+    document.push_child(paragraph, text);
+    document.push_child(root, paragraph);
     let paragraph = document.children(document.root())[0];
     let text = document.children(paragraph)[0];
 
@@ -95,14 +96,14 @@ fn invalid_node_access_panics_in_all_builds() {
         TextProjectionKind::Transparent
     }
 
-    let mut root = NodeDraft::new(Root::new(String::new()));
-    root.push_child(NodeDraft::new(Text {
-        content: "old".into(),
-    }));
-    root.push_child(NodeDraft::new(Text {
-        content: "kept".into(),
-    }));
-    let mut document = Document::from_draft("", root);
+    let mut document = Document::new("", Root::new(""));
+    let root = document.root();
+    for content in ["old", "kept"] {
+        let text = document.create_node(Text {
+            content: content.into(),
+        });
+        document.push_child(root, text);
+    }
     let old = document.children(document.root())[0];
     let kept = document.children(document.root())[1];
 
@@ -210,24 +211,31 @@ fn parsed_document_events_visit_every_node_once() {
 }
 
 #[test]
-fn node_data_survives_draft_insertion() {
+fn node_data_is_preserved_when_attaching_children() {
     #[derive(Debug)]
     struct Payload(String);
 
     #[derive(Debug)]
     struct Metadata(String);
 
-    fn draft() -> super::NodeDraft {
-        let mut draft = super::NodeDraft::new(Payload("payload".into()));
-        #[cfg(feature = "sourcemap")]
-        draft.set_srcmap(Some(crate::common::sourcemap::SourcePos::new(0, 3)));
-        draft.attrs_mut().push(("class".into(), "kept".into()));
-        draft.ext_mut().insert(Metadata("metadata".into()));
-        draft.push_child(super::NodeDraft::new(Text {
-            content: "abc".into(),
-        }));
-        draft
-    }
+    let mut document = Document::new("abc", Payload("payload".into()));
+    let root = document.root();
+    #[cfg(feature = "sourcemap")]
+    document
+        .node_mut(root)
+        .set_srcmap(Some(crate::common::sourcemap::SourcePos::new(0, 3)));
+    document
+        .node_mut(root)
+        .attrs_mut()
+        .push(("class".into(), "kept".into()));
+    document
+        .node_mut(root)
+        .ext_mut()
+        .insert(Metadata("metadata".into()));
+    let child = document.create_node(Text {
+        content: "abc".into(),
+    });
+    document.push_child(root, child);
 
     fn assert_document(document: &Document) {
         let root = document.node(document.root());
@@ -243,9 +251,6 @@ fn node_data_survives_draft_insertion() {
         assert_eq!(child.cast::<Text>().unwrap().content, "abc");
     }
 
-    let document = Document::from_draft("abc", draft());
-    assert_document(&document);
-    let document = Document::from_draft("abc", draft());
     assert_document(&document);
 }
 

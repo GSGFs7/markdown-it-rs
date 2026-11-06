@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use markdown_it::document::{Document, Node, NodeDraft, Text};
+use markdown_it::document::{Document, Node, Text};
 use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 use markdown_it::MarkdownIt;
 
@@ -25,7 +25,7 @@ fn benchmark(c: &mut Criterion) {
         ("dense-escaping", "<&>\""),
     ] {
         let source = pattern.repeat((64_usize * 1024).div_ceil(pattern.len()));
-        let document = Document::from_draft("", NodeDraft::new(Text { content: source }));
+        let document = Document::new("", Text { content: source });
         let text = &document
             .node(document.root())
             .cast::<Text>()
@@ -71,7 +71,7 @@ fn benchmark_sizes(c: &mut Criterion) {
             };
             assert_eq!(source.len(), len);
             let expected = markdown_it::common::utils::escape_html(&source).into_owned();
-            let document = Document::from_draft("", NodeDraft::new(Text { content: source }));
+            let document = Document::new("", Text { content: source });
             assert_eq!(md.render_document(&document, "html"), expected);
             assert_eq!(legacy.render_document(&document, "html"), expected);
             group.throughput(Throughput::Bytes(len as u64));

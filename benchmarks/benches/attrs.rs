@@ -11,18 +11,17 @@ fn parser() -> MarkdownIt {
 }
 
 fn document_with_attrs(md: &MarkdownIt, attrs: &[HtmlAttribute]) -> Document {
-    let mut root = markdown_it::document::NodeDraft::new(markdown_it::document::Root::new("text"));
-    let mut paragraph = markdown_it::document::NodeDraft::new(
-        markdown_it::plugins::cmark::block::paragraph::Paragraph,
-    );
-    paragraph.attrs_mut().extend_from_slice(attrs);
-    paragraph.push_child(markdown_it::document::NodeDraft::new(
-        markdown_it::document::Text {
-            content: "text".into(),
-        },
-    ));
-    root.push_child(paragraph);
-    let document = Document::from_draft("text", root);
+    let mut document = Document::new("text", markdown_it::document::Root::new("text"));
+    let paragraph = document.create_node(markdown_it::plugins::cmark::block::paragraph::Paragraph);
+    document
+        .node_mut(paragraph)
+        .attrs_mut()
+        .extend_from_slice(attrs);
+    let text = document.create_node(markdown_it::document::Text {
+        content: "text".into(),
+    });
+    document.push_child(paragraph, text);
+    document.push_child(document.root(), paragraph);
     md.render_document(&document, "html");
     document
 }
