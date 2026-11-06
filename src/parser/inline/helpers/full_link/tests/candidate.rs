@@ -254,3 +254,27 @@ fn candidate_respects_window_edges_and_parent_cursor() {
     assert_eq!(result.href.as_deref(), Some("/url"));
     assert_eq!(context.remaining(), "[x](/url)");
 }
+
+#[test]
+fn failed_inline_target_probes_reference_after_a_whole_utf8_character() {
+    let mut document = crate::document::Document::new("", crate::document::Root::new(""));
+    let md = parser::<false>();
+    let ruleset = md.inline.rules();
+    let mut references = ReferenceMap::default();
+    references.insert("r".into(), "/url".into(), None);
+
+    // The title probe stops on the emoji, so the reference probe must advance
+    // past the complete character (not a UTF-16 code unit) to see `[r]`.
+    let source = "[x]( <u> 🦀[r]";
+    let mut context = InlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
+    let result = scan_link_candidate(
+        &mut context,
+        0,
+        false,
+        Some(&references),
+        InlineTargetFallback::Reference,
+    )
+    .expect(source);
+    assert_eq!(result.href.as_deref(), Some("/url"));
+    assert_eq!(result.end, source.len());
+}

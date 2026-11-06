@@ -1,3 +1,4 @@
+use super::config::InlineTargetFallback;
 use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
 
@@ -6,6 +7,17 @@ pub(super) struct InlineLinkTarget {
     pub(super) href: Option<String>,
     pub(super) title: Option<String>,
     pub(super) end: usize,
+}
+
+/// Result of trying the `(...)` suffix of a link candidate.
+#[derive(Debug)]
+pub(super) enum LinkTargetScan {
+    /// A complete inline destination and optional title.
+    Inline(InlineLinkTarget),
+    /// No inline destination; continue looking for a reference at this offset.
+    Reference { resume: usize },
+    /// An inline destination was attempted but rejected without reference fallback.
+    Reject,
 }
 
 pub struct ParseLinkFragmentResult {
@@ -161,6 +173,37 @@ pub(super) fn skip_link_spaces(source: &str, mut pos: usize, max: usize) -> usiz
     pos
 }
 
+/// Try the suffix beginning at `start`, mirroring markdown-it's link/image
+/// target fallback decision.
+pub(super) fn scan_link_target(
+    md: &MarkdownIt,
+    source: &str,
+    start: usize,
+    max: usize,
+    fallback: InlineTargetFallback,
+) -> LinkTargetScan {
+    if !source.get(start..max).is_some_and(|s| s.starts_with('(')) {
+        return LinkTargetScan::Reference { resume: start };
+    }
+
+    // [link](  <href>  "title"  )
+    //        ^^ skipping these spaces
+    let target_start = skip_link_spaces(source, start + 1, max);
+    if target_start >= max {
+        // An opening parenthesis followed only by spaces cannot resolve a reference.
+        return LinkTargetScan::Reject;
+    }
+
+    let (target, resume) = scan_inline_link_target(md, source, target_start, max);
+    match target {
+        Some(target) => LinkTargetScan::Inline(target),
+        None if fallback == InlineTargetFallback::Reject => LinkTargetScan::Reject,
+        None => LinkTargetScan::Reference { resume },
+    }
+}
+
+/// Attempt an inline destination/title and return the cursor to probe for a
+/// reference if the attempt fails.
 pub(super) fn scan_inline_link_target(
     md: &MarkdownIt,
     source: &str,
@@ -198,23 +241,18 @@ pub(super) fn scan_inline_link_target(
         }
     }
 
-    let target = if source[pos..max].starts_with(')') {
-        Some(InlineLinkTarget {
+    let target = source[pos..max]
+        .starts_with(')')
+        .then_some(InlineLinkTarget {
             href,
             title,
             end: pos + 1,
-        })
-    } else {
-        None
-    };
+        });
     // markdown-it advances past the failed delimiter before probing for a
     // reference at that cursor.
-    let next = source[pos..max].chars().next().map_or(pos + 1, |ch| {
-        pos + if ch.len_utf16() == 1 {
-            ch.len_utf8()
-        } else {
-            1
-        }
-    });
+    let next = source[pos..max]
+        .chars()
+        .next()
+        .map_or(pos + 1, |ch| pos + ch.len_utf8());
     (target, next)
 }

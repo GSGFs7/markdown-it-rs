@@ -8,11 +8,16 @@ use super::config::{
 };
 use super::label::scan_link_label;
 use super::reference::{ParseLinkResult, resolve_reference_link};
-use super::target::{scan_inline_link_target, skip_link_spaces};
+use super::target::{LinkTargetScan, scan_link_target};
 use crate::document::{Document, NodeId};
 use crate::parser::inline::InlineState;
 use crate::plugins::cmark::block::reference::ReferenceMap;
 
+/// Parse one `[label](...)` / `[label][reference]` candidate.
+///
+/// This is the shared syntax behind links, images, and prefixed variants. The
+/// label is scanned first; the suffix then decides between an inline target and
+/// a reference using the same fallback rules as markdown-it's link rule.
 pub(super) fn scan_link_candidate(
     context: &mut InlineState<'_>,
     pos: usize,
@@ -24,54 +29,60 @@ pub(super) fn scan_link_candidate(
         return None;
     }
 
-    let source = context.remaining();
     let label_start = pos + 1;
-    let label_end = label_start
-        + scan_link_label(
-            context.child_state(label_start..source.len())?,
-            enable_nested,
-        )?;
-
-    let source = context.remaining();
-    let suffix_start = label_end + 1;
-    let mut reference_pos = suffix_start;
-    if source[suffix_start..].starts_with('(') {
-        let target_start = skip_link_spaces(source, suffix_start + 1, source.len());
-        // An opening parenthesis followed only by spaces cannot resolve a reference.
-        if target_start == source.len() {
-            return None;
-        }
-
-        let (target, next_pos) =
-            scan_inline_link_target(context.markdown_it(), source, target_start, source.len());
-        reference_pos = next_pos;
-        if let Some(target) = target {
-            return Some(ParseLinkResult {
-                label_start,
-                label_end,
-                href: target.href,
-                title: target.title,
-                end: target.end,
-            });
-        }
-
-        if fallback == InlineTargetFallback::Reject {
-            return None;
-        }
-    }
-
-    let reference_end = if source.as_bytes().get(reference_pos) == Some(&b'[') {
-        let reference_start = reference_pos + 1;
-        context
-            .child_state(reference_start..source.len())
-            .and_then(|child| scan_link_label(child, true))
-            .map(|close| (reference_start, reference_start + close))
-    } else {
-        None
+    let label_end = {
+        let source = context.remaining();
+        label_start
+            + scan_link_label(
+                context.child_state(label_start..source.len())?,
+                enable_nested,
+            )?
     };
 
-    let source = context.remaining();
-    resolve_reference_link(source, label_start, label_end, reference_end, references?)
+    let target = {
+        let source = context.remaining();
+        scan_link_target(
+            context.markdown_it(),
+            source,
+            label_end + 1,
+            source.len(),
+            fallback,
+        )
+    };
+
+    let (href, title, end) = match target {
+        LinkTargetScan::Inline(target) => (target.href, target.title, target.end),
+        LinkTargetScan::Reject => return None,
+        LinkTargetScan::Reference {
+            resume: reference_pos,
+        } => {
+            let reference_end = {
+                let source = context.remaining();
+                if source.as_bytes().get(reference_pos) == Some(&b'[') {
+                    let reference_start = reference_pos + 1;
+                    context
+                        .child_state(reference_start..source.len())
+                        .and_then(|child| scan_link_label(child, true))
+                        .map(|close| (reference_start, reference_start + close))
+                } else {
+                    None
+                }
+            };
+
+            let source = context.remaining();
+            let reference =
+                resolve_reference_link(source, label_start, label_end, reference_end, references?)?;
+            (reference.href, reference.title, reference.end)
+        }
+    };
+
+    Some(ParseLinkResult {
+        label_start,
+        label_end,
+        href,
+        title,
+        end,
+    })
 }
 
 pub(super) fn link_check(
