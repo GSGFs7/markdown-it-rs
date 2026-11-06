@@ -1,9 +1,9 @@
 use std::hint::black_box;
 
-use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use markdown_it::MarkdownIt;
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use markdown_it::document::{Document, Node, NodeDraft, Text};
 use markdown_it::render::{NodeRenderer, RenderContext, Writer};
+use markdown_it::MarkdownIt;
 
 // Preserve the previous rendering operation as a same-process control.
 struct LegacyHtmlTextRenderer;

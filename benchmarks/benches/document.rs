@@ -110,15 +110,6 @@ fn replace_top_level_subtrees(document: &markdown_it::document::Document) -> Edi
     batch
 }
 
-fn wrap_top_level_range(document: &markdown_it::document::Document) -> EditBatch {
-    let mut batch = EditBatch::new();
-    let children = document.children(document.root());
-    if let (Some(&first), Some(&last)) = (children.first(), children.last()) {
-        batch.wrap_range(first, last, NodeDraft::new(Paragraph));
-    }
-    batch
-}
-
 fn parser() -> markdown_it::MarkdownIt {
     let mut md = markdown_it::MarkdownIt::empty();
     markdown_it::plugins::cmark::add(&mut md);
@@ -312,34 +303,6 @@ fn benchmark(c: &mut Criterion) {
                 || {
                     let document = md.parse(source);
                     let batch = replace_top_level_subtrees(&document);
-                    (document, batch)
-                },
-                |(mut document, batch)| {
-                    batch.commit(&mut document);
-                    black_box(document)
-                },
-                BatchSize::SmallInput,
-            )
-        });
-        group.finish();
-
-        let wrapped_count = document.children(document.root()).len();
-        let mut edited = md.parse(source);
-        let original_children = edited.children(edited.root()).to_vec();
-        wrap_top_level_range(&edited).commit(&mut edited);
-        assert_eq!(edited.len(), document.len() + 1);
-        let wrapper = edited.children(edited.root())[0];
-        assert_eq!(edited.children(wrapper), original_children);
-        assert!(edited.children(wrapper).iter().all(|&node| {
-            edited.get_node(node).is_some() && edited.parent(node) == Some(wrapper)
-        }));
-        let mut group = c.benchmark_group(format!("document-sibling-wrap/{}", corpus.name));
-        group.throughput(Throughput::Elements(wrapped_count as u64));
-        group.bench_function("validate-and-commit", |b| {
-            b.iter_batched(
-                || {
-                    let document = md.parse(source);
-                    let batch = wrap_top_level_range(&document);
                     (document, batch)
                 },
                 |(mut document, batch)| {

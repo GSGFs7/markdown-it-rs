@@ -520,145 +520,6 @@ fn deeply_nested_subtrees_can_be_replaced_iteratively() {
     assert!(document.get_node(replaced).is_none());
 }
 
-#[test]
-fn wraps_an_inclusive_sibling_range_without_changing_node_ids() {
-    let mut document = document(&["a", "b", "c", "d"]);
-    let root = document.root();
-    let original = document.children(root).to_vec();
-    let mut wrapper = NodeDraft::new(Paragraph);
-    wrapper
-        .attrs_mut()
-        .push(("class".to_owned(), "wrapper".to_owned()));
-    let mut batch = EditBatch::new();
-    batch.wrap_range(original[1], original[2], wrapper);
-
-    assert_eq!(batch.len(), 1);
-    batch.commit(&mut document);
-
-    let children = document.children(root);
-    assert_eq!(children.len(), 3);
-    assert_eq!(children[0], original[0]);
-    assert_eq!(children[2], original[3]);
-    let wrapper = children[1];
-    let wrapper_node = document.node(wrapper);
-    assert!(wrapper_node.is::<Paragraph>());
-    #[cfg(feature = "sourcemap")]
-    assert!(wrapper_node.srcmap().is_none());
-    assert_eq!(
-        wrapper_node.attrs(),
-        &[("class".to_owned(), "wrapper".to_owned())]
-    );
-    assert_eq!(wrapper_node.children(), &original[1..=2]);
-    assert_eq!(document.parent(original[1]), Some(wrapper));
-    assert_eq!(document.parent(original[2]), Some(wrapper));
-    assert_eq!(content(&document, original[1]), "b");
-    assert_eq!(content(&document, original[2]), "c");
-}
-
-#[test]
-fn wraps_multiple_disjoint_ranges_with_one_parent_rebuild() {
-    let mut document = document(&["a", "b", "c", "d", "e"]);
-    let root = document.root();
-    let original = document.children(root).to_vec();
-    let mut batch = EditBatch::new();
-    batch.wrap_range(original[3], original[4], NodeDraft::new(Paragraph));
-    batch.wrap_range(original[0], original[1], NodeDraft::new(Paragraph));
-
-    batch.commit(&mut document);
-
-    let children = document.children(root);
-    assert_eq!(children.len(), 3);
-    assert_eq!(children[1], original[2]);
-    assert_eq!(document.children(children[0]), &original[0..=1]);
-    assert_eq!(document.children(children[2]), &original[3..=4]);
-    for &node in &original {
-        assert!(document.get_node(node).is_some());
-    }
-}
-
-#[test]
-fn wraps_ranges_under_different_parents_in_one_batch() {
-    let mut document = branched_document();
-    let branches = document.children(document.root()).to_vec();
-    let first_text = document.children(branches[0])[0];
-    let second_text = document.children(branches[1])[0];
-    let mut batch = EditBatch::new();
-    batch.wrap_range(first_text, first_text, NodeDraft::new(Paragraph));
-    batch.wrap_range(second_text, second_text, NodeDraft::new(Paragraph));
-
-    batch.commit(&mut document);
-
-    for (branch, text) in branches.into_iter().zip([first_text, second_text]) {
-        let wrapper = document.children(branch)[0];
-        assert_eq!(document.children(wrapper), &[text]);
-        assert_eq!(document.parent(text), Some(wrapper));
-    }
-}
-
-#[test]
-fn value_and_descendant_structure_edits_can_commit_with_wrap() {
-    let mut root = NodeDraft::new(Root::new("ab".to_owned()));
-    let mut paragraph = NodeDraft::new(Paragraph);
-    paragraph.push_child(NodeDraft::new(Text {
-        content: "a".to_owned(),
-    }));
-    paragraph.push_child(NodeDraft::new(Text {
-        content: "b".to_owned(),
-    }));
-    root.push_child(paragraph);
-    let mut document = Document::from_draft("ab", root);
-    let root = document.root();
-    let paragraph = document.children(root)[0];
-    let texts = document.children(paragraph).to_vec();
-    let mut batch = EditBatch::new();
-    batch.wrap_range(paragraph, paragraph, NodeDraft::new(Paragraph));
-    batch.remove_node(texts[0]);
-    batch.insert_before(texts[1], text_draft("inserted"));
-    batch.replace_text(texts[1], 0..1, "B");
-    batch.set_attribute(paragraph, "class", "wrapped-child");
-
-    batch.commit(&mut document);
-
-    let wrapper = document.children(root)[0];
-    assert_eq!(document.children(wrapper), &[paragraph]);
-    let paragraph_children = document.children(paragraph);
-    assert_eq!(paragraph_children.len(), 2);
-    assert_eq!(content(&document, paragraph_children[0]), "inserted");
-    assert_eq!(paragraph_children[1], texts[1]);
-    assert_eq!(content(&document, texts[1]), "B");
-    assert_eq!(
-        document.node(paragraph).attrs(),
-        &[("class".to_owned(), "wrapped-child".to_owned())]
-    );
-}
-
-#[test]
-fn wide_sibling_ranges_are_wrapped_iteratively() {
-    let mut root = NodeDraft::new(Root::new(String::new()));
-    for index in 0..10_000 {
-        root.push_child(NodeDraft::new(Text {
-            content: index.to_string(),
-        }));
-    }
-    let mut document = Document::from_draft("", root);
-    let root = document.root();
-    let original = document.children(root).to_vec();
-    let mut batch = EditBatch::new();
-    batch.wrap_range(original[0], original[9_999], NodeDraft::new(Paragraph));
-
-    batch.commit(&mut document);
-
-    assert_eq!(document.len(), 10_002);
-    let wrapper = document.children(root)[0];
-    assert_eq!(document.children(wrapper), original);
-    assert!(
-        document
-            .children(wrapper)
-            .iter()
-            .all(|&node| document.parent(node) == Some(wrapper))
-    );
-}
-
 #[cfg(debug_assertions)]
 mod validation_tests {
     use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -1180,130 +1041,6 @@ mod validation_tests {
     }
 
     #[test]
-    fn rejects_invalid_wrap_ranges() {
-        let document = document(&["a", "b", "c", "d"]);
-        let root = document.root();
-        let children = document.children(root).to_vec();
-
-        let mut root_endpoint = EditBatch::new();
-        root_endpoint.replace_text(children[0], 0..1, "A");
-        root_endpoint.wrap_range(root, root, NodeDraft::new(Paragraph));
-        assert_invalid(
-            root_endpoint,
-            &document,
-            ValidationError::CannotWrapRoot(root),
-        );
-
-        let mut reversed = EditBatch::new();
-        reversed.wrap_range(children[2], children[0], NodeDraft::new(Paragraph));
-        assert_invalid(
-            reversed,
-            &document,
-            ValidationError::ReversedWrapRange {
-                first: children[2],
-                last: children[0],
-            },
-        );
-
-        let mut childful_wrapper = NodeDraft::new(Paragraph);
-        childful_wrapper.push_child(text_draft("existing"));
-        let mut childful = EditBatch::new();
-        childful.wrap_range(children[0], children[1], childful_wrapper);
-        assert_invalid(
-            childful,
-            &document,
-            ValidationError::WrapperDraftHasChildren {
-                first: children[0],
-                last: children[1],
-            },
-        );
-
-        let mut overlap = EditBatch::new();
-        overlap.wrap_range(children[0], children[2], NodeDraft::new(Paragraph));
-        overlap.wrap_range(children[2], children[3], NodeDraft::new(Paragraph));
-        assert_invalid(
-            overlap,
-            &document,
-            ValidationError::OverlappingWrapRanges {
-                first_range: (children[0], children[2]),
-                second_range: (children[2], children[3]),
-            },
-        );
-    }
-
-    #[test]
-    fn rejects_different_parent_and_stale_wrap_endpoints() {
-        let mut document = branched_document();
-        let branches = document.children(document.root()).to_vec();
-        let first = document.children(branches[0])[0];
-        let second = document.children(branches[1])[0];
-
-        let mut different_parents = EditBatch::new();
-        different_parents.wrap_range(first, second, NodeDraft::new(Paragraph));
-        assert_invalid(
-            different_parents,
-            &document,
-            ValidationError::WrapEndpointsHaveDifferentParents {
-                first,
-                last: second,
-            },
-        );
-
-        let mut removal = EditBatch::new();
-        removal.remove_node(first);
-        removal.commit(&mut document);
-        let mut stale = EditBatch::new();
-        stale.wrap_range(first, first, NodeDraft::new(Paragraph));
-        assert_invalid(stale, &document, ValidationError::InvalidNode(first));
-    }
-
-    #[test]
-    fn rejects_destructive_and_insertion_conflicts_with_wrap_ranges() {
-        let document = branched_document();
-        let branch = document.children(document.root())[0];
-        let text = document.children(branch)[0];
-
-        let mut removal = EditBatch::new();
-        removal.remove_node(branch);
-        removal.wrap_range(text, text, NodeDraft::new(Paragraph));
-        assert_invalid(
-            removal,
-            &document,
-            ValidationError::WrapRangeTargetsRemovedNode {
-                removed: branch,
-                first: text,
-                last: text,
-            },
-        );
-
-        let mut replacement = EditBatch::new();
-        replacement.replace_node(text, text_draft("replacement"));
-        replacement.wrap_range(text, text, NodeDraft::new(Paragraph));
-        assert_invalid(
-            replacement,
-            &document,
-            ValidationError::WrapRangeTargetsReplacedNode {
-                replaced: text,
-                first: text,
-                last: text,
-            },
-        );
-
-        let mut insertion = EditBatch::new();
-        insertion.insert_before(text, text_draft("inserted"));
-        insertion.wrap_range(text, text, NodeDraft::new(Paragraph));
-        assert_invalid(
-            insertion,
-            &document,
-            ValidationError::InsertionTargetsWrappedNode {
-                first: text,
-                last: text,
-                target: text,
-            },
-        );
-    }
-
-    #[test]
     #[should_panic(expected = "invalid edit batch: cannot remove document root")]
     fn commit_panics_on_invalid_batch() {
         let mut document = branched_document();
@@ -1334,7 +1071,7 @@ mod validation_tests {
 
     #[test]
     fn structural_validation_finishes_before_any_edits_are_applied() {
-        for conflict in 0..4 {
+        for conflict in 0..3 {
             let mut document = document(&["abc", "def", "ghi"]);
             let root = document.root();
             let children = document.children(root).to_vec();
@@ -1355,8 +1092,7 @@ mod validation_tests {
             match conflict {
                 0 => batch.remove_node(root),
                 1 => batch.insert_before(root, text_draft("invalid")),
-                2 => batch.replace_node(root, text_draft("invalid")),
-                _ => batch.wrap_range(children[1], children[0], NodeDraft::new(Paragraph)),
+                _ => batch.replace_node(root, text_draft("invalid")),
             }
 
             let result = catch_unwind(AssertUnwindSafe(|| batch.commit(&mut document)));

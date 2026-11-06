@@ -67,38 +67,6 @@ pub(super) enum ValidationError {
         replaced: NodeId,
         target: NodeId,
     },
-    CannotWrapRoot(NodeId),
-    WrapEndpointsHaveDifferentParents {
-        first: NodeId,
-        last: NodeId,
-    },
-    ReversedWrapRange {
-        first: NodeId,
-        last: NodeId,
-    },
-    WrapperDraftHasChildren {
-        first: NodeId,
-        last: NodeId,
-    },
-    OverlappingWrapRanges {
-        first_range: (NodeId, NodeId),
-        second_range: (NodeId, NodeId),
-    },
-    WrapRangeTargetsRemovedNode {
-        removed: NodeId,
-        first: NodeId,
-        last: NodeId,
-    },
-    WrapRangeTargetsReplacedNode {
-        replaced: NodeId,
-        first: NodeId,
-        last: NodeId,
-    },
-    InsertionTargetsWrappedNode {
-        first: NodeId,
-        last: NodeId,
-        target: NodeId,
-    },
 }
 
 impl std::fmt::Display for ValidationError {
@@ -188,52 +156,6 @@ impl std::fmt::Display for ValidationError {
                 f,
                 "insertion targets node {target:?} inside replaced subtree {replaced:?}"
             ),
-            Self::CannotWrapRoot(node) => {
-                write!(f, "cannot wrap document root {node:?}")
-            }
-            Self::WrapEndpointsHaveDifferentParents { first, last } => write!(
-                f,
-                "wrap endpoints {first:?} and {last:?} have different parents"
-            ),
-            Self::ReversedWrapRange { first, last } => {
-                write!(f, "wrap range {first:?} through {last:?} is reversed")
-            }
-            Self::WrapperDraftHasChildren { first, last } => write!(
-                f,
-                "wrapper draft for range {first:?} through {last:?} already has children"
-            ),
-            Self::OverlappingWrapRanges {
-                first_range,
-                second_range,
-            } => write!(
-                f,
-                "wrap ranges {:?} through {:?} and {:?} through {:?} overlap",
-                first_range.0, first_range.1, second_range.0, second_range.1
-            ),
-            Self::WrapRangeTargetsRemovedNode {
-                removed,
-                first,
-                last,
-            } => write!(
-                f,
-                "wrap range {first:?} through {last:?} is inside removed subtree {removed:?}"
-            ),
-            Self::WrapRangeTargetsReplacedNode {
-                replaced,
-                first,
-                last,
-            } => write!(
-                f,
-                "wrap range {first:?} through {last:?} is inside replaced subtree {replaced:?}"
-            ),
-            Self::InsertionTargetsWrappedNode {
-                first,
-                last,
-                target,
-            } => write!(
-                f,
-                "insertion targets wrapped sibling {target:?} in range {first:?} through {last:?}"
-            ),
         }
     }
 }
@@ -259,9 +181,6 @@ impl EditBatch {
         }
         if !self.structural_edits.replacements.is_empty() {
             self.validate_replacements(document)?;
-        }
-        if !self.structural_edits.wraps.is_empty() {
-            self.validate_wrap_ranges(document)?;
         }
         Ok(())
     }
@@ -463,113 +382,6 @@ impl EditBatch {
                     replaced: node,
                     target: insertion.target,
                 });
-            }
-        }
-        Ok(())
-    }
-
-    fn validate_wrap_ranges(&self, document: &Document) -> Result<(), ValidationError> {
-        let mut resolved = Vec::with_capacity(self.structural_edits.wraps.len());
-        for range in &self.structural_edits.wraps {
-            let first = checked_node(document, range.first)?;
-            let last = checked_node(document, range.last)?;
-            let Some(first_parent) = first.parent() else {
-                return Err(ValidationError::CannotWrapRoot(range.first));
-            };
-            let Some(last_parent) = last.parent() else {
-                return Err(ValidationError::CannotWrapRoot(range.last));
-            };
-            if first_parent != last_parent {
-                return Err(ValidationError::WrapEndpointsHaveDifferentParents {
-                    first: range.first,
-                    last: range.last,
-                });
-            }
-            if !range.wrapper.children().is_empty() {
-                return Err(ValidationError::WrapperDraftHasChildren {
-                    first: range.first,
-                    last: range.last,
-                });
-            }
-
-            let siblings = checked_node(document, first_parent)?.children();
-            let first_index = siblings
-                .iter()
-                .position(|&node| node == range.first)
-                .expect("document parent links are internally consistent");
-            let last_index = siblings
-                .iter()
-                .position(|&node| node == range.last)
-                .expect("document parent links are internally consistent");
-            if first_index > last_index {
-                return Err(ValidationError::ReversedWrapRange {
-                    first: range.first,
-                    last: range.last,
-                });
-            }
-            resolved.push((
-                first_parent,
-                first_index,
-                last_index,
-                range.first,
-                range.last,
-            ));
-        }
-
-        resolved
-            .sort_unstable_by_key(|range| (range.0.slot(), range.0.generation(), range.1, range.2));
-        for ranges in resolved.windows(2) {
-            let first = ranges[0];
-            let second = ranges[1];
-            if first.0 == second.0 && second.1 <= first.2 {
-                return Err(ValidationError::OverlappingWrapRanges {
-                    first_range: (first.3, first.4),
-                    second_range: (second.3, second.4),
-                });
-            }
-        }
-
-        let removals: HashSet<_> = self.structural_edits.removals.iter().copied().collect();
-        let replacements: HashSet<_> = self
-            .structural_edits
-            .replacements
-            .iter()
-            .map(|replacement| replacement.target)
-            .collect();
-        for &(parent, first_index, last_index, first, last) in &resolved {
-            let siblings = checked_node(document, parent)?.children();
-            for &selected in &siblings[first_index..=last_index] {
-                let mut current = Some(selected);
-                while let Some(node) = current {
-                    if removals.contains(&node) {
-                        return Err(ValidationError::WrapRangeTargetsRemovedNode {
-                            removed: node,
-                            first,
-                            last,
-                        });
-                    }
-                    if replacements.contains(&node) {
-                        return Err(ValidationError::WrapRangeTargetsReplacedNode {
-                            replaced: node,
-                            first,
-                            last,
-                        });
-                    }
-                    current = checked_node(document, node)?.parent();
-                }
-            }
-        }
-
-        for insertion in &self.structural_edits.insertions {
-            for &(parent, first_index, last_index, first, last) in &resolved {
-                let siblings = checked_node(document, parent)?.children();
-                if siblings[first_index..=last_index].contains(&insertion.target) {
-                    return Err(ValidationError::InsertionTargetsWrappedNode {
-                        first,
-                        last,
-                        target: insertion.target,
-                    });
-                }
             }
         }
         Ok(())

@@ -99,31 +99,20 @@ struct ReplaceNode {
     draft: NodeDraft,
 }
 
-#[derive(Debug)]
-struct WrapRange {
-    first: NodeId,
-    last: NodeId,
-    wrapper: NodeDraft,
-}
-
 #[derive(Debug, Default)]
 struct StructuralEditSet {
     removals: Vec<NodeId>,
     insertions: Vec<InsertSibling>,
     replacements: Vec<ReplaceNode>,
-    wraps: Vec<WrapRange>,
 }
 
 impl StructuralEditSet {
     fn len(&self) -> usize {
-        self.removals.len() + self.insertions.len() + self.replacements.len() + self.wraps.len()
+        self.removals.len() + self.insertions.len() + self.replacements.len()
     }
 
     fn is_empty(&self) -> bool {
-        self.removals.is_empty()
-            && self.insertions.is_empty()
-            && self.replacements.is_empty()
-            && self.wraps.is_empty()
+        self.removals.is_empty() && self.insertions.is_empty() && self.replacements.is_empty()
     }
 }
 
@@ -239,15 +228,6 @@ impl EditBatch {
             .push(ReplaceNode { target, draft });
     }
 
-    /// Wrap an inclusive range of ordered siblings in a childless draft.
-    pub fn wrap_range(&mut self, first: NodeId, last: NodeId, wrapper: NodeDraft) {
-        self.structural_edits.wraps.push(WrapRange {
-            first,
-            last,
-            wrapper,
-        });
-    }
-
     /// Apply a batch of edits supplied by a plugin.
     ///
     /// The caller must provide a valid batch. With debug assertions enabled,
@@ -273,7 +253,6 @@ impl EditBatch {
         }
         self.apply_removals(document);
         self.apply_replacements(document);
-        self.apply_wrap_ranges(document);
         self.apply_insertions(document);
         #[cfg(feature = "sourcemap")]
         self.apply_source_maps(document);
@@ -437,16 +416,6 @@ impl EditBatch {
                 .map(|replacement| (replacement.target, replacement.draft))
                 .collect();
             document.replace_subtrees(replacements);
-        }
-    }
-
-    fn apply_wrap_ranges(&mut self, document: &mut Document) {
-        if !self.structural_edits.wraps.is_empty() {
-            let ranges = std::mem::take(&mut self.structural_edits.wraps)
-                .into_iter()
-                .map(|range| (range.first, range.last, range.wrapper))
-                .collect();
-            document.wrap_ranges(ranges);
         }
     }
 }

@@ -2,12 +2,12 @@
 use std::hint::black_box;
 use std::time::Duration;
 
-use criterion::{Criterion, criterion_group, criterion_main};
-use markdown_it::MarkdownIt;
+use criterion::{criterion_group, criterion_main, Criterion};
 use markdown_it::document::{Node, NodeId};
 use markdown_it::parser::inline::{InlineRule, InlineState};
 use markdown_it::plugin::{Html, InlinePlugin, InlinePluginState, PluginSpec};
 use markdown_it::render::{NodeRenderer, RenderContext, Writer};
+use markdown_it::MarkdownIt;
 
 #[derive(Debug)]
 struct Emoji;
