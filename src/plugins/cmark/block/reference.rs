@@ -10,7 +10,6 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use derive_more::{Deref, DerefMut};
 use downcast_rs::{Downcast, impl_downcast};
 
 use crate::MarkdownIt;
@@ -98,9 +97,7 @@ use crate::render::EmptyRenderer;
 /// assert_eq!(labels, ["hello"]);
 /// ```
 ///
-#[derive(Debug, Deref, DerefMut)]
-#[deref(forward)]
-#[deref_mut(forward)]
+#[derive(Debug)]
 pub struct ReferenceMap(Box<dyn CustomReferenceMap>);
 
 impl ReferenceMap {
@@ -112,6 +109,20 @@ impl ReferenceMap {
 impl Default for ReferenceMap {
     fn default() -> Self {
         Self::new(DefaultReferenceMap::new())
+    }
+}
+
+impl std::ops::Deref for ReferenceMap {
+    type Target = dyn CustomReferenceMap;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
+
+impl std::ops::DerefMut for ReferenceMap {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_mut()
     }
 }
 

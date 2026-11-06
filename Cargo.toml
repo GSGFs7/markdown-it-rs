@@ -51,8 +51,6 @@ syntect = ["dep:syntect", "dep:two-face"]
 
 [dependencies]
 clap = { version = ">= 4.0.0, < 5", optional = true }
-const_format = ">= 0.1.0, < 0.3"
-derive_more = { version = ">= 0.99.0, < 3", features = ["deref", "deref_mut"] }
 downcast-rs = ">= 1.0.2, < 3"
 entities = ">= 0.1.0, < 2"
 html-escape = ">= 0.1.0, < 0.4"

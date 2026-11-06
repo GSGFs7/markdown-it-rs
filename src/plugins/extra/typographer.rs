@@ -31,7 +31,6 @@
 use std::borrow::Cow;
 use std::sync::LazyLock;
 
-use const_format::formatcp;
 use regex::Regex;
 
 use crate::MarkdownIt;
@@ -58,14 +57,14 @@ static REPLACEMENTS: LazyLock<Box<[(Regex, &'static str)]>> = LazyLock::new(|| {
             "$pre\u{2014}$post",
         ),
         (
-            Regex::new(formatcp!(
+            Regex::new(&format!(
                 r"(?m)(?P<pre>^|{JS_WHITESPACE})(?P<dash>--)(?P<post>{JS_WHITESPACE}|$)"
             ))
             .unwrap(),
             "$pre\u{2013}$post",
         ),
         (
-            Regex::new(formatcp!(
+            Regex::new(&format!(
                 r"(?m)(?P<pre>^|[^-{JS_WHITESPACE}])(?P<dash>--)(?P<post>[^-{JS_WHITESPACE}]|$)"
             ))
             .unwrap(),
