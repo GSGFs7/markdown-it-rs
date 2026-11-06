@@ -73,4 +73,9 @@ name = "plugin_api"
 path = "benches/plugin_api.rs"
 harness = false
 
+[[bench]]
+name = "scan_hooks"
+path = "benches/scan_hooks.rs"
+harness = false
+
 [workspace]

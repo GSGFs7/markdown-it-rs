@@ -28,34 +28,73 @@ pub fn add(md: &mut crate::MarkdownIt) {
 
 /// A plugin hook for source-wide scan side effects.
 ///
-/// Link-label scanning has shortcuts that reject a candidate without running
-/// inline checks. A hook returns true when `[start..end)` still has to be
-/// checked even though the label may not close, preserving side effects such as
-/// disabling a construct for the rest of the inline source.
+/// Returns true when `[start..end)` must be checked even if the label may not
+/// close, so the hook's side effects are preserved.
 pub(crate) type ScanHook = fn(&InlineState<'_>, usize, usize) -> bool;
 
-#[derive(Debug, Default)]
-pub(crate) struct ScanHooks(Vec<ScanHook>);
+/// Returns false to skip a scan hook for the entire inline source.
+pub(crate) type SourceFilter = fn(&str) -> bool;
 
-/// Register a source-wide scan hook for an inline plugin.
+#[derive(Debug, Clone, Copy)]
+struct ScanHookEntry {
+    hook: ScanHook,
+    source_filter: Option<SourceFilter>,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct ScanHooks(Vec<ScanHookEntry>);
+
+impl ScanHooks {
+    pub(crate) fn register(&mut self, hook: ScanHook, source_filter: Option<SourceFilter>) {
+        self.0.push(ScanHookEntry {
+            hook,
+            source_filter,
+        });
+    }
+
+    fn select(&self, source: &str) -> Vec<ScanHook> {
+        self.0
+            .iter()
+            .filter(|entry| entry.source_filter.is_none_or(|filter| filter(source)))
+            .map(|entry| entry.hook)
+            .collect()
+    }
+}
+
+/// Register a hook that runs on every probe.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn add_scan_hook(md: &mut crate::MarkdownIt, hook: ScanHook) {
-    md.ext.get_or_insert_default::<ScanHooks>().0.push(hook);
+    md.ext
+        .get_or_insert_default::<ScanHooks>()
+        .register(hook, None);
+}
+
+/// Register a hook gated by a pure source predicate.
+///
+/// The filter runs lazily once per source and is shared by nested sessions.
+pub(crate) fn add_filtered_scan_hook(
+    md: &mut crate::MarkdownIt,
+    hook: ScanHook,
+    source_filter: SourceFilter,
+) {
+    md.ext
+        .get_or_insert_default::<ScanHooks>()
+        .register(hook, Some(source_filter));
+}
+
+/// Select the hooks that may apply to a full inline source.
+pub(crate) fn select_scan_hooks(md: &crate::MarkdownIt, source: &str) -> Vec<ScanHook> {
+    md.ext
+        .get::<ScanHooks>()
+        .map_or_else(Vec::new, |hooks| hooks.select(source))
 }
 
 /// Whether any registered hook still needs `[start..end)` checked.
 pub(crate) fn scan_hooks_require_scan(state: &InlineState<'_>, start: usize, end: usize) -> bool {
-    let hook_count = state
-        .markdown_it()
-        .ext
-        .get::<ScanHooks>()
-        .map_or(0, |hooks| hooks.0.len());
-    for index in 0..hook_count {
-        let hook = state.markdown_it().ext.get::<ScanHooks>().unwrap().0[index];
-        if hook(state, start, end) {
-            return true;
-        }
-    }
-    false
+    state
+        .scan_hooks()
+        .iter()
+        .any(|&hook| hook(state, start, end))
 }
 
 pub(crate) type InlineCheckFn = fn(&mut InlineState<'_>) -> Option<usize>;
@@ -256,5 +295,87 @@ impl InlineParser {
         self.text_impl
             .get_or_init(|| TextScannerImpl::compile(self.text_charmap.keys().copied().collect()))
             .find(&source[pos..pos_max])
+    }
+}
+
+#[cfg(test)]
+mod scan_hook_tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+    use crate::document::{Document, Root};
+
+    static FILTERS: AtomicUsize = AtomicUsize::new(0);
+
+    #[derive(Debug, Default)]
+    struct Calls(Vec<&'static str>);
+
+    #[derive(Debug, Default)]
+    struct Disabled(bool);
+
+    fn source_filter(source: &str) -> bool {
+        FILTERS.fetch_add(1, Ordering::Relaxed);
+        source.contains("<!")
+    }
+
+    fn first(state: &InlineState<'_>, _: usize, _: usize) -> bool {
+        state
+            .shared_ext()
+            .get_or_insert_default::<Calls>()
+            .0
+            .push("first");
+        false
+    }
+
+    fn second(state: &InlineState<'_>, _: usize, _: usize) -> bool {
+        let mut shared = state.shared_ext();
+        shared.get_or_insert_default::<Calls>().0.push("second");
+        !shared.get_or_insert_default::<Disabled>().0
+    }
+
+    #[test]
+    fn hooks_registered_after_rule_compilation_are_used() {
+        let mut md = crate::MarkdownIt::empty();
+        let _ = md.inline.rules();
+        add_scan_hook(&mut md, |_, _, _| true);
+        let mut document = Document::new("", Root::new(""));
+        let state = InlineState::new(&mut document, "x", 0, 1, &md, md.inline.rules(), 0, 0);
+        assert!(scan_hooks_require_scan(&state, 0, 1));
+    }
+
+    #[test]
+    fn filters_are_lazy_and_shared_while_hooks_stay_live() {
+        FILTERS.store(0, Ordering::Relaxed);
+
+        let mut md = crate::MarkdownIt::empty();
+        add_scan_hook(&mut md, first);
+        add_filtered_scan_hook(&mut md, second, source_filter);
+        let mut document = Document::new("", Root::new(""));
+        let rules = md.inline.rules();
+        let source = "ab<!x";
+        let mut parent = InlineState::new(&mut document, source, 0, source.len(), &md, rules, 0, 0);
+        assert_eq!(FILTERS.load(Ordering::Relaxed), 0);
+        // Selection uses the full shared source, not the child window.
+        {
+            let child = parent.child_state(0..2).unwrap();
+            assert!(scan_hooks_require_scan(&child, 0, 2));
+            child.shared_ext().get_or_insert_default::<Disabled>().0 = true;
+            assert!(!scan_hooks_require_scan(&child, 0, 2));
+        }
+        assert!(!scan_hooks_require_scan(&parent, 0, source.len()));
+        assert_eq!(FILTERS.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            parent.shared_ext().get::<Calls>().unwrap().0,
+            ["first", "second", "first", "second", "first", "second"]
+        );
+
+        let other = InlineState::new(&mut document, "plain", 0, 5, &md, rules, 0, 0);
+        assert!(!scan_hooks_require_scan(&other, 0, 5));
+        assert!(!scan_hooks_require_scan(&other, 0, 5));
+        assert_eq!(FILTERS.load(Ordering::Relaxed), 2);
+        assert_eq!(
+            other.shared_ext().get::<Calls>().unwrap().0,
+            ["first", "first"]
+        );
     }
 }

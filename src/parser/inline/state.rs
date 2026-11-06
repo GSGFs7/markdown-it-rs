@@ -1,12 +1,12 @@
 //! Inline parsing state, source mapping, and nested parse sessions.
 
 use std::borrow::Cow;
-use std::cell::{RefCell, RefMut};
+use std::cell::{OnceCell, RefCell, RefMut};
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
 
-use super::{InlineRunRunner, RuleSet};
+use super::{InlineRunRunner, RuleSet, ScanHook};
 use crate::MarkdownIt;
 use crate::common::extset::{InlineRootExtSet, RootExtSet};
 use crate::document::{Document, NodeId, Text};
@@ -15,6 +15,9 @@ use crate::document::{Document, NodeId, Text};
 
 #[derive(Debug, Default)]
 struct FinishCallbacks(Vec<fn(&mut InlineState<'_>)>);
+
+/// Hooks selected once per full source and shared by child sessions.
+type ScanHookCache<'a> = Cow<'a, OnceCell<Vec<ScanHook>>>;
 
 pub struct InlineState<'a> {
     /// Markdown source.
@@ -50,6 +53,9 @@ pub struct InlineState<'a> {
 
     pub(crate) ruleset: &'a RuleSet,
 
+    /// Hooks selected once per full source; child sessions share the same cell.
+    scan_hooks: ScanHookCache<'a>,
+
     /// Nodes accumulated for the current inline container; rules append to it.
     nodes: Vec<NodeId>,
 
@@ -81,6 +87,11 @@ impl<'a> InlineState<'a> {
     /// session scratch. Drop the borrow before starting another session.
     pub fn shared_ext(&self) -> RefMut<'_, InlineRootExtSet> {
         RefMut::map(self.scan_limit_cache.borrow_mut(), |cache| &mut cache.ext)
+    }
+
+    pub(super) fn scan_hooks(&self) -> &[ScanHook] {
+        self.scan_hooks
+            .get_or_init(|| super::select_scan_hooks(self.md, &self.src))
     }
 
     /// Register a callback to run after this session's pending text is flushed.
@@ -135,6 +146,7 @@ impl<'a> InlineState<'a> {
             root_ext,
             link_level: 0,
             ruleset,
+            scan_hooks: Cow::Owned(OnceCell::new()),
             nodes: Vec::new(),
             document,
             pending_text: None,
@@ -209,6 +221,7 @@ impl<'a> InlineState<'a> {
             root_ext: self.root_ext,
             link_level,
             ruleset: self.ruleset,
+            scan_hooks: Cow::Borrowed(self.scan_hooks.as_ref()),
             nodes: Vec::new(),
             document: &mut *self.document,
             pending_text: None,

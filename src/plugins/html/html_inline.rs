@@ -9,7 +9,11 @@ use crate::parser::inline::{InlineRule, InlineState};
 use crate::render::{NodeRenderer, RenderContext};
 
 pub fn add(md: &mut MarkdownIt) {
-    crate::parser::inline::add_scan_hook(md, special_html_scan_hook);
+    crate::parser::inline::add_filtered_scan_hook(
+        md,
+        special_html_scan_hook,
+        source_has_special_html,
+    );
     md.inline.add_rule::<HtmlInlineScanner>();
     md.add_renderer::<HtmlInline, _>("html", HtmlInlineRenderer);
     md.add_renderer::<HtmlInline, _>("text", HtmlInlineRenderer);
@@ -18,11 +22,20 @@ pub fn add(md: &mut MarkdownIt) {
 /// Source-wide state for special HTML scanning.
 #[derive(Debug, Default)]
 struct HtmlSpecialScan {
-    /// Once a special HTML token has no closing delimiter in this inline
-    /// source, markdown-it stops treating later `<!/<?` sequences as HTML.
+    /// Set once a special HTML token lacks a closing delimiter.
     disabled: bool,
     /// Cached `<!/<?` starts, shared across nested inline sessions.
     starts: Option<Vec<usize>>,
+}
+
+/// `<!/<?` positions that can disable special HTML for the whole source.
+fn special_html_starts(source: &str) -> impl Iterator<Item = usize> + '_ {
+    let bytes = source.as_bytes();
+    memchr::memchr_iter(b'<', bytes).filter(|&pos| matches!(bytes.get(pos + 1), Some(b'!' | b'?')))
+}
+
+fn source_has_special_html(source: &str) -> bool {
+    special_html_starts(source).next().is_some()
 }
 
 fn special_html_scan_hook(state: &InlineState<'_>, start: usize, end: usize) -> bool {
@@ -31,16 +44,9 @@ fn special_html_scan_hook(state: &InlineState<'_>, start: usize, end: usize) -> 
     if scan.disabled {
         return false;
     }
-    let starts = scan.starts.get_or_insert_with(|| {
-        state
-            .src
-            .as_bytes()
-            .windows(2)
-            .enumerate()
-            .filter(|(_, pair)| *pair == b"<!" || *pair == b"<?")
-            .map(|(pos, _)| pos)
-            .collect()
-    });
+    let starts = scan
+        .starts
+        .get_or_insert_with(|| special_html_starts(&state.src).collect());
     let next = starts.partition_point(|&pos| pos <= start);
     starts.get(next).is_some_and(|&pos| pos < end)
 }
