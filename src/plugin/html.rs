@@ -9,16 +9,16 @@ use crate::render::{
 /// Small HTML tree builder passed to high-level renderers.
 ///
 /// Text and attribute values are escaped when they are added. The tree is
-/// emitted by [`render`](Self::render).
-#[derive(Debug, Default)]
+/// emitted by the plugin runtime.
+#[derive(Debug)]
 pub struct Html {
     nodes: Vec<HtmlNode>,
 }
 
 impl Html {
     /// Create an empty HTML fragment.
-    pub fn new() -> Self {
-        Self::default()
+    pub(crate) fn new() -> Self {
+        Self { nodes: Vec::new() }
     }
 
     /// Add a child element.
@@ -47,26 +47,11 @@ impl Html {
         self
     }
 
-    /// Render this fragment to an HTML string with default options.
-    pub fn render(&self) -> String {
-        self.render_with_options(&RenderOptions::default())
-    }
-
-    /// Render this fragment to an HTML string using the supplied options.
-    ///
-    /// Void elements use XHTML self-closing syntax when
-    /// [`RenderOptions::xhtml_out`] is enabled.
-    pub fn render_with_options(&self, options: &RenderOptions) -> String {
-        let mut output = Writer::default();
-        self.render_into(&mut output, options);
-        output.finish()
-    }
-
     /// Render this fragment directly into an existing writer.
     ///
     /// This avoids allocating an intermediate `String` when the fragment is
     /// part of a larger rendering pass.
-    pub fn render_into(&self, output: &mut Writer, options: &RenderOptions) {
+    pub(crate) fn render_into(&self, output: &mut Writer, options: &RenderOptions) {
         render_html_nodes(&self.nodes, output, options.xhtml_out);
     }
 }

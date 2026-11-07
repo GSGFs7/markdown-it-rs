@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use crate::MarkdownIt;
 use crate::document::{Document, NodeId, NodeValue};
 use crate::parser::inline::{InlineRule, InlineState};
 use crate::plugin::html::render_html_fragment;
@@ -10,10 +11,9 @@ use crate::plugin::renderer::{
     TextCallbackRenderer,
     WithRenderer,
 };
-use crate::plugin::spec::{PluginInstaller, RegistrationContext};
+use crate::plugin::spec::{PluginInstallContext, PluginInstaller, RegistrationContext};
 use crate::plugin::{Html, InlinePluginState, Plugin, PluginSpec};
 use crate::render::{NodeRenderer, RenderContext, Writer};
-use crate::MarkdownIt;
 
 /// A leaf node that owns its parsing and HTML rendering.
 ///
@@ -46,7 +46,10 @@ use crate::MarkdownIt;
 /// assert_eq!(md.render("a == b"), "<p>a <mark>marked</mark> b</p>\n");
 /// ```
 pub trait InlinePlugin: NodeValue + Sized + 'static {
-    /// Name used for diagnostics and plugin ordering.
+    /// Local rule name and default plugin name.
+    ///
+    /// Plugin ordering refers to the owning plugin name. The low-level rule
+    /// identity remains [`LeafRule<Self>`], independent of this local name.
     const NAME: &'static str;
 
     /// Character that may start this leaf.
@@ -58,6 +61,10 @@ pub trait InlinePlugin: NodeValue + Sized + 'static {
     ///
     /// Consumption is transactional: returning `None` discards the local
     /// cursor. A successful parse must consume at least one byte.
+    ///
+    /// The callback may run during boundary probing as well as actual parsing.
+    /// Returning `None` only rolls back the local cursor, not external side
+    /// effects, so keep the callback free of observable side effects.
     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self>;
 
     /// Render the parsed value as HTML.
@@ -133,8 +140,9 @@ impl<T: NodeValue, P, R> InlineLeafBuilder<T, P, R> {
         self
     }
 
-    /// Set the parser. Returning `None` rolls back local consumption.
-    /// A successful parse must consume at least one byte.
+    /// Set the parser. Returning `None` rolls back local consumption and a
+    /// successful parse must consume at least one byte. See
+    /// [`InlinePlugin::parse`] for probing and side-effect constraints.
     pub fn parse<F>(self, parse: F) -> InlineLeafBuilder<T, F, R>
     where
         F: Fn(&mut InlinePluginState<'_>) -> Option<T> + Send + Sync + 'static,
@@ -238,17 +246,23 @@ struct ConfiguredLeaf<T: NodeValue> {
 }
 
 impl<T: NodeValue> ConfiguredLeaf<T> {
-    fn parse(&self, source: &str) -> Option<(T, usize)> {
-        parse_leaf(&self.rule, source, |cx| (self.parse)(cx))
+    fn parse(&self, source: &str, markdown_it: &MarkdownIt) -> Option<(T, usize)> {
+        parse_leaf(&self.rule, source, markdown_it, |cx| (self.parse)(cx))
     }
 
-    fn run(&self, document: &mut Document, source: &str) -> Option<(NodeId, usize)> {
-        let (value, consumed) = self.parse(source)?;
+    fn run(
+        &self,
+        document: &mut Document,
+        source: &str,
+        markdown_it: &MarkdownIt,
+    ) -> Option<(NodeId, usize)> {
+        let (value, consumed) = self.parse(source, markdown_it)?;
         Some((document.create_node(value), consumed))
     }
 
-    fn check(&self, source: &str) -> Option<usize> {
-        self.parse(source).map(|(_, consumed)| consumed)
+    fn check(&self, source: &str, markdown_it: &MarkdownIt) -> Option<usize> {
+        self.parse(source, markdown_it)
+            .map(|(_, consumed)| consumed)
     }
 }
 
@@ -264,24 +278,27 @@ impl<T: NodeValue> PluginInstaller for ConfiguredLeaf<T> {
         );
     }
 
-    fn install(self: Box<Self>, md: &mut MarkdownIt) {
+    fn install(self: Box<Self>, md: &mut MarkdownIt, context: &PluginInstallContext<'_>) {
         let leaf = Arc::new(*self);
 
         let run_leaf = Arc::clone(&leaf);
         let run = Arc::new(move |state: &mut InlineState<'_>| {
+            let md = state.markdown_it();
             let (source, document) = state.remaining_and_document();
             run_leaf
-                .run(document, source)
+                .run(document, source, md)
                 .map(|(node, len)| (Some(node), len))
         });
 
         let check_leaf = Arc::clone(&leaf);
-        let check =
-            Arc::new(move |state: &mut InlineState<'_>| check_leaf.check(state.remaining()));
+        let check = Arc::new(move |state: &mut InlineState<'_>| {
+            let md = state.markdown_it();
+            check_leaf.check(state.remaining(), md)
+        });
 
         md.inline
             .add_dynamic_rule(
-                crate::common::RuleMark::named(format!("dynamic:{}", leaf.rule)),
+                crate::plugin::identity::rule_mark("inline", context.name, &leaf.rule),
                 leaf.marker,
                 run,
                 check,
@@ -293,9 +310,9 @@ impl<T: NodeValue> PluginInstaller for ConfiguredLeaf<T> {
 
 /// Low-level inline rule for an [`InlinePlugin`].
 ///
-/// [`PluginSpec::inline_leaf`] registers this automatically. It is public so
-/// static leaves can also use the low-level rule ordering, lookup and removal
-/// APIs.
+/// Registering an [`InlinePlugin`] or using [`PluginSpec::of`] installs this
+/// automatically. Static leaves can also use this type with the low-level
+/// rule ordering, lookup and removal APIs.
 pub struct LeafRule<P: InlinePlugin>(PhantomData<fn() -> P>);
 
 impl<P: InlinePlugin> LeafRule<P> {
@@ -303,8 +320,8 @@ impl<P: InlinePlugin> LeafRule<P> {
         Self(PhantomData)
     }
 
-    fn parse(source: &str) -> Option<(P, usize)> {
-        parse_leaf(P::NAME, source, P::parse)
+    fn parse(source: &str, markdown_it: &MarkdownIt) -> Option<(P, usize)> {
+        parse_leaf(P::NAME, source, markdown_it, P::parse)
     }
 }
 
@@ -329,7 +346,7 @@ impl<P: InlinePlugin> PluginInstaller for LeafRule<P> {
         );
     }
 
-    fn install(self: Box<Self>, md: &mut MarkdownIt) {
+    fn install(self: Box<Self>, md: &mut MarkdownIt, _context: &PluginInstallContext<'_>) {
         md.inline
             .add_rule::<LeafRule<P>>()
             .after_named("text")
@@ -342,11 +359,11 @@ impl<P: InlinePlugin> InlineRule for LeafRule<P> {
     const MARKER: char = P::MARKER;
 
     fn check(state: &mut InlineState<'_>) -> Option<usize> {
-        Self::parse(state.remaining()).map(|(_, len)| len)
+        Self::parse(state.remaining(), state.markdown_it()).map(|(_, len)| len)
     }
 
     fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
-        let (value, len) = Self::parse(state.remaining())?;
+        let (value, len) = Self::parse(state.remaining(), state.markdown_it())?;
         let (_, document) = state.remaining_and_document();
         let node = document.create_node(value);
         Some((Some(node), len))
@@ -355,8 +372,8 @@ impl<P: InlinePlugin> InlineRule for LeafRule<P> {
 
 /// HTML renderer for an [`InlinePlugin`].
 ///
-/// [`PluginSpec::inline_leaf`] registers this automatically. Use it during
-/// manual low-level registration with [`LeafRule`].
+/// Registering an [`InlinePlugin`] or using [`PluginSpec::of`] installs this
+/// automatically. Use it during manual low-level registration with [`LeafRule`].
 pub struct LeafRenderer<P: InlinePlugin> {
     marker: PhantomData<fn() -> P>,
 }
@@ -384,9 +401,10 @@ impl<P: InlinePlugin> NodeRenderer<P> for LeafRenderer<P> {
 fn parse_leaf<T>(
     rule: &str,
     source: &str,
+    markdown_it: &MarkdownIt,
     parse: impl FnOnce(&mut InlinePluginState<'_>) -> Option<T>,
 ) -> Option<(T, usize)> {
-    let mut cx = InlinePluginState::new(source);
+    let mut cx = InlinePluginState::new(source, markdown_it);
     let value = parse(&mut cx)?;
     let consumed = cx.consumed();
 

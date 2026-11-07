@@ -1,7 +1,9 @@
 use std::marker::PhantomData;
 
+use crate::MarkdownIt;
 use crate::document::{Document, NodeId, NodeValue};
 use crate::parser::inline::helpers::emph_pair;
+use crate::plugin::PluginSpec;
 use crate::plugin::container_context::{ContainerHtml, ContainerText};
 use crate::plugin::renderer::{
     ContainerHtmlRenderer,
@@ -9,10 +11,8 @@ use crate::plugin::renderer::{
     Renderers,
     WithRenderer,
 };
-use crate::plugin::spec::{PluginInstaller, RegistrationContext};
-use crate::plugin::PluginSpec;
+use crate::plugin::spec::{PluginInstallContext, PluginInstaller, RegistrationContext};
 use crate::render::{NodeRenderer, RenderContext, Writer};
-use crate::MarkdownIt;
 
 /// Compile-time delimiter configuration for an inline pair.
 pub struct PairDelimiter<const MARKER: char, const LENGTH: u8, const SPLIT: bool>;
@@ -111,8 +111,9 @@ impl<T: NodeValue, D, V, R> InlinePairBuilder<T, D, V, R> {
 
     /// Register an HTML renderer that wraps the pair's children in `tag`.
     ///
-    /// This is a shortcut for [`render_with`](Self::render_with). The last
-    /// renderer registered for a payload type and format wins.
+    /// This is a shortcut for [`render_with`](Self::render_with). Existing node
+    /// attributes are written on the tag. The last renderer registered for a
+    /// payload type and format wins.
     ///
     /// # Panics
     ///
@@ -226,7 +227,7 @@ where
             .claim(MARKER, LENGTH, SPLIT);
     }
 
-    fn install(self: Box<Self>, md: &mut MarkdownIt) {
+    fn install(self: Box<Self>, md: &mut MarkdownIt, _context: &PluginInstallContext<'_>) {
         let value = self.value;
         emph_pair::add_with_factory::<MARKER, LENGTH, SPLIT>(
             md,
@@ -247,7 +248,7 @@ impl<T: NodeValue> NodeRenderer<T> for InlinePairRenderer {
         context: &mut RenderContext<'_>,
         output: &mut Writer,
     ) {
-        crate::render::write_html_open(output, &self.tag, &[]);
+        crate::render::write_html_open(output, &self.tag, node.attrs());
         context.render_children(node.id(), output);
         crate::render::write_html_close(output, &self.tag);
     }

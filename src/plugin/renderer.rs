@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use super::Html;
 use super::container_context::{ContainerHtml, ContainerText};
 use super::html::render_html_fragment;
-use super::spec::{PluginInstaller, RegistrationContext};
+use super::spec::{PluginInstallContext, PluginInstaller, RegistrationContext};
 use crate::MarkdownIt;
 use crate::document::{Node, NodeValue};
 use crate::render::{NodeRenderer, RenderContext, Writer};
@@ -18,7 +18,7 @@ type InstallRenderer = Box<dyn FnOnce(&mut MarkdownIt) + Send>;
 pub(super) struct Renderers(Vec<InstallRenderer>);
 
 impl Renderers {
-    pub fn add<T: NodeValue, R: NodeRenderer<T>>(
+    pub(super) fn add<T: NodeValue, R: NodeRenderer<T>>(
         &mut self,
         format: impl Into<String>,
         renderer: R,
@@ -29,7 +29,10 @@ impl Renderers {
         }));
     }
 
-    pub fn attach<I: PluginInstaller + 'static>(self, installer: I) -> Box<dyn PluginInstaller> {
+    pub(super) fn attach<I: PluginInstaller + 'static>(
+        self,
+        installer: I,
+    ) -> Box<dyn PluginInstaller> {
         Box::new(RenderedInstaller {
             installer,
             renderers: self,
@@ -55,12 +58,12 @@ impl<I: PluginInstaller + 'static> PluginInstaller for RenderedInstaller<I> {
         self.installer.validate_registration(md, context);
     }
 
-    fn install(self: Box<Self>, md: &mut MarkdownIt) {
+    fn install(self: Box<Self>, md: &mut MarkdownIt, context: &PluginInstallContext<'_>) {
         let Self {
             installer,
             renderers,
         } = *self;
-        Box::new(installer).install(md);
+        Box::new(installer).install(md, context);
         for install in renderers.0 {
             install(md);
         }

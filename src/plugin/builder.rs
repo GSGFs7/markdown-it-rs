@@ -47,7 +47,8 @@ impl MarkdownItBuilder {
     ///
     /// Panics on duplicate plugin names, empty names or rule names, missing
     /// callbacks, missing dependencies, dependency cycles, ordering against
-    /// already-installed plugins, or invalid low-level rule chains.
+    /// already-installed plugins, or invalid low-level rule chains. If anything
+    /// fails, no parser is returned.
     pub fn build(mut self) -> MarkdownIt {
         let plugins = self
             .plugins
@@ -55,11 +56,6 @@ impl MarkdownItBuilder {
             .flat_map(PluginSpec::expand)
             .collect();
         install_plugins(&mut self.md, plugins);
-
-        let _ = self.md.rules();
-        let _ = self.md.block.rules();
-        let _ = self.md.inline.rules();
-        let _ = self.md.inline.text_length("", 0, 0);
         self.md
     }
 }

@@ -25,6 +25,11 @@ impl CoreRuleRunner {
         }
     }
 
+    /// Build a rule runner from a closure for runtime registration.
+    pub(crate) fn from_fn(run: impl Fn(&mut CoreState<'_>) + Send + Sync + 'static) -> Self {
+        Self { run: Arc::new(run) }
+    }
+
     pub(crate) fn run(&self, state: &mut CoreState<'_>) {
         (self.run)(state);
     }

@@ -7,10 +7,20 @@
 //!
 //! Configured syntax is added to a [`PluginSpec`] with
 //! [`PluginSpec::inline_leaf`], [`PluginSpec::inline_container`],
-//! [`PluginSpec::block_leaf`], [`PluginSpec::block_container`] or
-//! [`PluginSpec::inline_pair`]. All builders
+//! [`PluginSpec::block_leaf`], [`PluginSpec::block_container`],
+//! [`PluginSpec::inline_pair`] or [`PluginSpec::transform`]. Syntax builders
 //! accept low-level [`NodeRenderer`](crate::render::NodeRenderer)
 //! implementations with `.render_with(format, renderer)`.
+//!
+//! Rule names are local to their plugin and unique across all rule kinds;
+//! other plugins may reuse them. Groups keep child identities, and a same-name
+//! child merged with [`PluginSpec::with`] shares the parent's namespace.
+//!
+//! Logical names do not imply separate low-level rules: block syntax shares a
+//! dispatcher and pairs share a scanner per marker. Only transforms expose
+//! named ordering marks through [`transform_rule_mark`] and
+//! [`transform_plugin_mark`]; other syntax rules have no per-name ordering,
+//! lookup or removal. Mark encodings are internal.
 //!
 //! A payload type has one renderer per output format per parser. Register a
 //! second plugin for the same payload type only when it uses the same rendering;
@@ -77,13 +87,16 @@ mod block;
 mod builder;
 mod container_context;
 mod html;
+mod identity;
 mod inline;
 mod renderer;
 mod spec;
+mod transform;
 
 pub use self::block::{
     BlockContainerBuilder,
     BlockContainerParse,
+    BlockContainerState,
     BlockLeafBuilder,
     BlockPluginState,
 };
@@ -103,6 +116,7 @@ pub use self::inline::{
 };
 pub use self::renderer::WithRenderer;
 pub use self::spec::PluginSpec;
+pub use self::transform::{transform_plugin_mark, transform_rule_mark};
 
 /// A plugin that can be queued on a [`MarkdownItBuilder`].
 ///
@@ -114,6 +128,9 @@ pub trait Plugin {
     fn into_spec(self) -> PluginSpec;
 
     /// Install this plugin directly into an existing parser.
+    ///
+    /// This delegates to [`PluginSpec::install`], including its validation and
+    /// final rule-chain compilation behavior.
     fn install(self, md: &mut crate::MarkdownIt)
     where
         Self: Sized,

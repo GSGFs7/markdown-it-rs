@@ -308,3 +308,97 @@ fn arena_builder_rejects_cycles_before_modifying_links() {
     assert_eq!(document.parent(inner), Some(outer));
     assert!(document.children(inner).is_empty());
 }
+
+#[test]
+fn walk_visits_root_and_descendants_in_preorder() {
+    let mut document = Document::new("hello", Root::new("hello"));
+    let root = document.root();
+    let first = document.create_node(Paragraph);
+    let second = document.create_node(Paragraph);
+    let nested = document.create_node(Text {
+        content: "nested".to_owned(),
+    });
+    document.push_child(second, nested);
+    document.push_child(root, first);
+    document.push_child(root, second);
+
+    let mut visited = Vec::new();
+    document.walk(root, |id| visited.push(id));
+
+    assert_eq!(visited, [root, first, second, nested]);
+}
+
+#[test]
+fn wrap_children_preserves_order_and_updates_parents() {
+    let mut document = Document::new("hello", Root::new("hello"));
+    let root = document.root();
+    let first = document.create_node(Text {
+        content: "first".to_owned(),
+    });
+    let second = document.create_node(Text {
+        content: "second".to_owned(),
+    });
+    let third = document.create_node(Text {
+        content: "third".to_owned(),
+    });
+    document.push_child(root, first);
+    document.push_child(root, second);
+    document.push_child(root, third);
+    let wrapper = document.create_node(Paragraph);
+
+    document.wrap_children(root, 1..3, wrapper);
+
+    assert_eq!(document.children(root), &[first, wrapper]);
+    assert_eq!(document.children(wrapper), &[second, third]);
+    assert_eq!(document.parent(wrapper), Some(root));
+    assert_eq!(document.parent(second), Some(wrapper));
+    assert_eq!(document.parent(third), Some(wrapper));
+}
+
+#[test]
+fn wrap_children_supports_an_empty_range() {
+    let mut document = Document::new("hello", Root::new("hello"));
+    let root = document.root();
+    let first = document.create_node(Paragraph);
+    let second = document.create_node(Paragraph);
+    document.push_child(root, first);
+    document.push_child(root, second);
+    let wrapper = document.create_node(Paragraph);
+
+    document.wrap_children(root, 1..1, wrapper);
+
+    assert_eq!(document.children(root), &[first, wrapper, second]);
+    assert!(document.children(wrapper).is_empty());
+}
+
+#[test]
+#[should_panic(expected = "start must not exceed its end")]
+#[allow(clippy::reversed_empty_ranges)] // the invalid range is the test input
+fn wrap_children_rejects_a_reversed_range() {
+    let mut document = Document::new("hello", Root::new("hello"));
+    let root = document.root();
+    let wrapper = document.create_node(Paragraph);
+    document.wrap_children(root, 2..1, wrapper);
+}
+
+#[test]
+#[should_panic(expected = "exceeds")]
+fn wrap_children_rejects_an_out_of_bounds_range() {
+    let mut document = Document::new("hello", Root::new("hello"));
+    let root = document.root();
+    let wrapper = document.create_node(Paragraph);
+    document.wrap_children(root, 0..1, wrapper);
+}
+
+#[test]
+#[should_panic(expected = "child must be detached")]
+fn wrap_children_rejects_an_attached_wrapper() {
+    let mut document = Document::new("hello", Root::new("hello"));
+    let root = document.root();
+    let child = document.create_node(Paragraph);
+    let wrapper = document.create_node(Paragraph);
+    document.push_child(root, child);
+    document.push_child(root, wrapper);
+
+    document.wrap_children(root, 0..1, wrapper);
+}

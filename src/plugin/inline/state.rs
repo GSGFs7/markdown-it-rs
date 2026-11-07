@@ -1,3 +1,5 @@
+use crate::MarkdownIt;
+
 /// Cursor passed to an inline leaf parser.
 ///
 /// The cursor is local to one callback. Consumption is committed only when the
@@ -6,13 +8,15 @@
 pub struct InlinePluginState<'a> {
     source: &'a str,
     consumed: usize,
+    markdown_it: &'a MarkdownIt,
 }
 
 impl<'a> InlinePluginState<'a> {
-    pub(super) fn new(source: &'a str) -> Self {
+    pub(super) fn new(source: &'a str, markdown_it: &'a MarkdownIt) -> Self {
         Self {
             source,
             consumed: 0,
+            markdown_it,
         }
     }
 
@@ -24,6 +28,11 @@ impl<'a> InlinePluginState<'a> {
     /// The complete source window visible to this rule.
     pub fn source(&self) -> &'a str {
         self.source
+    }
+
+    /// Parser instance that owns the active inline rule.
+    pub fn markdown_it(&self) -> &'a MarkdownIt {
+        self.markdown_it
     }
 
     /// Number of bytes consumed so far.

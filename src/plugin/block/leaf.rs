@@ -4,7 +4,8 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use super::shared::{block_window_end, install_block_plugin, BlockPluginState, ErasedBlockPlugin};
+use super::shared::{BlockPluginState, ErasedBlockPlugin, block_window_end, install_block_plugin};
+use crate::MarkdownIt;
 use crate::document::{NodeId, NodeValue};
 use crate::parser::block::BlockState;
 use crate::plugin::renderer::{
@@ -13,10 +14,9 @@ use crate::plugin::renderer::{
     TextCallbackRenderer,
     WithRenderer,
 };
-use crate::plugin::spec::PluginInstaller;
+use crate::plugin::spec::{PluginInstallContext, PluginInstaller};
 use crate::plugin::{Html, PluginSpec};
 use crate::render::{NodeRenderer, Writer};
-use crate::MarkdownIt;
 
 type ParseFn<T> = Arc<dyn Fn(&mut BlockPluginState<'_>) -> Option<T> + Send + Sync + 'static>;
 
@@ -175,6 +175,7 @@ impl<T: NodeValue> ConfiguredBlockLeaf<T> {
             state.line,
             window_end,
             state.blk_indent,
+            state.md,
         );
         let value = (self.parse)(&mut cx)?;
         let consumed = cx.consumed_lines();
@@ -232,7 +233,7 @@ impl<T: NodeValue> PluginInstaller for ConfiguredBlockLeaf<T> {
         );
     }
 
-    fn install(self: Box<Self>, md: &mut MarkdownIt) {
+    fn install(self: Box<Self>, md: &mut MarkdownIt, _context: &PluginInstallContext<'_>) {
         install_block_plugin(md, Arc::new(*self));
     }
 }

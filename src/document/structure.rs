@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::ops::Range;
 
 use super::{Document, NodeId};
 
@@ -97,6 +98,54 @@ impl Document {
         self.node_mut(replacement).parent = Some(parent);
         self.node_mut(parent).children[index] = replacement;
         self.delete_subtree(target);
+    }
+
+    /// Wrap a contiguous sibling range in a detached `wrapper` node.
+    ///
+    /// Children in `range` keep their relative order and become the wrapper's
+    /// children. The wrapper takes their position in `parent`; any children the
+    /// wrapper already had remain before the wrapped range.
+    ///
+    /// ```
+    /// use markdown_it::{MarkdownIt, document::Text};
+    ///
+    /// let mut document = MarkdownIt::new().parse("first *second* third");
+    /// let paragraph = document.children(document.root())[0];
+    /// let first = document.children(paragraph)[0];
+    /// let middle = document.children(paragraph)[1];
+    /// let last = document.children(paragraph)[2];
+    ///
+    /// let wrapper = document.create_node(Text { content: String::new() });
+    /// document.wrap_children(paragraph, 1..3, wrapper);
+    ///
+    /// assert_eq!(document.children(paragraph), &[first, wrapper]);
+    /// assert_eq!(document.children(wrapper), &[middle, last]);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics before mutation on invalid IDs, a reversed or out-of-bounds
+    /// `range`, or an attached, root or cyclic `wrapper`.
+    #[track_caller]
+    pub fn wrap_children(&mut self, parent: NodeId, range: Range<usize>, wrapper: NodeId) {
+        let len = self.children(parent).len();
+        assert!(
+            range.start <= range.end,
+            "child range start must not exceed its end"
+        );
+        assert!(
+            range.end <= len,
+            "child range end {} exceeds {len} children",
+            range.end
+        );
+        self.check_attachment(parent, wrapper);
+
+        let mut children = self.take_children(parent);
+        for child in children.drain(range.clone()) {
+            self.push_child(wrapper, child);
+        }
+        children.insert(range.start, wrapper);
+        self.replace_children(parent, children);
     }
 
     /// Replace all children of `parent` in one operation.

@@ -6,4 +6,4 @@ mod shared;
 
 pub use self::container::{BlockContainerBuilder, BlockContainerParse};
 pub use self::leaf::BlockLeafBuilder;
-pub use self::shared::BlockPluginState;
+pub use self::shared::{BlockContainerState, BlockPluginState};

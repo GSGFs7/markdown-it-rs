@@ -1,6 +1,6 @@
 //! GitHub-style alert plugin.
 //!
-//! A core rule runs after inline parsing and rewrites blockquotes whose first
+//! A transform runs after inline parsing and rewrites blockquotes whose first
 //! line is an alert marker such as `[!NOTE]` into [`Alert`] containers. The
 //! marker line is removed and the rest of the blockquote becomes the body.
 //!
@@ -15,7 +15,7 @@
 //! # What it demonstrates
 //!
 //! - Rewriting an existing node while preserving its children.
-//! - Ordering a core rule after inline parsing and before dependent rules.
+//! - Scheduling a transform after inline parsing and before dependent rules.
 //! - Updating attributes and source maps with `EditBatch`.
 //! - Providing both HTML and plain-text renderers for one node type.
 //!
@@ -45,9 +45,8 @@ use markdown_it::MarkdownIt;
 use markdown_it::common::sourcemap::SourcePos;
 use markdown_it::common::utils::escape_html;
 use markdown_it::document::edit::EditBatch;
-use markdown_it::document::{Node, NodeId, Text};
-use markdown_it::parser::core::{CoreRule, CoreState};
-use markdown_it::parser::inline::InlineParserRule;
+use markdown_it::document::{Document, Node, NodeId, Text};
+use markdown_it::plugin::PluginSpec;
 use markdown_it::plugins::cmark::block::blockquote::Blockquote;
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
@@ -115,10 +114,6 @@ impl AlertKind {
 #[derive(Debug)]
 pub struct Alert(pub AlertKind);
 
-/// Core rule that rewrites `[!KIND]` blockquotes into [`Alert`] containers.
-#[derive(Default)]
-pub struct GhAlerts;
-
 struct Rewrite {
     blockquote: NodeId,
     marker: NodeId,
@@ -134,66 +129,61 @@ struct Rewrite {
     trimmed_map: Option<(usize, usize)>,
 }
 
-impl CoreRule for GhAlerts {
-    fn run(&self, state: &mut CoreState<'_>) {
-        let document = &mut *state.document;
-        let rewrites = collect_rewrites(document);
-        if rewrites.is_empty() {
-            return;
-        }
+fn rewrite_alerts(document: &mut Document, _md: &MarkdownIt) {
+    let rewrites = collect_rewrites(document);
+    if rewrites.is_empty() {
+        return;
+    }
 
-        let mut edits = EditBatch::new();
-        for rewrite in rewrites {
-            edits.replace_value(rewrite.blockquote, Alert(rewrite.kind));
-            edits.set_attribute(
-                rewrite.blockquote,
-                "class",
-                format!("markdown-alert markdown-alert-{}", rewrite.kind.name()),
-            );
-            if rewrite.body_is_empty {
-                // The marker paragraph holds nothing else; drop it whole.
-                document.remove_node(rewrite.paragraph);
-            } else {
-                document.remove_node(rewrite.marker);
-                if let Some(marker_break) = rewrite.marker_break {
-                    document.remove_node(marker_break);
-                }
-                // Removing the marker line does not move existing maps, so the
-                // paragraph would still claim the marker's source range.
-                #[cfg(feature = "sourcemap")]
-                if let Some((start, end)) = rewrite.trimmed_map {
-                    edits.set_source_map(rewrite.paragraph, Some(SourcePos::new(start, end)));
-                }
+    let mut edits = EditBatch::new();
+    for rewrite in rewrites {
+        edits.replace_value(rewrite.blockquote, Alert(rewrite.kind));
+        edits.set_attribute(
+            rewrite.blockquote,
+            "class",
+            format!("markdown-alert markdown-alert-{}", rewrite.kind.name()),
+        );
+        if rewrite.body_is_empty {
+            // The marker paragraph holds nothing else; drop it whole.
+            document.remove_node(rewrite.paragraph);
+        } else {
+            document.remove_node(rewrite.marker);
+            if let Some(marker_break) = rewrite.marker_break {
+                document.remove_node(marker_break);
+            }
+            // Removing the marker line does not move existing maps, so the
+            // paragraph would still claim the marker's source range.
+            #[cfg(feature = "sourcemap")]
+            if let Some((start, end)) = rewrite.trimmed_map {
+                edits.set_source_map(rewrite.paragraph, Some(SourcePos::new(start, end)));
             }
         }
-        edits.commit(document);
     }
+    edits.commit(document);
 }
 
 fn collect_rewrites(document: &markdown_it::document::Document) -> Vec<Rewrite> {
     let mut found = Vec::new();
-    let mut stack = vec![document.root()];
-    while let Some(id) = stack.pop() {
-        stack.extend(document.children(id).iter().rev().copied());
+    document.walk(document.root(), |id| {
         let node = document.node(id);
         if !node.is::<Blockquote>() {
-            continue;
+            return;
         }
         let Some(&paragraph) = node.children().first() else {
-            continue;
+            return;
         };
         let paragraph_node = document.node(paragraph);
         if !paragraph_node.is::<Paragraph>() {
-            continue;
+            return;
         }
         let Some(&marker) = paragraph_node.children().first() else {
-            continue;
+            return;
         };
         let Some(text) = document.value::<Text>(marker) else {
-            continue;
+            return;
         };
         let Some(kind) = AlertKind::from_marker(&text.content) else {
-            continue;
+            return;
         };
         // Only a break may follow the marker on its line; anything else means
         // the body started on the marker line, which GH also rejects.
@@ -224,7 +214,7 @@ fn collect_rewrites(document: &markdown_it::document::Document) -> Vec<Rewrite> 
             #[cfg(feature = "sourcemap")]
             trimmed_map,
         });
-    }
+    });
     found
 }
 
@@ -283,17 +273,26 @@ fn write_attrs(output: &mut Writer, attrs: &[(String, String)]) {
     }
 }
 
+/// Build the plugin.
+pub fn plugin() -> PluginSpec {
+    PluginSpec::new("gh-alert")
+        .transform("rewrite-alerts", rewrite_alerts)
+        .with(PluginSpec::custom("gh-alert", |md| {
+            md.add_renderer::<Alert, _>("html", AlertRenderer);
+            md.add_renderer::<Alert, _>("text", AlertTextRenderer);
+        }))
+}
+
+/// Install the rewrite and its renderers on a parser.
 pub fn install(md: &mut MarkdownIt) {
-    // Inline parsing builds the marker text node, so the rewrite runs after it.
-    md.add_rule::<GhAlerts>().after::<InlineParserRule>();
-    md.add_renderer::<Alert, _>("html", AlertRenderer);
-    md.add_renderer::<Alert, _>("text", AlertTextRenderer);
+    plugin().install(md);
 }
 
 #[cfg(test)]
 mod tests {
     use markdown_it::MarkdownIt;
     use markdown_it::document::Document;
+    use markdown_it::parser::core::{CoreRule, CoreState};
 
     use super::*;
 
@@ -446,8 +445,9 @@ mod tests {
 
         let mut md = MarkdownIt::new();
         markdown_it::plugins::cmark::add(&mut md);
-        // Registered first on purpose: constraints must order it after GhAlerts.
-        md.add_rule::<Observe>().after::<GhAlerts>();
+        // Registered first on purpose: constraints must order it after the transform.
+        md.add_rule::<Observe>()
+            .after_mark(markdown_it::plugin::transform_plugin_mark("gh-alert"));
         install(&mut md);
         assert!(
             md.render("> [!NOTE]\n> body\n").contains(

@@ -262,9 +262,26 @@ impl MarkdownIt {
         MarkdownItBuilder::new()
     }
 
-    /// [`crate::plugin::MarkdownItBuilder::build`]
-    pub(crate) fn rules(&self) -> &[CoreRuleRunner] {
-        self.ruler.iter().as_slice()
+    /// Register a runtime core rule under an explicit mark. (for plugin API)
+    pub(crate) fn add_dynamic_core_rule(
+        &mut self,
+        mark: RuleMark,
+        run: impl Fn(&mut CoreState<'_>) + Send + Sync + 'static,
+    ) -> RuleBuilder<'_, CoreRuleRunner> {
+        assert!(
+            !self.ruler.contains(mark.clone()),
+            "dynamic core rule mark is already registered: {mark:?}"
+        );
+        let item = self.ruler.add(mark, CoreRuleRunner::from_fn(run));
+        RuleBuilder::new(item)
+    }
+
+    /// Force every lazy rule chain and text scanner to compile. (for plugin API)
+    pub(crate) fn compile_rules(&self) {
+        let _ = self.ruler.iter();
+        let _ = self.block.rules();
+        let _ = self.inline.rules();
+        let _ = self.inline.text_length("", 0, 0);
     }
 }
 
@@ -286,7 +303,10 @@ fn normalize_input(src: &str) -> Cow<'_, str> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use super::MarkdownIt;
+    use crate::common::RuleMark;
     use crate::parser::block::BlockParserRule;
     use crate::parser::inline::TextScanner;
     use crate::plugins::cmark;
@@ -339,6 +359,37 @@ mod tests {
 
         assert_eq!(html, "<p>abc\u{FFFD}de\u{FFFD}</p>\n");
         assert!(!html.contains('\0'));
+    }
+
+    #[test]
+    fn dynamic_core_rules_register_by_mark_and_follow_ordering() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mut md = MarkdownIt::empty();
+
+        let first_seen = Arc::clone(&seen);
+        md.add_dynamic_core_rule(RuleMark::named("test::first"), move |_| {
+            first_seen.lock().unwrap().push("first");
+        })
+        .after::<BlockParserRule>();
+
+        let second_seen = Arc::clone(&seen);
+        md.add_dynamic_core_rule(RuleMark::named("test::second"), move |_| {
+            second_seen.lock().unwrap().push("second");
+        })
+        .after_named("test::first");
+
+        md.parse("text");
+
+        assert_eq!(*seen.lock().unwrap(), ["first", "second"]);
+    }
+
+    #[test]
+    #[should_panic(expected = "dynamic core rule mark is already registered")]
+    fn dynamic_core_rules_reject_duplicate_marks() {
+        let mut md = MarkdownIt::empty();
+        let mark = RuleMark::named("test::duplicate");
+        md.add_dynamic_core_rule(mark.clone(), |_| {});
+        md.add_dynamic_core_rule(mark, |_| {});
     }
 
     #[test]

@@ -1,16 +1,16 @@
 //! Inline wrapping plugin.
 //!
 //! Consumes `%` and records the completed node range of the current inline
-//! session in an `on_finish` callback. A core rule then wraps that range in a
+//! session in an `on_finish` callback. A transform then wraps that range in a
 //! [`Wrapped`] node after inline parsing. This plugin changes the AST without
 //! defining an HTML renderer.
 //!
 //! # What it demonstrates
 //!
 //! - Recording work in `on_finish` after pending Unicode text has become nodes.
-//! - Discovering callback data from a later core rule via `Document`.
+//! - Discovering callback data from a transform via `Document`.
 //! - Replacing sibling ranges while preserving node order and parent links.
-//! - Scheduling the wrapper between inline parsing and dependent core rules.
+//! - Scheduling the wrapper with `PluginSpec::transform`.
 //!
 //! # Test coverage
 //!
@@ -28,9 +28,9 @@
 //!   rules, regardless of registration order.
 
 use markdown_it::MarkdownIt;
-use markdown_it::document::NodeId;
-use markdown_it::parser::core::{CoreRule, CoreState};
-use markdown_it::parser::inline::{InlineParserRule, InlineRule, InlineState};
+use markdown_it::document::{Document, NodeId};
+use markdown_it::parser::inline::{InlineRule, InlineState};
+use markdown_it::plugin::PluginSpec;
 
 #[derive(Debug)]
 pub struct Wrapped;
@@ -40,10 +40,18 @@ pub struct WrapAtFinish;
 #[derive(Debug)]
 struct PendingWrap(NodeId);
 
-/// Install both stages; wrapping becomes visible after inline parsing finishes.
+/// Build the plugin; wrapping becomes visible after inline parsing finishes.
+pub fn plugin() -> PluginSpec {
+    PluginSpec::new("wrap")
+        .with(PluginSpec::custom("wrap", |md| {
+            md.inline.add_rule::<WrapAtFinish>();
+        }))
+        .transform("apply-wraps", apply_wraps)
+}
+
+/// Install both stages on a parser.
 pub fn install(md: &mut MarkdownIt) {
-    md.inline.add_rule::<WrapAtFinish>();
-    md.add_rule::<ApplyWraps>().after::<InlineParserRule>();
+    plugin().install(md);
 }
 
 impl InlineRule for WrapAtFinish {
@@ -64,7 +72,7 @@ fn record_wrap(state: &mut InlineState<'_>) {
     let (Some(&first), Some(&last)) = (state.nodes().first(), state.nodes().last()) else {
         return;
     };
-    // Record on the first node rather than in source-wide scratch: core rules
+    // Record on the first node rather than in source-wide scratch: transforms
     // can discover it after the session's nodes attach to their parent.
     state
         .document
@@ -73,33 +81,22 @@ fn record_wrap(state: &mut InlineState<'_>) {
         .insert(PendingWrap(last));
 }
 
-#[derive(Default)]
-struct ApplyWraps;
+fn apply_wraps(document: &mut Document, _md: &MarkdownIt) {
+    let mut ranges = Vec::new();
+    document.walk(document.root(), |id| {
+        if let Some(pending) = document.node(id).ext().get::<PendingWrap>() {
+            ranges.push((id, pending.0));
+        }
+    });
 
-impl CoreRule for ApplyWraps {
-    fn run(&self, state: &mut CoreState<'_>) {
-        let document = &mut *state.document;
-        let mut stack = vec![document.root()];
-        let mut ranges = Vec::new();
-        while let Some(id) = stack.pop() {
-            stack.extend(document.children(id).iter().rev().copied());
-            if let Some(range) = document.node_mut(id).ext_mut().remove::<PendingWrap>() {
-                ranges.push((id, range.0));
-            }
-        }
-        for (first, last) in ranges {
-            let parent = document.parent(first).expect("inline nodes are attached");
-            let siblings = document.children(parent);
-            let start = siblings.iter().position(|&id| id == first).unwrap();
-            let end = siblings.iter().position(|&id| id == last).unwrap();
-            let mut children = document.take_children(parent);
-            let wrapper = document.create_node(Wrapped);
-            for child in children.drain(start..=end) {
-                document.push_child(wrapper, child);
-            }
-            children.insert(start, wrapper);
-            document.replace_children(parent, children);
-        }
+    for (first, last) in ranges {
+        document.node_mut(first).ext_mut().remove::<PendingWrap>();
+        let parent = document.parent(first).expect("inline nodes are attached");
+        let siblings = document.children(parent);
+        let start = siblings.iter().position(|&id| id == first).unwrap();
+        let end = siblings.iter().position(|&id| id == last).unwrap();
+        let wrapper = document.create_node(Wrapped);
+        document.wrap_children(parent, start..end + 1, wrapper);
     }
 }
 
@@ -107,6 +104,7 @@ impl CoreRule for ApplyWraps {
 mod tests {
     use markdown_it::document::Document;
     use markdown_it::document::edit::EditBatch;
+    use markdown_it::parser::core::{CoreRule, CoreState};
 
     use super::*;
 
@@ -197,7 +195,8 @@ mod tests {
         markdown_it::plugins::cmark::add(&mut md);
         // Register the consumer first: constraints, not registration order,
         // must put it after the producer.
-        md.add_rule::<Observe>().after::<ApplyWraps>();
+        md.add_rule::<Observe>()
+            .after_mark(markdown_it::plugin::transform_plugin_mark("wrap"));
         install(&mut md);
         let doc = md.parse("雪%");
         let paragraph = doc.children(doc.root())[0];

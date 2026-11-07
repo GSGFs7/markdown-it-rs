@@ -7,16 +7,16 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::MarkdownIt;
 use crate::document::NodeId;
 use crate::parser::block::{BlockRule, BlockState, LineOffset};
-use crate::MarkdownIt;
 
-/// Cursor passed to block leaf and block container parsers.
+/// Mutable cursor passed to block leaf parsers.
 ///
 /// A leaf commits consumption only when its callback returns `Some`, so a
-/// failed match rolls back automatically. Containers return their layout with
-/// [`BlockContainerParse`](crate::plugin::BlockContainerParse). Line offsets
-/// are relative to the current cursor, starting at the rule's first line.
+/// failed match rolls back automatically. Line offsets are relative to the
+/// current cursor, starting at the rule's first line. Block containers use the
+/// read-only [`BlockContainerState`] instead.
 #[derive(Debug)]
 pub struct BlockPluginState<'a> {
     source: &'a str,
@@ -25,15 +25,17 @@ pub struct BlockPluginState<'a> {
     line_max: usize,
     blk_indent: usize,
     consumed: usize,
+    markdown_it: &'a MarkdownIt,
 }
 
 impl<'a> BlockPluginState<'a> {
-    pub(in crate::plugin) fn new(
+    pub(super) fn new(
         source: &'a str,
         line_offsets: &'a [LineOffset],
         start: usize,
         line_max: usize,
         blk_indent: usize,
+        markdown_it: &'a MarkdownIt,
     ) -> Self {
         Self {
             source,
@@ -42,6 +44,7 @@ impl<'a> BlockPluginState<'a> {
             line_max,
             blk_indent,
             consumed: 0,
+            markdown_it,
         }
     }
 
@@ -80,6 +83,11 @@ impl<'a> BlockPluginState<'a> {
         self.source
     }
 
+    /// Parser instance that owns the active block rule.
+    pub fn markdown_it(&self) -> &'a MarkdownIt {
+        self.markdown_it
+    }
+
     /// Number of lines consumed so far.
     pub fn consumed_lines(&self) -> usize {
         self.consumed
@@ -109,6 +117,86 @@ impl<'a> BlockPluginState<'a> {
         }
         self.consumed = consumed;
         true
+    }
+}
+
+/// Read-only line view passed to block container parsers.
+///
+/// Consumption is defined solely by the returned
+/// [`BlockContainerParse`](crate::plugin::BlockContainerParse) line counts;
+/// offsets are relative to the container's first line.
+#[derive(Debug, Clone, Copy)]
+pub struct BlockContainerState<'a> {
+    source: &'a str,
+    line_offsets: &'a [LineOffset],
+    start: usize,
+    line_max: usize,
+    blk_indent: usize,
+    markdown_it: &'a MarkdownIt,
+}
+
+impl<'a> BlockContainerState<'a> {
+    pub(super) fn new(
+        source: &'a str,
+        line_offsets: &'a [LineOffset],
+        start: usize,
+        line_max: usize,
+        blk_indent: usize,
+        markdown_it: &'a MarkdownIt,
+    ) -> Self {
+        Self {
+            source,
+            line_offsets,
+            start,
+            line_max,
+            blk_indent,
+            markdown_it,
+        }
+    }
+
+    fn index(&self, offset: usize) -> Option<usize> {
+        let index = self.start.checked_add(offset)?;
+        (index < self.line_max).then_some(index)
+    }
+
+    /// Return a line by offset, or `None` past the block window.
+    ///
+    /// Leading indentation and the line ending are stripped.
+    pub fn line(&self, offset: usize) -> Option<&'a str> {
+        let index = self.index(offset)?;
+        let offsets = self.line_offsets.get(index)?;
+        Some(&self.source[offsets.first_nonspace..offsets.line_end])
+    }
+
+    /// Return a line's indentation relative to the active block container.
+    ///
+    /// Returns `None` past the block window. The value can be negative when a
+    /// line outdents the current list item.
+    pub fn line_indent(&self, offset: usize) -> Option<i32> {
+        let index = self.index(offset)?;
+        let offsets = self.line_offsets.get(index)?;
+        Some(offsets.indent_nonspace - self.blk_indent as i32)
+    }
+
+    /// Return whether a line is empty, or `None` past the block window.
+    pub fn is_empty(&self, offset: usize) -> Option<bool> {
+        let index = self.index(offset)?;
+        Some(self.line_offsets[index].first_nonspace >= self.line_offsets[index].line_end)
+    }
+
+    /// The complete Markdown source visible to the block parser.
+    pub fn source(&self) -> &'a str {
+        self.source
+    }
+
+    /// Parser instance that owns the active block rule.
+    pub fn markdown_it(&self) -> &'a MarkdownIt {
+        self.markdown_it
+    }
+
+    /// Number of lines left in the current block window.
+    pub fn remaining_lines(&self) -> usize {
+        self.line_max.saturating_sub(self.start)
     }
 }
 

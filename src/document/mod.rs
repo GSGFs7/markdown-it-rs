@@ -154,6 +154,37 @@ impl Document {
         self.node(id).children()
     }
 
+    /// Visit `root` and its descendants in preorder.
+    ///
+    /// This reuses [`Document::events`], so traversal memory grows with nesting
+    /// depth rather than with the number of siblings. The callback receives
+    /// node IDs and cannot mutate the document during the walk; collect IDs
+    /// first, then apply structural edits after it returns.
+    ///
+    /// ```
+    /// use markdown_it::MarkdownIt;
+    ///
+    /// let document = MarkdownIt::new().parse("hello");
+    /// let mut visited = Vec::new();
+    /// document.walk(document.root(), |id| visited.push(id));
+    ///
+    /// assert_eq!(visited[0], document.root());
+    /// assert_eq!(visited.len(), document.len());
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if `root` is invalid or stale.
+    #[track_caller]
+    pub fn walk(&self, root: NodeId, mut visit: impl FnMut(NodeId)) {
+        for event in self.events(root) {
+            match event {
+                StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => visit(node.id()),
+                StructuralEvent::Exit(_) => {}
+            }
+        }
+    }
+
     /// Attach a detached node to a parent.
     ///
     /// The caller must ensure attaching would not create a cycle. Ancestor

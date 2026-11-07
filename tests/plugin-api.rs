@@ -514,7 +514,7 @@ fn assert_panics(run: impl FnOnce()) {
 
 #[test]
 fn missing_dependencies_panic_during_build() {
-    let missing = PluginSpec::new("missing").after("absent");
+    let missing = PluginSpec::new("missing").require("absent");
     assert_panics(|| {
         MarkdownIt::builder().plugin(missing).build();
     });
@@ -565,6 +565,23 @@ fn low_level_dependency_errors_are_found_during_build() {
             })
             .build();
     });
+}
+
+#[test]
+fn direct_installation_finds_low_level_dependency_errors() {
+    use markdown_it::parser::core::{CoreRule, CoreState};
+
+    struct Never;
+    impl CoreRule for Never {
+        fn run(&self, _: &mut CoreState<'_>) {}
+    }
+
+    let plugin = PluginSpec::custom("broken", |md| {
+        md.add_rule_instance(Never).require_named("absent");
+    });
+
+    let mut md = MarkdownIt::new();
+    assert_panics(|| plugin.install(&mut md));
 }
 
 #[test]

@@ -9,6 +9,7 @@ use std::marker::PhantomData;
 use std::ops::Range;
 use std::sync::Arc;
 
+use crate::MarkdownIt;
 use crate::document::{Node, NodeId, NodeValue};
 use crate::parser::inline::InlineState;
 use crate::plugin::container_context::{ContainerHtml, ContainerText};
@@ -19,10 +20,9 @@ use crate::plugin::renderer::{
     Renderers,
     WithRenderer,
 };
-use crate::plugin::spec::PluginInstaller;
+use crate::plugin::spec::{PluginInstallContext, PluginInstaller};
 use crate::plugin::{InlinePluginState, PluginSpec};
-use crate::render::{write_html_close, write_html_open, NodeRenderer, RenderContext, Writer};
-use crate::MarkdownIt;
+use crate::render::{NodeRenderer, RenderContext, Writer, write_html_close, write_html_open};
 
 /// Cursor passed to an inline container parser.
 ///
@@ -38,20 +38,25 @@ pub struct InlineContainerState<'a> {
 }
 
 impl<'a> InlineContainerState<'a> {
-    pub(in crate::plugin) fn new(state: &'a mut InlineState<'_>) -> Self {
+    fn new(state: &'a mut InlineState<'_>) -> Self {
         Self {
-            cursor: InlinePluginState::new(state.remaining()),
+            cursor: InlinePluginState::new(state.remaining(), state.markdown_it()),
             markdown_it: state.markdown_it(),
         }
     }
 
     /// Unconsumed source available to this rule.
-    pub fn remaining(&self) -> &str {
+    ///
+    /// The returned reference borrows the underlying source, not `self`, so it
+    /// remains usable after advancing the cursor.
+    pub fn remaining(&self) -> &'a str {
         self.cursor.remaining()
     }
 
     /// The complete source window visible to this rule.
-    pub fn source(&self) -> &str {
+    ///
+    /// The returned reference borrows the underlying source, not `self`.
+    pub fn source(&self) -> &'a str {
         self.cursor.source()
     }
 
@@ -95,7 +100,7 @@ pub(super) struct ContainerTagRenderer<T> {
 }
 
 impl<T> ContainerTagRenderer<T> {
-    pub(super) fn new(tag: String) -> Self {
+    fn new(tag: String) -> Self {
         Self {
             tag,
             payload: PhantomData,
@@ -322,9 +327,9 @@ impl<T: NodeValue> PluginInstaller for ConfiguredInlineContainer<T> {
         );
     }
 
-    fn install(self: Box<Self>, md: &mut MarkdownIt) {
+    fn install(self: Box<Self>, md: &mut MarkdownIt, context: &PluginInstallContext<'_>) {
         let container = Arc::new(*self);
-        let mark = crate::common::RuleMark::named(format!("dynamic:{}", container.rule));
+        let mark = crate::plugin::identity::rule_mark("inline", context.name, &container.rule);
 
         let run_container = Arc::clone(&container);
         let run = Arc::new(move |state: &mut InlineState<'_>| run_container.run(state));

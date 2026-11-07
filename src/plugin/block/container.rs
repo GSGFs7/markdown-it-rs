@@ -9,9 +9,16 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use super::shared::{block_window_end, install_block_plugin, BlockPluginState, ErasedBlockPlugin};
+use super::shared::{
+    BlockContainerState,
+    ErasedBlockPlugin,
+    block_window_end,
+    install_block_plugin,
+};
+use crate::MarkdownIt;
 use crate::document::{Node, NodeId, NodeValue};
 use crate::parser::block::BlockState;
+use crate::plugin::PluginSpec;
 use crate::plugin::container_context::{ContainerHtml, ContainerText};
 use crate::plugin::html::validate_tag;
 use crate::plugin::renderer::{
@@ -20,10 +27,8 @@ use crate::plugin::renderer::{
     Renderers,
     WithRenderer,
 };
-use crate::plugin::spec::PluginInstaller;
-use crate::plugin::PluginSpec;
-use crate::render::{write_html_close, write_html_open, NodeRenderer, RenderContext, Writer};
-use crate::MarkdownIt;
+use crate::plugin::spec::{PluginInstallContext, PluginInstaller};
+use crate::render::{NodeRenderer, RenderContext, Writer, write_html_close, write_html_open};
 
 pub(super) struct BlockContainerTagRenderer<T> {
     tag: String,
@@ -31,7 +36,7 @@ pub(super) struct BlockContainerTagRenderer<T> {
 }
 
 impl<T> BlockContainerTagRenderer<T> {
-    pub(super) fn new(tag: String) -> Self {
+    fn new(tag: String) -> Self {
         Self {
             tag,
             payload: PhantomData,
@@ -52,9 +57,8 @@ impl<T: NodeValue> NodeRenderer<T> for BlockContainerTagRenderer<T> {
     }
 }
 
-type ContainerParseFn<T> = Arc<
-    dyn Fn(&mut BlockPluginState<'_>) -> Option<BlockContainerParse<T>> + Send + Sync + 'static,
->;
+type ContainerParseFn<T> =
+    Arc<dyn Fn(&BlockContainerState<'_>) -> Option<BlockContainerParse<T>> + Send + Sync + 'static>;
 
 /// Layout returned by a block container parser.
 ///
@@ -120,16 +124,17 @@ impl<T: NodeValue, P, R> BlockContainerBuilder<T, P, R> {
 
     /// Set the parser for the container layout.
     ///
-    /// Read lines with [`BlockPluginState::line`] and inspect indentation with
-    /// [`BlockPluginState::line_indent`]. Return the payload and line counts;
-    /// the builder creates the node and parses the body after a successful
-    /// match.
+    /// Read lines with [`BlockContainerState::line`] and inspect indentation
+    /// with [`BlockContainerState::line_indent`]. Return the payload and line
+    /// counts; the builder creates the node and parses the body after a
+    /// successful match. The counts are always relative to the callback's
+    /// initial line and are the only source of consumption.
     ///
     /// The callback must be free of side effects because it may also run while
     /// probing paragraph interruption.
     pub fn parse<F>(self, parse: F) -> BlockContainerBuilder<T, F, R>
     where
-        F: Fn(&mut BlockPluginState<'_>) -> Option<BlockContainerParse<T>> + Send + Sync + 'static,
+        F: Fn(&BlockContainerState<'_>) -> Option<BlockContainerParse<T>> + Send + Sync + 'static,
     {
         BlockContainerBuilder {
             plugin: self.plugin,
@@ -207,7 +212,7 @@ impl<T: NodeValue, P, R> BlockContainerBuilder<T, P, R> {
 
 impl<T: NodeValue, P> BlockContainerBuilder<T, P, WithRenderer>
 where
-    P: Fn(&mut BlockPluginState<'_>) -> Option<BlockContainerParse<T>> + Send + Sync + 'static,
+    P: Fn(&BlockContainerState<'_>) -> Option<BlockContainerParse<T>> + Send + Sync + 'static,
 {
     /// Add the container to its plugin and continue building that plugin.
     pub fn finish(self) -> PluginSpec {
@@ -244,14 +249,15 @@ impl<T: NodeValue> ConfiguredBlockContainer<T> {
         }
 
         let window_end = block_window_end(state);
-        let mut cx = BlockPluginState::new(
+        let cx = BlockContainerState::new(
             state.src,
             &state.line_offsets,
             state.line,
             window_end,
             state.blk_indent,
+            state.md,
         );
-        let parsed = (self.parse)(&mut cx)?;
+        let parsed = (self.parse)(&cx)?;
         let total = self.validate(state, window_end, &parsed);
         Some((parsed, total))
     }
@@ -364,7 +370,7 @@ impl<T: NodeValue> PluginInstaller for ConfiguredBlockContainer<T> {
         );
     }
 
-    fn install(self: Box<Self>, md: &mut MarkdownIt) {
+    fn install(self: Box<Self>, md: &mut MarkdownIt, _context: &PluginInstallContext<'_>) {
         install_block_plugin(md, Arc::new(*self));
     }
 }
