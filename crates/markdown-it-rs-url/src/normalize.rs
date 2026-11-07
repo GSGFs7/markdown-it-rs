@@ -5,6 +5,47 @@ use crate::parse::ParsedUrl;
 use crate::percent::encode_url;
 
 pub fn format_url_for_computers(input: &str) -> String {
+    if is_known_unchanged(input) {
+        return input.to_owned();
+    }
+    format_url_for_computers_general(input)
+}
+
+/// Recognize a deliberately narrow subset whose parse/encode/format round trip
+/// is an identity. Everything else keeps the complete mdurl-compatible path.
+fn is_known_unchanged(input: &str) -> bool {
+    let path = if let Some(rest) = input
+        .strip_prefix("https://")
+        .or_else(|| input.strip_prefix("http://"))
+    {
+        let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+        if host.is_empty()
+            || host.len() > 255
+            || !host.split('.').all(|label| {
+                !label.is_empty()
+                    && label.len() <= 63
+                    && label
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            })
+        {
+            return false;
+        }
+        path
+    } else {
+        // A protocol-relative URL needs authority parsing, even if all its
+        // characters happen to be in the relative-path alphabet below.
+        if input.starts_with("//") {
+            return false;
+        }
+        input
+    };
+    path.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/')
+    })
+}
+
+fn format_url_for_computers_general(input: &str) -> String {
     let mut url = ParsedUrl::parse(input);
     if url.recodes_hostname()
         && let Some(host) = &mut url.hostname
@@ -34,6 +75,97 @@ pub fn format_url_for_computers(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn identity_fast_path_matches_general_normalization() {
+        for path in ["", "image.png", "/a/b", "../a-_.~", "a//b"] {
+            assert!(is_known_unchanged(path), "{path}");
+            assert_eq!(
+                format_url_for_computers(path),
+                format_url_for_computers_general(path)
+            );
+            for prefix in [
+                "http://example.test/",
+                "https://EXAMPLE.test/",
+                "https://127.0.0.1/",
+            ] {
+                let url = format!("{prefix}{path}");
+                assert!(is_known_unchanged(&url), "{url}");
+                assert_eq!(
+                    format_url_for_computers(&url),
+                    format_url_for_computers_general(&url)
+                );
+            }
+        }
+        for url in ["http://example.test", "https://example.test"] {
+            assert!(is_known_unchanged(url));
+            assert_eq!(
+                format_url_for_computers(url),
+                format_url_for_computers_general(url)
+            );
+        }
+    }
+
+    #[test]
+    fn identity_fast_path_rejects_structural_and_encoding_edge_cases() {
+        let mut inputs: Vec<String> = [
+            "//example.test/a",
+            "//",
+            "https://",
+            "https:///a",
+            "https://a..b/",
+            "https://a:/",
+            "https://a:80/",
+            "https://@a/",
+            "https://u:p@a/",
+            "https://[::1]/",
+            "https://foo:bad:80/a",
+            "HTTP://a/",
+            "mailto:x@a",
+            "javascript:alert(1)",
+            "data:image/png;x",
+            "https://クロ.com/a",
+            "/a b",
+            "/a%20b",
+            "/a%",
+            "/a\\b",
+            "/a?b=c",
+            "/a#b",
+            "/雪",
+            " https://a/",
+            "https://a/\n",
+            "https://a/\u{feff}",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+        inputs.push(format!("https://{}.test/", "a".repeat(64)));
+        inputs.push(format!("https://{}/", vec!["a".repeat(63); 5].join(".")));
+        for input in &inputs {
+            assert!(!is_known_unchanged(input), "{input:?}");
+        }
+        // Every excluded byte is checked in both the authority and path. The
+        // public function must still agree with the complete implementation.
+        for byte in 0u8..=127 {
+            inputs.push(format!("https://a{}b/path", byte as char));
+            inputs.push(format!("/a{}b", byte as char));
+        }
+        for input in inputs {
+            assert_eq!(
+                format_url_for_computers(&input),
+                format_url_for_computers_general(&input),
+                "{input:?}"
+            );
+        }
+        let max_host = vec!["a".repeat(63); 4].join(".");
+        let url = format!("https://{max_host}/");
+        assert_eq!(max_host.len(), 255);
+        assert!(is_known_unchanged(&url));
+        assert_eq!(
+            format_url_for_computers(&url),
+            format_url_for_computers_general(&url)
+        );
+    }
 
     #[test]
     fn trims_javascript_whitespace_before_normalizing() {
