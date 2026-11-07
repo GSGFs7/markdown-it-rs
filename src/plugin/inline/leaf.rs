@@ -1,14 +1,19 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use super::html::render_html_fragment;
-use super::renderer::{HtmlCallbackRenderer, Renderers, TextCallbackRenderer, WithRenderer};
-use super::spec::{PluginInstaller, RegistrationContext};
-use super::{Html, InlinePluginState, Plugin, PluginSpec};
-use crate::MarkdownIt;
 use crate::document::{Document, NodeId, NodeValue};
 use crate::parser::inline::{InlineRule, InlineState};
+use crate::plugin::html::render_html_fragment;
+use crate::plugin::renderer::{
+    HtmlCallbackRenderer,
+    Renderers,
+    TextCallbackRenderer,
+    WithRenderer,
+};
+use crate::plugin::spec::{PluginInstaller, RegistrationContext};
+use crate::plugin::{Html, InlinePluginState, Plugin, PluginSpec};
 use crate::render::{NodeRenderer, RenderContext, Writer};
+use crate::MarkdownIt;
 
 /// A leaf node that owns its parsing and HTML rendering.
 ///
@@ -108,7 +113,7 @@ pub struct InlineLeafBuilder<T: NodeValue, P = (), R = ()> {
 }
 
 impl<T: NodeValue> InlineLeafBuilder<T> {
-    pub(super) fn new(plugin: PluginSpec, rule: String) -> Self {
+    pub(in crate::plugin) fn new(plugin: PluginSpec, rule: String) -> Self {
         Self {
             plugin,
             rule,
@@ -294,7 +299,7 @@ impl<T: NodeValue> PluginInstaller for ConfiguredLeaf<T> {
 pub struct LeafRule<P: InlinePlugin>(PhantomData<fn() -> P>);
 
 impl<P: InlinePlugin> LeafRule<P> {
-    pub(super) fn new() -> Self {
+    pub(in crate::plugin) fn new() -> Self {
         Self(PhantomData)
     }
 

@@ -585,6 +585,223 @@ fn configured_block_leaf_rejects_zero_line_success() {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
+struct Admonition(String);
+
+fn admonition(interrupts_paragraph: bool) -> PluginSpec {
+    PluginSpec::new("admonition")
+        .block_container::<Admonition>("admonition")
+        .interrupts_paragraph(interrupts_paragraph)
+        .parse(|cx| {
+            let title = cx.line(0)?.strip_prefix(":::")?.trim().to_owned();
+            let close = (1..cx.remaining_lines()).find(|&line| cx.line(line) == Some(":::"));
+            let body_end = close.unwrap_or(cx.remaining_lines());
+            Some(BlockContainerParse {
+                value: Admonition(title),
+                open_lines: 1,
+                body_lines: body_end - 1,
+                close_lines: usize::from(close.is_some()),
+                content_indent: 0,
+            })
+        })
+        .html_tag("div")
+        .finish()
+}
+
+#[test]
+fn configured_block_container_parses_body_as_blocks() {
+    let md = MarkdownIt::builder().plugin(admonition(false)).build();
+    assert_eq!(
+        md.render("::: note\nbody *here*\n:::"),
+        "<div>\n<p>body <em>here</em></p>\n</div>\n"
+    );
+}
+
+#[test]
+fn configured_block_container_accepts_nested_blocks_and_following_content() {
+    let md = MarkdownIt::builder().plugin(admonition(false)).build();
+    let html = md.render("::: note\n- one\n- two\n\n> quote\n\n```\ncode\n```\n:::\nafter");
+
+    assert!(html.contains("<div>"));
+    assert!(html.contains("<ul>"));
+    assert!(html.contains("<blockquote>"));
+    assert!(html.contains("<pre><code>code\n</code></pre>"));
+    assert!(html.ends_with("</div>\n<p>after</p>\n"));
+}
+
+#[test]
+fn configured_block_container_supports_unclosed_body() {
+    let md = MarkdownIt::builder().plugin(admonition(false)).build();
+    assert_eq!(
+        md.render("::: note\nbody\nlast"),
+        "<div>\n<p>body\nlast</p>\n</div>\n"
+    );
+}
+
+#[test]
+fn configured_block_container_works_inside_list_items() {
+    let md = MarkdownIt::builder().plugin(admonition(false)).build();
+    let html = md.render("- ::: note\n  body\n  :::\n\nafter");
+
+    assert!(html.contains("<li>"));
+    assert!(html.contains("<div>\n<p>body</p>\n</div>"));
+    assert!(html.ends_with("<p>after</p>\n"));
+}
+
+#[test]
+fn configured_block_container_interrupts_paragraph_only_when_enabled() {
+    let without = MarkdownIt::builder().plugin(admonition(false)).build();
+    assert_eq!(
+        without.render("before\n::: note\nbody\n:::"),
+        "<p>before\n::: note\nbody\n:::</p>\n"
+    );
+
+    let with = MarkdownIt::builder().plugin(admonition(true)).build();
+    assert_eq!(
+        with.render("before\n::: note\nbody\n:::"),
+        "<p>before</p>\n<div>\n<p>body</p>\n</div>\n"
+    );
+}
+
+#[test]
+fn configured_block_container_strips_content_indent() {
+    #[derive(Debug)]
+    struct Indented;
+
+    let container = PluginSpec::new("indented")
+        .block_container::<Indented>("indented")
+        .parse(|cx| {
+            if cx.line(0)? != "%%%" {
+                return None;
+            }
+            let close = (1..cx.remaining_lines()).find(|&line| cx.line(line) == Some("%%%"))?;
+            Some(BlockContainerParse {
+                value: Indented,
+                open_lines: 1,
+                body_lines: close - 1,
+                close_lines: 1,
+                content_indent: 2,
+            })
+        })
+        .html_tag("div")
+        .finish();
+
+    let md = MarkdownIt::builder().plugin(container).build();
+    assert_eq!(
+        md.render("%%%\n    body\n%%%"),
+        "<div>\n<p>body</p>\n</div>\n"
+    );
+    // A body line with less indentation must still be parsed rather than be
+    // silently swallowed when nested tokenization sees an outdent.
+    assert_eq!(md.render("%%%\nbody\n%%%"), "<div>\n<p>body</p>\n</div>\n");
+}
+
+#[test]
+fn block_container_and_leaf_share_installation_order() {
+    #[derive(Debug)]
+    struct First;
+    #[derive(Debug)]
+    struct Second;
+
+    let first = PluginSpec::new("first")
+        .block_container::<First>("first")
+        .parse(|cx| {
+            cx.line(0)?
+                .starts_with("!!")
+                .then_some(BlockContainerParse {
+                    value: First,
+                    open_lines: 1,
+                    body_lines: 0,
+                    close_lines: 0,
+                    content_indent: 0,
+                })
+        })
+        .render_html(|_, html| {
+            html.element("p").class("first").text("first");
+        })
+        .finish();
+
+    let second = PluginSpec::new("second")
+        .block_container::<Second>("second")
+        .parse(|cx| {
+            cx.line(0)?
+                .starts_with("!!")
+                .then_some(BlockContainerParse {
+                    value: Second,
+                    open_lines: 1,
+                    body_lines: 0,
+                    close_lines: 0,
+                    content_indent: 0,
+                })
+        })
+        .render_html(|_, html| {
+            html.element("p").class("second").text("second");
+        })
+        .finish();
+
+    let md = MarkdownIt::builder().plugin(first).plugin(second).build();
+    assert_eq!(md.render("!! marker"), "<p class=\"first\">first</p>\n");
+}
+
+#[test]
+#[should_panic(expected = "consumed past the source window")]
+fn configured_block_container_rejects_layout_past_outdent_window() {
+    #[derive(Debug)]
+    struct CrossOutdent;
+
+    let container = PluginSpec::new("cross-outdent")
+        .block_container::<CrossOutdent>("cross-outdent")
+        .parse(|cx| {
+            if cx.line(0)? != "%%%" {
+                return None;
+            }
+            // The block window inside the list item ends before `outside`.
+            // These line counts would pass against state.line_max but cross the
+            // outdent and swallow the following blocks.
+            Some(BlockContainerParse {
+                value: CrossOutdent,
+                open_lines: 1,
+                body_lines: 3,
+                close_lines: 0,
+                content_indent: 0,
+            })
+        })
+        .html_tag("div")
+        .finish();
+
+    MarkdownIt::builder()
+        .plugin(container)
+        .build()
+        .render("- %%%\n  body\n\noutside\nlast");
+}
+
+#[test]
+#[should_panic(expected = "must consume at least one opening line")]
+fn configured_block_container_rejects_zero_opening_lines() {
+    #[derive(Debug)]
+    struct Empty;
+
+    let container = PluginSpec::new("empty")
+        .block_container::<Empty>("empty")
+        .parse(|_| {
+            Some(BlockContainerParse {
+                value: Empty,
+                open_lines: 0,
+                body_lines: 1,
+                close_lines: 0,
+                content_indent: 0,
+            })
+        })
+        .html_tag("div")
+        .finish();
+
+    MarkdownIt::builder()
+        .plugin(container)
+        .build()
+        .render("anything");
+}
+
+#[derive(Debug)]
 struct Highlight;
 
 #[test]

@@ -1,18 +1,18 @@
 use std::marker::PhantomData;
 
-use super::PluginSpec;
-use super::container::{
-    ContainerHtml,
-    ContainerHtmlRenderer,
-    ContainerText,
-    ContainerTextRenderer,
-};
-use super::renderer::{Renderers, WithRenderer};
-use super::spec::{PluginInstaller, RegistrationContext};
-use crate::MarkdownIt;
 use crate::document::{Document, NodeId, NodeValue};
 use crate::parser::inline::helpers::emph_pair;
+use crate::plugin::container_context::{ContainerHtml, ContainerText};
+use crate::plugin::renderer::{
+    ContainerHtmlRenderer,
+    ContainerTextRenderer,
+    Renderers,
+    WithRenderer,
+};
+use crate::plugin::spec::{PluginInstaller, RegistrationContext};
+use crate::plugin::PluginSpec;
 use crate::render::{NodeRenderer, RenderContext, Writer};
+use crate::MarkdownIt;
 
 /// Compile-time delimiter configuration for an inline pair.
 pub struct PairDelimiter<const MARKER: char, const LENGTH: u8, const SPLIT: bool>;
@@ -40,7 +40,7 @@ pub struct InlinePairBuilder<T: NodeValue, D = (), V = (), R = ()> {
 }
 
 impl<T: NodeValue> InlinePairBuilder<T> {
-    pub(super) fn new(plugin: PluginSpec, rule: String) -> Self {
+    pub(in crate::plugin) fn new(plugin: PluginSpec, rule: String) -> Self {
         Self {
             plugin,
             rule,
@@ -96,7 +96,7 @@ impl<T: NodeValue, D, V, R> InlinePairBuilder<T, D, V, R> {
     where
         F: for<'a, 'b> Fn(&T, &mut ContainerHtml<'a, 'b>) + Send + Sync + 'static,
     {
-        self.render_with("html", ContainerHtmlRenderer::<F, T>::new(render))
+        self.render_with("html", ContainerHtmlRenderer::<F, T, false>::new(render))
     }
 
     /// Register a plain-text callback that can render the pair's children.
@@ -106,7 +106,7 @@ impl<T: NodeValue, D, V, R> InlinePairBuilder<T, D, V, R> {
     where
         F: for<'a, 'b> Fn(&T, &mut ContainerText<'a, 'b>) + Send + Sync + 'static,
     {
-        self.render_with("text", ContainerTextRenderer::<F, T>::new(render))
+        self.render_with("text", ContainerTextRenderer::<F, T, false>::new(render))
     }
 
     /// Register an HTML renderer that wraps the pair's children in `tag`.
@@ -119,7 +119,7 @@ impl<T: NodeValue, D, V, R> InlinePairBuilder<T, D, V, R> {
     /// Panics if `tag` is not a valid ASCII HTML tag name.
     pub fn html_tag(self, tag: impl Into<String>) -> InlinePairBuilder<T, D, V, WithRenderer> {
         let tag = tag.into();
-        super::html::validate_tag(&tag);
+        crate::plugin::html::validate_tag(&tag);
         self.render_with("html", InlinePairRenderer { tag })
     }
 

@@ -1,100 +1,24 @@
-//! High-level block leaves built on top of the public block-rule API.
-//!
-//! One static [`BlockRule`] adapter dispatches to all configured leaves.
-//! Callbacks live in [`MarkdownIt::ext`], so the parser core needs no dynamic
-//! block-rule representation.
+//! High-level block leaves built on shared block plugin infrastructure.
 
 use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use super::renderer::{HtmlCallbackRenderer, Renderers, TextCallbackRenderer, WithRenderer};
-use super::spec::PluginInstaller;
-use super::{Html, PluginSpec};
-use crate::MarkdownIt;
+use super::shared::{block_window_end, install_block_plugin, BlockPluginState, ErasedBlockPlugin};
 use crate::document::{NodeId, NodeValue};
-use crate::parser::block::{BlockRule, BlockState, LineOffset};
+use crate::parser::block::BlockState;
+use crate::plugin::renderer::{
+    HtmlCallbackRenderer,
+    Renderers,
+    TextCallbackRenderer,
+    WithRenderer,
+};
+use crate::plugin::spec::PluginInstaller;
+use crate::plugin::{Html, PluginSpec};
 use crate::render::{NodeRenderer, Writer};
+use crate::MarkdownIt;
 
 type ParseFn<T> = Arc<dyn Fn(&mut BlockPluginState<'_>) -> Option<T> + Send + Sync + 'static>;
-
-/// Cursor passed to a block leaf parser.
-///
-/// Consumption is committed only when the callback returns `Some`, so a failed
-/// match rolls back automatically. Offsets are relative to the rule's start line.
-#[derive(Debug)]
-pub struct BlockPluginState<'a> {
-    source: &'a str,
-    line_offsets: &'a [LineOffset],
-    start: usize,
-    line_max: usize,
-    consumed: usize,
-}
-
-impl<'a> BlockPluginState<'a> {
-    pub(super) fn new(
-        source: &'a str,
-        line_offsets: &'a [LineOffset],
-        start: usize,
-        line_max: usize,
-    ) -> Self {
-        Self {
-            source,
-            line_offsets,
-            start,
-            line_max,
-            consumed: 0,
-        }
-    }
-
-    /// Return a line by offset, or `None` past the block window.
-    ///
-    /// Leading indentation and the line ending are stripped.
-    pub fn line(&self, offset: usize) -> Option<&'a str> {
-        let index = self.start.checked_add(self.consumed)?.checked_add(offset)?;
-        if index >= self.line_max {
-            return None;
-        }
-        let offsets = self.line_offsets.get(index)?;
-        Some(&self.source[offsets.first_nonspace..offsets.line_end])
-    }
-
-    /// The complete Markdown source visible to the block parser.
-    pub fn source(&self) -> &'a str {
-        self.source
-    }
-
-    /// Number of lines consumed so far.
-    pub fn consumed_lines(&self) -> usize {
-        self.consumed
-    }
-
-    /// Number of lines left in the current block window.
-    pub fn remaining_lines(&self) -> usize {
-        self.line_max
-            .saturating_sub(self.start)
-            .saturating_sub(self.consumed)
-    }
-
-    /// Consume `lines` lines.
-    ///
-    /// Returns `false` without moving the cursor if they fall outside the
-    /// current block window.
-    pub fn advance_lines(&mut self, lines: usize) -> bool {
-        let Some(consumed) = self.consumed.checked_add(lines) else {
-            return false;
-        };
-        if self
-            .start
-            .checked_add(consumed)
-            .is_none_or(|end| end > self.line_max)
-        {
-            return false;
-        }
-        self.consumed = consumed;
-        true
-    }
-}
 
 /// Builds one block leaf inside a [`PluginSpec`].
 ///
@@ -112,7 +36,7 @@ pub struct BlockLeafBuilder<T: NodeValue, P = (), R = ()> {
 }
 
 impl<T: NodeValue> BlockLeafBuilder<T> {
-    pub(super) fn new(plugin: PluginSpec, rule: String) -> Self {
+    pub(in crate::plugin) fn new(plugin: PluginSpec, rule: String) -> Self {
         Self {
             plugin,
             rule,
@@ -243,17 +167,15 @@ impl<T: NodeValue> ConfiguredBlockLeaf<T> {
             return None;
         }
 
-        // End the window before the first non-empty line that outdents past
-        // the current container (relevant inside list items).
-        let mut window_end = state.line + 1;
-        while window_end < state.line_max {
-            if !state.is_empty(window_end) && state.line_indent(window_end) < 0 {
-                break;
-            }
-            window_end += 1;
-        }
+        let window_end = block_window_end(state);
 
-        let mut cx = BlockPluginState::new(state.src, &state.line_offsets, state.line, window_end);
+        let mut cx = BlockPluginState::new(
+            state.src,
+            &state.line_offsets,
+            state.line,
+            window_end,
+            state.blk_indent,
+        );
         let value = (self.parse)(&mut cx)?;
         let consumed = cx.consumed_lines();
 
@@ -288,43 +210,13 @@ impl<T: NodeValue> ConfiguredBlockLeaf<T> {
     }
 }
 
-/// Type-erased block leaf stored in the parser extension set.
-trait ErasedBlockLeaf: fmt::Debug + Send + Sync {
-    fn check(&self, state: &BlockState<'_>) -> Option<()>;
-    fn run(&self, state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)>;
-}
-
-impl<T: NodeValue> ErasedBlockLeaf for ConfiguredBlockLeaf<T> {
+impl<T: NodeValue> ErasedBlockPlugin for ConfiguredBlockLeaf<T> {
     fn check(&self, state: &BlockState<'_>) -> Option<()> {
         ConfiguredBlockLeaf::check(self, state)
     }
 
     fn run(&self, state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
         ConfiguredBlockLeaf::run(self, state)
-    }
-}
-
-/// All configured block leaves share one static [`BlockRule`] adapter, keeping
-/// the parser core unaware of dynamic block rules.
-#[derive(Debug, Default)]
-struct BlockLeafRegistry {
-    leaves: Vec<Arc<dyn ErasedBlockLeaf>>,
-}
-
-#[derive(Debug)]
-struct BlockPluginRule;
-
-impl BlockRule for BlockPluginRule {
-    const NAMES: &'static [&'static str] = &["plugin_block"];
-
-    fn check(state: &mut BlockState<'_>) -> Option<()> {
-        let registry = state.md.ext.get::<BlockLeafRegistry>()?;
-        registry.leaves.iter().find_map(|leaf| leaf.check(state))
-    }
-
-    fn run(state: &mut BlockState<'_>) -> Option<(Option<NodeId>, usize)> {
-        let registry = state.md.ext.get::<BlockLeafRegistry>()?;
-        registry.leaves.iter().find_map(|leaf| leaf.run(state))
     }
 }
 
@@ -341,16 +233,6 @@ impl<T: NodeValue> PluginInstaller for ConfiguredBlockLeaf<T> {
     }
 
     fn install(self: Box<Self>, md: &mut MarkdownIt) {
-        let leaf = Arc::new(*self);
-        md.ext
-            .get_or_insert_default::<BlockLeafRegistry>()
-            .leaves
-            .push(Arc::clone(&leaf) as Arc<dyn ErasedBlockLeaf>);
-
-        if !md.block.has_rule::<BlockPluginRule>() {
-            md.block
-                .add_rule::<BlockPluginRule>()
-                .before_named("paragraph");
-        }
+        install_block_plugin(md, Arc::new(*self));
     }
 }

@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use super::{
+    BlockContainerBuilder,
     BlockLeafBuilder,
     InlineContainerBuilder,
     InlineLeafBuilder,
@@ -295,6 +296,85 @@ impl PluginSpec {
     /// ```
     pub fn block_leaf<T: NodeValue>(self, rule: impl Into<String>) -> BlockLeafBuilder<T> {
         BlockLeafBuilder::new(self, rule.into())
+    }
+
+    /// Start a fenced block container belonging to this plugin.
+    ///
+    /// A container parses a fixed opening region, then parses its body as
+    /// nested block markup and attaches the resulting nodes to a payload node.
+    /// This high-level form handles fences whose body is a contiguous line
+    /// range without rewriting each line's prefix. Containers that strip a
+    /// per-line prefix, such as blockquotes, still require a low-level
+    /// [`BlockRule`](crate::parser::block::BlockRule).
+    ///
+    /// Call `.parse(...)` and register a renderer with `.html_tag(...)`,
+    /// `.render_html(...)`, `.render_text(...)` or `.render_with(...)`, then
+    /// `.finish()`. Use [`BlockContainerBuilder::interrupts_paragraph`] if the
+    /// opening marker may start without a preceding blank line.
+    ///
+    /// ```
+    /// use markdown_it::MarkdownIt;
+    /// use markdown_it::plugin::{BlockContainerParse, PluginSpec};
+    ///
+    /// #[derive(Debug)]
+    /// struct Admonition(String);
+    ///
+    /// let admonition = PluginSpec::new("admonition")
+    ///     .block_container::<Admonition>("admonition")
+    ///     .parse(|cx| {
+    ///         let title = cx.line(0)?.strip_prefix("::: ")?.to_owned();
+    ///         let close = (1..cx.remaining_lines()).find(|&line| cx.line(line) == Some(":::"));
+    ///         let body_end = close.unwrap_or(cx.remaining_lines());
+    ///         Some(BlockContainerParse {
+    ///             value: Admonition(title),
+    ///             open_lines: 1,
+    ///             body_lines: body_end - 1,
+    ///             close_lines: usize::from(close.is_some()),
+    ///             content_indent: 0,
+    ///         })
+    ///     })
+    ///     .html_tag("div")
+    ///     .finish();
+    ///
+    /// let md = MarkdownIt::builder().plugin(admonition).build();
+    /// assert_eq!(
+    ///     md.render("::: note\nbody *here*\n:::"),
+    ///     "<div>\n<p>body <em>here</em></p>\n</div>\n"
+    /// );
+    /// ```
+    ///
+    /// Missing callbacks are rejected at compile time:
+    ///
+    /// ```compile_fail
+    /// use markdown_it::plugin::{BlockContainerParse, PluginSpec};
+    /// #[derive(Debug)]
+    /// struct Admonition;
+    /// PluginSpec::new("admonition")
+    ///     .block_container::<Admonition>("admonition")
+    ///     .parse(|_| Some(BlockContainerParse {
+    ///         value: Admonition,
+    ///         open_lines: 1,
+    ///         body_lines: 0,
+    ///         close_lines: 0,
+    ///         content_indent: 0,
+    ///     }))
+    ///     .finish(); // no renderer
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use markdown_it::plugin::PluginSpec;
+    /// #[derive(Debug)]
+    /// struct Admonition;
+    /// PluginSpec::new("admonition")
+    ///     .block_container::<Admonition>("admonition")
+    ///     .html_tag("div")
+    ///     .finish(); // no parser
+    /// ```
+    pub fn block_container<T: NodeValue>(
+        self,
+        rule: impl Into<String>,
+    ) -> BlockContainerBuilder<T> {
+        BlockContainerBuilder::new(self, rule.into())
     }
 
     /// Start an emphasis-style inline pair belonging to this plugin.

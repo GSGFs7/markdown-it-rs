@@ -6,6 +6,7 @@
 //!
 //! | Module | Demonstrates |
 //! | --- | --- |
+//! | [`admonition`] | A block container that parses a nested block body. |
 //! | [`container`] | An inline container that parses its body in a child session. |
 //! | [`counted`] | Shared counter state and ordered finish callbacks. |
 //! | [`gh_alert`] | Rewriting blockquotes into GitHub-style alerts. |
@@ -13,6 +14,7 @@
 //! | [`notice`] | A configured block leaf node. |
 //! | [`wrap`] | Wrapping inline nodes in the AST after inline parsing. |
 
+pub mod admonition;
 pub mod container;
 pub mod counted;
 pub mod gh_alert;

@@ -2,7 +2,7 @@
 #[path = "src/lib.rs"]
 pub mod authoring;
 
-use authoring::{container, counted, gh_alert, label, notice, wrap};
+use authoring::{admonition, container, counted, gh_alert, label, notice, wrap};
 use markdown_it::MarkdownIt;
 
 fn main() {
@@ -13,6 +13,14 @@ fn main() {
     println!(
         "Configured leaf plugins:\n{}",
         md.render("@ok\n\n:: A notice")
+    );
+
+    let md = MarkdownIt::builder()
+        .plugin(admonition::admonition_plugin())
+        .build();
+    println!(
+        "Configured block container:\n{}",
+        md.render("::: note\nbody *here*\n:::")
     );
 
     let mut md = MarkdownIt::new();

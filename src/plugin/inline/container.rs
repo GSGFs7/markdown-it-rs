@@ -2,29 +2,27 @@
 //!
 //! A container parses its body as an independent child inline session and
 //! attaches the resulting nodes to a payload node. Use
-//! [`PluginSpec::inline_container`](super::PluginSpec::inline_container) to
-//! build one.
+//! [`PluginSpec::inline_container`](crate::plugin::PluginSpec::inline_container)
+//! to build one.
 
-use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Range;
 use std::sync::Arc;
 
-use super::html::validate_tag;
-use super::renderer::{Renderers, WithRenderer};
-use super::spec::PluginInstaller;
-use super::{Html, HtmlElement, InlinePluginState, PluginSpec};
-use crate::MarkdownIt;
 use crate::document::{Node, NodeId, NodeValue};
 use crate::parser::inline::InlineState;
-use crate::render::{NodeRenderer, RenderContext, Writer, write_html_close, write_html_open};
-
-type ParseFn<T> = Arc<
-    dyn for<'a> Fn(&mut InlineContainerState<'a>) -> Option<(T, Range<usize>)>
-        + Send
-        + Sync
-        + 'static,
->;
+use crate::plugin::container_context::{ContainerHtml, ContainerText};
+use crate::plugin::html::validate_tag;
+use crate::plugin::renderer::{
+    ContainerHtmlRenderer,
+    ContainerTextRenderer,
+    Renderers,
+    WithRenderer,
+};
+use crate::plugin::spec::PluginInstaller;
+use crate::plugin::{InlinePluginState, PluginSpec};
+use crate::render::{write_html_close, write_html_open, NodeRenderer, RenderContext, Writer};
+use crate::MarkdownIt;
 
 /// Cursor passed to an inline container parser.
 ///
@@ -40,7 +38,7 @@ pub struct InlineContainerState<'a> {
 }
 
 impl<'a> InlineContainerState<'a> {
-    fn new(state: &'a mut InlineState<'_>) -> Self {
+    pub(in crate::plugin) fn new(state: &'a mut InlineState<'_>) -> Self {
         Self {
             cursor: InlinePluginState::new(state.remaining()),
             markdown_it: state.markdown_it(),
@@ -91,84 +89,34 @@ impl<'a> InlineContainerState<'a> {
     }
 }
 
-/// HTML builder passed to [`InlineContainerBuilder::render_html`].
-///
-/// Children must be rendered explicitly with
-/// [`render_children`](Self::render_children). The returned string is already
-/// escaped HTML and can be inserted with [`raw`](Self::raw) or
-/// [`HtmlElement::raw`].
-pub struct ContainerHtml<'a, 'b> {
-    html: &'a mut Html,
-    context: &'a mut RenderContext<'b>,
-    node: NodeId,
+pub(super) struct ContainerTagRenderer<T> {
+    tag: String,
+    payload: PhantomData<fn() -> T>,
 }
 
-impl<'a, 'b> ContainerHtml<'a, 'b> {
-    /// Add a child element.
-    pub fn element(&mut self, tag: impl Into<String>) -> HtmlElement<'_> {
-        self.html.element(tag)
-    }
-
-    /// Append text. It is escaped when the fragment is rendered.
-    pub fn text(&mut self, text: impl AsRef<str>) -> &mut Self {
-        self.html.text(text);
-        self
-    }
-
-    /// Append markup verbatim.
-    pub fn raw(&mut self, html: impl AsRef<str>) -> &mut Self {
-        self.html.raw(html);
-        self
-    }
-
-    /// Render this container's children in the active output format.
-    ///
-    /// Returns an empty string for a leaf container with no children.
-    pub fn render_children(&mut self) -> String {
-        let mut output = Writer::default();
-        self.context.render_children(self.node, &mut output);
-        output.finish()
+impl<T> ContainerTagRenderer<T> {
+    pub(super) fn new(tag: String) -> Self {
+        Self {
+            tag,
+            payload: PhantomData,
+        }
     }
 }
 
-/// Plain-text writer passed to [`InlineContainerBuilder::render_text`].
-pub struct ContainerText<'a, 'b> {
-    output: &'a mut Writer,
-    context: &'a mut RenderContext<'b>,
-    node: NodeId,
-}
-
-impl ContainerText<'_, '_> {
-    /// Append a string to the output buffer.
-    pub fn write_str(&mut self, value: &str) {
-        self.output.write_str(value);
-    }
-
-    /// Append a char to the output buffer.
-    pub fn write_char(&mut self, value: char) {
-        self.output.write_char(value);
-    }
-
-    /// Append formatted output.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a formatting implementation returns an error.
-    pub fn write_fmt(&mut self, args: fmt::Arguments<'_>) {
-        self.output.write_fmt(args);
-    }
-
-    /// Render this container's children in the active output format.
-    pub fn render_children(&mut self) {
-        self.context.render_children(self.node, self.output);
+impl<T: NodeValue> NodeRenderer<T> for ContainerTagRenderer<T> {
+    fn render(&self, node: &Node, _: &T, context: &mut RenderContext<'_>, output: &mut Writer) {
+        write_html_open(output, &self.tag, node.attrs());
+        context.render_children(node.id(), output);
+        write_html_close(output, &self.tag);
     }
 }
 
-impl fmt::Write for ContainerText<'_, '_> {
-    fn write_str(&mut self, value: &str) -> fmt::Result {
-        fmt::Write::write_str(self.output, value)
-    }
-}
+type ParseFn<T> = Arc<
+    dyn for<'a> Fn(&mut InlineContainerState<'a>) -> Option<(T, Range<usize>)>
+        + Send
+        + Sync
+        + 'static,
+>;
 
 /// Builds one inline container inside a [`PluginSpec`].
 ///
@@ -186,7 +134,7 @@ pub struct InlineContainerBuilder<T: NodeValue, P = (), R = ()> {
 }
 
 impl<T: NodeValue> InlineContainerBuilder<T> {
-    pub(super) fn new(plugin: PluginSpec, rule: String) -> Self {
+    pub(in crate::plugin) fn new(plugin: PluginSpec, rule: String) -> Self {
         Self {
             plugin,
             rule,
@@ -253,7 +201,7 @@ impl<T: NodeValue, P, R> InlineContainerBuilder<T, P, R> {
     where
         F: for<'a, 'b> Fn(&T, &mut ContainerHtml<'a, 'b>) + Send + Sync + 'static,
     {
-        self.render_with("html", ContainerHtmlRenderer::<F, T>::new(render))
+        self.render_with("html", ContainerHtmlRenderer::<F, T, false>::new(render))
     }
 
     /// Register a plain-text callback that can render the container's children.
@@ -263,7 +211,7 @@ impl<T: NodeValue, P, R> InlineContainerBuilder<T, P, R> {
     where
         F: for<'a, 'b> Fn(&T, &mut ContainerText<'a, 'b>) + Send + Sync + 'static,
     {
-        self.render_with("text", ContainerTextRenderer::<F, T>::new(render))
+        self.render_with("text", ContainerTextRenderer::<F, T, false>::new(render))
     }
 
     /// Wrap this container's children in an HTML tag.
@@ -278,13 +226,7 @@ impl<T: NodeValue, P, R> InlineContainerBuilder<T, P, R> {
     pub fn html_tag(self, tag: impl Into<String>) -> InlineContainerBuilder<T, P, WithRenderer> {
         let tag = tag.into();
         validate_tag(&tag);
-        self.render_with(
-            "html",
-            ContainerTagRenderer::<T> {
-                tag,
-                payload: PhantomData,
-            },
-        )
+        self.render_with("html", ContainerTagRenderer::<T>::new(tag))
     }
 
     /// Register a low-level renderer for an output format.
@@ -397,77 +339,14 @@ impl<T: NodeValue> PluginInstaller for ConfiguredInlineContainer<T> {
     }
 }
 
-struct ContainerTagRenderer<T> {
-    tag: String,
-    payload: PhantomData<fn() -> T>,
-}
-
-impl<T: NodeValue> NodeRenderer<T> for ContainerTagRenderer<T> {
-    fn render(&self, node: &Node, _: &T, context: &mut RenderContext<'_>, output: &mut Writer) {
-        write_html_open(output, &self.tag, node.attrs());
-        context.render_children(node.id(), output);
-        write_html_close(output, &self.tag);
-    }
-}
-
-pub(super) struct ContainerHtmlRenderer<F, T>(F, PhantomData<fn() -> T>);
-
-impl<F, T> ContainerHtmlRenderer<F, T> {
-    pub(super) fn new(render: F) -> Self {
-        Self(render, PhantomData)
-    }
-}
-
-impl<T, F> NodeRenderer<T> for ContainerHtmlRenderer<F, T>
-where
-    T: NodeValue,
-    F: for<'a, 'b> Fn(&T, &mut ContainerHtml<'a, 'b>) + Send + Sync + 'static,
-{
-    fn render(&self, node: &Node, value: &T, context: &mut RenderContext<'_>, output: &mut Writer) {
-        let mut html = Html::new();
-        {
-            let mut cx = ContainerHtml {
-                html: &mut html,
-                context,
-                node: node.id(),
-            };
-            (self.0)(value, &mut cx);
-        }
-        html.render_into(output, context.options());
-    }
-}
-
-pub(super) struct ContainerTextRenderer<F, T>(F, PhantomData<fn() -> T>);
-
-impl<F, T> ContainerTextRenderer<F, T> {
-    pub(super) fn new(render: F) -> Self {
-        Self(render, PhantomData)
-    }
-}
-
-impl<T, F> NodeRenderer<T> for ContainerTextRenderer<F, T>
-where
-    T: NodeValue,
-    F: for<'a, 'b> Fn(&T, &mut ContainerText<'a, 'b>) + Send + Sync + 'static,
-{
-    fn render(&self, node: &Node, value: &T, context: &mut RenderContext<'_>, output: &mut Writer) {
-        let mut cx = ContainerText {
-            output,
-            context,
-            node: node.id(),
-        };
-        (self.0)(value, &mut cx);
-    }
-}
-
-fn assert_child_range(rule: &str, source: &str, range: &Range<usize>, consumed: usize) {
+pub(super) fn assert_child_range(rule: &str, source: &str, range: &Range<usize>, consumed: usize) {
     assert!(
         range.end <= consumed && source.get(range.clone()).is_some(),
         "inline container rule {rule:?} returned an invalid child range {range:?} for {consumed} consumed bytes"
     );
 }
 
-fn assert_progress(rule: &str, source: &str, consumed: usize) {
+pub(super) fn assert_progress(rule: &str, source: &str, consumed: usize) {
     assert!(
         consumed > 0,
         "inline container rule {rule:?} succeeded without consuming input"

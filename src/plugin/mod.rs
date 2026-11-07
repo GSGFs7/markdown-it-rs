@@ -7,14 +7,15 @@
 //!
 //! Configured syntax is added to a [`PluginSpec`] with
 //! [`PluginSpec::inline_leaf`], [`PluginSpec::inline_container`],
-//! [`PluginSpec::block_leaf`] or [`PluginSpec::inline_pair`]. All builders
+//! [`PluginSpec::block_leaf`], [`PluginSpec::block_container`] or
+//! [`PluginSpec::inline_pair`]. All builders
 //! accept low-level [`NodeRenderer`](crate::render::NodeRenderer)
 //! implementations with `.render_with(format, renderer)`.
 //!
 //! A payload type has one renderer per output format per parser. Register a
 //! second plugin for the same payload type only when it uses the same rendering;
 //! use a newtype when the rendering differs. Repeated registrations for a type
-//! and format use the last renderer, matching [`MarkdownIt::add_renderer`].
+//! and format use the last renderer, matching [`MarkdownIt::add_renderer`](crate::MarkdownIt::add_renderer).
 //!
 //! Static leaf:
 //!
@@ -74,28 +75,34 @@
 
 mod block;
 mod builder;
-mod container;
+mod container_context;
 mod html;
 mod inline;
-mod pair;
 mod renderer;
 mod spec;
-mod state;
 
-pub use self::block::{BlockLeafBuilder, BlockPluginState};
+pub use self::block::{
+    BlockContainerBuilder,
+    BlockContainerParse,
+    BlockLeafBuilder,
+    BlockPluginState,
+};
 pub use self::builder::MarkdownItBuilder;
-pub use self::container::{
-    ContainerHtml,
-    ContainerText,
+pub use self::container_context::{ContainerHtml, ContainerText};
+pub use self::html::{Html, HtmlElement};
+pub use self::inline::{
     InlineContainerBuilder,
     InlineContainerState,
+    InlineLeafBuilder,
+    InlinePairBuilder,
+    InlinePlugin,
+    InlinePluginState,
+    LeafRenderer,
+    LeafRule,
+    PairDelimiter,
 };
-pub use self::html::{Html, HtmlElement};
-pub use self::inline::{InlineLeafBuilder, InlinePlugin, LeafRenderer, LeafRule};
-pub use self::pair::{InlinePairBuilder, PairDelimiter};
 pub use self::renderer::WithRenderer;
 pub use self::spec::PluginSpec;
-pub use self::state::InlinePluginState;
 
 /// A plugin that can be queued on a [`MarkdownItBuilder`].
 ///

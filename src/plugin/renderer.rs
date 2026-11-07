@@ -1,4 +1,7 @@
+use std::marker::PhantomData;
+
 use super::Html;
+use super::container_context::{ContainerHtml, ContainerText};
 use super::html::render_html_fragment;
 use super::spec::{PluginInstaller, RegistrationContext};
 use crate::MarkdownIt;
@@ -98,6 +101,66 @@ where
         (self.0)(value, out);
         if BLOCK {
             cx.cr(out);
+        }
+    }
+}
+
+/// Adapter used by container HTML callbacks.
+///
+/// `BLOCK` inserts the block line separators used by block containers.
+pub(super) struct ContainerHtmlRenderer<F, T, const BLOCK: bool>(F, PhantomData<fn() -> T>);
+
+impl<F, T, const BLOCK: bool> ContainerHtmlRenderer<F, T, BLOCK> {
+    pub(super) fn new(render: F) -> Self {
+        Self(render, PhantomData)
+    }
+}
+
+impl<T, F, const BLOCK: bool> NodeRenderer<T> for ContainerHtmlRenderer<F, T, BLOCK>
+where
+    T: NodeValue,
+    F: for<'a, 'b> Fn(&T, &mut ContainerHtml<'a, 'b>) + Send + Sync + 'static,
+{
+    fn render(&self, node: &Node, value: &T, context: &mut RenderContext<'_>, output: &mut Writer) {
+        if BLOCK {
+            context.cr(output);
+        }
+        let mut html = Html::new();
+        {
+            let mut cx = ContainerHtml::new(&mut html, context, node.id());
+            (self.0)(value, &mut cx);
+        }
+        html.render_into(output, context.options());
+        if BLOCK {
+            context.cr(output);
+        }
+    }
+}
+
+/// Adapter used by container plain-text callbacks.
+///
+/// `BLOCK` inserts the block line separators used by block containers.
+pub(super) struct ContainerTextRenderer<F, T, const BLOCK: bool>(F, PhantomData<fn() -> T>);
+
+impl<F, T, const BLOCK: bool> ContainerTextRenderer<F, T, BLOCK> {
+    pub(super) fn new(render: F) -> Self {
+        Self(render, PhantomData)
+    }
+}
+
+impl<T, F, const BLOCK: bool> NodeRenderer<T> for ContainerTextRenderer<F, T, BLOCK>
+where
+    T: NodeValue,
+    F: for<'a, 'b> Fn(&T, &mut ContainerText<'a, 'b>) + Send + Sync + 'static,
+{
+    fn render(&self, node: &Node, value: &T, context: &mut RenderContext<'_>, output: &mut Writer) {
+        if BLOCK {
+            context.cr(output);
+        }
+        let mut cx = ContainerText::new(output, context, node.id());
+        (self.0)(value, &mut cx);
+        if BLOCK {
+            context.cr(output);
         }
     }
 }
