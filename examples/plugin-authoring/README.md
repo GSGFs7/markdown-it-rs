@@ -1,0 +1,1 @@
+Plugin API capability test.

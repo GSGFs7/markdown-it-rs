@@ -1,0 +1,21 @@
+[package]
+name = "plugin-authoring"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[features]
+default = ["linkify"]
+linkify = ["markdown-it-rs/linkify"]
+sourcemap = ["markdown-it-rs/sourcemap"]
+
+[dependencies]
+markdown-it-rs = { path = "../..", default-features = false }
+
+[[bin]]
+name = "plugin-authoring"
+path = "main.rs"
+# The shared plugin tests run through the library/integration test targets.
+test = false

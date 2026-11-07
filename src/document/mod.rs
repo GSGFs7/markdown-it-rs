@@ -180,8 +180,15 @@ impl Document {
         &self.source
     }
 
-    /// Detach all children, preserving their order and IDs.
-    pub(crate) fn take_children(&mut self, parent: NodeId) -> Vec<NodeId> {
+    /// Detach all children, preserving their order, IDs, metadata and subtrees.
+    ///
+    /// Reattach them with [`Self::push_child`] or [`Self::replace_children`],
+    /// or delete them with [`Self::discard_node`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `parent` is invalid or stale.
+    pub fn take_children(&mut self, parent: NodeId) -> Vec<NodeId> {
         let children = std::mem::take(&mut self.node_mut(parent).children);
         for &child in &children {
             self.node_mut(child).parent = None;

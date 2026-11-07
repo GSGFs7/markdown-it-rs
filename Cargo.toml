@@ -27,6 +27,12 @@ name = "syntect"
 path = "examples/syntect/main.rs"
 required-features = ["syntect"]
 
+[[example]]
+name = "plugin-authoring"
+path = "examples/plugin-authoring/main.rs"
+# The shared plugin tests run through the library/integration test targets.
+test = false
+
 [workspace]
 members = [
     "crates/markdown-it-rs-linkify",
