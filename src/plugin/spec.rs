@@ -3,6 +3,7 @@ use std::fmt;
 
 use super::{
     BlockLeafBuilder,
+    InlineContainerBuilder,
     InlineLeafBuilder,
     InlinePairBuilder,
     InlinePlugin,
@@ -151,6 +152,86 @@ impl PluginSpec {
     /// ```
     pub fn inline_leaf<T: NodeValue>(self, rule: impl Into<String>) -> InlineLeafBuilder<T> {
         InlineLeafBuilder::new(self, rule.into())
+    }
+
+    /// Start an inline container belonging to this plugin.
+    ///
+    /// A container parses a body as independent inline children and attaches
+    /// them to a payload node. Call `.parse(...)` and register a renderer with
+    /// `.html_tag(...)`, `.render_html(...)`, `.render_text(...)` or
+    /// `.render_with(...)`, then `.finish()`.
+    ///
+    /// ```
+    /// use markdown_it::MarkdownIt;
+    /// use markdown_it::plugin::PluginSpec;
+    ///
+    /// #[derive(Debug)]
+    /// struct Span;
+    ///
+    /// let span = PluginSpec::new("span")
+    ///     .inline_container::<Span>("span")
+    ///     .marker('{')
+    ///     .parse(|cx| {
+    ///         let source = cx.source();
+    ///         if !source.starts_with('{') {
+    ///             return None;
+    ///         }
+    ///
+    ///         let end = source.find('}')?;
+    ///         cx.advance(end + 1);
+    ///         Some((Span, 1..end))
+    ///     })
+    ///     .render_html(|_, html| {
+    ///         let children = html.render_children();
+    ///         html.element("span")
+    ///             .attr("data-kind", "note")
+    ///             .raw(children);
+    ///     })
+    ///     .finish();
+    ///
+    /// let md = MarkdownIt::builder().plugin(span).build();
+    /// assert_eq!(
+    ///     md.render("{*hi*}"),
+    ///     "<p><span data-kind=\"note\"><em>hi</em></span></p>\n"
+    /// );
+    /// ```
+    ///
+    /// The `find('}')` above is only a simple example. It matches the first
+    /// closing brace, does not support nested paired delimiters, and does not
+    /// skip `}` inside code spans or escapes. Plugins with those requirements
+    /// need a more careful source scanner or the low-level rule API.
+    ///
+    /// Missing callbacks are rejected:
+    ///
+    /// ```compile_fail
+    /// use markdown_it::plugin::PluginSpec;
+    ///
+    /// #[derive(Debug)]
+    /// struct Span;
+    /// PluginSpec::new("span")
+    ///     .inline_container::<Span>("span")
+    ///     .parse(|cx| {
+    ///         cx.advance(1);
+    ///         Some((Span, 0..0))
+    ///     })
+    ///     .finish(); // no renderer
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use markdown_it::plugin::PluginSpec;
+    ///
+    /// #[derive(Debug)]
+    /// struct Span;
+    /// PluginSpec::new("span")
+    ///     .inline_container::<Span>("span")
+    ///     .html_tag("span")
+    ///     .finish(); // no parser
+    /// ```
+    pub fn inline_container<T: NodeValue>(
+        self,
+        rule: impl Into<String>,
+    ) -> InlineContainerBuilder<T> {
+        InlineContainerBuilder::new(self, rule.into())
     }
 
     /// Start a block leaf belonging to this plugin.

@@ -6,10 +6,10 @@
 //! - [`PluginSpec`]: groups leaves, adds dependency ordering and installs them.
 //!
 //! Configured syntax is added to a [`PluginSpec`] with
-//! [`PluginSpec::inline_leaf`], [`PluginSpec::block_leaf`] or
-//! [`PluginSpec::inline_pair`]. All three builders accept low-level
-//! [`NodeRenderer`](crate::render::NodeRenderer) implementations with
-//! `.render_with(format, renderer)`.
+//! [`PluginSpec::inline_leaf`], [`PluginSpec::inline_container`],
+//! [`PluginSpec::block_leaf`] or [`PluginSpec::inline_pair`]. All builders
+//! accept low-level [`NodeRenderer`](crate::render::NodeRenderer)
+//! implementations with `.render_with(format, renderer)`.
 //!
 //! A payload type has one renderer per output format per parser. Register a
 //! second plugin for the same payload type only when it uses the same rendering;
@@ -74,6 +74,7 @@
 
 mod block;
 mod builder;
+mod container;
 mod html;
 mod inline;
 mod pair;
@@ -83,13 +84,18 @@ mod state;
 
 pub use self::block::{BlockLeafBuilder, BlockPluginState};
 pub use self::builder::MarkdownItBuilder;
+pub use self::container::{
+    ContainerHtml,
+    ContainerText,
+    InlineContainerBuilder,
+    InlineContainerState,
+};
 pub use self::html::{Html, HtmlElement};
 pub use self::inline::{InlineLeafBuilder, InlinePlugin, LeafRenderer, LeafRule};
 pub use self::pair::{InlinePairBuilder, PairDelimiter};
 pub use self::renderer::WithRenderer;
 pub use self::spec::PluginSpec;
 pub use self::state::InlinePluginState;
-use crate::MarkdownIt;
 
 /// A plugin that can be queued on a [`MarkdownItBuilder`].
 ///
@@ -101,7 +107,7 @@ pub trait Plugin {
     fn into_spec(self) -> PluginSpec;
 
     /// Install this plugin directly into an existing parser.
-    fn install(self, md: &mut MarkdownIt)
+    fn install(self, md: &mut crate::MarkdownIt)
     where
         Self: Sized,
     {

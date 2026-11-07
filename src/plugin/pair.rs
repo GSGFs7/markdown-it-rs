@@ -1,6 +1,12 @@
 use std::marker::PhantomData;
 
 use super::PluginSpec;
+use super::container::{
+    ContainerHtml,
+    ContainerHtmlRenderer,
+    ContainerText,
+    ContainerTextRenderer,
+};
 use super::renderer::{Renderers, WithRenderer};
 use super::spec::{PluginInstaller, RegistrationContext};
 use crate::MarkdownIt;
@@ -16,8 +22,9 @@ pub struct PairDelimiter<const MARKER: char, const LENGTH: u8, const SPLIT: bool
 /// A pair contains parsed inline children, using the same delimiter
 /// scanner and matching algorithm as [`emph_pair`](crate::parser::inline::helpers::emph_pair).
 /// [`delimiter`](Self::delimiter), [`value`](Self::value) and
-/// a renderer ([`html_tag`](Self::html_tag) or [`render_with`](Self::render_with))
-/// are required before [`finish`](Self::finish) is available.
+/// a renderer ([`html_tag`](Self::html_tag), [`render_html`](Self::render_html),
+/// [`render_text`](Self::render_text) or [`render_with`](Self::render_with)) are
+/// required before [`finish`](Self::finish) is available.
 ///
 /// Delimiter parameters are compile-time constants; the value factory may
 /// capture runtime configuration. Installation registers the corresponding
@@ -79,6 +86,27 @@ impl<T: NodeValue, D, V, R> InlinePairBuilder<T, D, V, R> {
             renderers: self.renderers,
             state: PhantomData,
         }
+    }
+
+    /// Register an HTML callback that can render the pair's children.
+    ///
+    /// Use [`ContainerHtml::render_children`] to render the parsed body.
+    /// Repeated registrations for the same format replace earlier ones.
+    pub fn render_html<F>(self, render: F) -> InlinePairBuilder<T, D, V, WithRenderer>
+    where
+        F: for<'a, 'b> Fn(&T, &mut ContainerHtml<'a, 'b>) + Send + Sync + 'static,
+    {
+        self.render_with("html", ContainerHtmlRenderer::<F, T>::new(render))
+    }
+
+    /// Register a plain-text callback that can render the pair's children.
+    ///
+    /// Use [`ContainerText::render_children`] to render the parsed body.
+    pub fn render_text<F>(self, render: F) -> InlinePairBuilder<T, D, V, WithRenderer>
+    where
+        F: for<'a, 'b> Fn(&T, &mut ContainerText<'a, 'b>) + Send + Sync + 'static,
+    {
+        self.render_with("text", ContainerTextRenderer::<F, T>::new(render))
     }
 
     /// Register an HTML renderer that wraps the pair's children in `tag`.

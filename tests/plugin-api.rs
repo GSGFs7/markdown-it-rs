@@ -19,6 +19,46 @@ const EMOJIS: &[(&str, &str, &str)] =
     &[(":rocket:", "🚀", "rocket"), (":warning:", "⚠️", "warning")];
 
 #[test]
+fn inline_container_parses_children_through_the_public_api() {
+    #[derive(Debug)]
+    struct Boxed(String);
+
+    let boxed = PluginSpec::new("boxed")
+        .inline_container::<Boxed>("boxed")
+        .marker('[')
+        .parse(|cx| {
+            let source = cx.source();
+            if !source.starts_with("[!") {
+                return None;
+            }
+            let end = source.find(']')?;
+            cx.advance(end + 1);
+            Some((Boxed("note".into()), 2..end))
+        })
+        .render_html(|value, html| {
+            let children = html.render_children();
+            html.element("span")
+                .class("box")
+                .attr("data-kind", &value.0)
+                .raw(children);
+        })
+        .render_text(|_, text| {
+            text.write_str("[");
+            text.render_children();
+            text.write_str("]");
+        })
+        .finish();
+
+    let md = MarkdownIt::builder().plugin(boxed).build();
+    let document = md.parse("[!*雪*]");
+    assert_eq!(
+        md.render_document(&document, "html"),
+        "<p><span class=\"box\" data-kind=\"note\"><em>雪</em></span></p>\n"
+    );
+    assert_eq!(md.render_document(&document, "text"), "[雪]\n");
+}
+
+#[test]
 fn inline_pair_lowers_to_low_level_rule_and_keeps_captured_values() {
     use markdown_it::parser::inline::helpers::emph_pair::EmphPairScanner;
 

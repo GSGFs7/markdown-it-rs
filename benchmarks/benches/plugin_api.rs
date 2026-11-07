@@ -1,4 +1,4 @@
-//! Equivalent leaf syntax through low-level, static and configured APIs.
+//! Equivalent leaf and container syntax through low-level and high-level APIs.
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -159,11 +159,124 @@ fn benchmark(c: &mut Criterion) {
     group.finish();
 }
 
+#[derive(Debug)]
+struct Span;
+
+struct ContainerRule;
+impl InlineRule for ContainerRule {
+    const MARKER: char = '{';
+
+    fn check(state: &mut InlineState<'_>) -> Option<usize> {
+        let source = state.remaining();
+        if !source.starts_with('{') {
+            return None;
+        }
+        Some(source.find('}')? + 1)
+    }
+
+    fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+        let consumed = Self::check(state)?;
+        let children = state.parse_subrange(1..consumed - 1)?;
+        let node = state.document.create_node(Span);
+        for child in children {
+            state.document.push_child(node, child);
+        }
+        Some((Some(node), consumed))
+    }
+}
+
+struct SpanRenderer;
+impl NodeRenderer<Span> for SpanRenderer {
+    fn render(&self, node: &Node, _: &Span, cx: &mut RenderContext<'_>, out: &mut Writer) {
+        out.write_str("<span>");
+        cx.render_children(node.id(), out);
+        out.write_str("</span>");
+    }
+}
+
+fn container_parser(kind: &str) -> MarkdownIt {
+    if kind == "low" {
+        let mut md = MarkdownIt::new();
+        md.inline
+            .add_rule::<ContainerRule>()
+            .after_named("text")
+            .before_all();
+        md.add_renderer::<Span, _>("html", SpanRenderer);
+        return md;
+    }
+    let builder = PluginSpec::new("span")
+        .inline_container::<Span>("span")
+        .marker('{')
+        .parse(|cx| {
+            let source = cx.source();
+            if !source.starts_with('{') {
+                return None;
+            }
+            let end = source.find('}')?;
+            cx.advance(end + 1);
+            Some((Span, 1..end))
+        });
+    let plugin = match kind {
+        "tag" => builder.html_tag("span").finish(),
+        "callback" => builder
+            .render_html(|_, html| {
+                let children = html.render_children();
+                html.element("span").raw(children);
+            })
+            .finish(),
+        "render_with" => builder.render_with("html", SpanRenderer).finish(),
+        _ => unreachable!(),
+    };
+    MarkdownIt::builder().plugin(plugin).build()
+}
+
+fn benchmark_containers(c: &mut Criterion) {
+    let kinds = ["low", "tag", "callback", "render_with"];
+    let corpora = [
+        ("short", "前{*雪* `x`}后".to_owned()),
+        ("dense", "前{*雪* `x`}后 {plain} {}\n\n".repeat(256)),
+        (
+            "sparse",
+            format!("{} {{*雪*}}\n\n", "Ordinary prose. ".repeat(32)).repeat(64),
+        ),
+        ("miss", "Ordinary {unterminated *雪* `x`\n\n".repeat(256)),
+    ];
+    for (name, source) in &corpora {
+        let expected = container_parser("low").render(source);
+        for kind in kinds {
+            let md = container_parser(kind);
+            assert_eq!(md.render(source), expected, "container/{name}/{kind}");
+        }
+        for phase in ["parse", "render", "total"] {
+            let mut group = c.benchmark_group(format!("container_api/{name}/{phase}"));
+            for kind in kinds {
+                let md = container_parser(kind);
+                let document = md.parse(source);
+                // Initialize lazy rule tables before timing, for both API levels.
+                assert_eq!(md.render_document(&document, "html"), expected);
+                group.bench_function(kind, |b| match phase {
+                    "parse" => b.iter(|| {
+                        black_box(md.parse(black_box(source)));
+                    }),
+                    "render" => b.iter(|| {
+                        black_box(md.render_document(black_box(&document), "html"));
+                    }),
+                    "total" => b.iter(|| {
+                        black_box(md.render(black_box(source)));
+                    }),
+                    _ => unreachable!(),
+                });
+            }
+            group.finish();
+        }
+    }
+}
+
 criterion_group! {
     name = benches;
     config = Criterion::default().sample_size(40)
         .warm_up_time(Duration::from_millis(300))
         .measurement_time(Duration::from_secs(1));
-    targets = benchmark
+    targets = benchmark, benchmark_containers
 }
 criterion_main!(benches);

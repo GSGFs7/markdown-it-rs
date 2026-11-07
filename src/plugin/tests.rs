@@ -1,4 +1,5 @@
 use super::*;
+use crate::MarkdownIt;
 use crate::document::NodeValue;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -237,6 +238,237 @@ fn nested_html_elements_are_ordered() {
 }
 
 #[derive(Debug)]
+struct Span;
+
+fn span() -> PluginSpec {
+    PluginSpec::new("span")
+        .inline_container::<Span>("span")
+        .marker('{')
+        .parse(|cx| {
+            let source = cx.source();
+            if !source.starts_with('{') {
+                return None;
+            }
+            let end = source.find('}')?;
+            cx.advance(end + 1);
+            Some((Span, 1..end))
+        })
+        .html_tag("span")
+        .finish()
+}
+
+#[test]
+fn configured_inline_container_parses_children_and_wraps_them() {
+    let md = MarkdownIt::builder().plugin(span()).build();
+    assert_eq!(
+        md.render("前{ *雪* `x` }后"),
+        "<p>前<span> <em>雪</em> <code>x</code> </span>后</p>\n"
+    );
+    // A failed match rolls back local consumption.
+    assert_eq!(md.render("{unterminated"), "<p>{unterminated</p>\n");
+}
+
+#[test]
+fn failed_inline_container_match_does_not_leave_child_nodes() {
+    #[derive(Debug)]
+    struct Reject;
+
+    let reject = PluginSpec::new("reject")
+        .inline_container::<Reject>("reject")
+        .marker('{')
+        .parse(|cx| {
+            let source = cx.source();
+            if !source.starts_with('{') {
+                return None;
+            }
+            let end = source.find('}')?;
+            if source[1..end].contains("no") {
+                return None;
+            }
+            cx.advance(end + 1);
+            Some((Reject, 1..end))
+        })
+        .html_tag("span")
+        .finish();
+
+    let with_plugin = MarkdownIt::builder().plugin(reject).build().parse("{no}");
+    let baseline = MarkdownIt::builder().build().parse("{no}");
+    assert_eq!(with_plugin.len(), baseline.len());
+    assert_eq!(with_plugin.children(with_plugin.root()).len(), 1);
+}
+
+#[test]
+fn configured_inline_container_can_render_children_in_callbacks() {
+    #[derive(Debug)]
+    struct Boxed(String);
+
+    let boxed = PluginSpec::new("boxed")
+        .inline_container::<Boxed>("boxed")
+        .marker('[')
+        .parse(|cx| {
+            let source = cx.source();
+            if !source.starts_with("[!") {
+                return None;
+            }
+            let end = source.find("]")?;
+            cx.advance(end + 1);
+            Some((Boxed("note".into()), 2..end))
+        })
+        .render_html(|value, html| {
+            let children = html.render_children();
+            let mut element = html.element("span");
+            element
+                .class("box")
+                .attr("data-kind", &value.0)
+                .raw(children);
+        })
+        .render_text(|_, text| {
+            text.write_str("[");
+            text.render_children();
+            text.write_str("]");
+        })
+        .finish();
+
+    let md = MarkdownIt::builder().plugin(boxed).build();
+    let document = md.parse("[!*雪*]");
+    assert_eq!(
+        md.render_document(&document, "html"),
+        "<p><span class=\"box\" data-kind=\"note\"><em>雪</em></span></p>\n"
+    );
+    assert_eq!(md.render_document(&document, "text"), "[雪]\n");
+}
+
+#[test]
+fn configured_inline_container_accepts_empty_child_range() {
+    let md = MarkdownIt::builder().plugin(span()).build();
+    assert_eq!(md.render("{}"), "<p><span></span></p>\n");
+}
+
+#[test]
+fn inline_container_cursor_rejects_utf8_splits_and_out_of_bounds() {
+    #[derive(Debug)]
+    struct Bound;
+
+    let bound = PluginSpec::new("bound")
+        .inline_container::<Bound>("bound")
+        .marker('{')
+        .parse(|cx| {
+            let source = cx.source();
+            if !source.starts_with('{') {
+                return None;
+            }
+
+            assert!(cx.advance(1));
+            assert_eq!(cx.consumed(), 1);
+            // Splitting the UTF-8 encoding of 雪 must fail without moving.
+            assert!(!cx.advance(1));
+            assert_eq!(cx.consumed(), 1);
+            assert!(!cx.advance(usize::MAX));
+            assert_eq!(cx.consumed(), 1);
+
+            assert!(cx.advance('雪'.len_utf8()));
+            assert!(cx.consume("}"));
+            Some((Bound, 1..4))
+        })
+        .html_tag("span")
+        .finish();
+
+    let md = MarkdownIt::builder().plugin(bound).build();
+    assert_eq!(md.render("{雪}"), "<p><span>雪</span></p>\n");
+}
+
+fn range_plugin(range: std::ops::Range<usize>) -> PluginSpec {
+    PluginSpec::new("range")
+        .inline_container::<Span>("range")
+        .marker('{')
+        .parse(move |cx| {
+            let source = cx.source();
+            if !source.starts_with('{') {
+                return None;
+            }
+            cx.advance(1);
+            Some((Span, range.clone()))
+        })
+        .html_tag("span")
+        .finish()
+}
+
+#[test]
+#[should_panic(expected = "invalid child range")]
+fn inline_container_rejects_reversed_child_range() {
+    MarkdownIt::builder()
+        .plugin(range_plugin(std::ops::Range { start: 2, end: 1 }))
+        .build()
+        .render("{x}");
+}
+
+#[test]
+#[should_panic(expected = "invalid child range")]
+fn inline_container_rejects_out_of_bounds_child_range() {
+    MarkdownIt::builder()
+        .plugin(range_plugin(0..100))
+        .build()
+        .render("{x}");
+}
+
+#[test]
+#[should_panic(expected = "invalid child range")]
+fn inline_container_rejects_overflow_sized_child_range() {
+    MarkdownIt::builder()
+        .plugin(range_plugin(1..usize::MAX))
+        .build()
+        .render("{x}");
+}
+
+#[test]
+#[should_panic(expected = "succeeded without consuming input")]
+fn configured_inline_container_rejects_zero_length_success() {
+    let empty = PluginSpec::new("empty")
+        .inline_container::<Span>("empty")
+        .marker('{')
+        .parse(|_| Some((Span, 0..0)))
+        .html_tag("span")
+        .finish();
+
+    MarkdownIt::builder().plugin(empty).build().render("{");
+}
+
+#[test]
+fn inline_container_check_skips_child_source_during_link_scanning() {
+    let md = MarkdownIt::builder().plugin(span()).build();
+    // The `]` inside the container must not close the link label while the
+    // link scanner probes the source.
+    assert_eq!(
+        md.render("[{a]b}](/url)"),
+        "<p><a href=\"/url\"><span>a]b</span></a></p>\n"
+    );
+}
+
+#[cfg(feature = "sourcemap")]
+#[test]
+fn inline_container_keeps_source_maps_of_container_and_children() {
+    let document = MarkdownIt::builder()
+        .plugin(span())
+        .build()
+        .parse("前{雪}后");
+    let paragraph = document.children(document.root())[0];
+    let container = document.children(paragraph)[1];
+    let child = document.children(container)[0];
+    assert_eq!(
+        document
+            .node(container)
+            .srcmap()
+            .unwrap()
+            .get_byte_offsets(),
+        (3, 8)
+    );
+    assert_eq!(
+        document.node(child).srcmap().unwrap().get_byte_offsets(),
+        (4, 7)
+    );
+}
+
+#[derive(Debug)]
 struct Notice(String);
 
 fn notice(interrupts_paragraph: bool) -> PluginSpec {
@@ -369,6 +601,42 @@ fn configured_inline_pair_parses_and_renders_children() {
         md.render("a ==marked **bold**=="),
         "<p>a <mark>marked <strong>bold</strong></mark></p>\n"
     );
+}
+
+#[test]
+fn configured_inline_pair_supports_html_and_text_callbacks() {
+    #[derive(Debug)]
+    struct Marked(String);
+
+    fn append_text<W: std::fmt::Write>(output: &mut W, value: &str) {
+        write!(output, "{value}").unwrap();
+    }
+
+    let marked = PluginSpec::new("pair-callback")
+        .inline_pair::<Marked>("pair-callback")
+        .delimiter::<'=', 2, true>()
+        .value(|| Marked("x".into()))
+        .render_html(|value, html| {
+            let children = html.render_children();
+            html.element("mark")
+                .class("pair")
+                .attr("data-value", &value.0)
+                .raw(children);
+        })
+        .render_text(|_, text| {
+            append_text(text, "[");
+            text.render_children();
+            text.write_fmt(format_args!("]"));
+        })
+        .finish();
+
+    let md = MarkdownIt::builder().plugin(marked).build();
+    let document = md.parse("a ==**b**==");
+    assert_eq!(
+        md.render_document(&document, "html"),
+        "<p>a <mark class=\"pair\" data-value=\"x\"><strong>b</strong></mark></p>\n"
+    );
+    assert_eq!(md.render_document(&document, "text"), "a [b]\n");
 }
 
 #[test]
