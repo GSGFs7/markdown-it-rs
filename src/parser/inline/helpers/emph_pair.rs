@@ -492,9 +492,11 @@ impl CoreRule for EmphasisCleanup {
         let mut stack = vec![(document.root(), false)];
         while let Some((node, expanded)) = stack.pop() {
             if expanded {
-                document.rewrite_children(node, |document, children| {
-                    fragments_join_children(document, children);
-                });
+                if needs_cleanup(document, node) {
+                    document.rewrite_children(node, |document, children| {
+                        fragments_join_children(document, children);
+                    });
+                }
                 continue;
             }
 
@@ -510,6 +512,26 @@ impl CoreRule for EmphasisCleanup {
             }
         }
     }
+}
+
+/// Most containers already have their final children. Avoid detaching and
+/// reattaching them unless the fragment pass would actually change something.
+fn needs_cleanup(document: &Document, parent: NodeId) -> bool {
+    let mut previous_is_text = false;
+    for &child in document.children(parent) {
+        let node = document.node(child);
+        if node.is::<EmphMarker>() {
+            return true;
+        }
+
+        let text = node.cast::<Text>();
+        if text.is_some_and(|text| text.content.is_empty() || previous_is_text) {
+            return true;
+        }
+
+        previous_is_text = text.is_some();
+    }
+    false
 }
 
 /// Merge adjacent text nodes and fix source maps after emphasis matching.
@@ -616,6 +638,51 @@ fn update_pair_sourcemaps(
 mod tests {
     use super::*;
     use crate::plugins::presets::Preset;
+
+    #[test]
+    fn cleanup_preflight_preserves_all_fragment_mutations() {
+        let mut document = Document::new("", crate::document::Root::new(""));
+        let root = document.root();
+        let text = document.create_node(Text {
+            content: "a".into(),
+        });
+        let other_text = document.create_node(Text {
+            content: "b".into(),
+        });
+        let empty = document.create_node(Text {
+            content: String::new(),
+        });
+        let other = document.create_node(());
+        let marker = document.create_node(EmphMarker {
+            marker: '*',
+            length: 1,
+            remaining: 1,
+            open: false,
+            close: false,
+        });
+        let consumed = document.create_node(EmphMarker {
+            marker: '*',
+            length: 1,
+            remaining: 0,
+            open: false,
+            close: false,
+        });
+        for (children, expected) in [
+            (vec![], false),
+            (vec![text], false),
+            (vec![other], false),
+            (vec![text, other, other_text], false),
+            (vec![text, other_text], true),
+            (vec![empty], true),
+            (vec![other, empty], true),
+            (vec![marker], true),
+            (vec![consumed], true),
+        ] {
+            document.take_children(root);
+            document.attach_children(root, children);
+            assert_eq!(needs_cleanup(&document, root), expected);
+        }
+    }
 
     #[test]
     fn literal_closers_stay_text_before_later_emphasis() {
