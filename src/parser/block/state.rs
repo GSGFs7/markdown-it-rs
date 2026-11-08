@@ -142,7 +142,7 @@ impl<'a> BlockState<'a> {
                     #[cfg(feature = "sourcemap")]
                     let mapping = vec![(0, start)];
                     #[cfg(not(feature = "sourcemap"))]
-                    let mapping = crate::parser::InlineMapping;
+                    let mapping = crate::parser::inline::InlineMapping;
 
                     let pending = self.pending_inline(content, mapping);
                     self.document.push_child(self.node, pending);
@@ -237,13 +237,13 @@ impl<'a> BlockState<'a> {
         end: usize,
         indent: usize,
         keep_last_lf: bool,
-    ) -> (String, crate::parser::InlineMapping) {
-        let mut result = String::new();
+    ) -> (String, crate::parser::inline::InlineMapping) {
         #[cfg(feature = "sourcemap")]
-        let mut mapping = crate::parser::InlineMapping::default();
+        let mut mapping = crate::parser::inline::InlineMapping::default();
         #[cfg(not(feature = "sourcemap"))]
-        let mapping = crate::parser::InlineMapping;
+        let mapping = crate::parser::inline::InlineMapping;
 
+        let mut result = String::new();
         for line in begin..end {
             let offsets = &self.line_offsets[line];
             let add_last_lf = line + 1 < end || keep_last_lf;
@@ -283,7 +283,7 @@ impl<'a> BlockState<'a> {
     pub fn pending_inline(
         &mut self,
         source: String,
-        mapping: crate::parser::InlineMapping,
+        mapping: crate::parser::inline::InlineMapping,
     ) -> NodeId {
         self.document.create_node(PendingInline {
             content: source,

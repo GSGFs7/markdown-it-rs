@@ -1,6 +1,7 @@
 //! Inline syntax rules and check sessions.
 mod document;
 pub mod helpers;
+mod mapping;
 mod parser;
 mod rule;
 mod state;
@@ -12,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 pub(crate) use self::document::parse_document;
+pub use self::mapping::InlineMapping;
 pub use self::parser::InlineParserRule;
 pub use self::rule::*;
 pub use self::state::InlineState;

@@ -5,12 +5,19 @@ use crate::common::extset::RootExtSet;
 use crate::document::{Document, NodeId};
 use crate::parser::inline::{InlineState, RuleSet};
 
-/// Inline content queued during the block pass, resolved once all reference
-/// definitions have been collected.
+/// Placeholder for inline content parsed after the block pass.
+///
+/// Some inline rule needs global context. For example:
+///
+/// ```markdown
+/// [a link][ref]
+///
+/// [ref]: /url
+/// ```
 #[derive(Debug)]
 pub(super) struct PendingInline {
     pub(super) content: String,
-    pub(super) mapping: crate::parser::InlineMapping,
+    pub(super) mapping: crate::parser::inline::InlineMapping,
 }
 
 /// Resolve deferred content in place after collecting all block definitions.
@@ -25,7 +32,7 @@ pub(super) fn resolve_pending_inline(
     ruleset: &RuleSet,
     root_ext: &RootExtSet,
 ) {
-    /// A parent on the traversal stack and the replacements collected for it.
+    /// stack frame
     struct Frame {
         parent: NodeId,
         next_child: usize,
@@ -41,58 +48,52 @@ pub(super) fn resolve_pending_inline(
             }
         }
 
-        /// Replace the placeholders buffered during the walk with their
-        /// resolved nodes.
+        /// replace PendingInline with real Inline node
         fn apply(self, document: &mut Document) {
             if self.replacements.is_empty() {
                 return;
             }
 
+            // old:         [A, PendingInline, B]
+            // replacement: [(1, [X, Y])]
+            // new:         [A, X, Y, B]
             document.rewrite_children(self.parent, |document, children| {
                 let mut replacements = self.replacements.into_iter().peekable();
                 let old_children = std::mem::take(children);
                 children.reserve(old_children.len());
 
                 for (index, child) in old_children.into_iter().enumerate() {
-                    if let Some((_, nodes)) =
-                        replacements.next_if(|(position, _)| *position == index)
-                    {
-                        document.discard_node(child);
-                        children.extend(nodes);
-                    } else {
-                        children.push(child);
+                    // if replacement postion match a children, rewrite it
+                    match replacements.next_if(|(position, _)| *position == index) {
+                        Some((_, nodes)) => {
+                            document.discard_node(child);
+                            children.extend(nodes);
+                        }
+                        None => children.push(child),
                     }
                 }
             });
         }
     }
 
+    // DFS + explicit stack
+    // find PendingInline & parse it
     let mut stack = vec![Frame::new(document.root())];
     while let Some(frame) = stack.last_mut() {
         let index = frame.next_child;
         let Some(&child) = document.children(frame.parent).get(index) else {
-            let frame = stack.pop().unwrap();
-            frame.apply(document);
+            stack.pop().unwrap().apply(document);
             continue;
         };
-        frame.next_child = index + 1;
+        frame.next_child += 1;
 
-        if let Some(inline) = document.node_mut(child).cast_mut::<PendingInline>() {
+        if let Some(inline) = document.value_mut::<PendingInline>(child) {
             let content = std::mem::take(&mut inline.content);
             let mapping = std::mem::take(&mut inline.mapping);
             let nodes = InlineState::parse(document, content, mapping, md, ruleset, Some(root_ext));
-            if index == 0 && document.children(frame.parent).len() == 1 {
-                // if only one child, replace the children.
-                let parent = frame.parent;
-                document.rewrite_children(parent, |document, children| {
-                    document.discard_node(children.pop().unwrap());
-                    *children = nodes;
-                });
-                stack.pop();
-            } else {
-                frame.replacements.push((index, nodes));
-            }
+            frame.replacements.push((index, nodes));
         } else if !document.children(child).is_empty() {
+            // a normal container, enter it.
             stack.push(Frame::new(child));
         }
     }

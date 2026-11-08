@@ -126,7 +126,7 @@ impl<'a> InlineState<'a> {
     pub(in crate::parser) fn parse(
         document: &'a mut Document,
         src: String,
-        mapping: crate::parser::InlineMapping,
+        mapping: crate::parser::inline::InlineMapping,
         md: &'a MarkdownIt,
         ruleset: &'a RuleSet,
         root_ext: Option<&'a RootExtSet>,

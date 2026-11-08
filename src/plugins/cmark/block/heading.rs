@@ -113,7 +113,7 @@ impl BlockRule for HeadingScanner {
         #[cfg(feature = "sourcemap")]
         let mapping = vec![(0, state.line_offsets[state.line].first_nonspace + text_pos)];
         #[cfg(not(feature = "sourcemap"))]
-        let mapping = crate::parser::InlineMapping;
+        let mapping = crate::parser::inline::InlineMapping;
 
         let node = state.document.create_node(ATXHeading { level });
         let pending = state.pending_inline(content, mapping);

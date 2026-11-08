@@ -1,23 +1,20 @@
-//! Parser and its extension points.
+//! Parsing pipeline and its extension points.
 //!
-//! [`block`]/[`inline`] own rule registration and parsing state, and [`core`]
-//! defines ordered document processing rules. Extend parsing via
-//! [`block::BlockParser::add_rule`], [`inline::InlineParser::add_rule`], and
-//! [`crate::MarkdownIt::add_rule`].
+//! As in markdown-it, parsing is split into three rule chains:
+//!
+//! - [`core`] defines whole-document rules and the shared parsing state; the
+//!   chain itself is owned and run by [`crate::MarkdownIt`].
+//! - [`block`] builds the block structure. [`block::BlockParser`] and
+//!   [`block::BlockState`] own block rule registration and parsing state.
+//! - [`inline`] tokenizes inline content. The built-in inline pass runs after
+//!   block parsing, so document-wide definitions such as link references are
+//!   already available.
+//!
+//! Add new syntax with [`block::BlockParser::add_rule`],
+//! [`inline::InlineParser::add_rule`], or [`crate::MarkdownIt::add_rule`]. Each
+//! returns a builder for ordering the new rule relative to existing ones.
 pub mod block;
 pub mod core;
 pub mod inline;
 pub(crate) mod pipeline;
 mod rule;
-
-/// Mapping from inline byte offsets to document byte offsets.
-///
-/// Without the `sourcemap` feature this is a zero-sized carrier; custom block
-/// rules can use `InlineMapping::default()` when source mapping is disabled.
-#[cfg(feature = "sourcemap")]
-pub type InlineMapping = Vec<(usize, usize)>;
-
-/// Zero-sized mapping carrier used when source mapping is disabled.
-#[cfg(not(feature = "sourcemap"))]
-#[derive(Debug, Default, Clone, Copy)]
-pub struct InlineMapping;

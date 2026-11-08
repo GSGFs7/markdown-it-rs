@@ -146,7 +146,7 @@ struct CheckParentSnapshot {
     pending_text: Option<(usize, usize)>,
     source: String,
     #[cfg(feature = "sourcemap")]
-    mapping: Vec<(usize, usize)>,
+    mapping: crate::parser::inline::InlineMapping,
     inline_ext: String,
     root_ext: String,
     nodes: String,
@@ -1770,7 +1770,7 @@ fn child_link_level_override_keeps_range_and_depth_rules() {
     assert_eq!(state.link_level, 2);
 }
 
-fn test_mapping(entries: &[(usize, usize)]) -> crate::parser::InlineMapping {
+fn test_mapping(entries: &[(usize, usize)]) -> crate::parser::inline::InlineMapping {
     #[cfg(feature = "sourcemap")]
     {
         entries.to_vec()
@@ -1778,7 +1778,7 @@ fn test_mapping(entries: &[(usize, usize)]) -> crate::parser::InlineMapping {
     #[cfg(not(feature = "sourcemap"))]
     {
         let _ = entries;
-        crate::parser::InlineMapping
+        crate::parser::inline::InlineMapping
     }
 }
 

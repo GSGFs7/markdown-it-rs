@@ -226,7 +226,7 @@ pub struct TableScanner;
 struct RowContent {
     str: String,
     #[cfg(feature = "sourcemap")]
-    srcmap: Vec<(usize, usize)>,
+    srcmap: crate::parser::inline::InlineMapping,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -483,7 +483,7 @@ impl BlockRule for TableScanner {
                     .map(|(dst, src)| (dst, src + start))
                     .collect();
                 #[cfg(not(feature = "sourcemap"))]
-                let mapping = crate::parser::InlineMapping;
+                let mapping = crate::parser::inline::InlineMapping;
 
                 let pending = state.pending_inline(cell, mapping);
                 state.document.push_child(cell_node, pending);
