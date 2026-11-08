@@ -30,7 +30,8 @@ impl InlinePlugin for Word {
         let end = rest
             .find(|ch: char| !ch.is_ascii_alphabetic())
             .unwrap_or(rest.len());
-        cx.advance(end + 1).then_some(Word(rest[..end].to_owned()))
+        let word = cx.remaining_slice(1..end + 1)?.to_owned();
+        cx.advance(end + 1).then_some(Word(word))
     }
 
     fn render_html(&self, html: &mut Html) {
@@ -394,7 +395,7 @@ fn failed_inline_container_match_does_not_leave_child_nodes() {
                 return None;
             }
             let end = source.find('}')?;
-            if source[1..end].contains("no") {
+            if cx.source_slice(1..end)?.contains("no") {
                 return None;
             }
             cx.advance(end + 1);

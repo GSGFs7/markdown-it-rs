@@ -23,7 +23,7 @@
 //!
 //! ```rust
 //! use markdown_it::parser::inline::helpers::paired_span::{
-//!     self, EscapePolicy, PairOptions,
+//!     EscapePolicy, PairOptions,
 //! };
 //! use markdown_it::plugin::PluginSpec;
 //! use markdown_it::MarkdownIt;
@@ -36,9 +36,8 @@
 //!     .inline_leaf::<Variable>("variable")
 //!     .marker('{')
 //!     .parse(move |cx| {
-//!         let source = cx.remaining();
-//!         let matched = paired_span::scan(source, &options)?;
-//!         let value = Variable(source[matched.body].to_owned());
+//!         let matched = cx.scan_pair(&options)?;
+//!         let value = Variable(cx.remaining_slice(matched.body)?.to_owned());
 //!         cx.advance(matched.consumed).then_some(value)
 //!     })
 //!     .render_html(|value, html| { html.element("code").text(&value.0); })
@@ -50,7 +49,7 @@
 //! A container whose body is parsed as Markdown:
 //!
 //! ```rust
-//! use markdown_it::parser::inline::helpers::paired_span::{self, PairOptions};
+//! use markdown_it::parser::inline::helpers::paired_span::PairOptions;
 //! use markdown_it::plugin::PluginSpec;
 //! use markdown_it::MarkdownIt;
 //!
@@ -63,9 +62,9 @@
 //!     .marker('[')
 //!     .parse(move |cx| {
 //!         let base = cx.consumed();
-//!         let matched = paired_span::scan(cx.remaining(), &options)?;
+//!         let matched = cx.consume_pair(&options)?;
 //!         let body = base + matched.body.start..base + matched.body.end;
-//!         cx.advance(matched.consumed).then_some((Boxed, body))
+//!         Some((Boxed, body))
 //!     })
 //!     .html_tag("span")
 //!     .finish();

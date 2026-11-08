@@ -284,9 +284,8 @@ fn failed_match_rolls_back_text() {
             if !cx.consume("@") {
                 return None;
             }
-            let rest = cx.remaining();
-            let end = rest.find('}')?;
-            let value = &rest[..end];
+            let end = cx.remaining().find('}')?;
+            let value = cx.remaining_slice(0..end)?;
             if value.is_empty() {
                 return None;
             }

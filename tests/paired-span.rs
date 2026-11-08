@@ -1,10 +1,5 @@
 use markdown_it::MarkdownIt;
-use markdown_it::parser::inline::helpers::paired_span::{
-    self,
-    EscapePolicy,
-    NestingPolicy,
-    PairOptions,
-};
+use markdown_it::parser::inline::helpers::paired_span::{EscapePolicy, NestingPolicy, PairOptions};
 use markdown_it::plugin::PluginSpec;
 
 fn parser() -> MarkdownIt {
@@ -21,9 +16,8 @@ fn parser() -> MarkdownIt {
         .inline_leaf::<Literal>("literal")
         .marker('{')
         .parse(move |cx| {
-            let source = cx.remaining();
-            let matched = paired_span::scan(source, &literal)?;
-            let value = Literal(source[matched.body].to_owned());
+            let matched = cx.scan_pair(&literal)?;
+            let value = Literal(cx.remaining_slice(matched.body)?.to_owned());
             cx.advance(matched.consumed).then_some(value)
         })
         .render_html(|value, html| {
@@ -38,9 +32,9 @@ fn parser() -> MarkdownIt {
                 return None;
             }
             let base = cx.consumed();
-            let matched = paired_span::scan(cx.remaining(), &container)?;
+            let matched = cx.consume_pair(&container)?;
             let body = base + matched.body.start..base + matched.body.end;
-            cx.advance(matched.consumed).then_some((Container, body))
+            Some((Container, body))
         })
         .html_tag("span")
         .finish();

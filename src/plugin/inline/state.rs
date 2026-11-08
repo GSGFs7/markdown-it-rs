@@ -1,4 +1,7 @@
+use std::ops::Range;
+
 use crate::MarkdownIt;
+use crate::parser::inline::helpers::paired_span::{self, PairMatch, PairOptions};
 
 /// Cursor passed to an inline leaf parser.
 ///
@@ -25,9 +28,42 @@ impl<'a> InlinePluginState<'a> {
         &self.source[self.consumed..]
     }
 
+    /// Return the part of [`remaining`](Self::remaining) covered by `range`.
+    ///
+    /// Offsets are relative to the remaining source. Returns `None` if the
+    /// range is reversed, out of bounds, or not on UTF-8 boundaries.
+    pub fn remaining_slice(&self, range: Range<usize>) -> Option<&'a str> {
+        self.remaining().get(range)
+    }
+
     /// The complete source window visible to this rule.
     pub fn source(&self) -> &'a str {
         self.source
+    }
+
+    /// Return the part of [`source`](Self::source) covered by `range`.
+    ///
+    /// Offsets are relative to the complete source window. Returns `None` if
+    /// the range is reversed, out of bounds, or not on UTF-8 boundaries.
+    pub fn source_slice(&self, range: Range<usize>) -> Option<&'a str> {
+        self.source.get(range)
+    }
+
+    /// Scan a paired span at the start of [`remaining`](Self::remaining).
+    ///
+    /// The returned offsets are relative to the remaining source. Use
+    /// [`consume_pair`](Self::consume_pair) to scan and advance in one step.
+    pub fn scan_pair(&self, options: &PairOptions<'_>) -> Option<PairMatch> {
+        paired_span::scan(self.remaining(), options)
+    }
+
+    /// Scan a paired span and consume its bytes.
+    ///
+    /// The returned offsets are relative to the previous
+    /// [`remaining`](Self::remaining), before the cursor advances.
+    pub fn consume_pair(&mut self, options: &PairOptions<'_>) -> Option<PairMatch> {
+        let matched = self.scan_pair(options)?;
+        self.advance(matched.consumed).then_some(matched)
     }
 
     /// Parser instance that owns the active inline rule.
@@ -72,5 +108,46 @@ impl<'a> InlinePluginState<'a> {
         }
         self.consumed += bytes;
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slices_are_relative_and_checked() {
+        let md = MarkdownIt::empty();
+        let mut cx = InlinePluginState::new("a雪b", &md);
+
+        assert_eq!(cx.source_slice(0..1), Some("a"));
+        assert_eq!(cx.source_slice(1..4), Some("雪"));
+        assert_eq!(cx.remaining_slice(1..4), Some("雪"));
+        assert_eq!(cx.source_slice(1..2), None);
+        assert_eq!(cx.source_slice(0..6), None);
+
+        assert!(cx.advance(1));
+        assert_eq!(cx.remaining(), "雪b");
+        assert_eq!(cx.remaining_slice(0..3), Some("雪"));
+        assert_eq!(cx.remaining_slice(3..4), Some("b"));
+        assert_eq!(cx.source_slice(1..4), Some("雪"));
+    }
+
+    #[test]
+    fn paired_scan_does_not_advance_but_consume_does() {
+        let md = MarkdownIt::empty();
+        let mut cx = InlinePluginState::new("{{a}}tail", &md);
+        let options = PairOptions::new("{{", "}}");
+
+        let matched = cx.scan_pair(&options).unwrap();
+        assert_eq!(matched.body, 2..3);
+        assert_eq!(cx.consumed(), 0);
+        assert_eq!(cx.remaining_slice(matched.body), Some("a"));
+
+        let matched = cx.consume_pair(&options).unwrap();
+        assert_eq!(matched.consumed, 5);
+        assert_eq!(cx.consumed(), 5);
+        assert_eq!(cx.remaining(), "tail");
+        assert_eq!(cx.consume_pair(&options), None);
     }
 }

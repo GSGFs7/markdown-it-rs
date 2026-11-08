@@ -12,6 +12,7 @@ use std::sync::Arc;
 use crate::MarkdownIt;
 use crate::document::{Node, NodeId, NodeValue};
 use crate::parser::inline::InlineState;
+use crate::parser::inline::helpers::paired_span::{PairMatch, PairOptions};
 use crate::plugin::container_context::{ContainerHtml, ContainerText};
 use crate::plugin::html::validate_tag;
 use crate::plugin::renderer::{
@@ -53,11 +54,27 @@ impl<'a> InlineContainerState<'a> {
         self.cursor.remaining()
     }
 
+    /// Return the part of [`remaining`](Self::remaining) covered by `range`.
+    ///
+    /// Offsets are relative to the remaining source. Returns `None` if the
+    /// range is reversed, out of bounds, or not on UTF-8 boundaries.
+    pub fn remaining_slice(&self, range: Range<usize>) -> Option<&'a str> {
+        self.cursor.remaining_slice(range)
+    }
+
     /// The complete source window visible to this rule.
     ///
     /// The returned reference borrows the underlying source, not `self`.
     pub fn source(&self) -> &'a str {
         self.cursor.source()
+    }
+
+    /// Return the part of [`source`](Self::source) covered by `range`.
+    ///
+    /// Offsets are relative to the complete source window. Returns `None` if
+    /// the range is reversed, out of bounds, or not on UTF-8 boundaries.
+    pub fn source_slice(&self, range: Range<usize>) -> Option<&'a str> {
+        self.cursor.source_slice(range)
     }
 
     /// Parser instance that owns the active inline rule.
@@ -91,6 +108,22 @@ impl<'a> InlineContainerState<'a> {
     /// source or not on a UTF-8 boundary.
     pub fn advance(&mut self, bytes: usize) -> bool {
         self.cursor.advance(bytes)
+    }
+
+    /// Scan a paired span at the start of [`remaining`](Self::remaining).
+    ///
+    /// The returned offsets are relative to the remaining source. Use
+    /// [`consume_pair`](Self::consume_pair) to scan and advance in one step.
+    pub fn scan_pair(&self, options: &PairOptions<'_>) -> Option<PairMatch> {
+        self.cursor.scan_pair(options)
+    }
+
+    /// Scan a paired span and consume its bytes.
+    ///
+    /// The returned offsets are relative to the previous
+    /// [`remaining`](Self::remaining), before the cursor advances.
+    pub fn consume_pair(&mut self, options: &PairOptions<'_>) -> Option<PairMatch> {
+        self.cursor.consume_pair(options)
     }
 }
 
