@@ -4,10 +4,6 @@
 > This is a personally maintained fork of
 > [markdown-it-rust/markdown-it](https://github.com/markdown-it-rust/markdown-it).  
 
-> [!WARNING]
-> **Status: unpublished `1.0.0`** — contains many breaking changes compared to
-> the latest published version (`0.7.0`); the API is not stable yet.
-
 A Rust-native, AST-first Markdown parser with [markdown-it.js](https://github.com/markdown-it/markdown-it)-compatible rendering.
 
 You can check a [demo](https://gsgfs7.github.io/markdown-it-rs/) in your browser.
@@ -19,8 +15,6 @@ You can check a [demo](https://gsgfs7.github.io/markdown-it-rs/) in your browser
 - Everything is a plugin
 - Optional source maps for parsed nodes
 - Extensible core, block, and inline rule chains
-- Optional CJK-friendly emphasis handling
-- Optional Python and WebAssembly bindings
 
 ## Quick start
 
@@ -54,90 +48,45 @@ fn main() {
 }
 ```
 
-## High-level plugin API
+## Plugin API
 
-> [!IMPORTANT]
-> This API is implemented on the development branch for the next major version;
-> it is not available in the current published release yet.
+You can add plugins to it using a declarative high-level API.
 
 ```rust
 use markdown_it::MarkdownIt;
+use markdown_it::parser::inline::helpers::paired_span::{EscapePolicy, PairOptions};
 use markdown_it::plugin::PluginSpec;
 
-const EMOJIS: &[(&str, &str, &str)] = &[
-    (":rocket:", "🚀", "rocket"),
-    (":warning:", "⚠️", "warning"),
-];
-
 #[derive(Debug)]
-struct Emoji {
-    glyph: &'static str,
-    label: &'static str,
-}
+struct Spoiler;
 
-fn emoji() -> PluginSpec {
-    PluginSpec::new("emoji")
-        .inline_leaf::<Emoji>("shortcode")
-        .marker(':')
-        .parse(|cx| {
-            let &(shortcode, glyph, label) = EMOJIS
-                .iter()
-                .find(|(code, _, _)| cx.starts_with(code))?;
+fn spoiler() -> PluginSpec {
+    let options = PairOptions::new("||", "||")
+        .escape(EscapePolicy::Backslash)
+        .allow_empty(false);
 
-            cx.consume(shortcode);
-            Some(Emoji { glyph, label })
+    PluginSpec::new("spoiler")
+        .inline_container::<Spoiler>("spoiler")
+        .marker('|') // tell the parser to pull up this plugin when encounter this
+        .parse(move |cx| {
+            let base = cx.consumed();
+            let matched = cx.consume_pair(&options)?; // find "||" pair & advance cursor
+            Some((Spoiler, base + matched.body.start..base + matched.body.end))
         })
-        .render_html(|emoji, html| {
-            html.element("span")
-                .class("emoji")
-                .attr("role", "img")
-                .attr("aria-label", emoji.label)
-                .text(emoji.glyph);
+        .render_html(|_, html| {
+            let children = html.render_children();
+            html.element("span").class("spoiler").raw(children);
         })
         .finish()
 }
 
-let md = MarkdownIt::builder().plugin(emoji()).build();
-let html = md.render("Ready :rocket:");
+let md = MarkdownIt::builder().plugin(spoiler()).build();
+let html = md.render("The answer is ||**42**||.");
 
 assert_eq!(
     html,
-    "<p>Ready <span class=\"emoji\" role=\"img\" aria-label=\"rocket\">🚀</span></p>\n"
+    "<p>The answer is <span class=\"spoiler\"><strong>42</strong></span>.</p>\n"
 );
 ```
 
 See the `examples/ferris` folder for a detailed guide to the low-level rule API.
-
-## CJK-friendly delimiters
-
-The optional `cjk_friendly` plugin implements the delimiter amendments from
-[`markdown-cjk-friendly`](https://github.com/tats-u/markdown-cjk-friendly), so
-emphasis next to Chinese, Japanese, or Korean punctuation works without spaces:
-
-```rust
-use markdown_it::MarkdownIt;
-use markdown_it::plugins::presets::Preset;
-
-let mut md = MarkdownIt::with_preset(Preset::MarkdownItDefault);
-markdown_it::plugins::cjk_friendly::add(&mut md);
-
-assert_eq!(
-    md.render("**这是重要内容。**后面可以继续写~~，被删除的内容~~"),
-    "<p><strong>这是重要内容。</strong>后面可以继续写<s>，被删除的内容</s></p>\n"
-);
-```
-
-## Security
-
-This lib does **not** sanitize or filter any HTML output.
-You should add a sanitizer before rendering untrusted content.
-
-There are two plugins you should be careful with:
-
-- **`html`** - enable raw inline/block HTML.
-  By default `plugins::cmark` does not enable raw HTML.
-  Add `markdown_it::plugins::html::add(parser)` to enable it.
-
-- **`directives`** - allows custom directives like `:name{key=value}` that are
-  rendered by user provided content. The default renderers simply emit `<span>`/`<div>`
-  wrappers. But it might be used like `:name{onclick=...}`.
