@@ -8,8 +8,6 @@ use super::{
     InlineContainerBuilder,
     InlineLeafBuilder,
     InlinePairBuilder,
-    InlinePlugin,
-    LeafRule,
     Plugin,
 };
 use crate::MarkdownIt;
@@ -85,38 +83,6 @@ impl PluginSpec {
         }
     }
 
-    /// Create a plugin from a static [`InlinePlugin`] type.
-    ///
-    /// The plugin name and local rule name are taken from [`InlinePlugin::NAME`].
-    /// The low-level rule retains its [`LeafRule<P>`] type identity.
-    ///
-    /// ```
-    /// use markdown_it::plugin::{Html, InlinePlugin, InlinePluginState, PluginSpec};
-    /// use markdown_it::MarkdownIt;
-    ///
-    /// #[derive(Debug)]
-    /// struct Mark;
-    ///
-    /// impl InlinePlugin for Mark {
-    ///     const NAME: &'static str = "mark";
-    ///     const MARKER: char = '=';
-    ///
-    ///     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
-    ///         cx.consume("==").then_some(Mark)
-    ///     }
-    ///
-    ///     fn render_html(&self, html: &mut Html) {
-    ///         html.element("mark").text("marked");
-    ///     }
-    /// }
-    ///
-    /// let md = MarkdownIt::builder().plugin(PluginSpec::of::<Mark>()).build();
-    /// assert_eq!(md.render("a == b"), "<p>a <mark>marked</mark> b</p>\n");
-    /// ```
-    pub fn of<P: InlinePlugin>() -> Self {
-        Self::new(P::NAME).with_installer(Box::new(LeafRule::<P>::new()))
-    }
-
     /// Start an inline leaf belonging to this plugin.
     ///
     /// Call `.parse(...)` and register a renderer with `.render_html(...)`,
@@ -147,8 +113,10 @@ impl PluginSpec {
     ///
     /// ```compile_fail
     /// use markdown_it::plugin::PluginSpec;
+    ///
     /// #[derive(Debug)]
     /// struct Emoji;
+    ///
     /// PluginSpec::new("emoji")
     ///     .inline_leaf::<Emoji>("shortcode")
     ///     .parse(|cx| cx.consume(":rocket:").then_some(Emoji))
@@ -157,8 +125,10 @@ impl PluginSpec {
     ///
     /// ```compile_fail
     /// use markdown_it::plugin::PluginSpec;
+    ///
     /// #[derive(Debug)]
     /// struct Emoji;
+    ///
     /// PluginSpec::new("emoji")
     ///     .inline_leaf::<Emoji>("shortcode")
     ///     .render_html(|_, html| { html.text("🚀"); })
@@ -222,6 +192,7 @@ impl PluginSpec {
     ///
     /// #[derive(Debug)]
     /// struct Span;
+    ///
     /// PluginSpec::new("span")
     ///     .inline_container::<Span>("span")
     ///     .parse(|cx| {
@@ -236,6 +207,7 @@ impl PluginSpec {
     ///
     /// #[derive(Debug)]
     /// struct Span;
+    ///
     /// PluginSpec::new("span")
     ///     .inline_container::<Span>("span")
     ///     .html_tag("span")
@@ -287,8 +259,10 @@ impl PluginSpec {
     ///
     /// ```compile_fail
     /// use markdown_it::plugin::PluginSpec;
+    ///
     /// #[derive(Debug)]
     /// struct Notice(String);
+    ///
     /// PluginSpec::new("notice")
     ///     .block_leaf::<Notice>("notice")
     ///     .parse(|cx| {
@@ -300,8 +274,10 @@ impl PluginSpec {
     ///
     /// ```compile_fail
     /// use markdown_it::plugin::PluginSpec;
+    ///
     /// #[derive(Debug)]
     /// struct Notice(String);
+    ///
     /// PluginSpec::new("notice")
     ///     .block_leaf::<Notice>("notice")
     ///     .render_html(|_, html| { html.text("notice"); })
@@ -330,29 +306,29 @@ impl PluginSpec {
     /// use markdown_it::plugin::{BlockContainerParse, PluginSpec};
     ///
     /// #[derive(Debug)]
-    /// struct Admonition(String);
+    /// struct Spoiler;
     ///
-    /// let admonition = PluginSpec::new("admonition")
-    ///     .block_container::<Admonition>("admonition")
+    /// let spoiler = PluginSpec::new("spoiler")
+    ///     .block_container::<Spoiler>("spoiler")
     ///     .parse(|cx| {
-    ///         let title = cx.line(0)?.strip_prefix("::: ")?.to_owned();
-    ///         let close = (1..cx.remaining_lines()).find(|&line| cx.line(line) == Some(":::"));
-    ///         let body_end = close.unwrap_or(cx.remaining_lines());
-    ///         Some(BlockContainerParse {
-    ///             value: Admonition(title),
-    ///             open_lines: 1,
-    ///             body_lines: body_end - 1,
-    ///             close_lines: usize::from(close.is_some()),
-    ///             content_indent: 0,
-    ///         })
+    ///         if cx.line(0)? != "%%%" {
+    ///             return None;
+    ///         }
+    ///
+    ///         // find the close tag from remaining lines
+    ///         let close = (1..cx.remaining_lines())
+    ///             .find(|&line| cx.line(line) == Some("%%%"))?;
+    ///
+    ///         // return plugin type & cursor state
+    ///         Some(BlockContainerParse::new(Spoiler, close - 1).close_lines(1))
     ///     })
-    ///     .html_tag("div")
+    ///     .html_tag("details")
     ///     .finish();
     ///
-    /// let md = MarkdownIt::builder().plugin(admonition).build();
+    /// let md = MarkdownIt::builder().plugin(spoiler).build();
     /// assert_eq!(
-    ///     md.render("::: note\nbody *here*\n:::"),
-    ///     "<div>\n<p>body <em>here</em></p>\n</div>\n"
+    ///     md.render("%%%\nbody *here*\n%%%\nafter"),
+    ///     "<details>\n<p>body <em>here</em></p>\n</details>\n<p>after</p>\n"
     /// );
     /// ```
     ///
@@ -360,24 +336,22 @@ impl PluginSpec {
     ///
     /// ```compile_fail
     /// use markdown_it::plugin::{BlockContainerParse, PluginSpec};
+    ///
     /// #[derive(Debug)]
     /// struct Admonition;
+    ///
     /// PluginSpec::new("admonition")
     ///     .block_container::<Admonition>("admonition")
-    ///     .parse(|_| Some(BlockContainerParse {
-    ///         value: Admonition,
-    ///         open_lines: 1,
-    ///         body_lines: 0,
-    ///         close_lines: 0,
-    ///         content_indent: 0,
-    ///     }))
+    ///     .parse(|_| Some(BlockContainerParse::new(Admonition, 0)))
     ///     .finish(); // no renderer
     /// ```
     ///
     /// ```compile_fail
     /// use markdown_it::plugin::PluginSpec;
+    ///
     /// #[derive(Debug)]
     /// struct Admonition;
+    ///
     /// PluginSpec::new("admonition")
     ///     .block_container::<Admonition>("admonition")
     ///     .html_tag("div")
@@ -421,8 +395,10 @@ impl PluginSpec {
     ///
     /// ```compile_fail
     /// use markdown_it::plugin::PluginSpec;
+    ///
     /// #[derive(Debug)]
     /// struct Mark;
+    ///
     /// PluginSpec::new("highlight")
     ///     .inline_pair::<Mark>("highlight")
     ///     .value(|| Mark)
@@ -434,8 +410,10 @@ impl PluginSpec {
     ///
     /// ```compile_fail
     /// use markdown_it::plugin::PluginSpec;
+    ///
     /// #[derive(Debug)]
     /// struct Mark;
+    ///
     /// PluginSpec::new("highlight")
     ///     .inline_pair::<Mark>("highlight")
     ///     .delimiter::<'=', 2, true>()
@@ -562,8 +540,8 @@ impl PluginSpec {
 
     /// Add any plugin to this group.
     ///
-    /// This accepts static [`InlinePlugin`] values, [`PluginSpec`] values and
-    /// custom plugin implementations. A nested [`PluginSpec`] keeps its own
+    /// This accepts [`PluginSpec`] values and custom [`Plugin`] implementations.
+    /// A nested [`PluginSpec`] keeps its own
     /// identity and ordering constraints, so dependencies between children are
     /// resolved inside the group. A child with the same name as this
     /// specification is merged into it.
@@ -697,7 +675,6 @@ impl Plugin for PluginSpec {
 
 #[derive(Default)]
 pub(super) struct RegistrationContext {
-    pub rules: HashSet<std::any::TypeId>,
     pub pairs: HashMap<char, crate::parser::inline::helpers::emph_pair::PairRegistration>,
 }
 
@@ -814,13 +791,6 @@ mod tests {
         struct Item;
         #[derive(Debug)]
         struct Static;
-        impl InlinePlugin for Static {
-            const NAME: &'static str = "static";
-            fn parse(_: &mut crate::plugin::InlinePluginState<'_>) -> Option<Self> {
-                None
-            }
-            fn render_html(&self, _: &mut crate::plugin::Html) {}
-        }
 
         let syntax = PluginSpec::new("syntax")
             .inline_leaf::<Item>("inline-leaf")
@@ -847,7 +817,13 @@ mod tests {
             .transform("rewrite", |_, _| {});
         let group = PluginSpec::new("group")
             .with(syntax)
-            .with(Static)
+            .with(
+                PluginSpec::new("static")
+                    .inline_leaf::<Static>("static")
+                    .parse(|_| None)
+                    .render_html(|_, _| {})
+                    .finish(),
+            )
             .with(PluginSpec::new("group").transform("rewrite", |_, _| {}));
         let md = MarkdownIt::builder().plugin(group).build();
         let installed = &md.ext.get::<InstalledPlugins>().unwrap().0;

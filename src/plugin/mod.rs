@@ -1,59 +1,45 @@
 //! High-level plugin builders.
 //!
-//! There are two public plugin concepts:
+//! A [`PluginSpec`] groups syntax rules and transforms, resolves dependency
+//! ordering, and installs them into a [`MarkdownIt`](crate::MarkdownIt).
 //!
-//! - [`InlinePlugin`]: a static inline leaf that parses and renders itself.
-//! - [`PluginSpec`]: groups leaves, adds dependency ordering and installs them.
+//! ## Adding syntax
 //!
-//! Configured syntax is added to a [`PluginSpec`] with
-//! [`PluginSpec::inline_leaf`], [`PluginSpec::inline_container`],
-//! [`PluginSpec::block_leaf`], [`PluginSpec::block_container`],
-//! [`PluginSpec::inline_pair`] or [`PluginSpec::transform`]. Syntax builders
-//! accept low-level [`NodeRenderer`](crate::render::NodeRenderer)
-//! implementations with `.render_with(format, renderer)`.
+//! Configure syntax on a [`PluginSpec`] with:
 //!
-//! Rule names are local to their plugin and unique across all rule kinds;
-//! other plugins may reuse them. Groups keep child identities, and a same-name
-//! child merged with [`PluginSpec::with`] shares the parent's namespace.
+//! - [`PluginSpec::inline_leaf`], [`PluginSpec::inline_container`],
+//!   [`PluginSpec::inline_pair`]
+//! - [`PluginSpec::block_leaf`], [`PluginSpec::block_container`]
+//! - [`PluginSpec::transform`]
 //!
-//! Logical names do not imply separate low-level rules: block syntax shares a
-//! dispatcher and pairs share a scanner per marker. Only transforms expose
-//! named ordering marks through [`transform_rule_mark`] and
-//! [`transform_plugin_mark`]; other syntax rules have no per-name ordering,
-//! lookup or removal. Mark encodings are internal.
+//! Builders render HTML directly with `.render_html(...)`, or accept a
+//! low-level [`NodeRenderer`](crate::render::NodeRenderer) via
+//! `.render_with(format, renderer)`.
 //!
-//! A payload type has one renderer per output format per parser. Register a
-//! second plugin for the same payload type only when it uses the same rendering;
-//! use a newtype when the rendering differs. Repeated registrations for a type
-//! and format use the last renderer, matching [`MarkdownIt::add_renderer`](crate::MarkdownIt::add_renderer).
+//! ## Naming and ordering
 //!
-//! Static leaf:
+//! Rule names are unique within a plugin across all rule kinds, but scoped to
+//! that plugin, so other plugins may reuse them. A same-name child merged with
+//! [`PluginSpec::with`] shares the parent's namespace; otherwise groups keep
+//! child identities.
 //!
-//! ```
-//! use markdown_it::plugin::{Html, InlinePlugin, InlinePluginState};
-//! use markdown_it::MarkdownIt;
+//! Names are logical, not low-level rule boundaries: block syntax shares one
+//! dispatcher and pairs share one scanner per marker. Only transforms expose
+//! ordering marks ([`transform_rule_mark`], [`transform_plugin_mark`]); other
+//! rules have no per-name ordering, lookup, or removal. Mark encodings are
+//! internal.
 //!
-//! #[derive(Debug)]
-//! struct Emoji;
+//! ## Renderers
 //!
-//! impl InlinePlugin for Emoji {
-//!     const NAME: &'static str = "rocket";
-//!     const MARKER: char = ':';
+//! A payload type has one renderer per output format per parser. Repeated
+//! registrations for the same type and format use the last renderer, matching
+//! [`MarkdownIt::add_renderer`](crate::MarkdownIt::add_renderer). Register the
+//! same payload type from multiple plugins only if the rendering is identical;
+//! use a newtype otherwise.
 //!
-//!     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
-//!         cx.consume(":rocket:").then_some(Emoji)
-//!     }
+//! ## Example
 //!
-//!     fn render_html(&self, html: &mut Html) {
-//!         html.element("span").text("🚀");
-//!     }
-//! }
-//!
-//! let md = MarkdownIt::builder().plugin(Emoji).build();
-//! assert_eq!(md.render(":rocket:"), "<p><span>🚀</span></p>\n");
-//! ```
-//!
-//! Configured leaf:
+//! An inline leaf:
 //!
 //! ```
 //! use markdown_it::plugin::{Html, PluginSpec};
@@ -108,10 +94,7 @@ pub use self::inline::{
     InlineContainerState,
     InlineLeafBuilder,
     InlinePairBuilder,
-    InlinePlugin,
     InlinePluginState,
-    LeafRenderer,
-    LeafRule,
     PairDelimiter,
 };
 pub use self::renderer::WithRenderer;

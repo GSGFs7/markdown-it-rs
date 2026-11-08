@@ -8,9 +8,10 @@ struct Word(String);
 #[derive(Debug)]
 struct Plain;
 
-impl InlinePlugin for Plain {
-    const NAME: &'static str = "plain";
-    const MARKER: char = '@';
+impl Plain {
+    fn plugin() -> PluginSpec {
+        configured_leaf("plain", '@', Self::parse, Self::render_html)
+    }
 
     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
         cx.consume("@plain").then_some(Plain)
@@ -21,9 +22,10 @@ impl InlinePlugin for Plain {
     }
 }
 
-impl InlinePlugin for Word {
-    const NAME: &'static str = "word";
-    const MARKER: char = '@';
+impl Word {
+    fn plugin() -> PluginSpec {
+        configured_leaf("word", '@', Self::parse, Self::render_html)
+    }
 
     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
         let rest = cx.remaining().strip_prefix('@')?;
@@ -54,10 +56,8 @@ where
 }
 
 #[test]
-fn installs_static_inline_leaf_and_renderer() {
-    let md = MarkdownIt::builder()
-        .plugin(PluginSpec::of::<Word>())
-        .build();
+fn installs_inline_leaf_and_renderer() {
+    let md = MarkdownIt::builder().plugin(Word::plugin()).build();
     assert_eq!(
         md.render("say @hello!"),
         "<p>say <span class=\"word\">hello</span>!</p>\n"
@@ -177,13 +177,13 @@ fn same_local_pair_names_preserve_shared_scanner_lengths() {
 }
 
 #[test]
-fn static_leaf_type_can_be_registered_directly() {
-    let md = MarkdownIt::builder().plugin(Plain).build();
+fn leaf_spec_can_be_registered_directly() {
+    let md = MarkdownIt::builder().plugin(Plain::plugin()).build();
     assert_eq!(md.render("say @plain!"), "<p>say <i>plain</i>!</p>\n");
 }
 
 #[test]
-fn leaf_unifies_static_and_dynamic_registration() {
+fn leaf_specs_can_be_registered_together() {
     #[derive(Debug)]
     struct Bang;
 
@@ -197,7 +197,7 @@ fn leaf_unifies_static_and_dynamic_registration() {
     );
 
     let md = MarkdownIt::builder()
-        .plugin(PluginSpec::of::<Word>())
+        .plugin(Word::plugin())
         .plugin(bang)
         .build();
     assert_eq!(
@@ -207,7 +207,7 @@ fn leaf_unifies_static_and_dynamic_registration() {
 }
 
 #[test]
-fn plugin_spec_with_groups_static_and_dynamic_leaves() {
+fn plugin_spec_groups_leaf_specs() {
     #[derive(Debug)]
     struct Bang;
 
@@ -220,7 +220,7 @@ fn plugin_spec_with_groups_static_and_dynamic_leaves() {
         },
     );
 
-    let group = PluginSpec::new("group").with(Plain).with(bang);
+    let group = PluginSpec::new("group").with(Plain::plugin()).with(bang);
     let md = MarkdownIt::builder().plugin(group).build();
     assert_eq!(md.render("@plain!"), "<p><i>plain</i><b>bang</b></p>\n");
 }
@@ -709,13 +709,10 @@ fn admonition(interrupts_paragraph: bool) -> PluginSpec {
             let title = cx.line(0)?.strip_prefix(":::")?.trim().to_owned();
             let close = (1..cx.remaining_lines()).find(|&line| cx.line(line) == Some(":::"));
             let body_end = close.unwrap_or(cx.remaining_lines());
-            Some(BlockContainerParse {
-                value: Admonition(title),
-                open_lines: 1,
-                body_lines: body_end - 1,
-                close_lines: usize::from(close.is_some()),
-                content_indent: 0,
-            })
+            Some(
+                BlockContainerParse::new(Admonition(title), body_end - 1)
+                    .close_lines(usize::from(close.is_some())),
+            )
         })
         .html_tag("div")
         .finish()
@@ -788,13 +785,11 @@ fn configured_block_container_strips_content_indent() {
                 return None;
             }
             let close = (1..cx.remaining_lines()).find(|&line| cx.line(line) == Some("%%%"))?;
-            Some(BlockContainerParse {
-                value: Indented,
-                open_lines: 1,
-                body_lines: close - 1,
-                close_lines: 1,
-                content_indent: 2,
-            })
+            Some(
+                BlockContainerParse::new(Indented, close - 1)
+                    .close_lines(1)
+                    .content_indent(2),
+            )
         })
         .html_tag("div")
         .finish();
@@ -821,13 +816,7 @@ fn block_container_and_leaf_share_installation_order() {
         .parse(|cx| {
             cx.line(0)?
                 .starts_with("!!")
-                .then_some(BlockContainerParse {
-                    value: First,
-                    open_lines: 1,
-                    body_lines: 0,
-                    close_lines: 0,
-                    content_indent: 0,
-                })
+                .then_some(BlockContainerParse::new(First, 0))
         })
         .render_html(|_, html| {
             html.element("p").class("first").text("first");
@@ -839,13 +828,7 @@ fn block_container_and_leaf_share_installation_order() {
         .parse(|cx| {
             cx.line(0)?
                 .starts_with("!!")
-                .then_some(BlockContainerParse {
-                    value: Second,
-                    open_lines: 1,
-                    body_lines: 0,
-                    close_lines: 0,
-                    content_indent: 0,
-                })
+                .then_some(BlockContainerParse::new(Second, 0))
         })
         .render_html(|_, html| {
             html.element("p").class("second").text("second");
@@ -871,13 +854,7 @@ fn configured_block_container_rejects_layout_past_outdent_window() {
             // The block window inside the list item ends before `outside`.
             // These line counts would pass against state.line_max but cross the
             // outdent and swallow the following blocks.
-            Some(BlockContainerParse {
-                value: CrossOutdent,
-                open_lines: 1,
-                body_lines: 3,
-                close_lines: 0,
-                content_indent: 0,
-            })
+            Some(BlockContainerParse::new(CrossOutdent, 3))
         })
         .html_tag("div")
         .finish();
@@ -896,15 +873,7 @@ fn configured_block_container_rejects_zero_opening_lines() {
 
     let container = PluginSpec::new("empty")
         .block_container::<Empty>("empty")
-        .parse(|_| {
-            Some(BlockContainerParse {
-                value: Empty,
-                open_lines: 0,
-                body_lines: 1,
-                close_lines: 0,
-                content_indent: 0,
-            })
-        })
+        .parse(|_| Some(BlockContainerParse::new(Empty, 1).open_lines(0)))
         .html_tag("div")
         .finish();
 

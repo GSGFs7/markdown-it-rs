@@ -25,13 +25,10 @@ pub fn admonition_plugin() -> PluginSpec {
             let title = cx.line(0)?.strip_prefix(":::")?.trim().to_owned();
             let close = (1..cx.remaining_lines()).find(|&line| cx.line(line) == Some(":::"));
             let body_end = close.unwrap_or(cx.remaining_lines());
-            Some(BlockContainerParse {
-                value: Admonition { title },
-                open_lines: 1,
-                body_lines: body_end - 1,
-                close_lines: usize::from(close.is_some()),
-                content_indent: 0,
-            })
+            Some(
+                BlockContainerParse::new(Admonition { title }, body_end - 1)
+                    .close_lines(usize::from(close.is_some())),
+            )
         })
         .render_html(|admonition, html| {
             let children = html.render_children();

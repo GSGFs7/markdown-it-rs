@@ -5,17 +5,14 @@ use std::time::Duration;
 use criterion::{criterion_group, criterion_main, Criterion};
 use markdown_it::document::{Node, NodeId};
 use markdown_it::parser::inline::{InlineRule, InlineState};
-use markdown_it::plugin::{Html, InlinePlugin, InlinePluginState, PluginSpec};
+use markdown_it::plugin::{Html, InlinePluginState, PluginSpec};
 use markdown_it::render::{NodeRenderer, RenderContext, Writer};
 use markdown_it::MarkdownIt;
 
 #[derive(Debug)]
 struct Emoji;
 
-impl InlinePlugin for Emoji {
-    const NAME: &'static str = "emoji";
-    const MARKER: char = ':';
-
+impl Emoji {
     fn parse(cx: &mut InlinePluginState<'_>) -> Option<Self> {
         cx.consume(":rocket:").then_some(Self)
     }
@@ -81,7 +78,6 @@ fn parser(kind: &str) -> MarkdownIt {
             md.add_renderer::<Emoji, _>("html", LowRenderer);
             md
         }
-        "static" => MarkdownIt::builder().plugin(Emoji).build(),
         "dynamic" | "wildcard" => MarkdownIt::builder()
             .plugin(
                 PluginSpec::new("emoji")
@@ -97,7 +93,7 @@ fn parser(kind: &str) -> MarkdownIt {
 }
 
 fn benchmark(c: &mut Criterion) {
-    let kinds = ["low", "static", "dynamic", "wildcard"];
+    let kinds = ["low", "dynamic", "wildcard"];
     let corpora = [
         ("short", "Ready :rocket:!".to_owned()),
         (

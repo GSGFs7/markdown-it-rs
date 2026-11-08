@@ -66,7 +66,8 @@ type ContainerParseFn<T> =
 /// must be at least one. The builder parses `body_lines` as nested block
 /// content and skips `close_lines`; an unclosed container is represented by
 /// `close_lines == 0` and a body that extends to the end of the visible block
-/// window.
+/// window. Use [`BlockContainerParse::new`] for a one-line opening and
+/// configure closing lines or indentation only when needed.
 #[derive(Debug)]
 pub struct BlockContainerParse<T> {
     /// Payload stored on the container node.
@@ -84,6 +85,55 @@ pub struct BlockContainerParse<T> {
     /// strip a per-line prefix (blockquotes) still need a low-level
     /// [`BlockRule`](crate::parser::block::BlockRule).
     pub content_indent: usize,
+}
+
+impl<T> BlockContainerParse<T> {
+    /// Create a layout with one opening line, `body_lines` body lines,
+    /// no closing lines and no additional content indentation.
+    ///
+    /// For a closed fence, add `.close_lines(1)`. The body count excludes
+    /// both opening and closing lines. An unclosed fence should extend its
+    /// body to the end of the visible block window.
+    ///
+    /// ```
+    /// use markdown_it::plugin::BlockContainerParse;
+    ///
+    /// let layout = BlockContainerParse::new("note", 3)
+    ///     .close_lines(1)
+    ///     .content_indent(2);
+    /// assert_eq!(layout.body_lines, 3);
+    /// assert_eq!(layout.close_lines, 1);
+    /// ```
+    pub fn new(value: T, body_lines: usize) -> Self {
+        Self {
+            value,
+            open_lines: 1,
+            body_lines,
+            close_lines: 0,
+            content_indent: 0,
+        }
+    }
+
+    /// Set the number of opening lines (default `1`). Must be greater than zero.
+    #[must_use]
+    pub fn open_lines(mut self, lines: usize) -> Self {
+        self.open_lines = lines;
+        self
+    }
+
+    /// Set the number of closing lines to skip (default `0`).
+    #[must_use]
+    pub fn close_lines(mut self, lines: usize) -> Self {
+        self.close_lines = lines;
+        self
+    }
+
+    /// Set the additional indentation reserved for the body (default `0`).
+    #[must_use]
+    pub fn content_indent(mut self, indent: usize) -> Self {
+        self.content_indent = indent;
+        self
+    }
 }
 
 /// Builds one block container inside a [`PluginSpec`].
