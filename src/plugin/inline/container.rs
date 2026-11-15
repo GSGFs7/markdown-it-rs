@@ -451,6 +451,7 @@ impl<T: NodeValue> ConfiguredInlineContainer<T> {
                 .parse_subrange(range)
                 .expect("validated container part range");
             let part = state.document.create_node(InlineContainerPart);
+            state.document.node_mut(part).set_transparent(true);
             #[cfg(feature = "sourcemap")]
             state.document.node_mut(part).set_srcmap(map);
             for child in children {

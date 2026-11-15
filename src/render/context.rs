@@ -64,9 +64,9 @@ impl<'a> RenderContext<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if `node` is not a valid [`NodeId`] in this document, if a leaf
-    /// has no renderer for the active format, or if a renderer or formatting
-    /// implementation panics.
+    /// Panics if `node` is not a valid [`NodeId`] in this document, if a
+    /// non-transparent leaf has no renderer for the active format, or if a
+    /// renderer or formatting implementation panics.
     pub fn render_node(&mut self, node: NodeId, output: &mut Writer) {
         render_node(self.shared, self.ext, node, output);
     }
@@ -75,9 +75,9 @@ impl<'a> RenderContext<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if `node` is not a valid [`NodeId`] in this document, if a leaf
-    /// descendant has no renderer for the active format, or if a renderer or
-    /// formatting implementation panics.
+    /// Panics if `node` is not a valid [`NodeId`] in this document, if a
+    /// non-transparent leaf descendant has no renderer for the active format, or
+    /// if a renderer or formatting implementation panics.
     pub fn render_children(&mut self, node: NodeId, output: &mut Writer) {
         render_children_guarded(self.shared, self.ext, node, output);
     }
@@ -95,9 +95,10 @@ pub(super) fn render_node(
         .renderers
         .and_then(|renderers| renderers.get(&node.type_id()))
     else {
-        // leaf but no renderer
+        // Missing renderers are errors for real leaves, but internal transparent
+        // wrappers may be empty and still render as nothing.
         assert!(
-            !node.children().is_empty(),
+            node.is_transparent() || !node.children().is_empty(),
             "no {:?} renderer registered for leaf {} at {:?}",
             shared.format,
             node.name(),

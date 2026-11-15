@@ -195,7 +195,7 @@ impl MarkdownIt {
     ///
     /// # Panics
     ///
-    /// Panics if a leaf node has no renderer for `format`.
+    /// Panics if a non-transparent leaf node has no renderer for `format`.
     pub fn render_document(&self, document: &Document, format: &str) -> String {
         self.renderers
             .render(document, format, &self.render_options)

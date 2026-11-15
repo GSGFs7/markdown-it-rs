@@ -37,6 +37,18 @@ impl Node {
         self.data.srcmap = srcmap;
     }
 
+    /// Whether this node is an internal transparent wrapper.
+    ///
+    /// Transparent nodes render their children in every format, including when
+    /// they have no children.
+    pub(crate) fn is_transparent(&self) -> bool {
+        self.data.transparent
+    }
+
+    pub(crate) fn set_transparent(&mut self, transparent: bool) {
+        self.data.transparent = transparent;
+    }
+
     pub fn ext(&self) -> &NodeExtSet {
         &self.data.ext
     }

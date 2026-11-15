@@ -77,7 +77,7 @@ impl RendererRegistry {
     ///
     /// # Panics
     ///
-    /// Panics if a leaf node has no renderer registered for `format`.
+    /// Panics if a non-transparent leaf node has no renderer registered for `format`.
     pub fn render(&self, document: &Document, format: &str, options: &RenderOptions) -> String {
         self.render_subtree(document, document.root(), format, options)
     }

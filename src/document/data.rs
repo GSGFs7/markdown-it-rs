@@ -10,6 +10,7 @@ pub(super) struct NodeData {
     pub(super) srcmap: Option<crate::common::sourcemap::SourcePos>,
     pub(super) ext: NodeExtSet,
     pub(super) attrs: HtmlAttributes,
+    pub(super) transparent: bool,
     node_type: TypeKey,
     node_value: Box<dyn NodeValue>,
 }
@@ -21,6 +22,7 @@ impl NodeData {
             srcmap: None,
             ext: NodeExtSet::new(),
             attrs: Vec::new(),
+            transparent: false,
             node_type: TypeKey::of::<T>(),
             node_value: Box::new(value),
         }

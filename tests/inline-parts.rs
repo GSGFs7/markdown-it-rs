@@ -106,6 +106,27 @@ fn single_range_containers_also_expose_one_part() {
 }
 
 #[test]
+fn empty_parts_render_in_formats_without_a_part_renderer() {
+    let plugin = PluginSpec::new("html-only")
+        .inline_container::<Annotation>("html-only")
+        .marker('{')
+        .parse(|cx| {
+            let source = cx.source();
+            let end = source.find('}')?;
+            cx.part(1..end);
+            cx.part(1..1);
+            cx.advance_bytes(end + 1);
+            Some(Annotation)
+        })
+        .html_tag("span")
+        .finish();
+    let md = MarkdownIt::builder().plugin(plugin).build();
+    let doc = md.parse("{x}");
+    assert_eq!(md.render_document(&doc, "html"), "<p><span>x</span></p>\n");
+    assert_eq!(md.render_document(&doc, "text"), "x\n");
+}
+
+#[test]
 fn empty_parts_keep_their_indices() {
     let md = MarkdownIt::builder().plugin(annotation()).build();
     for (source, html, text) in [
