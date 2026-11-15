@@ -657,6 +657,17 @@ fn scan_label_inner(
         }
 
         if ch == '[' {
+            // Failed labels are indexed by the context entering the probe.
+            // HTML inside it may change the returned link level or disable
+            // special HTML; looking up that returned context misses the failure
+            // and rescans the same unclosed suffix at every enclosing opener.
+            let nested_label = LabelKey {
+                start: pos + 1,
+                end: end_max,
+                link_level,
+                html_disabled,
+                enable_nested,
+            };
             let nested = scan_candidate_abs(
                 state,
                 pos,
@@ -685,13 +696,7 @@ fn scan_label_inner(
                     .borrow()
                     .link_scan
                     .failed_labels
-                    .contains_key(&LabelKey {
-                        start: pos + 1,
-                        end: end_max,
-                        link_level,
-                        html_disabled,
-                        enable_nested,
-                    });
+                    .contains_key(&nested_label);
                 if unclosed {
                     return fail(link_level, html_disabled);
                 }

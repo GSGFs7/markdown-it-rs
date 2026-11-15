@@ -3,6 +3,54 @@ use crate::MarkdownIt;
 use crate::document::{Document, Root};
 
 #[test]
+fn unclosed_labels_with_html_side_effects_have_bounded_work() {
+    use std::cell::Cell;
+
+    use crate::parser::inline::InlineRule;
+    use crate::plugins::html::html_inline::HtmlInlineScanner;
+
+    thread_local! {
+        static CHECKS: Cell<usize> = const { Cell::new(0) };
+    }
+    struct CountHtml;
+    impl InlineRule for CountHtml {
+        const MARKER: char = '<';
+
+        fn check(_: &mut InlineState<'_>) -> Option<usize> {
+            CHECKS.with(|checks| {
+                checks.set(checks.get() + 1);
+                assert!(checks.get() <= 4096, "repeated unclosed label scans");
+            });
+            None
+        }
+
+        fn run(_: &mut InlineState<'_>) -> Option<(Option<crate::document::NodeId>, usize)> {
+            None
+        }
+    }
+
+    let mut md = MarkdownIt::empty();
+    crate::plugins::cmark::add(&mut md);
+    crate::plugins::html::add(&mut md);
+    crate::plugins::extra::add(&mut md);
+    md.inline
+        .add_rule::<CountHtml>()
+        .before::<HtmlInlineScanner>();
+    let seed = String::from_utf8_lossy(include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/fuzz/seeds/extras_render/unclosed-anchor-label-regression.md"
+    )));
+    for source in [
+        seed.into_owned(),
+        format!("{}<a href='/'>text](x)", "[".repeat(64)),
+        format!("{}<?broken](x)", "[".repeat(64)),
+    ] {
+        CHECKS.with(|checks| checks.set(0));
+        md.render(&source);
+    }
+}
+
+#[test]
 fn label_probe_preserves_unmatched_marker_runs() {
     let md = MarkdownIt::new();
     for ticks in [2, 3, 32] {
