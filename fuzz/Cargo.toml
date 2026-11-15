@@ -1,0 +1,29 @@
+[package]
+name = "markdown-it-rs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+markdown_it = { package = "markdown-it-rs", path = ".." }
+
+[features]
+sourcemap = ["markdown_it/sourcemap"]
+
+[[bin]]
+name = "parse_render"
+path = "fuzz_targets/parse_render.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "extras_render"
+path = "fuzz_targets/extras_render.rs"
+test = false
+doc = false
+bench = false

@@ -1,0 +1,75 @@
+name: Fuzz
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 21 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }} (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [parse_render, extras_render]
+        features: [default, sourcemap]
+    env:
+      FUZZ_TARGET: ${{ matrix.target }}
+      FUZZ_FEATURES: ${{ matrix.features }}
+      EVENT_NAME: ${{ github.event_name }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src, rustfmt
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+      - name: Check target formatting
+        run: cargo +nightly fmt -p markdown-it-rs-fuzz --check
+      - name: Restore corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ runner.os }}-${{ matrix.target }}-${{ matrix.features }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            fuzz-corpus-${{ runner.os }}-${{ matrix.target }}-${{ matrix.features }}-
+      - name: Seed corpus
+        run: |
+          mkdir -p "fuzz/corpus/$FUZZ_TARGET"
+          cp fuzz/seeds/common/* "fuzz/corpus/$FUZZ_TARGET/"
+          cp "fuzz/seeds/$FUZZ_TARGET/"* "fuzz/corpus/$FUZZ_TARGET/"
+      - name: Run fuzzer
+        run: |
+          seconds=60
+          if [[ "$EVENT_NAME" != pull_request ]]; then
+            seconds=600
+          fi
+          feature_args=()
+          if [[ "$FUZZ_FEATURES" == sourcemap ]]; then
+            feature_args=(--features sourcemap)
+          fi
+          cargo +nightly fuzz run "$FUZZ_TARGET" "${feature_args[@]}" -- \
+            -max_total_time="$seconds" -max_len=16384 -timeout=10 -rss_limit_mb=2048
+      - name: Upload failing inputs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-failures-${{ matrix.target }}-${{ matrix.features }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
+      - name: Save corpus
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+        uses: actions/cache/save@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ runner.os }}-${{ matrix.target }}-${{ matrix.features }}-${{ github.run_id }}-${{ github.run_attempt }}

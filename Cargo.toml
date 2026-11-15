@@ -40,6 +40,7 @@ members = [
     "bindings/kotlin",
     "bindings/python",
     "bindings/wasm",
+    "fuzz"
 ]
 # The legacy markdown-it 0.6 has a vulnerability dependency
 # Make it out of the work space
