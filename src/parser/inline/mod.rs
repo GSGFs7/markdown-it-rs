@@ -198,6 +198,7 @@ pub struct InlineParser {
 }
 
 impl InlineParser {
+    /// Create an empty inline rule chain.
     pub fn new() -> Self {
         Self::default()
     }
@@ -244,10 +245,12 @@ impl InlineParser {
         RuleBuilder::new(self.add_rule_entry::<T>())
     }
 
+    /// Return whether a rule of type `T` is currently registered.
     pub fn has_rule<T: InlineRule>(&self) -> bool {
         self.ruler.contains(RuleMark::of::<T>())
     }
 
+    /// Remove the rule of type `T`, if present.
     pub fn remove_rule<T: InlineRule>(&mut self) {
         self.rules.take();
         if std::any::TypeId::of::<T>() != std::any::TypeId::of::<TextScanner>() {

@@ -47,6 +47,7 @@ macro_rules! rule_builder {
                 self
             }
 
+            /// Place this rule as late as possible while honoring dependencies.
             pub fn after_all(self) -> Self {
                 self.item.after_all();
                 self
@@ -66,16 +67,31 @@ macro_rules! rule_builder {
                 self.alias_mark(crate::common::RuleMark::named(name))
             }
 
+            /// Require the rule of type `U` to be present.
+            ///
+            /// # Panics
+            ///
+            /// Panics when rule chains are compiled if `U` is missing.
             pub fn require<U: $var>(self) -> Self {
                 self.item.require(crate::common::RuleMark::of::<U>());
                 self
             }
 
+            /// Require the rule identified by `mark` to be present.
+            ///
+            /// # Panics
+            ///
+            /// Panics when rule chains are compiled if `mark` is missing.
             pub fn require_mark(self, mark: crate::common::RuleMark) -> Self {
                 self.item.require(mark);
                 self
             }
 
+            /// Require the rule named `name` to be present.
+            ///
+            /// # Panics
+            ///
+            /// Panics when rule chains are compiled if `name` is missing.
             pub fn require_named(self, name: impl Into<std::sync::Arc<str>>) -> Self {
                 self.require_mark(crate::common::RuleMark::named(name))
             }

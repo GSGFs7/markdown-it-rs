@@ -7,6 +7,11 @@ pub fn add(md: &mut MarkdownIt) {
         .before_all();
 }
 
+/// Core rule that tokenizes pending inline content after block parsing.
+///
+/// [`MarkdownIt::empty`](crate::MarkdownIt::empty) registers this rule as part
+/// of the parsing infrastructure. Custom core rules that need inline output
+/// should be ordered after it.
 #[derive(Default)]
 pub struct InlineParserRule;
 impl CoreRule for InlineParserRule {

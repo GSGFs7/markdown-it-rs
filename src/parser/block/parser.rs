@@ -5,6 +5,10 @@ pub fn add(md: &mut MarkdownIt) {
     md.add_rule::<BlockParserRule>().before_all();
 }
 
+/// Core rule that runs the block rule chain and builds the block structure.
+///
+/// [`MarkdownIt::empty`](crate::MarkdownIt::empty) registers this rule as part
+/// of the parsing infrastructure. It runs before the inline parser core rule.
 #[derive(Default)]
 pub struct BlockParserRule;
 impl CoreRule for BlockParserRule {

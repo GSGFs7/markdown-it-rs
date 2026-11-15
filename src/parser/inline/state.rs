@@ -19,6 +19,16 @@ struct FinishCallbacks(Vec<fn(&mut InlineState<'_>)>);
 /// Hooks selected once per full source and shared by child sessions.
 type ScanHookCache<'a> = Cow<'a, OnceCell<Vec<ScanHook>>>;
 
+/// Mutable state for one inline parsing session.
+///
+/// An `InlineState` tracks the current source window, cursor, nesting and link
+/// context, accumulated nodes, and source mapping. Rules inspect the cursor via
+/// [`remaining`](Self::remaining), add nodes to the document, and return the
+/// number of consumed bytes.
+///
+/// [`parse_subrange`](Self::parse_subrange) runs a nested session over a child
+/// range. Child sessions share the document and parser caches but have their
+/// own cursor, node buffer, and pending text.
 pub struct InlineState<'a> {
     /// Markdown source.
     pub(crate) src: Cow<'a, str>,
