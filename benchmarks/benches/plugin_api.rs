@@ -209,8 +209,9 @@ fn container_parser(kind: &str) -> MarkdownIt {
                 return None;
             }
             let end = source.find('}')?;
-            cx.advance(end + 1);
-            Some((Span, 1..end))
+            cx.part(1..end);
+            cx.advance_bytes(end + 1);
+            Some(Span)
         });
     let plugin = match kind {
         "tag" => builder.html_tag("span").finish(),

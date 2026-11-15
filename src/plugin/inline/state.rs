@@ -63,7 +63,7 @@ impl<'a> InlinePluginState<'a> {
     /// [`remaining`](Self::remaining), before the cursor advances.
     pub fn consume_pair(&mut self, options: &PairOptions<'_>) -> Option<PairMatch> {
         let matched = self.scan_pair(options)?;
-        self.advance(matched.consumed).then_some(matched)
+        self.advance_bytes(matched.consumed).then_some(matched)
     }
 
     /// Parser instance that owns the active inline rule.
@@ -72,7 +72,7 @@ impl<'a> InlinePluginState<'a> {
     }
 
     /// Number of bytes consumed so far.
-    pub fn consumed(&self) -> usize {
+    pub fn consumed_bytes(&self) -> usize {
         self.consumed
     }
 
@@ -98,11 +98,11 @@ impl<'a> InlinePluginState<'a> {
         Some(ch)
     }
 
-    /// Consume exactly `bytes` bytes.
+    /// Advance the cursor by exactly `bytes` bytes.
     ///
     /// Returns `false` without moving the cursor when the range is outside the
     /// source or not on a UTF-8 boundary.
-    pub fn advance(&mut self, bytes: usize) -> bool {
+    pub fn advance_bytes(&mut self, bytes: usize) -> bool {
         if self.remaining().get(bytes..).is_none() {
             return false;
         }
@@ -126,7 +126,7 @@ mod tests {
         assert_eq!(cx.source_slice(1..2), None);
         assert_eq!(cx.source_slice(0..6), None);
 
-        assert!(cx.advance(1));
+        assert!(cx.advance_bytes(1));
         assert_eq!(cx.remaining(), "雪b");
         assert_eq!(cx.remaining_slice(0..3), Some("雪"));
         assert_eq!(cx.remaining_slice(3..4), Some("b"));
@@ -141,12 +141,12 @@ mod tests {
 
         let matched = cx.scan_pair(&options).unwrap();
         assert_eq!(matched.body, 2..3);
-        assert_eq!(cx.consumed(), 0);
+        assert_eq!(cx.consumed_bytes(), 0);
         assert_eq!(cx.remaining_slice(matched.body), Some("a"));
 
         let matched = cx.consume_pair(&options).unwrap();
         assert_eq!(matched.consumed, 5);
-        assert_eq!(cx.consumed(), 5);
+        assert_eq!(cx.consumed_bytes(), 5);
         assert_eq!(cx.remaining(), "tail");
         assert_eq!(cx.consume_pair(&options), None);
     }

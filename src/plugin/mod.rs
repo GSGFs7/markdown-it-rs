@@ -7,14 +7,15 @@
 //!
 //! Configure syntax on a [`PluginSpec`] with:
 //!
-//! - [`PluginSpec::inline_leaf`], [`PluginSpec::inline_container`],
-//!   [`PluginSpec::inline_pair`]
-//! - [`PluginSpec::block_leaf`], [`PluginSpec::block_container`]
-//! - [`PluginSpec::transform`]
-//!
-//! Builders render HTML directly with `.render_html(...)`, or accept a
-//! low-level [`NodeRenderer`](crate::render::NodeRenderer) via
-//! `.render_with(format, renderer)`.
+//! - [`PluginSpec::inline_leaf`] for self-contained inline constructs without
+//!   parsed children;
+//! - [`PluginSpec::inline_container`] for one or more independent inline parts
+//!   under a payload node (see [`InlineContainerState`]);
+//! - [`PluginSpec::inline_pair`] for emphasis-style delimited children;
+//! - [`PluginSpec::block_leaf`] for line-oriented constructs without a nested
+//!   block body;
+//! - [`PluginSpec::block_container`] for nested block bodies;
+//! - [`PluginSpec::transform`] for document rewrites after parsing.
 //!
 //! ## Naming and ordering
 //!
@@ -30,6 +31,10 @@
 //! internal.
 //!
 //! ## Renderers
+//!
+//! Builders render HTML directly with `.render_html(...)`, or accept a
+//! low-level [`NodeRenderer`](crate::render::NodeRenderer) via
+//! `.render_with(format, renderer)`.
 //!
 //! A payload type has one renderer per output format per parser. Repeated
 //! registrations for the same type and format use the last renderer, matching
@@ -91,6 +96,7 @@ pub use self::container_context::{ContainerHtml, ContainerText};
 pub use self::html::{Html, HtmlElement};
 pub use self::inline::{
     InlineContainerBuilder,
+    InlineContainerPart,
     InlineContainerState,
     InlineLeafBuilder,
     InlinePairBuilder,

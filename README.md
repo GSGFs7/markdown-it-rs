@@ -69,9 +69,8 @@ fn spoiler() -> PluginSpec {
         .inline_container::<Spoiler>("spoiler")
         .marker('|') // tell the parser to pull up this plugin when encounter this
         .parse(move |cx| {
-            let base = cx.consumed();
-            let matched = cx.consume_pair(&options)?; // find "||" pair & advance cursor
-            Some((Spoiler, base + matched.body.start..base + matched.body.end))
+            cx.consume_part(&options)?; // find "||" pair, advance cursor, and record
+            Some(Spoiler)
         })
         .render_html(|_, html| {
             let children = html.render_children();

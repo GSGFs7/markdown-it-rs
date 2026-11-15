@@ -18,7 +18,7 @@ fn parser() -> MarkdownIt {
         .parse(move |cx| {
             let matched = cx.scan_pair(&literal)?;
             let value = Literal(cx.remaining_slice(matched.body)?.to_owned());
-            cx.advance(matched.consumed).then_some(value)
+            cx.advance_bytes(matched.consumed).then_some(value)
         })
         .render_html(|value, html| {
             html.element("code").text(&value.0);
@@ -31,10 +31,8 @@ fn parser() -> MarkdownIt {
             if !cx.consume("@") {
                 return None;
             }
-            let base = cx.consumed();
-            let matched = cx.consume_pair(&container)?;
-            let body = base + matched.body.start..base + matched.body.end;
-            Some((Container, body))
+            cx.consume_part(&container)?;
+            Some(Container)
         })
         .html_tag("span")
         .finish();
@@ -74,9 +72,15 @@ fn child_ranges_keep_original_utf8_source_positions_after_a_prefix() {
     let document = parser().parse("前 @[[*雪*]] 尾");
     let paragraph = document.children(document.root())[0];
     let wrapper = document.children(paragraph)[1];
-    let emphasis = document.children(wrapper)[0];
+    let part = document.children(wrapper)[0];
+    let emphasis = document.children(part)[0];
     let text = document.children(emphasis)[0];
-    for (id, expected) in [(wrapper, (4, 14)), (emphasis, (7, 12)), (text, (8, 11))] {
+    for (id, expected) in [
+        (wrapper, (4, 14)),
+        (part, (7, 12)),
+        (emphasis, (7, 12)),
+        (text, (8, 11)),
+    ] {
         assert_eq!(
             document.node(id).srcmap().unwrap().get_byte_offsets(),
             expected

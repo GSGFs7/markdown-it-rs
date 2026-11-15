@@ -38,7 +38,7 @@
 //!     .parse(move |cx| {
 //!         let matched = cx.scan_pair(&options)?;
 //!         let value = Variable(cx.remaining_slice(matched.body)?.to_owned());
-//!         cx.advance(matched.consumed).then_some(value)
+//!         cx.advance_bytes(matched.consumed).then_some(value)
 //!     })
 //!     .render_html(|value, html| { html.element("code").text(&value.0); })
 //!     .finish();
@@ -61,10 +61,8 @@
 //!     .inline_container::<Boxed>("boxed")
 //!     .marker('[')
 //!     .parse(move |cx| {
-//!         let base = cx.consumed();
-//!         let matched = cx.consume_pair(&options)?;
-//!         let body = base + matched.body.start..base + matched.body.end;
-//!         Some((Boxed, body))
+//!         cx.consume_part(&options)?;
+//!         Some(Boxed)
 //!     })
 //!     .html_tag("span")
 //!     .finish();

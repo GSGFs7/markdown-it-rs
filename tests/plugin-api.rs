@@ -25,8 +25,9 @@ fn inline_container_parses_children_through_the_public_api() {
                 return None;
             }
             let end = source.find(']')?;
-            cx.advance(end + 1);
-            Some((Boxed("note".into()), 2..end))
+            cx.part(2..end);
+            cx.advance_bytes(end + 1);
+            Some(Boxed("note".into()))
         })
         .render_html(|value, html| {
             let children = html.render_children();
@@ -282,7 +283,7 @@ fn failed_match_rolls_back_text() {
             if value.is_empty() {
                 return None;
             }
-            cx.advance(end + 1);
+            cx.advance_bytes(end + 1);
             Some(Tag(value.to_owned()))
         },
         |tag, html| {
@@ -599,8 +600,8 @@ fn unicode_markers_and_utf8_cursor_boundaries() {
         "unicode",
         '🦀',
         |cx| {
-            assert!(!cx.advance(1));
-            assert_eq!(cx.consumed(), 0);
+            assert!(!cx.advance_bytes(1));
+            assert_eq!(cx.consumed_bytes(), 0);
             cx.consume("🦀").then(|| Tag("CRAB".into()))
         },
         |tag, html| {

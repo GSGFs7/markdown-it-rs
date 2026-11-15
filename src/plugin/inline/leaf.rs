@@ -162,7 +162,22 @@ struct ConfiguredLeaf<T: NodeValue> {
 
 impl<T: NodeValue> ConfiguredLeaf<T> {
     fn parse(&self, source: &str, markdown_it: &MarkdownIt) -> Option<(T, usize)> {
-        parse_leaf(&self.rule, source, markdown_it, |cx| (self.parse)(cx))
+        let mut cx = InlinePluginState::new(source, markdown_it);
+        let value = (self.parse)(&mut cx)?;
+        let consumed = cx.consumed_bytes();
+
+        assert!(
+            consumed > 0,
+            "inline plugin rule {:?} succeeded without consuming input",
+            self.rule
+        );
+        debug_assert!(
+            source.get(..consumed).is_some(),
+            "inline plugin rule {:?} consumed past the source window",
+            self.rule
+        );
+
+        Some((value, consumed))
     }
 
     fn run(
@@ -221,26 +236,4 @@ impl<T: NodeValue> PluginInstaller for ConfiguredLeaf<T> {
             .after_named("text")
             .before_all();
     }
-}
-
-fn parse_leaf<T>(
-    rule: &str,
-    source: &str,
-    markdown_it: &MarkdownIt,
-    parse: impl FnOnce(&mut InlinePluginState<'_>) -> Option<T>,
-) -> Option<(T, usize)> {
-    let mut cx = InlinePluginState::new(source, markdown_it);
-    let value = parse(&mut cx)?;
-    let consumed = cx.consumed();
-
-    assert!(
-        consumed > 0,
-        "inline plugin rule {rule:?} succeeded without consuming input"
-    );
-    assert!(
-        source.get(..consumed).is_some(),
-        "inline plugin rule {rule:?} consumed past the source window"
-    );
-
-    Some((value, consumed))
 }
