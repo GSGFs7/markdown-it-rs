@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > This is a personally maintained fork of
-> [markdown-it-rust/markdown-it](https://github.com/markdown-it-rust/markdown-it).  
+> [markdown-it-rust/markdown-it](https://github.com/markdown-it-rust/markdown-it).
 
 A Rust-native, AST-first Markdown parser with [markdown-it.js](https://github.com/markdown-it/markdown-it)-compatible rendering.
 
@@ -89,3 +89,25 @@ assert_eq!(
 ```
 
 See the `examples/ferris` folder for a detailed guide to the low-level rule API.
+
+## Related projects
+
+- [markdown-it.js](https://github.com/markdown-it/markdown-it) — the JavaScript
+  reference implementation for this project, with a large ecosystem of
+  existing plugins.
+- [pulldown-cmark](https://github.com/pulldown-cmark/pulldown-cmark) — a very
+  fast Rust CommonMark parser with a pull-style event API.
+- [comrak](https://github.com/kivikakk/comrak) — a Rust port of `cmark-gfm`
+  with AST access and GitHub-Flavored Markdown extensions.
+- [markdown-rs](https://github.com/wooorm/markdown-rs) — a Rust CommonMark
+  parser with mdast support and GFM extensions.
+- [html5ever](https://github.com/servo/html5ever) — an HTML5 parser that can
+  be paired with a DOM implementation for tree-based traversal and rewriting.
+- [ammonia](https://github.com/rust-ammonia/ammonia) — an HTML sanitizer for
+  Rust. Useful when raw HTML is enabled and output is untrusted.
+- [lol-html](https://github.com/cloudflare/lol-html) — a streaming HTML parser
+  and rewriter, useful for transforming rendered HTML without a full DOM.
+- [syntect](https://github.com/trishume/syntect) — the syntax highlighting
+  engine used by `plugins::extra::syntect`.
+- [katex-rs](https://github.com/katex-rs/katex-rs) — a Rust KaTeX
+  implementation used by `plugins::extra::math` with the `katex` feature.
