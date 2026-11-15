@@ -26,7 +26,8 @@ pub fn admonition_plugin() -> PluginSpec {
             let close = (1..cx.remaining_lines()).find(|&line| cx.line(line) == Some(":::"));
             let body_end = close.unwrap_or(cx.remaining_lines());
             Some(
-                BlockContainerParse::new(Admonition { title }, body_end - 1)
+                BlockContainerParse::new(Admonition { title })
+                    .body_until(body_end)
                     .close_lines(usize::from(close.is_some())),
             )
         })

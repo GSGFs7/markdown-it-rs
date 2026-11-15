@@ -93,7 +93,9 @@ impl<'a> BlockPluginState<'a> {
         self.consumed
     }
 
-    /// Number of lines left in the current block window.
+    /// Number of lines left after [`consumed_lines`](Self::consumed_lines).
+    ///
+    /// This is the block leaf cursor equivalent of a remaining-window query.
     pub fn remaining_lines(&self) -> usize {
         self.line_max
             .saturating_sub(self.start)
@@ -194,7 +196,10 @@ impl<'a> BlockContainerState<'a> {
         self.markdown_it
     }
 
-    /// Number of lines left in the current block window.
+    /// Number of lines visible from the container's first line.
+    ///
+    /// Block containers have no mutable cursor: consumption is described by the
+    /// returned [`BlockContainerParse`](crate::plugin::BlockContainerParse).
     pub fn remaining_lines(&self) -> usize {
         self.line_max.saturating_sub(self.start)
     }

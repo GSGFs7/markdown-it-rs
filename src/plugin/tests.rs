@@ -753,7 +753,8 @@ fn admonition(interrupts_paragraph: bool) -> PluginSpec {
             let close = (1..cx.remaining_lines()).find(|&line| cx.line(line) == Some(":::"));
             let body_end = close.unwrap_or(cx.remaining_lines());
             Some(
-                BlockContainerParse::new(Admonition(title), body_end - 1)
+                BlockContainerParse::new(Admonition(title))
+                    .body_until(body_end)
                     .close_lines(usize::from(close.is_some())),
             )
         })
@@ -829,8 +830,8 @@ fn configured_block_container_strips_content_indent() {
             }
             let close = (1..cx.remaining_lines()).find(|&line| cx.line(line) == Some("%%%"))?;
             Some(
-                BlockContainerParse::new(Indented, close - 1)
-                    .close_lines(1)
+                BlockContainerParse::new(Indented)
+                    .closed_at(close)
                     .content_indent(2),
             )
         })
@@ -859,7 +860,7 @@ fn block_container_and_leaf_share_installation_order() {
         .parse(|cx| {
             cx.line(0)?
                 .starts_with("!!")
-                .then_some(BlockContainerParse::new(First, 0))
+                .then_some(BlockContainerParse::new(First))
         })
         .render_html(|_, html| {
             html.element("p").class("first").text("first");
@@ -871,7 +872,7 @@ fn block_container_and_leaf_share_installation_order() {
         .parse(|cx| {
             cx.line(0)?
                 .starts_with("!!")
-                .then_some(BlockContainerParse::new(Second, 0))
+                .then_some(BlockContainerParse::new(Second))
         })
         .render_html(|_, html| {
             html.element("p").class("second").text("second");
@@ -897,7 +898,7 @@ fn configured_block_container_rejects_layout_past_outdent_window() {
             // The block window inside the list item ends before `outside`.
             // These line counts would pass against state.line_max but cross the
             // outdent and swallow the following blocks.
-            Some(BlockContainerParse::new(CrossOutdent, 3))
+            Some(BlockContainerParse::new(CrossOutdent).body_lines(3))
         })
         .html_tag("div")
         .finish();
@@ -916,7 +917,7 @@ fn configured_block_container_rejects_zero_opening_lines() {
 
     let container = PluginSpec::new("empty")
         .block_container::<Empty>("empty")
-        .parse(|_| Some(BlockContainerParse::new(Empty, 1).open_lines(0)))
+        .parse(|_| Some(BlockContainerParse::new(Empty).body_lines(1).open_lines(0)))
         .html_tag("div")
         .finish();
 

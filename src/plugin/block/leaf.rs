@@ -185,7 +185,7 @@ impl<T: NodeValue> ConfiguredBlockLeaf<T> {
             "block plugin rule {:?} succeeded without consuming input",
             self.rule
         );
-        assert!(
+        debug_assert!(
             state
                 .line
                 .checked_add(consumed)

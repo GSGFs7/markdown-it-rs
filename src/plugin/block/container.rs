@@ -67,7 +67,9 @@ type ContainerParseFn<T> =
 /// content and skips `close_lines`; an unclosed container is represented by
 /// `close_lines == 0` and a body that extends to the end of the visible block
 /// window. Use [`BlockContainerParse::new`] for a one-line opening and
-/// configure closing lines or indentation only when needed.
+/// [`BlockContainerParse::closed_at`] for a one-line closing marker; use
+/// [`BlockContainerParse::body_until`] with
+/// [`close_lines`](BlockContainerParse::close_lines) for multi-line closings.
 #[derive(Debug)]
 pub struct BlockContainerParse<T> {
     /// Payload stored on the container node.
@@ -88,27 +90,28 @@ pub struct BlockContainerParse<T> {
 }
 
 impl<T> BlockContainerParse<T> {
-    /// Create a layout with one opening line, `body_lines` body lines,
-    /// no closing lines and no additional content indentation.
+    /// Create a layout with one opening line and no body, closing, or content
+    /// indentation.
     ///
-    /// For a closed fence, add `.close_lines(1)`. The body count excludes
-    /// both opening and closing lines. An unclosed fence should extend its
-    /// body to the end of the visible block window.
+    /// Configure body lines with [`body_lines`](Self::body_lines) or
+    /// [`body_until`](Self::body_until). Use [`closed_at`](Self::closed_at) for
+    /// a one-line closing marker.
     ///
     /// ```
     /// use markdown_it::plugin::BlockContainerParse;
     ///
-    /// let layout = BlockContainerParse::new("note", 3)
+    /// let layout = BlockContainerParse::new("note")
+    ///     .body_lines(3)
     ///     .close_lines(1)
     ///     .content_indent(2);
     /// assert_eq!(layout.body_lines, 3);
     /// assert_eq!(layout.close_lines, 1);
     /// ```
-    pub fn new(value: T, body_lines: usize) -> Self {
+    pub fn new(value: T) -> Self {
         Self {
             value,
             open_lines: 1,
-            body_lines,
+            body_lines: 0,
             close_lines: 0,
             content_indent: 0,
         }
@@ -119,6 +122,46 @@ impl<T> BlockContainerParse<T> {
     pub fn open_lines(mut self, lines: usize) -> Self {
         self.open_lines = lines;
         self
+    }
+
+    /// Set the number of body lines.
+    #[must_use]
+    pub fn body_lines(mut self, lines: usize) -> Self {
+        self.body_lines = lines;
+        self
+    }
+
+    /// Set body lines to the range between the opening lines and `close_line`.
+    ///
+    /// `close_line` must not precede the opening lines. This uses the current
+    /// [`open_lines`](Self::open_lines) value, so call it after configuring the
+    /// opening lines.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `close_line` is less than the current `open_lines`.
+    #[must_use]
+    pub fn body_until(mut self, close_line: usize) -> Self {
+        assert!(
+            close_line >= self.open_lines,
+            "block container body cannot end before its opening lines"
+        );
+        self.body_lines = close_line - self.open_lines;
+        self
+    }
+
+    /// Mark the container as closed at `close_line` with one closing line.
+    ///
+    /// The body ends just before the closing line. For a closing marker that
+    /// spans multiple lines, use [`body_until`](Self::body_until) and
+    /// [`close_lines`](Self::close_lines).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `close_line` is less than the current `open_lines`.
+    #[must_use]
+    pub fn closed_at(self, close_line: usize) -> Self {
+        self.body_until(close_line).close_lines(1)
     }
 
     /// Set the number of closing lines to skip (default `0`).

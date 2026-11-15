@@ -323,8 +323,8 @@ impl PluginSpec {
     ///         let close = (1..cx.remaining_lines())
     ///             .find(|&line| cx.line(line) == Some("%%%"))?;
     ///
-    ///         // return plugin type & cursor state
-    ///         Some(BlockContainerParse::new(Spoiler, close - 1).close_lines(1))
+    ///         // return payload and layout
+    ///         Some(BlockContainerParse::new(Spoiler).closed_at(close))
     ///     })
     ///     .html_tag("details")
     ///     .finish();
@@ -346,7 +346,7 @@ impl PluginSpec {
     ///
     /// PluginSpec::new("admonition")
     ///     .block_container::<Admonition>("admonition")
-    ///     .parse(|_| Some(BlockContainerParse::new(Admonition, 0)))
+    ///     .parse(|_| Some(BlockContainerParse::new(Admonition)))
     ///     .finish(); // no renderer
     /// ```
     ///
