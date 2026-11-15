@@ -1,4 +1,3 @@
-use super::cache::has_possible_link_label_close;
 use super::config::{
     IndependentLabelSource,
     InlineTargetFallback,
@@ -6,9 +5,7 @@ use super::config::{
     LinkOptions,
     MarkdownLinkLabel,
 };
-use super::label::scan_link_label;
-use super::reference::{ParseLinkResult, resolve_reference_link};
-use super::target::{LinkTargetScan, scan_link_target};
+use super::reference::ParseLinkResult;
 use crate::document::{Document, NodeId};
 use crate::parser::inline::InlineState;
 use crate::plugins::cmark::block::reference::ReferenceMap;
@@ -22,67 +19,10 @@ pub(super) fn scan_link_candidate(
     context: &mut InlineState<'_>,
     pos: usize,
     enable_nested: bool,
-    references: Option<&ReferenceMap>,
+    _references: Option<&ReferenceMap>,
     fallback: InlineTargetFallback,
 ) -> Option<ParseLinkResult> {
-    if !has_possible_link_label_close(context, pos, references) {
-        return None;
-    }
-
-    let label_start = pos + 1;
-    let label_end = {
-        let source = context.remaining();
-        label_start
-            + scan_link_label(
-                context.child_state(label_start..source.len())?,
-                enable_nested,
-            )?
-    };
-
-    let target = {
-        let source = context.remaining();
-        scan_link_target(
-            context.markdown_it(),
-            source,
-            label_end + 1,
-            source.len(),
-            fallback,
-        )
-    };
-
-    let (href, title, end) = match target {
-        LinkTargetScan::Inline(target) => (target.href, target.title, target.end),
-        LinkTargetScan::Reject => return None,
-        LinkTargetScan::Reference {
-            resume: reference_pos,
-        } => {
-            let reference_end = {
-                let source = context.remaining();
-                if source.as_bytes().get(reference_pos) == Some(&b'[') {
-                    let reference_start = reference_pos + 1;
-                    context
-                        .child_state(reference_start..source.len())
-                        .and_then(|child| scan_link_label(child, true))
-                        .map(|close| (reference_start, reference_start + close))
-                } else {
-                    None
-                }
-            };
-
-            let source = context.remaining();
-            let reference =
-                resolve_reference_link(source, label_start, label_end, reference_end, references?)?;
-            (reference.href, reference.title, reference.end)
-        }
-    };
-
-    Some(ParseLinkResult {
-        label_start,
-        label_end,
-        href,
-        title,
-        end,
-    })
+    super::scan::scan_candidate(context, pos, enable_nested, fallback, _references)
 }
 
 pub(super) fn link_check(

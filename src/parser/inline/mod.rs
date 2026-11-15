@@ -149,14 +149,11 @@ impl std::fmt::Debug for InlineRunRunner {
     }
 }
 
-struct DynamicRuleTag;
-
 #[derive(Debug, Clone)]
 pub(crate) struct InlineRuleFns {
     pub(crate) run: InlineRunRunner,
     pub(crate) check: InlineCheckRunner,
     pub(crate) marker: char,
-    pub(crate) type_id: std::any::TypeId,
 }
 
 impl InlineRuleFns {
@@ -172,7 +169,6 @@ fn inline_rule_fns<T: InlineRule>() -> InlineRuleFns {
         run: InlineRunRunner::Static(T::run),
         check: InlineCheckRunner::Static(T::check),
         marker: T::MARKER,
-        type_id: std::any::TypeId::of::<T>(),
     }
 }
 
@@ -287,7 +283,6 @@ impl InlineParser {
                     run: InlineRunRunner::Dynamic(run),
                     check: InlineCheckRunner::Dynamic(check),
                     marker,
-                    type_id: std::any::TypeId::of::<DynamicRuleTag>(),
                 },
             },
         );

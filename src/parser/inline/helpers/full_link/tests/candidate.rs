@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn candidate_combines_label_target_and_reference() {
     let mut document = crate::document::Document::new("", crate::document::Root::new(""));
-    let md = parser::<false>();
+    let md = parser();
     let ruleset = md.inline.rules();
     let mut references = ReferenceMap::default();
     references.insert("x".into(), "/shortcut".into(), None);
@@ -61,7 +61,7 @@ fn candidate_combines_label_target_and_reference() {
 #[test]
 fn candidate_offsets_are_relative_to_current_window() {
     let mut document = crate::document::Document::new("", crate::document::Root::new(""));
-    let md = parser::<false>();
+    let md = parser();
     let ruleset = md.inline.rules();
     let source = "前雪[x](/url)";
     let mut context = InlineState::new(
@@ -103,7 +103,7 @@ fn candidate_offsets_are_relative_to_current_window() {
 #[test]
 fn candidate_combines_opaque_labels_with_target() {
     let mut document = crate::document::Document::new("", crate::document::Root::new(""));
-    let md = parser::<false>();
+    let md = parser();
     let ruleset = md.inline.rules();
     for label in LABELS {
         let source = format!("[{label}](/url)");
@@ -132,7 +132,7 @@ fn candidate_combines_opaque_labels_with_target() {
 #[test]
 fn candidate_requires_reference_map_and_label_window() {
     let mut document = crate::document::Document::new("", crate::document::Root::new(""));
-    let md = parser::<false>();
+    let md = parser();
     let ruleset = md.inline.rules();
 
     // Inline targets parse without references, shortcut references do not.
@@ -167,7 +167,7 @@ fn candidate_requires_reference_map_and_label_window() {
 
     // Label scanning consumes one nesting level; when the budget is spent
     // the whole candidate is rejected even though the syntax is valid.
-    let mut md = parser::<false>();
+    let mut md = parser();
     md.max_nesting = 2;
     let ruleset = md.inline.rules();
     let source = "[x](/url)";
@@ -192,7 +192,7 @@ fn candidate_requires_reference_map_and_label_window() {
 #[test]
 fn candidate_respects_window_edges_and_parent_cursor() {
     let mut document = crate::document::Document::new("", crate::document::Root::new(""));
-    let md = parser::<false>();
+    let md = parser();
     let ruleset = md.inline.rules();
 
     // The full source parses, but the window ends before the closing
@@ -258,7 +258,7 @@ fn candidate_respects_window_edges_and_parent_cursor() {
 #[test]
 fn failed_inline_target_probes_reference_after_a_whole_utf8_character() {
     let mut document = crate::document::Document::new("", crate::document::Root::new(""));
-    let md = parser::<false>();
+    let md = parser();
     let ruleset = md.inline.rules();
     let mut references = ReferenceMap::default();
     references.insert("r".into(), "/url".into(), None);

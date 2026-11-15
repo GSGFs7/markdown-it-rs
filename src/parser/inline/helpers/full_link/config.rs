@@ -1,7 +1,7 @@
 use crate::document::{Document, NodeId};
 
 /// How to proceed when an attempted inline target cannot be parsed.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub(crate) enum InlineTargetFallback {
     /// Try resolving the label as a reference.
     #[default]

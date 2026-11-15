@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::{OnceCell, RefCell, RefMut};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -60,6 +60,11 @@ pub struct InlineState<'a> {
     /// Counter used to disable inline linkifier execution
     /// inside raw html and markdown links.
     pub(crate) link_level: i32,
+
+    /// When set, the bracket-based link rules decline to match. Full-link
+    /// label scanning handles `[` / `![` itself so it never re-enters the
+    /// whole inline dispatcher.
+    pub(crate) suppress_bracket_links: bool,
 
     pub(crate) ruleset: &'a RuleSet,
 
@@ -155,6 +160,7 @@ impl<'a> InlineState<'a> {
             scan_limit_cache: Rc::new(RefCell::new(ScanLimitCache::default())),
             root_ext,
             link_level: 0,
+            suppress_bracket_links: false,
             ruleset,
             scan_hooks: Cow::Owned(OnceCell::new()),
             nodes: Vec::new(),
@@ -199,6 +205,7 @@ impl<'a> InlineState<'a> {
     /// Create a child state over `range` that consumes one nesting level.
     ///
     /// The child starts with fresh scratch, nodes and pending text.
+    #[cfg(test)]
     pub(crate) fn child_state(&mut self, range: Range<usize>) -> Option<InlineState<'_>> {
         self.child_state_at(range, self.depth.saturating_add(1), self.link_level)
     }
@@ -230,12 +237,69 @@ impl<'a> InlineState<'a> {
             scan_limit_cache: Rc::clone(&self.scan_limit_cache),
             root_ext: self.root_ext,
             link_level,
+            suppress_bracket_links: self.suppress_bracket_links,
             ruleset: self.ruleset,
             scan_hooks: Cow::Borrowed(self.scan_hooks.as_ref()),
             nodes: Vec::new(),
             document: &mut *self.document,
             pending_text: None,
         })
+    }
+
+    /// Advance over one checked span without emitting nodes and without
+    /// consulting any scan cache or truncation history.
+    ///
+    /// Link label scanning uses this on an isolated child state. Bracket link
+    /// rules decline to match while `suppress_bracket_links` is set, so the
+    /// link scanner owns nested link/image decisions instead of recursing
+    /// through the normal dispatcher.
+    pub(crate) fn probe_token(&mut self) -> Option<usize> {
+        if self.pos == self.pos_max {
+            return None;
+        }
+
+        let marker = self.remaining().chars().next().unwrap();
+        for (rule_index, entry) in self.ruleset.checks.iter().enumerate() {
+            if !entry.matches_marker(marker) {
+                continue;
+            }
+
+            let check = |state: &mut InlineState<'_>| entry.check.call(state);
+            #[cfg(debug_assertions)]
+            let matched = super::validation::check_inline(self, rule_index, check);
+            #[cfg(not(debug_assertions))]
+            let matched = check(self);
+
+            if let Some(len) = matched {
+                check_progress(rule_index, self.remaining(), len);
+                // TextScanner extends pending text itself. Other successful
+                // checks describe opaque spans, just as in skip_token.
+                if self
+                    .pending_text
+                    .is_none_or(|(_, end)| end != self.pos + len)
+                {
+                    self.pending_text = None;
+                }
+                self.pos += len;
+                return Some(len);
+            }
+        }
+
+        let len = marker.len_utf8();
+        self.advance_probe(len, true);
+        Some(len)
+    }
+
+    /// Advance syntax owned by a boundary scanner, retaining literal runs but
+    /// ending them at opaque constructs. Session scratch remains available to
+    /// subsequent checks (notably the code-span search cache).
+    pub(crate) fn advance_probe(&mut self, len: usize, literal: bool) {
+        if literal {
+            self.push_text(self.pos, self.pos + len);
+        } else {
+            self.pending_text = None;
+        }
+        self.pos += len;
     }
 
     /// Advance over one checked span without emitting nodes, for boundary scans.
@@ -394,25 +458,6 @@ impl<'a> InlineState<'a> {
         }
 
         let span = (self.pos, self.pos_max);
-        let skip_key = (self.pos, self.pos_max, self.link_level);
-        let cached = self
-            .scan_limit_cache
-            .borrow()
-            .skip_tokens
-            .get(&skip_key)
-            .copied();
-        if let Some((len, literal)) = cached {
-            // Reuse checked spans across depths; the key includes window end
-            // and link context to isolate unrelated sessions.
-            self.pending_text = literal.then(|| {
-                (
-                    self.pending_text.map_or(self.pos, |(start, _)| start),
-                    self.pos + len,
-                )
-            });
-            self.pos += len;
-            return Some(len);
-        }
         let truncated = if self.depth > self.md.max_nesting {
             // At the nesting limit every scan is treated as truncated; record it
             // so later scans over the same window see the same cutoff.
@@ -452,14 +497,12 @@ impl<'a> InlineState<'a> {
                 {
                     self.pending_text = None;
                 }
-                self.cache_skip_token(marker, skip_key, len, self.pending_text.is_some());
                 self.pos += len;
                 return Some(len);
             }
         }
 
         let len = marker.len_utf8();
-        self.cache_skip_token(marker, skip_key, len, true);
         self.pending_text = Some((
             self.pending_text.map_or(self.pos, |(start, _)| start),
             self.pos + len,
@@ -467,18 +510,6 @@ impl<'a> InlineState<'a> {
         self.pos += len;
 
         Some(len)
-    }
-
-    fn cache_skip_token(&self, marker: char, key: (usize, usize, i32), len: usize, literal: bool) {
-        if matches!(marker, '[' | '!') || literal {
-            let mut cache = self.scan_limit_cache.borrow_mut();
-            if cache
-                .link_bounds()
-                .is_some_and(|bounds| bounds.can_memoize_labels(self.pos, self.pos_max))
-            {
-                cache.skip_tokens.insert(key, (len, literal));
-            }
-        }
     }
 
     fn finish(mut self) -> Vec<NodeId> {
@@ -513,46 +544,39 @@ impl<'a> InlineState<'a> {
     }
 }
 
-/// Per-inline cache shared by nested boundary scans.
+/// Per-inline state shared by nested boundary scans.
 ///
-/// Mirrors markdown-it's inline skip cache: once a scan at the nesting limit
-/// jumps to the end of a window, later scans over the same window see the same
-/// cutoff. The window end is part of the key so a truncated subrange does not
-/// affect a scan over a different range.
+/// Holds the link recognizer's pure result cache, source-wide raw-marker
+/// indexes, and the nesting cutoffs that later probes must observe. The window
+/// end is part of every cutoff key so a truncated subrange does not affect a
+/// scan over a different range.
 #[derive(Debug, Default)]
 pub(crate) struct ScanLimitCache {
+    pub(crate) link_scan: super::helpers::full_link::LinkScanCache,
+    link_close_positions: Option<Vec<usize>>,
+    link_target_positions: Option<Vec<usize>>,
     truncated: HashSet<(usize, usize)>,
-    skip_tokens: HashMap<(usize, usize, i32), (usize, bool)>,
-    link_bounds: Option<super::helpers::full_link::LinkLabelBounds>,
     /// Extension caches shared by sessions over the same source.
     ext: InlineRootExtSet,
 }
 
 impl ScanLimitCache {
-    /// Monotonic version of the truncation set, used to invalidate cached
-    /// label boundaries after a new nesting cutoff is recorded.
-    ///
-    /// Relies on `truncated` only ever growing; adding removal would make this
-    /// a non-monotonic counter and silently revive stale cache entries.
-    pub(crate) fn epoch(&self) -> usize {
-        self.truncated.len()
+    /// Whether a raw `]` exists in `start..end`. Built once per inline source.
+    pub(crate) fn has_link_close(&mut self, source: &str, start: usize, end: usize) -> bool {
+        let positions = self
+            .link_close_positions
+            .get_or_insert_with(|| memchr::memchr_iter(b']', source.as_bytes()).collect());
+        let next = positions.partition_point(|&pos| pos < start);
+        positions.get(next).is_some_and(|&pos| pos < end)
     }
 
-    pub(crate) fn link_bounds(&self) -> Option<&super::helpers::full_link::LinkLabelBounds> {
-        self.link_bounds.as_ref()
-    }
-
-    pub(crate) fn link_bounds_mut(
-        &mut self,
-    ) -> Option<&mut super::helpers::full_link::LinkLabelBounds> {
-        self.link_bounds.as_mut()
-    }
-
-    pub(crate) fn link_bounds_or_insert_with(
-        &mut self,
-        f: impl FnOnce() -> super::helpers::full_link::LinkLabelBounds,
-    ) -> &mut super::helpers::full_link::LinkLabelBounds {
-        self.link_bounds.get_or_insert_with(f)
+    /// Whether a raw `(` exists in `start..end`. Built once per inline source.
+    pub(crate) fn has_link_target(&mut self, source: &str, start: usize, end: usize) -> bool {
+        let positions = self
+            .link_target_positions
+            .get_or_insert_with(|| memchr::memchr_iter(b'(', source.as_bytes()).collect());
+        let next = positions.partition_point(|&pos| pos < start);
+        positions.get(next).is_some_and(|&pos| pos < end)
     }
 }
 

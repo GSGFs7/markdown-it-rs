@@ -38,6 +38,7 @@ impl<'a> InlineState<'a> {
             scan_hooks: Cow::Owned(OnceCell::new()),
             root_ext: None,
             link_level,
+            suppress_bracket_links: false,
             ruleset,
             nodes: Vec::new(),
             document,
@@ -53,7 +54,6 @@ fn scan<'s>(state: &'s mut InlineState<'_>, range: Range<usize>) -> Option<Inlin
 
 fn check_rule(check: InlineCheckFn) -> InlineRuleFns {
     InlineRuleFns {
-        type_id: std::any::TypeId::of::<()>(),
         run: InlineRunRunner::Static(panic_run),
         check: InlineCheckRunner::Static(check),
         marker: '\0',
@@ -62,7 +62,6 @@ fn check_rule(check: InlineCheckFn) -> InlineRuleFns {
 
 fn run_rule_with_marker(run: InlineRunFn, marker: char) -> InlineRuleFns {
     InlineRuleFns {
-        type_id: std::any::TypeId::of::<()>(),
         run: InlineRunRunner::Static(run),
         check: InlineCheckRunner::Static(panic_check),
         marker,
@@ -104,6 +103,7 @@ fn parent_state<'a>(
         scan_hooks: Cow::Owned(OnceCell::new()),
         root_ext: None,
         link_level: 2,
+        suppress_bracket_links: false,
         ruleset,
         nodes: vec![document.create_node(Text {
             content: "sentinel".into(),
@@ -133,6 +133,7 @@ fn check_state<'a>(
         scan_hooks: Cow::Owned(OnceCell::new()),
         root_ext: None,
         link_level: 0,
+        suppress_bracket_links: false,
         ruleset,
         nodes: vec![],
         document,
@@ -190,6 +191,7 @@ fn finishing_nodes_preserves_source_and_byte_mapping() {
         scan_hooks: Cow::Owned(OnceCell::new()),
         root_ext: None,
         link_level: 1,
+        suppress_bracket_links: false,
         ruleset: &ruleset,
         nodes: vec![document.create_node(Text {
             content: "x".to_owned(),
@@ -735,13 +737,11 @@ fn check_no_match_falls_through_to_lower_priority_rules() {
         runs: vec![],
         checks: vec![
             InlineRuleFns {
-                type_id: std::any::TypeId::of::<()>(),
                 run: InlineRunRunner::Static(panic_run),
                 check: InlineCheckRunner::Static(|_| None),
                 marker: 'x',
             },
             InlineRuleFns {
-                type_id: std::any::TypeId::of::<()>(),
                 run: InlineRunRunner::Static(panic_run),
                 check: InlineCheckRunner::Static(|_| Some(1)),
                 marker: 'x',
@@ -763,7 +763,6 @@ fn check_dispatch_skips_non_matching_markers() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![InlineRuleFns {
-            type_id: std::any::TypeId::of::<()>(),
             run: InlineRunRunner::Static(panic_run),
             check: InlineCheckRunner::Static(|_| panic!("marker must filter check dispatch")),
             marker: 'y',
@@ -993,7 +992,6 @@ fn recursive_check_validates_ranges_and_empty_suffixes() {
     let no_match = RuleSet {
         runs: vec![],
         checks: vec![InlineRuleFns {
-            type_id: std::any::TypeId::of::<()>(),
             run: InlineRunRunner::Static(panic_run),
             check: InlineCheckRunner::Static(|_| None),
             marker: 'x',
@@ -1136,7 +1134,6 @@ fn recursive_check_same_range_terminates_at_depth_limit() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![InlineRuleFns {
-            type_id: std::any::TypeId::of::<()>(),
             run: InlineRunRunner::Static(panic_run),
             check: InlineCheckRunner::Static(same_range),
             marker: '#',
@@ -1177,7 +1174,6 @@ fn recursive_check_long_chain_is_linear_and_stack_safe() {
     let ruleset = RuleSet {
         runs: vec![],
         checks: vec![InlineRuleFns {
-            type_id: std::any::TypeId::of::<()>(),
             run: InlineRunRunner::Static(panic_run),
             check: InlineCheckRunner::Static(nested),
             marker: '^',
@@ -1205,7 +1201,6 @@ fn check_dispatch_keeps_wildcard_position() {
         checks: vec![
             check_rule(|_| Some(1)),
             InlineRuleFns {
-                type_id: std::any::TypeId::of::<()>(),
                 run: InlineRunRunner::Static(panic_run),
                 check: InlineCheckRunner::Static(|_| {
                     panic!("specific rule must not run after a wildcard match")
@@ -1505,7 +1500,6 @@ fn invalid_check_length_panics_and_preserves_pending() {
         runs: vec![],
         checks: vec![
             InlineRuleFns {
-                type_id: std::any::TypeId::of::<()>(),
                 run: InlineRunRunner::Static(panic_run),
                 check: InlineCheckRunner::Static(|context| {
                     if context.remaining() == "aa" {
@@ -1518,7 +1512,6 @@ fn invalid_check_length_panics_and_preserves_pending() {
                 marker: 'a',
             },
             InlineRuleFns {
-                type_id: std::any::TypeId::of::<()>(),
                 run: InlineRunRunner::Static(panic_run),
                 check: InlineCheckRunner::Static(|_| Some(0)),
                 marker: 'a',

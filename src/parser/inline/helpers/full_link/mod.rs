@@ -13,21 +13,22 @@
 //!  - `md` - parser instance
 //!  - `f` - function that should return your custom [NodeId] given href and title
 //!
-
-// TODO: rewrite this
+//! Recognition lives in [`scan`], which handles brackets and label boundaries
+//! itself. It never calls the bracket link rules through the normal inline
+//! dispatcher; other constructs are advanced through isolated boundary checks.
+//! Confirmed candidates are converted to nodes only afterwards by `candidate`.
+//!
 
 use crate::MarkdownIt;
 use crate::document::{Document, NodeId};
 use crate::parser::inline::{InlineRule, InlineState};
 
-mod cache;
 mod candidate;
 mod config;
-mod label;
 mod reference;
+mod scan;
 mod target;
 
-pub(crate) use self::cache::LinkLabelBounds;
 use self::candidate::{link_check, link_run};
 use self::config::LinkCfg;
 #[cfg(feature = "linkify")]
@@ -38,6 +39,7 @@ pub(crate) use self::config::{
     LabelContext,
     LinkOptions,
 };
+pub(crate) use self::scan::LinkScanCache;
 pub use self::target::{ParseLinkFragmentResult, parse_link_destination, parse_link_title};
 
 /// Register a link rule with an arena node factory.
@@ -86,11 +88,19 @@ impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
     const NAMES: &'static [&'static str] = &["link"];
 
     fn check(context: &mut InlineState<'_>) -> Option<usize> {
+        if context.suppress_bracket_links {
+            return None;
+        }
+
         let options = context.markdown_it().ext.get::<LinkCfg<'\0'>>()?.options;
         link_check(context, ENABLE_NESTED, 0, options.inline_target_fallback)
     }
 
     fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+        if state.suppress_bracket_links {
+            return None;
+        }
+
         let config = *state
             .markdown_it()
             .ext
@@ -110,6 +120,9 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
     const NAMES: &'static [&'static str] = &["link_prefix"];
 
     fn check(context: &mut InlineState<'_>) -> Option<usize> {
+        if PREFIX == '!' && context.suppress_bracket_links {
+            return None;
+        }
         if !context.remaining().starts_with(PREFIX) {
             return None;
         }
@@ -124,6 +137,9 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
     }
 
     fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
+        if PREFIX == '!' && state.suppress_bracket_links {
+            return None;
+        }
         if !state.remaining().starts_with(PREFIX) {
             return None;
         }

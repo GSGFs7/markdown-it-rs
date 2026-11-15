@@ -51,7 +51,7 @@ fn special_html_scan_hook(state: &InlineState<'_>, start: usize, end: usize) -> 
     starts.get(next).is_some_and(|&pos| pos < end)
 }
 
-fn special_html_disabled(state: &InlineState<'_>) -> bool {
+pub(crate) fn special_html_disabled(state: &InlineState<'_>) -> bool {
     state
         .shared_ext()
         .get::<HtmlSpecialScan>()
