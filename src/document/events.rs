@@ -34,13 +34,13 @@ struct EventFrame<'a> {
 /// depth. The document's parent/children links remain the sole structural
 /// source of truth.
 #[derive(Debug)]
-struct StructuralEvents<'a> {
+struct StructuralEventIter<'a> {
     document: &'a Document,
     stack: Vec<EventFrame<'a>>,
     pending: Option<StructuralEvent<'a>>,
 }
 
-impl<'a> Iterator for StructuralEvents<'a> {
+impl<'a> Iterator for StructuralEventIter<'a> {
     type Item = StructuralEvent<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -72,7 +72,7 @@ impl<'a> Iterator for StructuralEvents<'a> {
     }
 }
 
-impl FusedIterator for StructuralEvents<'_> {}
+impl FusedIterator for StructuralEventIter<'_> {}
 
 impl Document {
     /// Lazily traverse a node and its descendants in depth-first order.
@@ -95,7 +95,7 @@ impl Document {
             });
             Some(StructuralEvent::Enter(root))
         };
-        StructuralEvents {
+        StructuralEventIter {
             document: self,
             stack,
             pending,
