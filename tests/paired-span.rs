@@ -87,3 +87,18 @@ fn child_ranges_keep_original_utf8_source_positions_after_a_prefix() {
         );
     }
 }
+
+#[test]
+fn leaf_pair_scanning_remains_literal_while_containers_skip_inline_spans() {
+    let md = parser();
+    assert_eq!(md.render("{{`}}`}}"), "<p><code>`</code>`}}</p>\n");
+    assert_eq!(
+        md.render("@[[a `]]` b]]"),
+        "<p><span>a <code>]]</code> b</span></p>\n"
+    );
+    // A custom leaf is opaque to the container's boundary checks as well.
+    assert_eq!(
+        md.render("@[[a {{]]}} b]]"),
+        "<p><span>a <code>]]</code> b</span></p>\n"
+    );
+}

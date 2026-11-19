@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crate::MarkdownIt;
 use crate::document::{Node, NodeId, NodeValue};
 use crate::parser::inline::InlineState;
-use crate::parser::inline::helpers::paired_span::{PairMatch, PairOptions};
+use crate::parser::inline::helpers::paired_span::{self, PairMatch, PairOptions};
 use crate::plugin::container_context::{ContainerHtml, ContainerText};
 use crate::plugin::html::validate_tag;
 use crate::plugin::renderer::{
@@ -30,10 +30,10 @@ use crate::render::{NodeRenderer, RenderContext, Writer, write_html_close, write
 ///
 /// The cursor starts at the container's first byte. Consumption is committed
 /// only when the callback returns `Some`, so a failed match rolls back
-/// automatically. This state deliberately has no document access: it records
-/// source ranges, and the builder parses them after the match succeeds. Match
-/// results and consumed lengths must therefore depend on source and
-/// configuration only.
+/// automatically. The public API records source ranges, which the builder
+/// parses after a successful match. Pair scans run inline rule checks, so
+/// callbacks must be side-effect free. Matching may depend on the active inline
+/// rules, `max_nesting` and shared caches.
 ///
 /// ## Cursor and parts
 ///
@@ -52,15 +52,24 @@ use crate::render::{NodeRenderer, RenderContext, Writer, write_html_close, write
 /// see that type for their semantics.
 pub struct InlineContainerState<'a> {
     cursor: InlinePluginState<'a>,
+    boundary: InlineState<'a>,
     markdown_it: &'a MarkdownIt,
     parts: Vec<Range<usize>>,
 }
 
 impl<'a> InlineContainerState<'a> {
     fn new(state: &'a mut InlineState<'_>) -> Self {
+        let markdown_it = state.markdown_it();
+        let depth = state.depth;
+        let link_level = state.link_level;
+        let end = state.remaining().len();
+        let session = state
+            .child_session_at(0..end, depth, link_level)
+            .expect("valid container source window");
         Self {
-            cursor: InlinePluginState::new(state.remaining(), state.markdown_it()),
-            markdown_it: state.markdown_it(),
+            cursor: InlinePluginState::new(session.source, markdown_it),
+            boundary: session.state,
+            markdown_it,
             parts: Vec::new(),
         }
     }
@@ -131,10 +140,17 @@ impl<'a> InlineContainerState<'a> {
 
     /// Scan a paired span at the start of [`remaining`](Self::remaining).
     ///
-    /// The returned offsets are relative to the remaining source. Use
+    /// Matched inline constructs (code spans, links) are skipped, so their
+    /// markers cannot close or nest the pair. Nested container rules do not
+    /// run; nesting follows `PairOptions`. At the depth limit the body is
+    /// scanned literally. No child nodes are emitted.
+    ///
+    /// Offsets are relative to the remaining source. Use
     /// [`consume_pair`](Self::consume_pair) to scan and advance in one step.
-    pub fn scan_pair(&self, options: &PairOptions<'_>) -> Option<PairMatch> {
-        self.cursor.scan_pair(options)
+    /// Results depend on the active inline rules and `max_nesting`.
+    pub fn scan_pair(&mut self, options: &PairOptions<'_>) -> Option<PairMatch> {
+        let offset = self.consumed_bytes();
+        paired_span::scan_inline(&mut self.boundary, offset, options)
     }
 
     /// Scan a paired span and consume its bytes.
@@ -142,7 +158,8 @@ impl<'a> InlineContainerState<'a> {
     /// The returned offsets are relative to the previous
     /// [`remaining`](Self::remaining), before the cursor advances.
     pub fn consume_pair(&mut self, options: &PairOptions<'_>) -> Option<PairMatch> {
-        self.cursor.consume_pair(options)
+        let matched = self.scan_pair(options)?;
+        self.advance_bytes(matched.consumed).then_some(matched)
     }
 
     /// Record a part covering `range` of [`remaining`](Self::remaining).
@@ -304,6 +321,10 @@ impl<T: NodeValue, P, R> InlineContainerBuilder<T, P, R> {
     ///     md.render("[**text**]{*note*}"),
     ///     "<p><ruby><strong>text</strong><rt><em>note</em></rt></ruby></p>\n"
     /// );
+    /// assert_eq!(
+    ///     md.render("[some `]` text]{note}"),
+    ///     "<p><ruby>some <code>]</code> text<rt>note</rt></ruby></p>\n"
+    /// );
     /// ```
     ///
     /// [`render_children`]: ContainerHtml::render_children
@@ -463,6 +484,10 @@ impl<T: NodeValue> ConfiguredInlineContainer<T> {
     }
 
     fn check(&self, state: &mut InlineState<'_>) -> Option<usize> {
+        if state.suppress_inline_containers {
+            return None;
+        }
+
         let (parts, consumed) = {
             let mut cx = InlineContainerState::new(state);
             (self.parse)(&mut cx)?;

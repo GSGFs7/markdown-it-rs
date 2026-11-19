@@ -66,6 +66,9 @@ pub struct InlineState<'a> {
     /// whole inline dispatcher.
     pub(crate) suppress_bracket_links: bool,
 
+    /// When set, inline container rules decline to match during pair probing.
+    pub(crate) suppress_inline_containers: bool,
+
     pub(crate) ruleset: &'a RuleSet,
 
     /// Hooks selected once per full source; child sessions share the same cell.
@@ -78,6 +81,11 @@ pub struct InlineState<'a> {
     pub document: &'a mut Document,
 
     pending_text: Option<(usize, usize)>,
+}
+
+pub(crate) struct ChildSession<'a> {
+    pub(crate) source: &'a str,
+    pub(crate) state: InlineState<'a>,
 }
 
 impl<'a> InlineState<'a> {
@@ -161,6 +169,7 @@ impl<'a> InlineState<'a> {
             root_ext,
             link_level: 0,
             suppress_bracket_links: false,
+            suppress_inline_containers: false,
             ruleset,
             scan_hooks: Cow::Owned(OnceCell::new()),
             nodes: Vec::new(),
@@ -217,16 +226,28 @@ impl<'a> InlineState<'a> {
         depth: u32,
         link_level: i32,
     ) -> Option<InlineState<'_>> {
-        self.remaining().get(range.clone())?;
+        self.child_session_at(range, depth, link_level)
+            .map(|session| session.state)
+    }
 
+    /// Like [`child_state_at`](Self::child_state_at), but returns the source
+    /// window too.
+    pub(crate) fn child_session_at(
+        &mut self,
+        range: Range<usize>,
+        depth: u32,
+        link_level: i32,
+    ) -> Option<ChildSession<'_>> {
+        self.remaining().get(range.clone())?;
         let start = self.pos + range.start;
         let end = self.pos + range.end;
+        let source = self.src.as_ref();
 
         #[cfg(debug_assertions)]
-        super::validation::inline_range(self.src.as_ref(), start, end);
+        super::validation::inline_range(source, start, end);
 
-        Some(InlineState {
-            src: Cow::Borrowed(self.src.as_ref()),
+        let child = InlineState {
+            src: Cow::Borrowed(source),
             pos: start,
             pos_max: end,
             md: self.md,
@@ -238,12 +259,32 @@ impl<'a> InlineState<'a> {
             root_ext: self.root_ext,
             link_level,
             suppress_bracket_links: self.suppress_bracket_links,
+            suppress_inline_containers: self.suppress_inline_containers,
             ruleset: self.ruleset,
             scan_hooks: Cow::Borrowed(self.scan_hooks.as_ref()),
             nodes: Vec::new(),
             document: &mut *self.document,
             pending_text: None,
+        };
+        Some(ChildSession {
+            source: &source[start..end],
+            state: child,
         })
+    }
+
+    /// Disable containers and switch to probe-scoped caches shared across
+    /// pair probes.
+    pub(crate) fn suppress_containers_for_probe(&mut self) {
+        if !self.suppress_inline_containers {
+            let cache = self
+                .scan_limit_cache
+                .borrow_mut()
+                .container_probe
+                .get_or_insert_with(|| Rc::new(RefCell::new(ScanLimitCache::default())))
+                .clone();
+            self.scan_limit_cache = cache;
+            self.suppress_inline_containers = true;
+        }
     }
 
     /// Advance over one checked span without emitting nodes and without
@@ -254,6 +295,15 @@ impl<'a> InlineState<'a> {
     /// link scanner owns nested link/image decisions instead of recursing
     /// through the normal dispatcher.
     pub(crate) fn probe_token(&mut self) -> Option<usize> {
+        self.probe_token_until(|source| source.len())
+    }
+
+    /// Like [`probe_token`](Self::probe_token), but stops literal text at the
+    /// offset returned by `literal_length`; opaque rules keep their full span.
+    pub(crate) fn probe_token_until(
+        &mut self,
+        literal_length: impl FnOnce(&str) -> usize,
+    ) -> Option<usize> {
         if self.pos == self.pos_max {
             return None;
         }
@@ -270,14 +320,20 @@ impl<'a> InlineState<'a> {
             #[cfg(not(debug_assertions))]
             let matched = check(self);
 
-            if let Some(len) = matched {
+            if let Some(mut len) = matched {
                 check_progress(rule_index, self.remaining(), len);
-                // TextScanner extends pending text itself. Other successful
-                // checks describe opaque spans, just as in skip_token.
-                if self
-                    .pending_text
-                    .is_none_or(|(_, end)| end != self.pos + len)
+                // Only literal text may be shortened; opaque constructs need
+                // the full window.
+                if let Some((start, end)) = self.pending_text
+                    && entry.literal
+                    && end == self.pos + len
                 {
+                    let bounded = literal_length(&self.src[self.pos..end]);
+                    assert!(bounded > 0 && bounded <= len);
+                    assert!(self.src.is_char_boundary(self.pos + bounded));
+                    len = bounded;
+                    self.pending_text = Some((start, self.pos + len));
+                } else {
                     self.pending_text = None;
                 }
                 self.pos += len;
@@ -552,7 +608,10 @@ impl<'a> InlineState<'a> {
 /// scan over a different range.
 #[derive(Debug, Default)]
 pub(crate) struct ScanLimitCache {
+    /// Recognition context for probes with containers disabled.
+    container_probe: Option<Rc<RefCell<ScanLimitCache>>>,
     pub(crate) link_scan: super::helpers::full_link::LinkScanCache,
+    pub(crate) pair_scan: super::helpers::paired_span::PairScanCache,
     link_close_positions: Option<Vec<usize>>,
     link_target_positions: Option<Vec<usize>>,
     truncated: HashSet<(usize, usize)>,

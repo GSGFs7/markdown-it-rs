@@ -229,3 +229,235 @@ fn invalid_parts_are_rejected() {
         .build();
     assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| md.parse("x"))).is_err());
 }
+
+#[test]
+fn paired_containers_skip_code_spans_in_both_parts() {
+    let md = MarkdownIt::builder().plugin(annotation()).build();
+    for (source, body) in [
+        (
+            "[包含 `]` 的文字]{说明}",
+            "包含 <code>]</code> 的文字<rt>说明</rt>",
+        ),
+        (
+            "[包含 ``a` ] b`` 的文字]{说明}",
+            "包含 <code>a` ] b</code> 的文字<rt>说明</rt>",
+        ),
+        (
+            "[文字]{包含 `}` 的说明}",
+            "文字<rt>包含 <code>}</code> 的说明</rt>",
+        ),
+        ("[文字 ` 未闭合]{说明}", "文字 ` 未闭合<rt>说明</rt>"),
+        ("[文字 `[`]{说明}", "文字 <code>[</code><rt>说明</rt>"),
+    ] {
+        let doc = md.parse(source);
+        assert_eq!(
+            md.render_document(&doc, "html"),
+            format!("<p><ruby>{body}</ruby></p>\n"),
+            "{source}"
+        );
+        #[cfg(feature = "sourcemap")]
+        {
+            let paragraph = doc.children(doc.root())[0];
+            let annotation = doc.children(paragraph)[0];
+            let label = doc.children(annotation)[0];
+            let (start, end) = doc.node(label).srcmap().unwrap().get_byte_offsets();
+            assert_eq!(&source[start..end], &source[1..source.rfind("]{").unwrap()]);
+        }
+    }
+    assert_eq!(
+        md.render_document(&md.parse("[包含 `]` 的文字]{说明}"), "text"),
+        "包含 ] 的文字(说明)\n"
+    );
+    assert_eq!(
+        md.render("[[包含 `]` 的文字]{说明}](/url)"),
+        "<p><a href=\"/url\"><ruby>包含 <code>]</code> 的文字<rt>说明</rt></ruby></a></p>\n"
+    );
+}
+
+#[test]
+fn unclosed_nested_openers_do_not_reenter_container_scanning() {
+    let md = MarkdownIt::builder().plugin(annotation()).build();
+    // Every '[' starts a failed pair scan. Probing inline rules here must not
+    // re-enter this container, which previously branched exponentially.
+    let source = "[".repeat(1_000);
+    assert_eq!(md.render(&source), format!("<p>{source}</p>\n"));
+}
+
+fn configured_pair(options: PairOptions<'static>) -> PluginSpec {
+    PluginSpec::new("configured-pair")
+        .inline_container::<Annotation>("configured-pair")
+        .marker('@')
+        .parse(move |cx| {
+            if !cx.consume("@") {
+                return None;
+            }
+            let before = cx.consumed_bytes();
+            let matched = cx.scan_pair(&options)?;
+            assert_eq!(cx.scan_pair(&options), Some(matched.clone()));
+            assert_eq!(cx.consumed_bytes(), before);
+            let consumed = cx.consume_pair(&options)?;
+            assert_eq!(matched, consumed);
+            cx.part_at(before + matched.body.start..before + matched.body.end);
+            Some(Annotation)
+        })
+        .html_tag("mark")
+        .finish()
+}
+
+#[test]
+fn contextual_pair_scan_keeps_offsets_and_stops_text_at_custom_markers() {
+    let md = MarkdownIt::builder()
+        .plugin(configured_pair(PairOptions::new("«", "雪*")))
+        .build();
+    assert_eq!(
+        md.render("前 @«文字 `雪*` 文字雪* 尾"),
+        "<p>前 <mark>文字 <code>雪*</code> 文字</mark> 尾</p>\n"
+    );
+    // Without commonmark's text/rule markers the closing string is still found.
+    let md = markdown_it::plugin::MarkdownItBuilder::empty()
+        .plugin(configured_pair(PairOptions::new("«", "»")))
+        .build();
+    assert_eq!(md.render("@«文字»尾"), "<mark>文字</mark>尾\n");
+}
+
+#[test]
+fn contextual_pair_scan_keeps_escape_empty_and_line_break_policies() {
+    for (options, source, expected) in [
+        (
+            PairOptions::new("[", "]"),
+            r"@[a\]b]",
+            "<p><mark>a\\</mark>b]</p>\n",
+        ),
+        (
+            PairOptions::new("[", "]").escape(EscapePolicy::Backslash),
+            r"@[a\]b]",
+            "<p><mark>a]b</mark></p>\n",
+        ),
+        (
+            PairOptions::new("[", "]").allow_empty(false),
+            "@[]",
+            "<p>@[]</p>\n",
+        ),
+        (
+            PairOptions::new("[", "]"),
+            "@[a`x\ny`b]",
+            "<p>@[a<code>x y</code>b]</p>\n",
+        ),
+        (
+            PairOptions::new("[", "]").allow_line_breaks(true),
+            "@[a`x\ny`b]",
+            "<p><mark>a<code>x y</code>b</mark></p>\n",
+        ),
+    ] {
+        let md = MarkdownIt::builder()
+            .plugin(configured_pair(options))
+            .build();
+        assert_eq!(md.render(source), expected, "{source}");
+    }
+}
+
+#[test]
+fn contextual_pairs_respect_markdown_escapes_before_code_spans() {
+    for escape in [EscapePolicy::None, EscapePolicy::Backslash] {
+        let md = MarkdownIt::builder()
+            .plugin(configured_pair(PairOptions::new("«", "»").escape(escape)))
+            .build();
+        assert_eq!(
+            md.render(r"@«a \` » x ` b»"),
+            "<p><mark>a ` </mark> x ` b»</p>\n",
+            "{escape:?}"
+        );
+        assert_eq!(
+            md.render(r"@«a \\`»` b»"),
+            "<p><mark>a \\<code>»</code> b</mark></p>\n",
+            "{escape:?}"
+        );
+        // The escaped backtick ends an escape token; the next backtick can
+        // begin a code span even though it follows the same character.
+        assert_eq!(
+            md.render(r"@«a \``»` b»"),
+            "<p><mark>a `<code>»</code> b</mark></p>\n",
+            "{escape:?}"
+        );
+    }
+}
+
+#[test]
+fn failed_contextual_pair_scan_does_not_poison_link_boundaries() {
+    #[derive(Debug)]
+    struct Inner;
+
+    let inner = || {
+        PluginSpec::new("inner")
+            .inline_container::<Inner>("inner")
+            .marker('{')
+            .parse(|cx| {
+                cx.consume("{]}").then_some(())?;
+                cx.part_at(1..2);
+                Some(Inner)
+            })
+            .html_tag("span")
+            .finish()
+    };
+    let source = "@«[a {]}](url)";
+    let expected = "<p>@«<a href=\"url\">a <span>]</span></a></p>\n";
+    assert_eq!(
+        MarkdownIt::builder().plugin(inner()).build().render(source),
+        expected
+    );
+    let md = MarkdownIt::builder()
+        .plugin(inner())
+        .plugin(configured_pair(PairOptions::new("«", "»")))
+        .build();
+    assert_eq!(md.render(source), expected);
+}
+
+#[test]
+fn unclosed_pair_scans_do_not_repeatedly_probe_the_same_suffix() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Debug)]
+    struct Probe;
+
+    for count in [64, 256, 1_024] {
+        for suffix in ["", "]", "\nend", "\n]"] {
+            let checks = Arc::new(AtomicUsize::new(0));
+            let probe_checks = Arc::clone(&checks);
+            let probe = PluginSpec::new("probe")
+                .inline_leaf::<Probe>("probe")
+                .marker('^')
+                .parse(move |_| {
+                    probe_checks.fetch_add(1, Ordering::Relaxed);
+                    None
+                })
+                .render_html(|_, _| {})
+                .finish();
+            let md = MarkdownIt::builder()
+                .plugin(probe)
+                .plugin(configured_pair(
+                    PairOptions::new("[", "]").nesting(NestingPolicy::SamePair),
+                ))
+                .build();
+            let source = format!("{}{suffix}", "@[x^".repeat(count));
+            let doc = md.parse(&source);
+            // Count rule checks rather than elapsed time: a scan of every
+            // suffix calls this rule quadratically. Include normal parsing.
+            assert!(
+                checks.load(Ordering::Relaxed) <= 8 * count,
+                "{count} openers, suffix {suffix:?}: {} checks",
+                checks.load(Ordering::Relaxed)
+            );
+            let output = md.render_document(&doc, "html");
+            if suffix != "]" {
+                assert_eq!(output, format!("<p>{source}</p>\n"));
+            } else {
+                // A failed outer pair must not discard the valid inner pair.
+                assert_eq!(
+                    output,
+                    format!("<p>{}<mark>x^</mark></p>\n", "@[x^".repeat(count - 1))
+                );
+            }
+        }
+    }
+}

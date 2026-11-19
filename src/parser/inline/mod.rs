@@ -154,6 +154,7 @@ pub(crate) struct InlineRuleFns {
     pub(crate) run: InlineRunRunner,
     pub(crate) check: InlineCheckRunner,
     pub(crate) marker: char,
+    pub(crate) literal: bool,
 }
 
 impl InlineRuleFns {
@@ -169,6 +170,7 @@ fn inline_rule_fns<T: InlineRule>() -> InlineRuleFns {
         run: InlineRunRunner::Static(T::run),
         check: InlineCheckRunner::Static(T::check),
         marker: T::MARKER,
+        literal: std::any::TypeId::of::<T>() == std::any::TypeId::of::<TextScanner>(),
     }
 }
 
@@ -283,6 +285,7 @@ impl InlineParser {
                     run: InlineRunRunner::Dynamic(run),
                     check: InlineCheckRunner::Dynamic(check),
                     marker,
+                    literal: false,
                 },
             },
         );

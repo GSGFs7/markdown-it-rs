@@ -3,7 +3,8 @@
 //! [`scan`] returns UTF-8 byte offsets into its input and keeps the body verbatim.
 //! It does not decode escapes or interpret Markdown — a closer inside a code span
 //! still closes the span. Whether the body is kept literal or parsed as inline
-//! children is up to the caller.
+//! children is up to the caller. Inline containers use the contextual scanner
+//! instead, which skips matched inline constructs and never probes containers.
 //!
 //! Use this helper when:
 //!
@@ -70,7 +71,13 @@
 //! assert_eq!(md.render("[[*something*]]"), "<p><span><em>something</em></span></p>\n");
 //! ```
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::Range;
+use std::rc::Rc;
+
+use crate::parser::inline::InlineState;
+use crate::parser::inline::state::ScanLimitCache;
 
 /// Backslash handling when recognizing markers in the body.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -240,9 +247,265 @@ pub fn scan(src: &str, options: &PairOptions<'_>) -> Option<PairMatch> {
     None
 }
 
+/// Whether `source` starts with the closer, or with the opener when nesting.
+fn starts_pair_marker(source: &str, options: &PairOptions<'_>, nesting: bool) -> bool {
+    source.starts_with(options.close) || (nesting && source.starts_with(options.open))
+}
+
+/// Raw closer positions. Escaped and opaque occurrences are included, so the
+/// index can only overestimate the available closers.
+#[derive(Debug, Default)]
+pub(crate) struct PairScanCache {
+    closers: HashMap<String, Rc<[usize]>>,
+    line_breaks: Option<Vec<usize>>,
+}
+
+impl PairScanCache {
+    fn cached_closers(&self, close: &str) -> Option<Rc<[usize]>> {
+        self.closers.get(close).cloned()
+    }
+
+    fn closers(&mut self, source: &str, close: &str) -> Rc<[usize]> {
+        if let Some(positions) = self.closers.get(close) {
+            return Rc::clone(positions);
+        }
+        let mut positions = Vec::new();
+        let mut start = 0;
+        while let Some(offset) = source[start..].find(close) {
+            let pos = start + offset;
+            positions.push(pos);
+            // Include overlapping occurrences, also for UTF-8 markers.
+            start = pos + close.chars().next().unwrap().len_utf8();
+        }
+        let positions: Rc<[usize]> = positions.into();
+        self.line_breaks.get_or_insert_with(|| {
+            source
+                .bytes()
+                .enumerate()
+                .filter_map(|(pos, byte)| matches!(byte, b'\r' | b'\n').then_some(pos))
+                .collect()
+        });
+        self.closers.insert(close.to_owned(), positions.clone());
+        positions
+    }
+
+    fn line_end(&self, start: usize, end: usize) -> usize {
+        let Some(breaks) = &self.line_breaks else {
+            return end;
+        };
+        let first = breaks.partition_point(|&pos| pos < start);
+        breaks.get(first).map_or(end, |&pos| pos.min(end))
+    }
+}
+
+/// Scan a container pair against the active inline rules without moving the
+/// parent cursor. `offset` and the result are relative to the remaining source.
+/// Nested container rules are suppressed; nesting follows `PairOptions`. Results
+/// depend on the rule set, `max_nesting` and shared caches.
+pub(crate) fn scan_inline(
+    parent: &mut InlineState<'_>,
+    offset: usize,
+    options: &PairOptions<'_>,
+) -> Option<PairMatch> {
+    stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+        PairScan::new(parent, offset, options)?.run()
+    })
+}
+
+struct PairScan<'a, 'o> {
+    session: InlineState<'a>,
+    /// Body up to the end of the parent window.
+    body_source: &'a str,
+    options: &'o PairOptions<'o>,
+    /// Byte offset of the opening marker.
+    origin: usize,
+    level: usize,
+    odd_backslashes: bool,
+    newline_forbidden: bool,
+    escaping: bool,
+    nesting: bool,
+    closers: Option<Rc<[usize]>>,
+    closers_end: usize,
+    cache: Rc<RefCell<ScanLimitCache>>,
+}
+
+impl<'a, 'o> PairScan<'a, 'o> {
+    fn new(
+        parent: &'a mut InlineState<'_>,
+        offset: usize,
+        options: &'o PairOptions<'o>,
+    ) -> Option<Self> {
+        let newline_forbidden = !options.allow_line_breaks;
+        let source = parent.remaining().get(offset..)?;
+        if !source.starts_with(options.open)
+            || (newline_forbidden
+                && (options.open.contains(['\r', '\n']) || options.close.contains(['\r', '\n'])))
+        {
+            return None;
+        }
+
+        let origin = parent.pos + offset;
+        let cache = Rc::clone(&parent.scan_limit_cache);
+        let closers = cache.borrow().pair_scan.cached_closers(options.close);
+        let mut closers_end = 0;
+        if let Some(closers) = &closers {
+            let end = if newline_forbidden {
+                cache
+                    .borrow()
+                    .pair_scan
+                    .line_end(origin + options.open.len(), parent.pos_max)
+            } else {
+                parent.pos_max
+            };
+            closers_end = closers.partition_point(|&pos| pos + options.close.len() <= end);
+            if closers_end == 0 || closers[closers_end - 1] < origin + options.open.len() {
+                return None;
+            }
+        }
+        let end = parent.remaining().len();
+        let child = parent.child_session_at(
+            offset + options.open.len()..end,
+            parent.depth.saturating_add(1),
+            parent.link_level,
+        )?;
+        let body_source = child.source;
+        let mut session = child.state;
+        // Re-entering container rules would recurse for every nested opener.
+        session.suppress_containers_for_probe();
+        Some(Self {
+            session,
+            body_source,
+            options,
+            origin,
+            level: 1,
+            odd_backslashes: false,
+            newline_forbidden,
+            escaping: options.escape == EscapePolicy::Backslash,
+            nesting: options.nesting == NestingPolicy::SamePair,
+            closers,
+            closers_end,
+            cache,
+        })
+    }
+
+    fn run(mut self) -> Option<PairMatch> {
+        while self.session.pos < self.session.pos_max {
+            let remaining = self.session.remaining();
+            let ch = remaining.chars().next()?;
+            if self.newline_forbidden && matches!(ch, '\r' | '\n') {
+                self.index_closers();
+                return None;
+            }
+
+            let escaped = self.escaping && self.odd_backslashes;
+            if !escaped {
+                if remaining.starts_with(self.options.close) {
+                    if self.newline_forbidden && self.options.close.contains(['\r', '\n']) {
+                        return None;
+                    }
+
+                    self.level -= 1;
+                    if self.level == 0 {
+                        return self.matched();
+                    }
+                    self.session.advance_probe(self.options.close.len(), true);
+                    continue;
+                }
+
+                if self.nesting && remaining.starts_with(self.options.open) {
+                    self.level += 1;
+                    // Each opener needs a distinct raw closer; reject runs with
+                    // too few without scanning the rest of the suffix.
+                    if let Some(closers) = &self.closers {
+                        let first = closers[..self.closers_end]
+                            .partition_point(|&pos| pos < self.session.pos);
+                        if self.level > self.closers_end - first {
+                            return None;
+                        }
+                    }
+                    self.session.advance_probe(self.options.open.len(), true);
+                    continue;
+                }
+            }
+
+            // Keep pair markers literal after a backslash unless the escape
+            // policy owns them; otherwise skip with the escape rule.
+            let literal_marker_after_backslash = ch == '\\'
+                && !self.escaping
+                && starts_pair_marker(&remaining[1..], self.options, self.nesting);
+            if escaped
+                || literal_marker_after_backslash
+                || self.session.depth >= self.session.markdown_it().max_nesting
+            {
+                self.odd_backslashes = self.escaping && ch == '\\' && !self.odd_backslashes;
+                self.session.advance_probe(ch.len_utf8(), true);
+                continue;
+            }
+
+            let before = self.session.pos;
+            let body_offset = before - self.origin - self.options.open.len();
+            self.session.probe_token_until(|text| {
+                text.char_indices()
+                    .skip(1)
+                    .find(|&(pos, ch)| {
+                        ch == '\\'
+                            || (self.newline_forbidden && matches!(ch, '\r' | '\n'))
+                            || starts_pair_marker(
+                                &self.body_source[body_offset + pos..],
+                                self.options,
+                                self.nesting,
+                            )
+                    })
+                    .map_or(text.len(), |(pos, _)| pos)
+            })?;
+            // Without an escape rule, PairOptions still handles marker escaping.
+            self.odd_backslashes = self.escaping && ch == '\\' && self.session.pos == before + 1;
+            // Opaque constructs may span lines, but the pair still forbids them.
+            if self.newline_forbidden
+                && self.session.src[before..self.session.pos].contains(['\r', '\n'])
+            {
+                self.index_closers();
+                return None;
+            }
+        }
+        self.index_closers();
+        None
+    }
+
+    // Index only after a failed scan long enough to pay for the allocation; later
+    // openers reuse the positions within their own window.
+    fn index_closers(&self) {
+        if self.closers.is_none() && self.session.pos - self.origin >= 64 {
+            self.cache
+                .borrow_mut()
+                .pair_scan
+                .closers(&self.session.src, self.options.close);
+        }
+    }
+
+    fn matched(&self) -> Option<PairMatch> {
+        let body = self.options.open.len()..self.session.pos - self.origin;
+        (self.options.allow_empty || body.start != body.end).then_some(PairMatch {
+            body,
+            consumed: self.session.pos - self.origin + self.options.close.len(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn closer_index_includes_overlaps_and_is_scoped_to_each_marker() {
+        let mut cache = PairScanCache::default();
+        let source = "abababa 雪雪雪";
+        let first = cache.closers(source, "aba");
+        assert_eq!(&*first, &[0, 2, 4]);
+        assert_eq!(&*cache.closers(source, "雪雪"), &[8, 11]);
+        assert!(cache.closers(source, "missing").is_empty());
+        assert!(Rc::ptr_eq(&first, &cache.closers(source, "aba")));
+    }
 
     #[test]
     fn preserves_body_and_reports_byte_offsets() {
