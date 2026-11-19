@@ -296,24 +296,29 @@ impl<'a> InlineState<'a> {
     /// through the normal dispatcher.
     pub(crate) fn probe_token(&mut self) -> Option<usize> {
         self.probe_token_until(|source| source.len())
+            .map(|(len, _)| len)
     }
 
     /// Like [`probe_token`](Self::probe_token), but stops literal text at the
     /// offset returned by `literal_length`; opaque rules keep their full span.
+    /// Also reports whether every attempted rule permits reuse of the result
+    /// in pair probes, including rules that declined to match.
     pub(crate) fn probe_token_until(
         &mut self,
         literal_length: impl FnOnce(&str) -> usize,
-    ) -> Option<usize> {
+    ) -> Option<(usize, bool)> {
         if self.pos == self.pos_max {
             return None;
         }
 
         let marker = self.remaining().chars().next().unwrap();
+        let mut reusable = true;
         for (rule_index, entry) in self.ruleset.checks.iter().enumerate() {
             if !entry.matches_marker(marker) {
                 continue;
             }
 
+            reusable &= entry.pair_probe_reusable;
             let check = |state: &mut InlineState<'_>| entry.check.call(state);
             #[cfg(debug_assertions)]
             let matched = super::validation::check_inline(self, rule_index, check);
@@ -337,13 +342,46 @@ impl<'a> InlineState<'a> {
                     self.pending_text = None;
                 }
                 self.pos += len;
-                return Some(len);
+                return Some((len, reusable));
             }
         }
 
         let len = marker.len_utf8();
         self.advance_probe(len, true);
-        Some(len)
+        Some((len, reusable))
+    }
+
+    /// Advance over a matched opaque inline construct at the cursor, if any.
+    ///
+    /// Same dispatch as [`probe_token`](Self::probe_token), but literal-text
+    /// matches are declined so a boundary scanner can tell a construct apart
+    /// from ordinary text without moving the cursor on failure.
+    pub(crate) fn probe_opaque_token(&mut self) -> Option<usize> {
+        if self.pos == self.pos_max {
+            return None;
+        }
+
+        let marker = self.remaining().chars().next().unwrap();
+        for (rule_index, entry) in self.ruleset.checks.iter().enumerate() {
+            if entry.literal || !entry.matches_marker(marker) {
+                continue;
+            }
+
+            let check = |state: &mut InlineState<'_>| entry.check.call(state);
+            #[cfg(debug_assertions)]
+            let matched = super::validation::check_inline(self, rule_index, check);
+            #[cfg(not(debug_assertions))]
+            let matched = check(self);
+
+            if let Some(len) = matched {
+                check_progress(rule_index, self.remaining(), len);
+                self.pending_text = None;
+                self.pos += len;
+                return Some(len);
+            }
+        }
+
+        None
     }
 
     /// Advance syntax owned by a boundary scanner, retaining literal runs but

@@ -59,6 +59,7 @@ fn check_rule(check: InlineCheckFn) -> InlineRuleFns {
         check: InlineCheckRunner::Static(check),
         marker: '\0',
         literal: false,
+        pair_probe_reusable: false,
     }
 }
 
@@ -68,6 +69,7 @@ fn run_rule_with_marker(run: InlineRunFn, marker: char) -> InlineRuleFns {
         check: InlineCheckRunner::Static(panic_check),
         marker,
         literal: false,
+        pair_probe_reusable: false,
     }
 }
 
@@ -747,12 +749,14 @@ fn check_no_match_falls_through_to_lower_priority_rules() {
                 check: InlineCheckRunner::Static(|_| None),
                 marker: 'x',
                 literal: false,
+                pair_probe_reusable: false,
             },
             InlineRuleFns {
                 run: InlineRunRunner::Static(panic_run),
                 check: InlineCheckRunner::Static(|_| Some(1)),
                 marker: 'x',
                 literal: false,
+                pair_probe_reusable: false,
             },
         ],
     };
@@ -775,6 +779,7 @@ fn check_dispatch_skips_non_matching_markers() {
             check: InlineCheckRunner::Static(|_| panic!("marker must filter check dispatch")),
             marker: 'y',
             literal: false,
+            pair_probe_reusable: false,
         }],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "x");
@@ -1005,6 +1010,7 @@ fn recursive_check_validates_ranges_and_empty_suffixes() {
             check: InlineCheckRunner::Static(|_| None),
             marker: 'x',
             literal: false,
+            pair_probe_reusable: false,
         }],
     };
     let mut state = check_state(&mut document, &md, &no_match, "x");
@@ -1148,6 +1154,7 @@ fn recursive_check_same_range_terminates_at_depth_limit() {
             check: InlineCheckRunner::Static(same_range),
             marker: '#',
             literal: false,
+            pair_probe_reusable: false,
         }],
     };
     let mut state = check_state(&mut document, &md, &ruleset, "#");
@@ -1189,6 +1196,7 @@ fn recursive_check_long_chain_is_linear_and_stack_safe() {
             check: InlineCheckRunner::Static(nested),
             marker: '^',
             literal: false,
+            pair_probe_reusable: false,
         }],
     };
     let source = "^".repeat(CHAIN) + "x";
@@ -1219,6 +1227,7 @@ fn check_dispatch_keeps_wildcard_position() {
                 }),
                 marker: 'x',
                 literal: false,
+                pair_probe_reusable: false,
             },
         ],
     };
@@ -1524,12 +1533,14 @@ fn invalid_check_length_panics_and_preserves_pending() {
                 }),
                 marker: 'a',
                 literal: false,
+                pair_probe_reusable: false,
             },
             InlineRuleFns {
                 run: InlineRunRunner::Static(panic_run),
                 check: InlineCheckRunner::Static(|_| Some(0)),
                 marker: 'a',
                 literal: false,
+                pair_probe_reusable: false,
             },
         ],
     };
@@ -2055,6 +2066,42 @@ fn contextual_pair_closer_index_respects_child_window_ends() {
 }
 
 #[test]
+fn cached_pair_failure_keeps_closers_visible_from_other_starts_and_windows() {
+    use crate::parser::inline::helpers::paired_span::{self, PairOptions};
+
+    let source = format!("«outer «second `{}«inner»` tail", "x".repeat(64));
+    let source = source.as_str();
+    let md = MarkdownIt::new();
+    let mut document = Document::new(source, crate::document::Root::new(source));
+    let ruleset = md.inline.rules();
+    let mut state = InlineState::new(&mut document, source, 0, source.len(), &md, ruleset, 0, 0);
+    let options = PairOptions::new("«", "»");
+    let second = source.find("«second").unwrap();
+    let inner = source.find("«inner").unwrap();
+    let closer_end = inner + "«inner»".len();
+
+    // The first failure indexes raw closers and the second caches a failed
+    // suffix. From inside the code span its closer is visible.
+    assert!(paired_span::scan_inline(&mut state, 0, &options).is_none());
+    assert!(paired_span::scan_inline(&mut state, second, &options).is_none());
+    assert_eq!(
+        paired_span::scan_inline(&mut state, inner, &options)
+            .unwrap()
+            .consumed,
+        "«inner»".len()
+    );
+
+    // A shorter window omits the closing backtick and exposes that same closer.
+    let mut child = state.child_state(0..closer_end).unwrap();
+    assert_eq!(
+        paired_span::scan_inline(&mut child, second, &options)
+            .unwrap()
+            .consumed,
+        closer_end - second
+    );
+}
+
+#[test]
 fn probe_token_until_shortens_only_literal_rules() {
     fn ruleset(literal: bool) -> RuleSet {
         RuleSet {
@@ -2068,6 +2115,7 @@ fn probe_token_until_shortens_only_literal_rules() {
                 }),
                 marker: '\0',
                 literal,
+                pair_probe_reusable: literal,
             }],
         }
     }
@@ -2079,7 +2127,7 @@ fn probe_token_until_shortens_only_literal_rules() {
         let mut state = check_state(&mut document, &md, &ruleset, "abcd");
         assert_eq!(
             state.probe_token_until(|_| 2),
-            Some(expected_len),
+            Some((expected_len, literal)),
             "{literal}"
         );
         assert_eq!(state.trailing_text(), expected_text, "{literal}");

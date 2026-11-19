@@ -72,7 +72,7 @@
 //! ```
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -252,12 +252,24 @@ fn starts_pair_marker(source: &str, options: &PairOptions<'_>, nesting: bool) ->
     source.starts_with(options.close) || (nesting && source.starts_with(options.open))
 }
 
-/// Raw closer positions. Escaped and opaque occurrences are included, so the
-/// index can only overestimate the available closers.
 #[derive(Debug, Default)]
 pub(crate) struct PairScanCache {
+    /// Includes escaped and opaque occurrences, so this can overcount closers.
     closers: HashMap<String, Rc<[usize]>>,
     line_breaks: Option<Vec<usize>>,
+    failed_suffixes: HashMap<String, HashSet<FailedSuffix>>,
+}
+
+/// A non-nesting probe at a token boundary with no pending text or odd
+/// backslash. The suffix only used rules that can be replayed from here.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+struct FailedSuffix {
+    position: usize,
+    end: usize,
+    depth: u32,
+    link_level: i32,
+    escaping: bool,
+    newline_forbidden: bool,
 }
 
 impl PairScanCache {
@@ -327,6 +339,7 @@ struct PairScan<'a, 'o> {
     closers: Option<Rc<[usize]>>,
     closers_end: usize,
     cache: Rc<RefCell<ScanLimitCache>>,
+    failure_checkpoints: Vec<FailedSuffix>,
 }
 
 impl<'a, 'o> PairScan<'a, 'o> {
@@ -372,6 +385,9 @@ impl<'a, 'o> PairScan<'a, 'o> {
         let mut session = child.state;
         // Re-entering container rules would recurse for every nested opener.
         session.suppress_containers_for_probe();
+        // Probe sessions recognize all bracket constructs so they can skip
+        // their spans; the parent's link-label scan only owns its own window.
+        session.suppress_bracket_links = false;
         Some(Self {
             session,
             body_source,
@@ -385,15 +401,20 @@ impl<'a, 'o> PairScan<'a, 'o> {
             closers,
             closers_end,
             cache,
+            failure_checkpoints: Vec::new(),
         })
     }
 
     fn run(mut self) -> Option<PairMatch> {
         while self.session.pos < self.session.pos_max {
+            if self.check_failed_suffix() {
+                self.record_failure();
+                return None;
+            }
             let remaining = self.session.remaining();
             let ch = remaining.chars().next()?;
             if self.newline_forbidden && matches!(ch, '\r' | '\n') {
-                self.index_closers();
+                self.record_failure();
                 return None;
             }
 
@@ -413,6 +434,18 @@ impl<'a, 'o> PairScan<'a, 'o> {
                 }
 
                 if self.nesting && remaining.starts_with(self.options.open) {
+                    // A matched inline construct starting at the opener wins
+                    // over nesting: its markers stay opaque, as documented.
+                    let before = self.session.pos;
+                    if self.session.probe_opaque_token().is_some() {
+                        if self.newline_forbidden
+                            && self.session.src[before..self.session.pos].contains(['\r', '\n'])
+                        {
+                            self.record_failure();
+                            return None;
+                        }
+                        continue;
+                    }
                     self.level += 1;
                     // Each opener needs a distinct raw closer; reject runs with
                     // too few without scanning the rest of the suffix.
@@ -444,7 +477,7 @@ impl<'a, 'o> PairScan<'a, 'o> {
 
             let before = self.session.pos;
             let body_offset = before - self.origin - self.options.open.len();
-            self.session.probe_token_until(|text| {
+            let (_, reusable) = self.session.probe_token_until(|text| {
                 text.char_indices()
                     .skip(1)
                     .find(|&(pos, ch)| {
@@ -458,28 +491,74 @@ impl<'a, 'o> PairScan<'a, 'o> {
                     })
                     .map_or(text.len(), |(pos, _)| pos)
             })?;
+            if !reusable {
+                // The rule may have depended on state from before the
+                // checkpoint, even when it declined to match.
+                self.failure_checkpoints.clear();
+            }
             // Without an escape rule, PairOptions still handles marker escaping.
             self.odd_backslashes = self.escaping && ch == '\\' && self.session.pos == before + 1;
             // Opaque constructs may span lines, but the pair still forbids them.
             if self.newline_forbidden
                 && self.session.src[before..self.session.pos].contains(['\r', '\n'])
             {
-                self.index_closers();
+                self.record_failure();
                 return None;
             }
         }
-        self.index_closers();
+        self.record_failure();
         None
     }
 
-    // Index only after a failed scan long enough to pay for the allocation; later
-    // openers reuse the positions within their own window.
-    fn index_closers(&self) {
+    fn check_failed_suffix(&mut self) -> bool {
+        // The first long failure builds the raw index. Only collect
+        // checkpoints once that index has proved insufficient.
+        if self.nesting
+            || self.closers.is_none()
+            || self.odd_backslashes
+            || !self.session.trailing_text().is_empty()
+        {
+            return false;
+        }
+
+        let checkpoint = FailedSuffix {
+            position: self.session.pos,
+            end: self.session.pos_max,
+            depth: self.session.depth,
+            link_level: self.session.link_level,
+            escaping: self.escaping,
+            newline_forbidden: self.newline_forbidden,
+        };
+        if self
+            .cache
+            .borrow()
+            .pair_scan
+            .failed_suffixes
+            .get(self.options.close)
+            .is_some_and(|suffixes| suffixes.contains(&checkpoint))
+        {
+            return true;
+        }
+        self.failure_checkpoints.push(checkpoint);
+        false
+    }
+
+    fn record_failure(&mut self) {
+        // Index only after a failed scan long enough to pay for the allocation.
         if self.closers.is_none() && self.session.pos - self.origin >= 64 {
             self.cache
                 .borrow_mut()
                 .pair_scan
                 .closers(&self.session.src, self.options.close);
+        }
+        if !self.failure_checkpoints.is_empty() {
+            self.cache
+                .borrow_mut()
+                .pair_scan
+                .failed_suffixes
+                .entry(self.options.close.to_owned())
+                .or_default()
+                .extend(self.failure_checkpoints.drain(..));
         }
     }
 

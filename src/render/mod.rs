@@ -31,7 +31,8 @@ pub(crate) use builtin::{
 };
 pub use context::RenderContext;
 pub(crate) use html::{
-    render_html_link,
+    LinkHtmlRenderer,
+    LinkValue,
     write_html_attrs_with,
     write_html_close,
     write_html_open,

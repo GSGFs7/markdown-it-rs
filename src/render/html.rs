@@ -1,12 +1,41 @@
 //! HTML output helpers shared by the built-in HTML renderers.
 
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
-use super::{RenderContext, Writer};
+use super::{NodeRenderer, RenderContext, Writer};
 use crate::common::utils::escape_html;
-use crate::document::{HtmlAttribute, Node};
+use crate::document::{HtmlAttribute, Node, NodeValue};
 
-pub(crate) fn render_html_link(
+/// Link-like payloads that render as `<a href="…">`.
+///
+/// Links from the CommonMark link rule, autolinks and linkify only differ in
+/// where the destination comes from; the HTML output is identical.
+pub(crate) trait LinkValue: NodeValue {
+    fn href(&self) -> &str;
+
+    /// Optional `title` attribute. Empty titles are omitted.
+    fn title(&self) -> Option<&str> {
+        None
+    }
+}
+
+/// HTML renderer for any [`LinkValue`].
+pub(crate) struct LinkHtmlRenderer<T>(PhantomData<fn() -> T>);
+
+impl<T: LinkValue> LinkHtmlRenderer<T> {
+    pub(crate) fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<T: LinkValue> NodeRenderer<T> for LinkHtmlRenderer<T> {
+    fn render(&self, node: &Node, value: &T, context: &mut RenderContext<'_>, output: &mut Writer) {
+        render_html_link(node, value.href(), value.title(), context, output);
+    }
+}
+
+fn render_html_link(
     node: &Node,
     url: &str,
     title: Option<&str>,
@@ -26,7 +55,7 @@ pub(crate) fn render_html_link(
     write_html_close(output, "a");
 }
 
-pub(crate) fn write_html_attrs(output: &mut Writer, attrs: &[HtmlAttribute]) {
+fn write_html_attrs(output: &mut Writer, attrs: &[HtmlAttribute]) {
     write_html_attrs_with(output, attrs, &[]);
 }
 

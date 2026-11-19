@@ -461,3 +461,59 @@ fn unclosed_pair_scans_do_not_repeatedly_probe_the_same_suffix() {
         }
     }
 }
+
+#[test]
+fn opaque_and_escaped_closers_do_not_cause_repeated_suffix_scans() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Debug)]
+    struct Probe;
+
+    for (escape, unit, rendered) in [
+        (EscapePolicy::None, "@«x^`»` ", "@«x^<code>»</code> "),
+        (EscapePolicy::Backslash, r"@«x^\» ", r"@«x^\» "),
+    ] {
+        let checks = Arc::new(AtomicUsize::new(0));
+        let probe_checks = Arc::clone(&checks);
+        let probe = PluginSpec::new("probe")
+            .inline_leaf::<Probe>("probe")
+            .marker('^')
+            .parse(move |_| {
+                probe_checks.fetch_add(1, Ordering::Relaxed);
+                None
+            })
+            .render_html(|_, _| {})
+            .finish();
+        let md = MarkdownIt::builder()
+            .plugin(probe)
+            .plugin(configured_pair(PairOptions::new("«", "»").escape(escape)))
+            .build();
+
+        for count in [64, 256, 1_024] {
+            checks.store(0, Ordering::Relaxed);
+            let source = unit.repeat(count);
+            let html = md.render(&source);
+            let checked = checks.load(Ordering::Relaxed);
+            assert!(
+                checked <= 8 * count,
+                "{unit:?}, {count} openers: {checked} checks"
+            );
+            assert_eq!(
+                html,
+                format!("<p>{}</p>\n", rendered.repeat(count).trim_end())
+            );
+        }
+    }
+}
+
+#[test]
+fn matched_links_win_over_nesting_when_the_marker_is_shared() {
+    let md = MarkdownIt::builder().plugin(annotation()).build();
+    // The container opener `[` is also the link opener. The link span is
+    // opaque, so the `]` inside its destination cannot close the label.
+    assert_eq!(
+        md.render("[[x](/a]b)]{note}"),
+        "<p><ruby><a href=\"/a%5Db\">x</a><rt>note</rt></ruby></p>\n"
+    );
+}

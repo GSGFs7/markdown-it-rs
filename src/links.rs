@@ -60,9 +60,26 @@ impl LinkFormatter for MDLinkFormatter {
     }
 }
 
+/// Normalize the destination and return it if the formatter accepts it.
+pub(crate) fn prepare_link_destination(formatter: &dyn LinkFormatter, url: &str) -> Option<String> {
+    let href = formatter.normalize_link(url);
+    formatter.validate_link(&href)?;
+    Some(href)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{LinkFormatter, MDLinkFormatter};
+    use super::{LinkFormatter, MDLinkFormatter, prepare_link_destination};
+
+    #[test]
+    fn prepared_destination_normalizes_and_rejects() {
+        let fmt = MDLinkFormatter::new();
+        assert_eq!(
+            prepare_link_destination(&fmt, "https://例子.example/path").as_deref(),
+            Some("https://xn--fsqu00a.example/path")
+        );
+        assert!(prepare_link_destination(&fmt, "javascript:alert(1)").is_none());
+    }
 
     #[test]
     fn should_allow_normal_urls() {

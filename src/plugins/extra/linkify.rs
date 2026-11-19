@@ -2,35 +2,28 @@
 
 // TODO: refactor this
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use linkify::{LinkKind, Linkify};
 
 use crate::MarkdownIt;
-use crate::document::{Document, Node, NodeId, StructuralEvent, Text, TextSpecial};
-use crate::links::LinkFormatter;
+use crate::document::{Document, NodeId, StructuralEvent, Text, TextSpecial};
+use crate::links::{LinkFormatter, prepare_link_destination};
 use crate::parser::core::{CoreRule, CoreState};
 use crate::parser::inline::{InlineParserRule, InlineRule, InlineState};
 use crate::plugins::html::anchor_delta;
-use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, render_html_link};
+use crate::render::{LinkHtmlRenderer, LinkValue, TransparentRenderer};
 
 #[derive(Debug)]
 pub struct Linkified {
     pub url: String,
 }
 
-struct LinkifiedRenderer;
-
-impl NodeRenderer<Linkified> for LinkifiedRenderer {
-    fn render(
-        &self,
-        node: &Node,
-        link: &Linkified,
-        context: &mut RenderContext<'_>,
-        output: &mut crate::render::Writer,
-    ) {
-        render_html_link(node, &link.url, None, context, output);
+impl LinkValue for Linkified {
+    fn href(&self) -> &str {
+        &self.url
     }
 }
 
@@ -57,7 +50,7 @@ pub fn add_with_options(md: &mut MarkdownIt, options: LinkifyOptions) {
     md.inline.add_rule::<LinkifyScanner>();
     md.inline.add_rule::<LinkifyFuzzyScanner>();
     md.inline.add_rule::<LinkifyEmailScanner>();
-    md.add_renderer::<Linkified, _>("html", LinkifiedRenderer);
+    md.add_renderer::<Linkified, _>("html", LinkHtmlRenderer::<Linkified>::new());
     md.add_renderer::<Linkified, _>("text", TransparentRenderer);
 }
 
@@ -475,10 +468,35 @@ impl CandidateRange {
     }
 }
 
-#[derive(Debug, Clone)]
 struct PreparedLink {
     href: String,
-    content: String,
+    label: String,
+}
+
+/// Build the destination and label for a bare URL or email.
+///
+/// markdown-it's linkify normalizes the label from the full destination and
+/// then removes the scheme it injected (`mailto:` / `http://`), which differs
+/// from autolinks that normalize the text as written.
+fn prepare_link(
+    formatter: &dyn LinkFormatter,
+    mode: LinkifyMode,
+    url: &str,
+) -> Option<PreparedLink> {
+    let injected_prefix = mode.injected_prefix(url);
+    let source = match injected_prefix {
+        Some(prefix) => Cow::Owned(format!("{prefix}{url}")),
+        None => Cow::Borrowed(url),
+    };
+    let href = prepare_link_destination(formatter, &source)?;
+    let mut label = formatter.normalize_link_text(&source);
+    if let Some(prefix) = injected_prefix
+        && starts_with_ascii_case_insensitive(&label, prefix)
+    {
+        label.drain(..prefix.len());
+    }
+
+    Some(PreparedLink { href, label })
 }
 
 struct CandidateInput<'a> {
@@ -568,38 +586,14 @@ fn scan_candidate(input: CandidateInput<'_>, mode: LinkifyMode) -> Option<Candid
     Some(candidate)
 }
 
-fn prepare_link(
-    formatter: &dyn LinkFormatter,
-    mode: LinkifyMode,
-    url: &str,
-) -> Option<PreparedLink> {
-    let injected_prefix = mode.injected_prefix(url);
-    let href_source = match injected_prefix {
-        Some(prefix) => format!("{prefix}{url}"),
-        None => url.to_owned(),
-    };
-
-    let href = formatter.normalize_link(&href_source);
-    formatter.validate_link(&href)?;
-
-    let mut content = formatter.normalize_link_text(&href_source);
-    if let Some(prefix) = injected_prefix
-        && starts_with_ascii_case_insensitive(&content, prefix)
-    {
-        content.drain(..prefix.len());
-    }
-
-    Some(PreparedLink { href, content })
-}
-
 fn create_linkified(
     document: &mut Document,
     link: PreparedLink,
     #[cfg(feature = "sourcemap")] map: Option<crate::common::sourcemap::SourcePos>,
 ) -> NodeId {
     let inner = document.create_node(TextSpecial {
-        content: link.content.clone(),
-        markup: link.content,
+        content: link.label.clone(),
+        markup: link.label,
         info: "autolink",
     });
 

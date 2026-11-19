@@ -59,7 +59,9 @@ pub fn add_with<const MARKER: char>(
 ) {
     md.ext.insert(CodePairConfig::<MARKER>(f));
 
-    let builder = md.inline.add_rule::<CodePairScanner<MARKER>>();
+    let builder = md
+        .inline
+        .add_pair_probe_reusable_rule::<CodePairScanner<MARKER>>();
     if MARKER == '`' {
         builder.alias_named("backticks");
     }

@@ -1,6 +1,7 @@
 use super::config::InlineTargetFallback;
 use crate::MarkdownIt;
 use crate::common::utils::unescape_all;
+use crate::links::prepare_link_destination;
 
 #[derive(Debug)]
 pub(super) struct InlineLinkTarget {
@@ -221,8 +222,9 @@ pub(super) fn scan_inline_link_target(
     // [link](  <href>  "title"  )
     //          ^^^^^^ parsing link destination
     if let Some(result) = parse_link_destination(source, pos, max) {
-        let candidate = md.link_formatter.normalize_link(&result.str);
-        if md.link_formatter.validate_link(&candidate).is_some() {
+        // An invalid destination leaves the cursor untouched so the candidate
+        // can still be rejected or fall back to a reference.
+        if let Some(candidate) = prepare_link_destination(md.link_formatter.as_ref(), &result.str) {
             pos = result.pos;
             href = Some(candidate);
         }

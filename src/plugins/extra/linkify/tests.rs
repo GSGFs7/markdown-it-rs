@@ -645,3 +645,21 @@ fn emphasis_with_real_link_1() {
     let output = r#"<p><a href="https://www.sell.fi/sites/default/files/elainlaakarilehti/tieteelliset_artikkelit/kahkonen_t._et_al.canine_pancreatitis-_review.pdf">https://www.sell.fi/sites/default/files/elainlaakarilehti/tieteelliset_artikkelit/kahkonen_t._et_al.canine_pancreatitis-_review.pdf</a></p>"#;
     run(input, output);
 }
+
+#[test]
+fn prepares_labels_from_the_full_destination() {
+    let fmt = crate::links::MDLinkFormatter::new();
+
+    // linkify normalizes the label from the full destination and then removes
+    // the injected scheme; autolinks normalize the written text instead.
+    let email =
+        super::prepare_link(&fmt, super::LinkifyMode::Email, "xn--n3h@xn--n3h.net").unwrap();
+    assert_eq!(email.href, "mailto:xn--n3h@xn--n3h.net");
+    assert_eq!(email.label, "xn--n3h@☃.net");
+
+    let fuzzy = super::prepare_link(&fmt, super::LinkifyMode::Fuzzy, "example.org").unwrap();
+    assert_eq!(fuzzy.href, "http://example.org");
+    assert_eq!(fuzzy.label, "example.org");
+
+    assert!(super::prepare_link(&fmt, super::LinkifyMode::Scheme, "javascript:alert(1)").is_none());
+}

@@ -54,6 +54,17 @@ fn literal_and_markdown_bodies_work_together_and_inside_links() {
 }
 
 #[test]
+fn images_stay_opaque_when_a_container_is_scanned_inside_a_link_label() {
+    let md = parser();
+    // The link-label probe must still recognize the image span, otherwise the
+    // `]]` inside its destination closes the container early.
+    assert_eq!(
+        md.render("[@[[![x](/a]]b)]]](/out)"),
+        "<p><a href=\"/out\"><span><img src=\"/a%5D%5Db\" alt=\"x\"></span></a></p>\n"
+    );
+}
+
+#[test]
 fn failures_roll_back_local_cursor_and_escaped_initial_markers_stay_text() {
     let md = parser();
     assert_eq!(md.render("前 @[[雪 尾"), "<p>前 @[[雪 尾</p>\n");

@@ -10,7 +10,7 @@ use crate::parser::inline::{InlineRule, InlineState};
 use crate::plugins::cmark::inline::newline::Hardbreak;
 
 pub fn add(md: &mut MarkdownIt) {
-    md.inline.add_rule::<EscapeScanner>();
+    md.inline.add_pair_probe_reusable_rule::<EscapeScanner>();
 }
 
 #[derive(Clone, Copy)]

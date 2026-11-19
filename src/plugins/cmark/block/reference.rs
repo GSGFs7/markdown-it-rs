@@ -15,6 +15,7 @@ use downcast_rs::{Downcast, impl_downcast};
 use crate::MarkdownIt;
 use crate::common::utils::{normalize_reference, unescape_all};
 use crate::document::NodeId;
+use crate::links::prepare_link_destination;
 use crate::parser::block::{BlockRule, BlockState};
 use crate::parser::inline::helpers::full_link;
 use crate::render::EmptyRenderer;
@@ -385,8 +386,7 @@ fn scan_reference(state: &mut BlockState<'_>) -> Option<(Definition, usize)> {
         if pos == res.pos {
             return None;
         }
-        href = state.markdown_it().link_formatter.normalize_link(&res.str);
-        state.markdown_it().link_formatter.validate_link(&href)?;
+        href = prepare_link_destination(state.markdown_it().link_formatter.as_ref(), &res.str)?;
         pos = res.pos;
     }
 

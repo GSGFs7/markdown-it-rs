@@ -155,6 +155,7 @@ pub(crate) struct InlineRuleFns {
     pub(crate) check: InlineCheckRunner,
     pub(crate) marker: char,
     pub(crate) literal: bool,
+    pub(crate) pair_probe_reusable: bool,
 }
 
 impl InlineRuleFns {
@@ -165,12 +166,14 @@ impl InlineRuleFns {
     }
 }
 
-fn inline_rule_fns<T: InlineRule>() -> InlineRuleFns {
+fn inline_rule_fns<T: InlineRule>(pair_probe_reusable: bool) -> InlineRuleFns {
+    let literal = std::any::TypeId::of::<T>() == std::any::TypeId::of::<TextScanner>();
     InlineRuleFns {
         run: InlineRunRunner::Static(T::run),
         check: InlineCheckRunner::Static(T::check),
         marker: T::MARKER,
-        literal: std::any::TypeId::of::<T>() == std::any::TypeId::of::<TextScanner>(),
+        literal,
+        pair_probe_reusable: literal || pair_probe_reusable,
     }
 }
 
@@ -217,6 +220,7 @@ impl InlineParser {
 
     fn add_rule_entry<T: InlineRule>(
         &mut self,
+        pair_probe_reusable: bool,
     ) -> &mut crate::common::ruler::RuleItem<RuleMark, RuleEntry> {
         self.rules.take();
         if std::any::TypeId::of::<T>() != std::any::TypeId::of::<TextScanner>() {
@@ -229,7 +233,7 @@ impl InlineParser {
         let item = self.ruler.add(
             RuleMark::of::<T>(),
             RuleEntry {
-                fns: inline_rule_fns::<T>(),
+                fns: inline_rule_fns::<T>(pair_probe_reusable),
             },
         );
         for name in T::NAMES {
@@ -240,7 +244,15 @@ impl InlineParser {
 
     /// Register an inline syntax rule.
     pub fn add_rule<T: InlineRule>(&mut self) -> RuleBuilder<'_, RuleEntry> {
-        RuleBuilder::new(self.add_rule_entry::<T>())
+        RuleBuilder::new(self.add_rule_entry::<T>(false))
+    }
+
+    /// Register a rule whose pair probe only depends on the source window and
+    /// pending text, with any scratch data affecting performance only.
+    pub(crate) fn add_pair_probe_reusable_rule<T: InlineRule>(
+        &mut self,
+    ) -> RuleBuilder<'_, RuleEntry> {
+        RuleBuilder::new(self.add_rule_entry::<T>(true))
     }
 
     /// Return whether a rule of type `T` is currently registered.
@@ -286,6 +298,9 @@ impl InlineParser {
                     check: InlineCheckRunner::Dynamic(check),
                     marker,
                     literal: false,
+                    // Leaves only see the remaining source and configuration.
+                    // Containers always decline during pair probing.
+                    pair_probe_reusable: true,
                 },
             },
         );

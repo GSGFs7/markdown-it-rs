@@ -4,9 +4,8 @@
 //!
 //! <https://spec.commonmark.org/0.30/#links>
 use crate::MarkdownIt;
-use crate::document::Node;
 use crate::parser::inline::helpers::full_link;
-use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, render_html_link};
+use crate::render::{LinkHtmlRenderer, LinkValue, TransparentRenderer};
 
 #[derive(Debug)]
 pub struct Link {
@@ -14,17 +13,13 @@ pub struct Link {
     pub title: Option<String>,
 }
 
-struct LinkRenderer;
+impl LinkValue for Link {
+    fn href(&self) -> &str {
+        &self.url
+    }
 
-impl NodeRenderer<Link> for LinkRenderer {
-    fn render(
-        &self,
-        node: &Node,
-        link: &Link,
-        context: &mut RenderContext<'_>,
-        output: &mut crate::render::Writer,
-    ) {
-        render_html_link(node, &link.url, link.title.as_deref(), context, output);
+    fn title(&self) -> Option<&str> {
+        self.title.as_deref()
     }
 }
 
@@ -35,7 +30,7 @@ pub fn add(md: &mut MarkdownIt) {
             title,
         })
     });
-    md.add_renderer::<Link, _>("html", LinkRenderer);
+    md.add_renderer::<Link, _>("html", LinkHtmlRenderer::<Link>::new());
     md.add_renderer::<Link, _>("text", TransparentRenderer);
 }
 
