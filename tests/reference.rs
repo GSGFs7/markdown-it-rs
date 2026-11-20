@@ -97,3 +97,46 @@ fn invalid_inline_target_probes_reference_at_the_failed_delimiter() {
         assert_eq!(md.render(source), expected, "{source:?}");
     }
 }
+
+#[test]
+fn reference_links_are_literal_without_the_reference_plugin() {
+    use markdown_it::plugins::cmark::{block, inline};
+
+    let mut md = MarkdownIt::empty();
+    block::paragraph::add(&mut md);
+    inline::link::add(&mut md);
+    inline::image::add(&mut md);
+
+    assert_eq!(md.render("[id][ref]"), "<p>[id][ref]</p>\n");
+    assert_eq!(md.render("[id]"), "<p>[id]</p>\n");
+    assert_eq!(md.render("![id][ref]"), "<p>![id][ref]</p>\n");
+
+    // Inline targets do not depend on the reference plugin.
+    assert_eq!(md.render("[id](/url)"), "<p><a href=\"/url\">id</a></p>\n");
+}
+
+#[test]
+fn injected_reference_map_resolves_without_the_definition_scanner() {
+    use markdown_it::parser::block::BlockParserRule;
+    use markdown_it::parser::core::{CoreRule, CoreState};
+    use markdown_it::plugins::cmark::{block, inline};
+    use markdown_it::reference::ReferenceMap;
+
+    #[derive(Default)]
+    struct AddReferences;
+
+    impl CoreRule for AddReferences {
+        fn run(&self, state: &mut CoreState<'_>) {
+            let mut references = ReferenceMap::default();
+            references.insert("id".into(), "/external".into(), None);
+            state.root_ext_mut().insert(references);
+        }
+    }
+
+    let mut md = MarkdownIt::empty();
+    block::paragraph::add(&mut md);
+    inline::link::add(&mut md);
+    md.add_rule::<AddReferences>().before::<BlockParserRule>();
+
+    assert_eq!(md.render("[id]"), "<p><a href=\"/external\">id</a></p>\n");
+}

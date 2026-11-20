@@ -24,6 +24,7 @@ pub mod parser;
 pub mod plugin;
 pub mod plugins;
 pub mod presets;
+pub mod reference;
 pub mod render;
 
 pub use markdown_it::MarkdownIt;

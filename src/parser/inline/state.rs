@@ -13,9 +13,6 @@ use crate::document::{Document, NodeId, Text};
 
 // TODO: adjust API visibility
 
-#[derive(Debug, Default)]
-struct FinishCallbacks(Vec<fn(&mut InlineState<'_>)>);
-
 /// Hooks selected once per full source and shared by child sessions.
 type ScanHookCache<'a> = Cow<'a, OnceCell<Vec<ScanHook>>>;
 
@@ -110,11 +107,6 @@ impl<'a> InlineState<'a> {
     /// session scratch. Drop the borrow before starting another session.
     pub fn shared_ext(&self) -> RefMut<'_, InlineRootExtSet> {
         RefMut::map(self.scan_limit_cache.borrow_mut(), |cache| &mut cache.ext)
-    }
-
-    pub(super) fn scan_hooks(&self) -> &[ScanHook] {
-        self.scan_hooks
-            .get_or_init(|| super::select_scan_hooks(self.md, &self.src))
     }
 
     /// Register a callback to run after this session's pending text is flushed.
@@ -461,6 +453,25 @@ impl<'a> InlineState<'a> {
         ))
     }
 
+    /// Whether a source-wide special scan has been abandoned.
+    pub(crate) fn special_scan_disabled(&self) -> bool {
+        self.shared_ext()
+            .get::<SpecialScanState>()
+            .is_some_and(|state| state.disabled)
+    }
+
+    /// Mark source-wide special scans as abandoned.
+    pub(crate) fn disable_special_scan(&self) {
+        self.shared_ext()
+            .get_or_insert_default::<SpecialScanState>()
+            .disabled = true;
+    }
+
+    pub(super) fn scan_hooks(&self) -> &[ScanHook] {
+        self.scan_hooks
+            .get_or_init(|| super::select_scan_hooks(self.md, &self.src))
+    }
+
     /// Run this child session to completion and return its nodes.
     ///
     /// Uses session cleanup and a fresh stack segment.
@@ -636,6 +647,17 @@ impl<'a> InlineState<'a> {
 
         self.nodes
     }
+}
+
+#[derive(Debug, Default)]
+struct FinishCallbacks(Vec<fn(&mut InlineState<'_>)>);
+
+/// Set when a scanner gives up on an unterminated construct (for example an
+/// HTML comment without `-->`). Shared so nested sessions stop retrying the
+/// same scan; the construct itself is owned by the registering plugin.
+#[derive(Debug, Default)]
+struct SpecialScanState {
+    disabled: bool,
 }
 
 /// Per-inline state shared by nested boundary scans.

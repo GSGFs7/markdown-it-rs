@@ -12,8 +12,7 @@ use super::config::InlineTargetFallback;
 use super::reference::ParseLinkResult;
 use super::target::{LinkTargetScan, scan_link_target};
 use crate::parser::inline::{InlineState, RuleSet};
-use crate::plugins::cmark::block::reference::{DefaultReferenceMap, ReferenceMap};
-use crate::plugins::html::html_inline::special_html_disabled;
+use crate::reference::ReferenceMap;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Candidate {
@@ -28,14 +27,14 @@ pub(crate) struct Candidate {
 pub(crate) struct Outcome {
     candidate: Option<Candidate>,
     link_level: i32,
-    html_disabled: bool,
+    special_scan_disabled: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LabelOutcome {
     close: Option<usize>,
     link_level: i32,
-    html_disabled: bool,
+    special_scan_disabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -45,7 +44,7 @@ struct CandidateKey {
     enable_nested: bool,
     fallback: InlineTargetFallback,
     link_level: i32,
-    html_disabled: bool,
+    special_scan_disabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -53,7 +52,7 @@ struct LabelKey {
     start: usize,
     end: usize,
     link_level: i32,
-    html_disabled: bool,
+    special_scan_disabled: bool,
     enable_nested: bool,
 }
 
@@ -252,11 +251,7 @@ fn candidate_preflight(
     // Cheap rejection for the common pathological case: no raw `]` in the
     // remaining window means no label can close at any nesting level.
     let label_start = start + 1;
-    let may_have_reference = references.is_some_and(|references| {
-        references
-            .downcast_ref::<DefaultReferenceMap>()
-            .is_none_or(|map| map.iter().next().is_some())
-    });
+    let may_have_reference = references.is_some_and(|references| !references.is_empty());
     let has_target = may_have_reference || {
         let source = state.src.as_ref();
         state
@@ -309,7 +304,7 @@ fn scan_candidate_abs(
     references: Option<&ReferenceMap>,
     depth: u32,
     link_level: i32,
-    html_disabled: bool,
+    special_scan_disabled: bool,
     retain: bool,
 ) -> Outcome {
     // Impossible candidates need only the source indexes. Do not retain a
@@ -318,7 +313,7 @@ fn scan_candidate_abs(
         return Outcome {
             candidate: None,
             link_level,
-            html_disabled: special_html_disabled(state),
+            special_scan_disabled: state.special_scan_disabled(),
         };
     };
     let key = CandidateKey {
@@ -327,7 +322,7 @@ fn scan_candidate_abs(
         enable_nested,
         fallback,
         link_level,
-        html_disabled,
+        special_scan_disabled,
     };
     if let Some(outcome) = {
         state
@@ -346,7 +341,7 @@ fn scan_candidate_abs(
         references,
         depth,
         link_level,
-        html_disabled,
+        special_scan_disabled,
         may_have_reference,
     );
     // Only nested probes populate this cache: overlapping label scans can
@@ -372,14 +367,14 @@ fn scan_candidate_abs_inner(
     references: Option<&ReferenceMap>,
     depth: u32,
     link_level: i32,
-    html_disabled: bool,
+    special_scan_disabled: bool,
     may_have_reference: bool,
 ) -> Outcome {
     let end_max = state.pos_max;
-    let fail = |link_level, html_disabled| Outcome {
+    let fail = |link_level, special_scan_disabled| Outcome {
         candidate: None,
         link_level,
-        html_disabled,
+        special_scan_disabled,
     };
 
     let label_start = start + 1;
@@ -388,7 +383,7 @@ fn scan_candidate_abs_inner(
         state.ruleset,
         start,
     );
-    let (close, link_level, html_disabled) = match plain {
+    let (close, link_level, special_scan_disabled) = match plain {
         Some(Some((close, max_depth))) if close < end_max => {
             let max_nesting = state.markdown_it().max_nesting;
             if close != label_start && depth.saturating_add(max_depth as u32) > max_nesting {
@@ -398,7 +393,7 @@ fn scan_candidate_abs_inner(
                     .borrow_mut()
                     .link_scan
                     .insert_cutoff(start.saturating_add(budget), end_max);
-                return fail(link_level, html_disabled);
+                return fail(link_level, special_scan_disabled);
             }
             if state
                 .scan_limit_cache
@@ -406,7 +401,7 @@ fn scan_candidate_abs_inner(
                 .link_scan
                 .cutoff_before(start, end_max, close)
             {
-                return fail(link_level, html_disabled);
+                return fail(link_level, special_scan_disabled);
             }
             let inner_has_target = close > label_start
                 && memchr::memchr(b'(', &state.src.as_bytes()[label_start..close]).is_some();
@@ -418,18 +413,18 @@ fn scan_candidate_abs_inner(
                     references,
                     depth.saturating_add(1),
                     link_level,
-                    html_disabled,
+                    special_scan_disabled,
                     enable_nested,
                 );
                 let Some(close) = label.close else {
-                    return fail(label.link_level, label.html_disabled);
+                    return fail(label.link_level, label.special_scan_disabled);
                 };
-                (close, label.link_level, label.html_disabled)
+                (close, label.link_level, label.special_scan_disabled)
             } else {
-                (close, link_level, html_disabled)
+                (close, link_level, special_scan_disabled)
             }
         }
-        Some(Some(_)) => return fail(link_level, html_disabled),
+        Some(Some(_)) => return fail(link_level, special_scan_disabled),
         Some(None) => {
             let budget = state.markdown_it().max_nesting.saturating_sub(depth) as usize;
             let cutoff = start.saturating_add(budget);
@@ -440,7 +435,7 @@ fn scan_candidate_abs_inner(
                     .link_scan
                     .insert_cutoff(cutoff, end_max);
             }
-            return fail(link_level, html_disabled);
+            return fail(link_level, special_scan_disabled);
         }
         None => {
             let label = scan_label(
@@ -450,13 +445,13 @@ fn scan_candidate_abs_inner(
                 references,
                 depth.saturating_add(1),
                 link_level,
-                html_disabled,
+                special_scan_disabled,
                 enable_nested,
             );
             let Some(close) = label.close else {
-                return fail(label.link_level, label.html_disabled);
+                return fail(label.link_level, label.special_scan_disabled);
             };
-            (close, label.link_level, label.html_disabled)
+            (close, label.link_level, label.special_scan_disabled)
         }
     };
     let md = state.markdown_it();
@@ -476,12 +471,12 @@ fn scan_candidate_abs_inner(
                 title: target.title,
             }),
             link_level,
-            html_disabled,
+            special_scan_disabled,
         },
-        LinkTargetScan::Reject => fail(link_level, html_disabled),
+        LinkTargetScan::Reject => fail(link_level, special_scan_disabled),
         LinkTargetScan::Reference { resume } => {
             let Some(references) = references else {
-                return fail(link_level, html_disabled);
+                return fail(link_level, special_scan_disabled);
             };
 
             let explicit = if state.src.as_bytes().get(resume) == Some(&b'[') && resume < end_max {
@@ -492,7 +487,7 @@ fn scan_candidate_abs_inner(
                     Some(references),
                     depth.saturating_add(1),
                     link_level,
-                    html_disabled,
+                    special_scan_disabled,
                     true,
                 );
                 reference.close.map(|close| (close, reference))
@@ -500,7 +495,7 @@ fn scan_candidate_abs_inner(
                 None
             };
 
-            let (label, end, link_level, html_disabled) = match explicit {
+            let (label, end, link_level, special_scan_disabled) = match explicit {
                 Some((reference_close, reference)) => {
                     let label = if reference_close == resume + 1 {
                         let source = state.src.as_ref();
@@ -513,7 +508,7 @@ fn scan_candidate_abs_inner(
                         label,
                         reference_close + 1,
                         reference.link_level,
-                        reference.html_disabled,
+                        reference.special_scan_disabled,
                     )
                 }
                 None => {
@@ -522,13 +517,13 @@ fn scan_candidate_abs_inner(
                         &source[label_start..close],
                         close + 1,
                         link_level,
-                        html_disabled,
+                        special_scan_disabled,
                     )
                 }
             };
 
             let Some((href, title)) = references.get(label) else {
-                return fail(link_level, html_disabled);
+                return fail(link_level, special_scan_disabled);
             };
             Outcome {
                 candidate: Some(Candidate {
@@ -539,7 +534,7 @@ fn scan_candidate_abs_inner(
                     title: title.map(str::to_owned),
                 }),
                 link_level,
-                html_disabled,
+                special_scan_disabled,
             }
         }
     }
@@ -554,14 +549,14 @@ fn scan_label(
     references: Option<&ReferenceMap>,
     depth: u32,
     link_level: i32,
-    html_disabled: bool,
+    special_scan_disabled: bool,
     enable_nested: bool,
 ) -> LabelOutcome {
     let key = LabelKey {
         start,
         end: end_max,
         link_level,
-        html_disabled,
+        special_scan_disabled,
         enable_nested,
     };
     if let Some(outcome) = { state.scan_limit_cache.borrow().link_scan.label(key, depth) } {
@@ -575,7 +570,7 @@ fn scan_label(
         references,
         depth,
         link_level,
-        html_disabled,
+        special_scan_disabled,
         enable_nested,
     );
     state
@@ -594,20 +589,20 @@ fn scan_label_inner(
     references: Option<&ReferenceMap>,
     depth: u32,
     mut link_level: i32,
-    mut html_disabled: bool,
+    mut special_scan_disabled: bool,
     enable_nested: bool,
 ) -> LabelOutcome {
-    let fail = |link_level, html_disabled| LabelOutcome {
+    let fail = |link_level, special_scan_disabled| LabelOutcome {
         close: None,
         link_level,
-        html_disabled,
+        special_scan_disabled,
     };
 
     if state.src.as_bytes().get(start) == Some(&b']') {
         return LabelOutcome {
             close: Some(start),
             link_level,
-            html_disabled,
+            special_scan_disabled,
         };
     }
 
@@ -617,7 +612,7 @@ fn scan_label_inner(
             .borrow_mut()
             .link_scan
             .insert_cutoff(start, end_max);
-        return fail(link_level, html_disabled);
+        return fail(link_level, special_scan_disabled);
     }
 
     // One child per label, rather than one per token: checks share pending
@@ -625,7 +620,7 @@ fn scan_label_inner(
     let Some(mut session) =
         state.child_state_at(start - state.pos..end_max - state.pos, depth, link_level)
     else {
-        return fail(link_level, html_disabled);
+        return fail(link_level, special_scan_disabled);
     };
     session.suppress_bracket_links = true;
     let state = &mut session;
@@ -640,7 +635,7 @@ fn scan_label_inner(
                 return LabelOutcome {
                     close: Some(pos),
                     link_level,
-                    html_disabled,
+                    special_scan_disabled,
                 };
             }
             state.advance_probe(1, true);
@@ -653,7 +648,7 @@ fn scan_label_inner(
             .link_scan
             .cutoff(pos, end_max)
         {
-            return fail(link_level, html_disabled);
+            return fail(link_level, special_scan_disabled);
         }
 
         if ch == '[' {
@@ -665,7 +660,7 @@ fn scan_label_inner(
                 start: pos + 1,
                 end: end_max,
                 link_level,
-                html_disabled,
+                special_scan_disabled,
                 enable_nested,
             };
             let nested = scan_candidate_abs(
@@ -676,15 +671,15 @@ fn scan_label_inner(
                 references,
                 depth,
                 link_level,
-                html_disabled,
+                special_scan_disabled,
                 true,
             );
             link_level = nested.link_level;
-            html_disabled = nested.html_disabled;
+            special_scan_disabled = nested.special_scan_disabled;
             state.link_level = link_level;
             if let Some(candidate) = nested.candidate {
                 if !enable_nested {
-                    return fail(link_level, html_disabled);
+                    return fail(link_level, special_scan_disabled);
                 }
                 state.advance_probe(candidate.end - pos, false);
             } else {
@@ -698,7 +693,7 @@ fn scan_label_inner(
                     .failed_labels
                     .contains_key(&nested_label);
                 if unclosed {
-                    return fail(link_level, html_disabled);
+                    return fail(link_level, special_scan_disabled);
                 }
                 level += 1;
                 state.advance_probe(1, true);
@@ -716,11 +711,11 @@ fn scan_label_inner(
                 references,
                 depth,
                 link_level,
-                html_disabled,
+                special_scan_disabled,
                 true,
             );
             link_level = nested.link_level;
-            html_disabled = nested.html_disabled;
+            special_scan_disabled = nested.special_scan_disabled;
             state.link_level = link_level;
             if let Some(candidate) = nested.candidate {
                 state.advance_probe(candidate.end - pos, false);
@@ -731,13 +726,13 @@ fn scan_label_inner(
         }
 
         if state.probe_token().is_none() {
-            return fail(link_level, html_disabled);
+            return fail(link_level, special_scan_disabled);
         }
         link_level = state.link_level;
-        html_disabled = special_html_disabled(state);
+        special_scan_disabled = state.special_scan_disabled();
     }
 
-    fail(link_level, html_disabled)
+    fail(link_level, special_scan_disabled)
 }
 
 /// Public-in-crate bridge used by `candidate.rs`. Positions in the returned
@@ -758,7 +753,7 @@ pub(super) fn scan_candidate(
         references,
         state.depth,
         state.link_level,
-        special_html_disabled(state),
+        state.special_scan_disabled(),
         false,
     );
     outcome.candidate.map(|candidate| ParseLinkResult {

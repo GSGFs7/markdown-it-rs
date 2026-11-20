@@ -8,7 +8,7 @@ use super::config::{
 use super::reference::ParseLinkResult;
 use crate::document::{Document, NodeId};
 use crate::parser::inline::InlineState;
-use crate::plugins::cmark::block::reference::ReferenceMap;
+use crate::reference::ReferenceMap;
 
 /// Parse one `[label](...)` / `[label][reference]` candidate.
 ///
@@ -19,10 +19,10 @@ pub(super) fn scan_link_candidate(
     context: &mut InlineState<'_>,
     pos: usize,
     enable_nested: bool,
-    _references: Option<&ReferenceMap>,
+    references: Option<&ReferenceMap>,
     fallback: InlineTargetFallback,
 ) -> Option<ParseLinkResult> {
-    super::scan::scan_candidate(context, pos, enable_nested, fallback, _references)
+    super::scan::scan_candidate(context, pos, enable_nested, fallback, references)
 }
 
 pub(super) fn link_check(

@@ -182,3 +182,114 @@ fn direct_prefix_uses_utf8_byte_offsets() {
     check::<'雪'>();
     check::<'🦀'>();
 }
+
+#[test]
+fn add_prefix_uses_the_parser_wide_reference_table() {
+    let md = utf8_parser::<'^'>();
+    assert_eq!(
+        md.render("^[foo][ref]\n\n[ref]: /url"),
+        "<p><a href=\"/url\">foo</a></p>\n"
+    );
+}
+
+#[test]
+fn link_rules_resolve_injected_references_without_the_reference_definition_plugin() {
+    use crate::parser::block::BlockParserRule;
+    use crate::parser::core::{CoreRule, CoreState};
+    use crate::plugins::cmark::block::paragraph;
+    use crate::plugins::cmark::inline::link;
+
+    #[derive(Default)]
+    struct AddReferences;
+
+    impl CoreRule for AddReferences {
+        fn run(&self, state: &mut CoreState<'_>) {
+            let mut references = ReferenceMap::default();
+            references.insert("id".into(), "/external".into(), None);
+            state.root_ext_mut().insert(references);
+        }
+    }
+
+    let mut md = MarkdownIt::empty();
+    paragraph::add(&mut md);
+    link::add(&mut md);
+    add_prefix::<'^', true>(&mut md, |document, href, title| {
+        document.create_node(Link {
+            url: href.unwrap_or_default(),
+            title,
+        })
+    });
+    md.add_rule::<AddReferences>().before::<BlockParserRule>();
+
+    assert_eq!(
+        md.render("[id] ^[id]"),
+        "<p><a href=\"/external\">id</a> <a href=\"/external\">id</a></p>\n"
+    );
+}
+
+#[test]
+fn nested_scan_respects_disabled_nesting_with_references() {
+    let mut md = MarkdownIt::empty();
+    crate::plugins::cmark::add(&mut md);
+    super::add_prefix::<'~', false>(&mut md, |document, href, title| {
+        document.create_node(Link {
+            url: href.unwrap_or_default(),
+            title,
+        })
+    });
+
+    let html = md.render("~[outer [only-original]](/outer)\n\n[only-original]: /inner");
+    assert!(!html.contains("href=\"/outer\""), "{html}");
+    assert!(
+        html.contains("<a href=\"/inner\">only-original</a>"),
+        "{html}"
+    );
+}
+
+#[test]
+fn all_link_rules_share_the_document_reference_map() {
+    use crate::parser::block::BlockParserRule;
+    use crate::parser::core::{CoreRule, CoreState};
+    use crate::reference::{CustomReferenceMap, DefaultReferenceMap, ReferenceMap};
+
+    #[derive(Debug, Default)]
+    struct CustomRefs(DefaultReferenceMap);
+
+    impl CustomReferenceMap for CustomRefs {
+        fn insert(&mut self, label: String, destination: String, title: Option<String>) -> bool {
+            self.0.insert(label, destination, title)
+        }
+
+        fn get(&self, label: &str) -> Option<(&str, Option<&str>)> {
+            if label == "id" {
+                Some(("/custom", None))
+            } else {
+                self.0.get(label)
+            }
+        }
+    }
+
+    #[derive(Default)]
+    struct AddCustomRefs;
+    impl CoreRule for AddCustomRefs {
+        fn run(&self, state: &mut CoreState<'_>) {
+            state
+                .root_ext_mut()
+                .insert(ReferenceMap::new(CustomRefs::default()));
+        }
+    }
+
+    let mut md = MarkdownIt::empty();
+    crate::plugins::cmark::add(&mut md);
+    super::add_prefix::<'^', true>(&mut md, |document, href, title| {
+        document.create_node(Link {
+            url: href.unwrap_or_default(),
+            title,
+        })
+    });
+    md.add_rule::<AddCustomRefs>().before::<BlockParserRule>();
+    assert_eq!(
+        md.render("[id] ^[id]\n\n[id]: /default"),
+        "<p><a href=\"/custom\">id</a> <a href=\"/custom\">id</a></p>\n"
+    );
+}

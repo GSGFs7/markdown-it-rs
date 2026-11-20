@@ -4,8 +4,8 @@ use super::*;
 use crate::MarkdownIt;
 use crate::document::NodeId;
 use crate::parser::inline::{InlineRule, InlineState};
-use crate::plugins::cmark::block::reference::ReferenceMap;
 use crate::plugins::cmark::inline::link::Link;
+use crate::reference::ReferenceMap;
 
 // Register both brackets so the built-in text classifier stops at them.
 struct Bracket<const C: char>;

@@ -13,7 +13,7 @@
 //!  - `md` - parser instance
 //!  - `f` - function that should return your custom [NodeId] given href and title
 //!
-//! Recognition lives in [`scan`], which handles brackets and label boundaries
+//! Recognition lives in `scan`, which handles brackets and label boundaries
 //! itself. It never calls the bracket link rules through the normal inline
 //! dispatcher; other constructs are advanced through isolated boundary checks.
 //! Confirmed candidates are converted to nodes only afterwards by `candidate`.
@@ -43,6 +43,10 @@ pub(crate) use self::scan::LinkScanCache;
 pub use self::target::{ParseLinkFragmentResult, parse_link_destination, parse_link_title};
 
 /// Register a link rule with an arena node factory.
+///
+/// Reference links require a matching entry in the document's
+/// [`crate::reference::ReferenceMap`]. Without a match, other inline rules can
+/// still parse the input.
 pub fn add<const ENABLE_NESTED: bool>(
     md: &mut MarkdownIt,
     factory: fn(&mut Document, Option<String>, Option<String>) -> NodeId,
@@ -92,8 +96,13 @@ impl<const ENABLE_NESTED: bool> InlineRule for LinkScanner<ENABLE_NESTED> {
             return None;
         }
 
-        let options = context.markdown_it().ext.get::<LinkCfg<'\0'>>()?.options;
-        link_check(context, ENABLE_NESTED, 0, options.inline_target_fallback)
+        let config = *context.markdown_it().ext.get::<LinkCfg<'\0'>>()?;
+        link_check(
+            context,
+            ENABLE_NESTED,
+            0,
+            config.options.inline_target_fallback,
+        )
     }
 
     fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
@@ -127,12 +136,12 @@ impl<const PREFIX: char, const ENABLE_NESTED: bool> InlineRule
             return None;
         }
 
-        let options = context.markdown_it().ext.get::<LinkCfg<PREFIX>>()?.options;
+        let config = *context.markdown_it().ext.get::<LinkCfg<PREFIX>>()?;
         link_check(
             context,
             ENABLE_NESTED,
             PREFIX.len_utf8(),
-            options.inline_target_fallback,
+            config.options.inline_target_fallback,
         )
     }
 

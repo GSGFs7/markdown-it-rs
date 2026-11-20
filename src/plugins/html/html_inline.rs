@@ -22,8 +22,6 @@ pub fn add(md: &mut MarkdownIt) {
 /// Source-wide state for special HTML scanning.
 #[derive(Debug, Default)]
 struct HtmlSpecialScan {
-    /// Set once a special HTML token lacks a closing delimiter.
-    disabled: bool,
     /// Cached `<!/<?` starts, shared across nested inline sessions.
     starts: Option<Vec<usize>>,
 }
@@ -39,30 +37,17 @@ fn source_has_special_html(source: &str) -> bool {
 }
 
 fn special_html_scan_hook(state: &InlineState<'_>, start: usize, end: usize) -> bool {
-    let mut shared = state.shared_ext();
-    let scan = shared.get_or_insert_default::<HtmlSpecialScan>();
-    if scan.disabled {
+    if state.special_scan_disabled() {
         return false;
     }
+
+    let mut shared = state.shared_ext();
+    let scan = shared.get_or_insert_default::<HtmlSpecialScan>();
     let starts = scan
         .starts
         .get_or_insert_with(|| special_html_starts(&state.src).collect());
     let next = starts.partition_point(|&pos| pos <= start);
     starts.get(next).is_some_and(|&pos| pos < end)
-}
-
-pub(crate) fn special_html_disabled(state: &InlineState<'_>) -> bool {
-    state
-        .shared_ext()
-        .get::<HtmlSpecialScan>()
-        .is_some_and(|scan| scan.disabled)
-}
-
-fn disable_special_html(state: &InlineState<'_>) {
-    state
-        .shared_ext()
-        .get_or_insert_default::<HtmlSpecialScan>()
-        .disabled = true;
 }
 
 #[derive(Debug)]
@@ -178,12 +163,12 @@ fn scan_special(state: &mut InlineState<'_>, pos: usize) -> Option<usize> {
         return None;
     };
 
-    if special_html_disabled(state) {
+    if state.special_scan_disabled() {
         return None;
     }
 
     let Some(offset) = src[start..pos_max].find(terminator) else {
-        disable_special_html(state);
+        state.disable_special_scan();
         return None;
     };
 
