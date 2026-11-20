@@ -65,7 +65,7 @@ pub fn is_valid_entity_code(code: u32) -> bool {
 /// assert_eq!(get_entity_from_str("&xxx;"), None);
 /// ```
 pub fn get_entity_from_str(str: &str) -> Option<&'static str> {
-    pub static ENTITIES_HASH: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
+    static ENTITIES_HASH: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
         let mut mapping = HashMap::new();
         for e in &entities::ENTITIES {
             if e.entity.ends_with(';') {

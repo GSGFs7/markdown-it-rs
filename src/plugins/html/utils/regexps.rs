@@ -14,7 +14,7 @@ const unquoted: &str = r#"[^"'=<>`\x00-\x20]+"#;
 const single_quoted: &str = r#"'[^']*'"#;
 const double_quoted: &str = r#""[^"]*""#;
 
-pub static HTML_OPEN_CLOSE_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static HTML_OPEN_CLOSE_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
     let attr_value = format!("(?:{unquoted}|{single_quoted}|{double_quoted})");
     let attribute = format!(
         "(?:{HTML_WHITESPACE}+{attr_name}(?:{HTML_WHITESPACE}*={HTML_WHITESPACE}*{attr_value})?)"
@@ -25,8 +25,8 @@ pub static HTML_OPEN_CLOSE_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!("^(?:{open_tag}|{close_tag})")).unwrap()
 });
 
-pub static HTML_LINK_OPEN: LazyLock<Regex> =
+pub(crate) static HTML_LINK_OPEN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!("(?i)^<a(?:>|{HTML_WHITESPACE})")).unwrap());
 
-pub static HTML_LINK_CLOSE: LazyLock<Regex> =
+pub(crate) static HTML_LINK_CLOSE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!("(?i)^</a{HTML_WHITESPACE}*>")).unwrap());

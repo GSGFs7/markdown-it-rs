@@ -7,7 +7,7 @@ use crate::MarkdownIt;
 use crate::document::NodeId;
 use crate::parser::inline::{InlineRule, InlineState};
 
-pub fn add(md: &mut MarkdownIt) {
+pub(super) fn add(md: &mut MarkdownIt) {
     md.inline.add_rule::<TextScanner>().before_all();
 }
 

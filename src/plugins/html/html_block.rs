@@ -60,7 +60,7 @@ struct HTMLSequence {
 }
 
 impl HTMLSequence {
-    pub fn new(open: Regex, close: Regex, can_terminate_paragraph: bool) -> Self {
+    fn new(open: Regex, close: Regex, can_terminate_paragraph: bool) -> Self {
         Self {
             open,
             close,

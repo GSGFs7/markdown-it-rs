@@ -1,7 +1,7 @@
 use crate::MarkdownIt;
 use crate::parser::core::{CoreRule, CoreState};
 
-pub fn add(md: &mut MarkdownIt) {
+pub(super) fn add(md: &mut MarkdownIt) {
     md.add_rule::<BlockParserRule>().before_all();
 }
 

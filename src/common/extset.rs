@@ -125,6 +125,7 @@ extension_set!(
 );
 
 #[cfg(test)]
+#[allow(unreachable_pub)] // the test-only `extension_set!` expansion always emits `pub`
 mod tests {
     use super::{
         Extension,

@@ -10,6 +10,7 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_match)]
 //
+#![warn(unreachable_pub)]
 // package is markdown-it-rs, but lib name is markdown-it.
 // add this to tall rust-analyzer use markdown-it-rs as doc url.
 // https://doc.rust-lang.org/rustdoc/write-documentation/the-doc-attribute.html#html_root_url
@@ -17,6 +18,7 @@
 
 pub mod common;
 pub mod document;
+#[doc(hidden)]
 pub mod examples;
 pub mod links;
 mod markdown_it;

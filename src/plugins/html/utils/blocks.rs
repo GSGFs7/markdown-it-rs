@@ -2,7 +2,7 @@
 //! <http://jgm.github.io/CommonMark/spec.html#html-blocks>
 //!
 
-pub const HTML_BLOCKS: [&str; 62] = [
+pub(crate) const HTML_BLOCKS: [&str; 62] = [
     "address",
     "article",
     "aside",

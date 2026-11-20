@@ -1,5 +1,5 @@
-pub mod blocks;
-pub mod regexps;
+pub(crate) mod blocks;
+pub(crate) mod regexps;
 
 pub(crate) fn anchor_delta(content: &str) -> i32 {
     use regexps::{HTML_LINK_CLOSE, HTML_LINK_OPEN};
