@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 
 use libfuzzer_sys::fuzz_target;
 use markdown_it::MarkdownIt;
-use markdown_it::plugins::presets::Preset;
+use markdown_it::presets::Preset;
 
 static PARSERS: LazyLock<[MarkdownIt; 2]> = LazyLock::new(|| {
     [

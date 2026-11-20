@@ -1,7 +1,7 @@
 use super::spec::install_plugins;
 use super::{Plugin, PluginSpec};
 use crate::MarkdownIt;
-use crate::plugins::presets::PresetConfig;
+use crate::presets::PresetConfig;
 
 /// A parser configured with [`MarkdownIt::builder`].
 #[derive(Debug)]

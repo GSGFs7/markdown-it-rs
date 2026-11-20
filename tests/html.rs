@@ -1,5 +1,5 @@
 use markdown_it::MarkdownIt;
-use markdown_it::plugins::presets::Preset;
+use markdown_it::presets::Preset;
 
 #[test]
 fn html_uses_javascript_whitespace() {

@@ -497,8 +497,8 @@ mod tests {
     #[test]
     fn paragraph_and_setext_content_keep_list_interrupt_restrictions() {
         for preset in [
-            crate::plugins::presets::Preset::MarkdownItDefault,
-            crate::plugins::presets::Preset::CommonMark,
+            crate::presets::Preset::MarkdownItDefault,
+            crate::presets::Preset::CommonMark,
         ] {
             let md = crate::MarkdownIt::with_preset(preset);
             for marker in ["+", "*", "1.", "2. bar", "0) bar"] {

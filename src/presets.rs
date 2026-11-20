@@ -1,9 +1,8 @@
-//! Parser presets: ready-made plugin selections, and the open trait for
-//! defining your own.
+//! Parser presets: ready-made plugin selections.
 //!
 //! ```
 //! use markdown_it::MarkdownIt;
-//! use markdown_it::plugins::presets::Preset;
+//! use markdown_it::presets::Preset;
 //!
 //! let md = MarkdownIt::with_preset(Preset::CommonMark);          // built-in
 //! let md = MarkdownIt::with_preset(|md: &mut MarkdownIt| {       // custom
@@ -16,6 +15,8 @@ use crate::MarkdownIt;
 use crate::plugins::{cmark, extra, html};
 
 /// Impl this to build your own presets.
+///
+/// Implemented by [`Preset`] and by `FnOnce(&mut MarkdownIt)` closures.
 pub trait PresetConfig {
     /// Apply this preset to a freshly created `md`.
     fn configure(self, md: &mut MarkdownIt);

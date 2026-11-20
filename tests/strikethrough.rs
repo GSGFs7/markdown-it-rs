@@ -19,9 +19,8 @@ fn run(input: &str, output: &str) {
 
 #[test]
 fn short_delimiter_failures_do_not_hide_longer_strikethrough_matches() {
-    let mut md = markdown_it::MarkdownIt::with_preset(
-        markdown_it::plugins::presets::Preset::MarkdownItDefault,
-    );
+    let mut md =
+        markdown_it::MarkdownIt::with_preset(markdown_it::presets::Preset::MarkdownItDefault);
     md.max_nesting = 3;
     for (source, expected) in [
         ("-~~~~;~\n文~~~~\n", "<p>-<s><s>;~\n文</s></s></p>\n"),
@@ -52,9 +51,7 @@ fn strikethrough_does_not_apply_the_emphasis_rule_of_three() {
 
 #[test]
 fn partially_matched_strikethrough_keeps_source_offsets() {
-    let md = markdown_it::MarkdownIt::with_preset(
-        markdown_it::plugins::presets::Preset::MarkdownItDefault,
-    );
+    let md = markdown_it::MarkdownIt::with_preset(markdown_it::presets::Preset::MarkdownItDefault);
     let source = "雪 -~~~~;~~ 尾";
     let document = md.parse(source);
     let strike = document

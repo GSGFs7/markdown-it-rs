@@ -252,8 +252,8 @@ mod tests {
     #[test]
     fn lists_terminate_blockquotes_without_paragraph_interrupt_restrictions() {
         for preset in [
-            crate::plugins::presets::Preset::MarkdownItDefault,
-            crate::plugins::presets::Preset::CommonMark,
+            crate::presets::Preset::MarkdownItDefault,
+            crate::presets::Preset::CommonMark,
         ] {
             let mut md = crate::MarkdownIt::with_preset(preset);
             for limit in [3, 100] {
@@ -285,8 +285,8 @@ mod tests {
     #[test]
     fn tabs_after_nested_container_markers_use_correct_stop() {
         for preset in [
-            crate::plugins::presets::Preset::MarkdownItDefault,
-            crate::plugins::presets::Preset::CommonMark,
+            crate::presets::Preset::MarkdownItDefault,
+            crate::presets::Preset::CommonMark,
         ] {
             let md = crate::MarkdownIt::with_preset(preset);
 
@@ -320,8 +320,8 @@ mod tests {
     #[test]
     fn empty_blockquotes_have_no_inner_newline() {
         for preset in [
-            crate::plugins::presets::Preset::MarkdownItDefault,
-            crate::plugins::presets::Preset::CommonMark,
+            crate::presets::Preset::MarkdownItDefault,
+            crate::presets::Preset::CommonMark,
         ] {
             let mut md = crate::MarkdownIt::with_preset(preset);
             for xhtml_out in [false, true] {

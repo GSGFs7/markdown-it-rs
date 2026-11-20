@@ -2,7 +2,7 @@ use markdown_it::MarkdownIt;
 #[cfg(feature = "sourcemap")]
 use markdown_it::common::sourcemap::SourcePos;
 use markdown_it::document::{Document, Root};
-use markdown_it::plugins::presets::Preset;
+use markdown_it::presets::Preset;
 
 #[derive(Debug)]
 struct CustomContainer;

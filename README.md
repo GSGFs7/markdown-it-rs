@@ -22,7 +22,7 @@ The `MarkdownItDefault` preset corresponds to markdown-it.js's default syntax:
 
 ```rust
 use markdown_it::MarkdownIt;
-use markdown_it::plugins::presets::Preset;
+use markdown_it::presets::Preset;
 
 fn main() {
     let md = MarkdownIt::with_preset(Preset::MarkdownItDefault);

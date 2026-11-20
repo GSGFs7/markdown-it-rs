@@ -201,7 +201,7 @@ fn commonmark_block_renderers_match_render_api() {
 
     for mut md in [
         MarkdownIt::new(),
-        MarkdownIt::with_preset(crate::plugins::presets::Preset::CommonMark),
+        MarkdownIt::with_preset(crate::presets::Preset::CommonMark),
     ] {
         md.render_options.lang_prefix = Some("lang-".into());
         for source in sources {

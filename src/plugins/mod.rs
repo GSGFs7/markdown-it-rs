@@ -21,6 +21,5 @@ pub mod cmark;
 pub mod directives;
 pub mod extra;
 pub mod html;
-pub mod presets;
 #[cfg(feature = "sourcemap")]
 pub mod sourcepos;

@@ -10,7 +10,7 @@ use crate::parser::block::BlockParser;
 use crate::parser::core::{CoreRule, CoreRuleRunner, CoreState, RuleBuilder};
 use crate::parser::inline::InlineParser;
 use crate::plugin::MarkdownItBuilder;
-use crate::plugins::presets::{Preset, PresetConfig};
+use crate::presets::{Preset, PresetConfig};
 use crate::render::{
     DebugTreeRenderer,
     HtmlTextRenderer,

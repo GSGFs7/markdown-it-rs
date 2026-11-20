@@ -637,7 +637,7 @@ fn update_pair_sourcemaps(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugins::presets::Preset;
+    use crate::presets::Preset;
 
     #[test]
     fn cleanup_preflight_preserves_all_fragment_mutations() {
