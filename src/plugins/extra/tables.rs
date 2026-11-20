@@ -9,6 +9,7 @@ use crate::plugins::cmark::block::blockquote::{BlockquoteInterrupt, BlockquoteSc
 use crate::plugins::cmark::block::fence::FenceScanner;
 use crate::plugins::cmark::block::heading::HeadingScanner;
 use crate::plugins::cmark::block::list::ListScanner;
+use crate::plugins::cmark::block::reference::ReferenceScanner;
 use crate::render::{
     NodeRenderer,
     PlainTextBlockRenderer,
@@ -207,6 +208,9 @@ pub fn add(md: &mut MarkdownIt) {
         .before::<FenceScanner>()
         .before::<BlockquoteScanner>()
         .before::<ListScanner>()
+        // A table header wins over a multiline reference definition title,
+        // matching the rule order in markdown-it.js.
+        .before::<ReferenceScanner>()
         .before::<HeadingScanner>();
     md.add_renderer::<Table, _>("html", TableRenderer);
     md.add_renderer::<TableHead, _>("html", TableHeadRenderer);
@@ -602,6 +606,23 @@ impl BlockRule for TableScanner {
 #[cfg(test)]
 mod tests {
     use super::{MAX_AUTOCOMPLETED_CELLS, TableScanner};
+
+    #[test]
+    fn tables_take_precedence_over_multiline_reference_definitions() {
+        let md = crate::MarkdownIt::with_preset(crate::presets::Preset::MarkdownItDefault);
+        assert_eq!(
+            md.render("[r]: /u \"a | b\n--- | ---\nx | y\"\n\n[r]"),
+            concat!(
+                "<table>\n<thead>\n<tr>\n<th>[r]: /u &quot;a</th>\n<th>b</th>\n",
+                "</tr>\n</thead>\n<tbody>\n<tr>\n<td>x</td>\n<td>y&quot;</td>\n",
+                "</tr>\n</tbody>\n</table>\n<p>[r]</p>\n",
+            ),
+        );
+        assert_eq!(
+            md.render("[r]: /u \"a | b\nx | y\"\n\n[r]"),
+            "<p><a href=\"/u\" title=\"a | b\nx | y\">r</a></p>\n",
+        );
+    }
 
     #[test]
     fn tables_take_precedence_over_blockquote_markers_in_headers() {

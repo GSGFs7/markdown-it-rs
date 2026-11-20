@@ -106,6 +106,9 @@ const regressions = [
   '!["alt" can\'t](/img) "outside"',
   '"one\n\ntwo"',
   '- "one\n- two"',
+  // Tables take precedence over multiline reference definition titles.
+  '[r]: /u "a | b\n--- | ---\nx | y"\n\n[r]',
+  '[r]: /u "a | b\nx | y"\n\n[r]',
   // Table cells and reference labels follow JavaScript's `\s`.
   ...['\uFEFF', '\u0085', '\u00A0', '\u2028'].flatMap((space) => [
     `| a${space}| b |\n| --- | --- |\n| c${space}| d |`,
