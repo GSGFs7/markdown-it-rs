@@ -44,10 +44,20 @@ fn unclosed_labels_with_html_side_effects_have_bounded_work() {
         seed.into_owned(),
         format!("{}<a href='/'>text](x)", "[".repeat(64)),
         format!("{}<?broken](x)", "[".repeat(64)),
+        format!("<a>{}leaf](/img)](/img)](/im</a>a*", "![".repeat(64)),
     ] {
         CHECKS.with(|checks| checks.set(0));
         md.render(&source);
     }
+}
+
+#[test]
+fn image_labels_allow_brackets_containing_a_link() {
+    let md = MarkdownIt::new();
+    assert_eq!(
+        md.render("![[[x](url)] tail](img)"),
+        "<p><img src=\"img\" alt=\"[x] tail\"></p>\n",
+    );
 }
 
 #[test]
@@ -61,6 +71,48 @@ fn label_probe_preserves_unmatched_marker_runs() {
             format!("<p><a href=\"/url\">{label}</a> `</p>\n"),
         );
     }
+}
+
+#[test]
+fn unmatched_brackets_preserve_the_trailing_empty_link_within_the_nesting_limit() {
+    let mut md = MarkdownIt::new();
+    for (max_nesting, repeats) in [(4, 2), (100, 82)] {
+        md.max_nesting = max_nesting;
+        let prefix = format!("[{}", "[a".repeat(repeats));
+        assert_eq!(
+            md.render(&format!("{prefix}[]()")),
+            format!("<p>{prefix}<a href=\"\"></a></p>\n"),
+        );
+    }
+}
+
+#[test]
+fn paired_brackets_respect_the_label_scan_nesting_budget() {
+    let mut md = MarkdownIt::new();
+    for limit in [2, 100] {
+        md.max_nesting = limit;
+        let open = "[".repeat(limit as usize);
+        let close = "]".repeat(limit as usize);
+        assert_eq!(
+            md.render(&format!("{open}[](){close}(x)")),
+            format!("<p>{open}<a href=\"\"></a>{close}(x)</p>\n"),
+        );
+
+        let source = format!("{}[x](u){close}(x)", "[a".repeat(limit as usize));
+        assert_eq!(md.render(&source), format!("<p>{source}</p>\n"));
+    }
+}
+
+#[test]
+fn a_long_opening_run_preserves_empty_labels_at_the_cutoff() {
+    let md = MarkdownIt::new();
+    let prefix = "[a".repeat(302);
+    assert_eq!(
+        md.render(&format!("{prefix}[]()")),
+        format!("<p>{prefix}<a href=\"\"></a></p>\n"),
+    );
+    let source = format!("{prefix}[x](u)");
+    assert_eq!(md.render(&source), format!("<p>{source}</p>\n"));
 }
 
 #[test]

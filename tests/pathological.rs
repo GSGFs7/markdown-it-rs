@@ -154,6 +154,15 @@ mod commonmark {
     }
 
     #[test]
+    fn deep_brackets_before_an_empty_link() {
+        // Empty labels skip the nesting cutoff, so neither the prefix nor the
+        // trailing `[]()` may rescan every enclosing opener.
+        run(&format!("{}[]()", "[a".repeat(50000)));
+        run(&format!("{}[]()", "![".repeat(50000)));
+        run(&format!("{}[x](u)", "[a".repeat(50000)));
+    }
+
+    #[test]
     fn nested_brackets() {
         run(&format!(
             "{}{}{}",

@@ -106,6 +106,9 @@ const regressions = [
   '!["alt" can\'t](/img) "outside"',
   '"one\n\ntwo"',
   '- "one\n- two"',
+  // Image labels accept brackets that contain a link.
+  '![[[x](url)] tail](img)',
+  '![![x](url)] tail](img)',
   // A trailing entity newline keeps the blank line before the next block of a
   // tight list item.
   '- x&#10;\n  a | b\n  --- | ---',
@@ -136,6 +139,9 @@ const nesting = [2, 3, 4, 19, 20, 21, 99, 100, 101].flatMap((depth) => [
   Array.from({ length: depth }, (_, i) => '> '.repeat(i) + '- > item').join('\n'),
   '*a **b '.repeat(depth) + 'leaf' + ' b** a*'.repeat(depth),
   '['.repeat(depth) + 'leaf' + ']'.repeat(depth) + '(/url)',
+  '['.repeat(depth) + '[]()',
+  '[a'.repeat(depth) + '[]()',
+  '!['.repeat(depth) + '[]()',
   '!['.repeat(depth) + 'leaf' + '](/img)'.repeat(depth),
 ]);
 
