@@ -90,6 +90,17 @@ pub(super) fn render_node(
     id: NodeId,
     output: &mut Writer,
 ) {
+    stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+        render_node_inner(shared, ext, id, output);
+    });
+}
+
+fn render_node_inner(
+    shared: &RenderShared<'_>,
+    ext: &mut RenderExtSet,
+    id: NodeId,
+    output: &mut Writer,
+) {
     let node = shared.document.node(id);
     let Some(renderer) = shared
         .renderers
@@ -115,7 +126,7 @@ pub(super) fn render_node(
     renderer.render(node, &mut context, output);
 }
 
-/// Render every direct child of `node`, growing the stack for deep trees.
+/// Render every direct child of `node`.
 fn render_children_guarded(
     shared: &RenderShared<'_>,
     ext: &mut RenderExtSet,
@@ -123,8 +134,6 @@ fn render_children_guarded(
     output: &mut Writer,
 ) {
     for &child in shared.document.children(node) {
-        stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
-            render_node(shared, ext, child, output);
-        });
+        render_node(shared, ext, child, output);
     }
 }
