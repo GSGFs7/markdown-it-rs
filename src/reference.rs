@@ -83,7 +83,7 @@ use std::fmt::Debug;
 
 use downcast_rs::{Downcast, impl_downcast};
 
-use crate::common::utils::normalize_reference;
+use crate::common::utils::{is_js_whitespace, normalize_reference};
 
 /// Storage for parsed references.
 ///
@@ -171,7 +171,7 @@ impl CustomReferenceMap for DefaultReferenceMap {
     fn get(&self, label: &str) -> Option<(&str, Option<&str>)> {
         if label
             .chars()
-            .filter(|ch| !ch.is_whitespace())
+            .filter(|&ch| !is_js_whitespace(ch))
             .take(self.max_normalized_len.saturating_add(1))
             .count()
             > self.max_normalized_len

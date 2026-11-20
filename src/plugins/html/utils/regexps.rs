@@ -6,7 +6,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 // Match JavaScript's \s: Unicode White_Space plus BOM, excluding NEL.
-pub(crate) const HTML_WHITESPACE: &str = r"[\s\u{FEFF}--\u{0085}]";
+// Single source of truth for the character set: `JS_WHITESPACE_CLASS`.
+pub(crate) const HTML_WHITESPACE: &str = crate::common::utils::JS_WHITESPACE_CLASS;
 
 const attr_name: &str = r#"[a-zA-Z_:][a-zA-Z0-9:._-]*"#;
 

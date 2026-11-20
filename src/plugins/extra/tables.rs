@@ -2,6 +2,7 @@
 //!
 //! <https://github.github.com/gfm/#tables-extension->
 use crate::MarkdownIt;
+use crate::common::utils::{is_js_blank, is_js_whitespace};
 use crate::document::{Node, NodeId};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::plugins::cmark::block::blockquote::{BlockquoteInterrupt, BlockquoteScanner};
@@ -250,11 +251,11 @@ impl TableScanner {
 
         for (pos, ch) in line.char_indices() {
             match ch {
-                ' ' | '\t' if is_leading => {
-                    segment_start += 1;
+                ch if is_leading && is_js_whitespace(ch) => {
+                    segment_start = pos + ch.len_utf8();
                     #[cfg(feature = "sourcemap")]
                     {
-                        srcmap[0].1 += 1;
+                        srcmap[0].1 = segment_start;
                     }
                 }
                 '|' => {
@@ -299,11 +300,9 @@ impl TableScanner {
             srcmap,
         });
 
-        // trim trailing spaces
         for content in result.iter_mut() {
-            while content.str.ends_with([' ', '\t']) {
-                content.str.pop();
-            }
+            let trimmed_len = content.str.trim_end_matches(is_js_whitespace).len();
+            content.str.truncate(trimmed_len);
         }
 
         // remove last cell if empty
@@ -532,6 +531,11 @@ impl BlockRule for TableScanner {
             }
 
             let line = state.get_line(state.line);
+            // markdown-it.js breaks the body on `!lineText.trim()`, which is
+            // broader than `state.is_empty` (ASCII spaces and tabs only).
+            if is_js_blank(line) {
+                break;
+            }
             #[cfg(feature = "sourcemap")]
             let line_len = line.len();
 
@@ -665,6 +669,21 @@ mod tests {
     }
 
     #[test]
+    fn table_whitespace_matches_javascript_trim() {
+        let md = crate::MarkdownIt::with_preset(crate::presets::Preset::MarkdownItDefault);
+        let source =
+            "\u{feff}| x\u{2028} | y |\n| --- | --- |\n| body\u{a0} | \u{85} |\n\u{feff}\nplain";
+        assert_eq!(
+            md.render(source),
+            concat!(
+                "<table>\n<thead>\n<tr>\n<th>x</th>\n<th>y</th>\n</tr>\n</thead>\n",
+                "<tbody>\n<tr>\n<td>body</td>\n<td>\u{85}</td>\n</tr>\n</tbody>\n",
+                "</table>\n<p>\u{feff}\nplain</p>\n",
+            ),
+        );
+    }
+
+    #[test]
     fn should_process_backslash_escapes() {
         assert_eq!(
             TableScanner::scan_row(r#"| foo\bar |"#)[0].str,
@@ -696,6 +715,10 @@ mod tests {
         assert_eq!(row[0].srcmap, vec![(0, 2)]);
         assert_eq!(row[1].str, "bar");
         assert_eq!(row[1].srcmap, vec![(0, 9)]);
+
+        let row = TableScanner::scan_row("\u{feff}| \u{a0}foo\\|bar\u{2028} |");
+        assert_eq!(row[0].str, "foo|bar");
+        assert_eq!(row[0].srcmap, vec![(0, 7), (3, 11)]);
     }
 
     #[test]

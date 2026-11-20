@@ -106,6 +106,15 @@ const regressions = [
   '!["alt" can\'t](/img) "outside"',
   '"one\n\ntwo"',
   '- "one\n- two"',
+  // Table cells and reference labels follow JavaScript's `\s`.
+  ...['\uFEFF', '\u0085', '\u00A0', '\u2028'].flatMap((space) => [
+    `| a${space}| b |\n| --- | --- |\n| c${space}| d |`,
+    `${space}| a | b |\n| --- | --- |\n| c | d |\n${space}\nplain`,
+    `[x${space}y]\n\n[x y]: /url`,
+    `[${space}x${space}]\n\n[x]: /url`,
+    `[x${space}y]\n\n[x${space}y]: /url`,
+    `[r]: /u "${space}title${space}"\n\n[r]`,
+  ]),
 ];
 
 // Probe either side of the configured 3 / 20 / 100 nesting limits.

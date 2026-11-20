@@ -56,7 +56,7 @@ use syntect::util::LinesWithEndings;
 use two_face::theme::LazyThemeSet;
 
 use crate::MarkdownIt;
-use crate::common::utils::unescape_all;
+use crate::common::utils::{is_js_whitespace, unescape_all};
 use crate::document::edit::EditBatch;
 use crate::document::{Node, StructuralEvent};
 use crate::parser::core::{CoreRule, CoreState};
@@ -222,9 +222,11 @@ impl FenceMeta {
     fn parse_fence_meta(data: &CodeFence) -> FenceMeta {
         // ```rust {1,3-5}   <-- CodeFence.info
         let info = unescape_all(&data.info);
-        let trimmed = info.trim();
+        // markdown-it.js splits the fence info with JavaScript's `\s`, so the
+        // language token must use the same set as the built-in renderer.
+        let trimmed = info.trim_matches(is_js_whitespace);
 
-        let mut parts = trimmed.splitn(2, |c: char| c.is_whitespace());
+        let mut parts = trimmed.splitn(2, is_js_whitespace);
         let first_part = parts.next().unwrap_or("");
         let rest_part = parts.next().unwrap_or("");
         let (language, meta_part) = if first_part.starts_with('{') || first_part.is_empty() {

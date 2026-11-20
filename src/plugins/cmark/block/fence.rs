@@ -4,7 +4,7 @@
 //!
 //! <https://spec.commonmark.org/0.30/#code-fence>
 use crate::MarkdownIt;
-use crate::common::utils::unescape_all;
+use crate::common::utils::{is_js_whitespace, unescape_all};
 use crate::document::{Node, NodeId};
 use crate::parser::block::{BlockRule, BlockState};
 use crate::render::{
@@ -36,7 +36,7 @@ impl NodeRenderer<CodeFence> for CodeFenceRenderer {
     ) {
         let info = unescape_all(&fence.info);
         let lang_name = info
-            .split(|c: char| c == '\u{feff}' || (c.is_whitespace() && c != '\u{85}'))
+            .split(is_js_whitespace)
             .find(|part| !part.is_empty())
             .unwrap_or("");
         let mut attrs = node.attrs().clone();

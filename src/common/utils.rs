@@ -15,6 +15,32 @@ static DIGITAL_ENTITY_TEST_RE: LazyLock<Regex> =
 static UNESCAPE_ALL_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!("{UNESCAPE_MD_RE}|{ENTITY_RE}")).unwrap());
 
+/// Character class for the whitespace and line terminators recognized by
+/// JavaScript's `String.prototype.trim()` and regexp `\s`.
+///
+/// This is Rust's Unicode `White_Space` plus BOM (U+FEFF) and minus NEL
+/// (U+0085); JavaScript uses this set for `trim()`, `/\s/` and markdown-it's
+/// HTML info strings and table cells. Markdown syntax itself uses Rust's
+/// `char::is_whitespace` instead, so keep the two apart.
+pub(crate) const JS_WHITESPACE_CLASS: &str = r"[\s\u{FEFF}--\u{0085}]";
+
+/// The whitespace and line terminators recognized by JavaScript's String.trim().
+///
+/// Predicate form of [`JS_WHITESPACE_CLASS`].
+#[inline]
+pub(crate) fn is_js_whitespace(ch: char) -> bool {
+    if ch.is_ascii() {
+        return matches!(ch, ' ' | '\t' | '\n' | '\u{b}' | '\u{c}' | '\r');
+    }
+
+    ch == '\u{feff}' || (ch.is_whitespace() && ch != '\u{85}')
+}
+
+/// Whether `str` contains only JavaScript whitespace, i.e. `!str.trim()`.
+pub(crate) fn is_js_blank(str: &str) -> bool {
+    str.chars().all(is_js_whitespace)
+}
+
 /// Return true if a `code` you got from `&#xHHHH;` entity is a valid charcode.
 ///
 /// It returns false for surrogates and non-printables, so it's a subset of `char::from_u32`.
@@ -235,11 +261,21 @@ pub fn escape_html(str: &str) -> Cow<'_, str> {
 /// assert_eq!(normalize_reference("a   b"), normalize_reference("a b"));
 /// ```
 pub fn normalize_reference(str: &str) -> String {
-    static SPACE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
-
-    // Trim and collapse whitespace
-    //
-    let str = SPACE_RE.replace_all(str.trim(), " ");
+    // markdown-it.js: `str.trim().replace(/\s+/g, " ")`, so both the trimming
+    // and the collapsing use JavaScript's `\s` rather than Rust's `\s`.
+    let mut collapsed = String::with_capacity(str.len());
+    let mut pending_space = false;
+    for ch in str.chars() {
+        if is_js_whitespace(ch) {
+            pending_space = !collapsed.is_empty();
+        } else {
+            if pending_space {
+                collapsed.push(' ');
+                pending_space = false;
+            }
+            collapsed.push(ch);
+        }
+    }
 
     // .toLowerCase().toUpperCase() should get rid of all differences
     // between letter variants.
@@ -273,7 +309,7 @@ pub fn normalize_reference(str: &str) -> String {
     // (this avoid a conflict with Object.prototype members,
     // most notably, `__proto__`)
     //
-    str.to_lowercase().to_uppercase()
+    collapsed.to_lowercase().to_uppercase()
 }
 
 /// Count number of characters since last occurrence of `char`.
@@ -455,10 +491,51 @@ mod tests {
     use super::{
         cut_right_whitespace_with_tabstops as cut_ws,
         find_indent_of,
+        is_js_blank,
+        is_js_whitespace,
+        normalize_reference,
         replace_entity_pattern,
         rfind_and_count,
         unescape_all,
     };
+
+    #[test]
+    fn js_whitespace_matches_javascript_trim() {
+        for ch in [
+            ' ', '\t', '\n', '\r', '\u{b}', '\u{c}', '\u{a0}', '\u{2028}', '\u{2029}',
+        ] {
+            assert!(is_js_whitespace(ch), "{ch:?}");
+        }
+        // BOM is whitespace for JavaScript, NEL is not.
+        assert!(is_js_whitespace('\u{feff}'));
+        assert!(!is_js_whitespace('\u{85}'));
+        assert!(!is_js_whitespace('\u{200b}'));
+
+        assert!(is_js_blank("\u{feff}\u{a0}"));
+        assert!(!is_js_blank("\u{85}"));
+        assert!(!is_js_blank(" x "));
+    }
+
+    #[test]
+    fn normalize_reference_uses_javascript_whitespace() {
+        // BOM collapses to a space like JavaScript's `replace(/\s+/g, " ")`.
+        assert_eq!(
+            normalize_reference("a\u{feff}b"),
+            normalize_reference("a b")
+        );
+        assert_eq!(
+            normalize_reference("\u{feff}a\u{feff}"),
+            normalize_reference("a")
+        );
+        // NEL is not whitespace for JavaScript, so it survives.
+        assert_ne!(normalize_reference("a\u{85}b"), normalize_reference("a b"));
+        assert_eq!(
+            normalize_reference("a\u{85}b"),
+            normalize_reference("A\u{85}B")
+        );
+        // Whitespace-only labels normalize to nothing.
+        assert_eq!(normalize_reference(" \t\u{feff}"), "");
+    }
 
     #[test]
     fn rfind_and_count_test() {
