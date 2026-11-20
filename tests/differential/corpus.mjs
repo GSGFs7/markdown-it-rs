@@ -106,6 +106,15 @@ const regressions = [
   '!["alt" can\'t](/img) "outside"',
   '"one\n\ntwo"',
   '- "one\n- two"',
+  // A trailing entity newline keeps the blank line before the next block of a
+  // tight list item.
+  '- x&#10;\n  a | b\n  --- | ---',
+  '- x&#10;\n  - nested',
+  '- x&#10;\n  1. ordered',
+  '- x&#10;\n  > quote',
+  '- x&#10;\n  # heading',
+  '- x&#10;\n  ---',
+  '- x&#10;',
   // Tables take precedence over multiline reference definition titles.
   '[r]: /u "a | b\n--- | ---\nx | y"\n\n[r]',
   '[r]: /u "a | b\nx | y"\n\n[r]',

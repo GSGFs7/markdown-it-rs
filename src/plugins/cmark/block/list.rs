@@ -66,6 +66,21 @@ impl NodeRenderer<BulletList> for BulletListRenderer {
 #[derive(Debug)]
 pub struct ListItem;
 
+/// Marks a block that needs a separator after a flattened tight-list paragraph.
+#[derive(Debug)]
+struct AfterTightParagraph;
+
+/// Whether this block replaces markdown-it's default block shell (`<tag>`,
+/// children, `</tag>`), which is what `renderToken` produces.
+///
+/// markdown-it renders these blocks through custom rules, which do not emit
+/// the default separator after a hidden tight-list paragraph.
+fn replaces_block_shell(node: &Node) -> bool {
+    node.is::<super::fence::CodeFence>()
+        || node.is::<super::code::CodeBlock>()
+        || node.is::<crate::plugins::html::html_block::HtmlBlock>()
+}
+
 struct ListItemRenderer;
 
 impl NodeRenderer<ListItem> for ListItemRenderer {
@@ -77,22 +92,27 @@ impl NodeRenderer<ListItem> for ListItemRenderer {
         output: &mut crate::render::Writer,
     ) {
         write_html_open(output, "li", node.attrs());
-        // A fence writes no leading newline: the list item's opening tag
-        // supplies it only when the fence is its first visible block.
+        // markdown-it's default `renderToken` opens `<li>` on its own line when
+        // the first block is not inline or hidden.
         let first_visible = node.children().iter().find(|&&child| {
             !context
                 .document()
                 .node(child)
                 .is::<super::reference::Definition>()
         });
-        if first_visible.is_some_and(|&child| {
-            let node = context.document().node(child);
-            node.is::<super::fence::CodeFence>()
-                || node.is::<crate::plugins::html::html_block::HtmlBlock>()
-        }) {
+        if first_visible.is_some_and(|&child| replaces_block_shell(context.document().node(child)))
+        {
             context.cr(output);
         }
-        context.render_children(node.id(), output);
+        for &child in node.children() {
+            let child_node = context.document().node(child);
+            // Deliberately not `cr`: the preceding text may already end in a
+            // newline (a trailing `&#10;`), and markdown-it still adds one.
+            if child_node.ext().get::<AfterTightParagraph>().is_some() {
+                output.write_char('\n');
+            }
+            context.render_node(child, output);
+        }
         write_html_close(output, "li");
         context.cr(output);
     }
@@ -181,15 +201,29 @@ impl ListScanner {
     fn mark_tight_paragraphs(document: &mut Document, item: NodeId) {
         document.rewrite_children(item, |document, nodes| {
             let mut index = 0;
+            let mut after_paragraph = false;
             while index < nodes.len() {
                 let node = nodes[index];
-                if document.node(node).is::<Paragraph>() {
+                let block = document.node(node);
+                if block.is::<Paragraph>() {
                     let children = document.take_children(node);
                     let count = children.len();
                     nodes.splice(index..index + 1, children);
                     document.discard_node(node);
+                    after_paragraph = true;
                     index += count;
                 } else {
+                    if !block.is::<super::reference::Definition>() {
+                        // Use the original block type before a transform can
+                        // replace its payload (for example, syntax highlighting).
+                        if after_paragraph && !replaces_block_shell(block) {
+                            document
+                                .node_mut(node)
+                                .ext_mut()
+                                .insert(AfterTightParagraph);
+                        }
+                        after_paragraph = false;
+                    }
                     index += 1;
                 }
             }
@@ -494,6 +528,82 @@ impl BlockRule for ListScanner {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tight_paragraph_separator_preserves_a_trailing_entity_newline() {
+        let md = crate::MarkdownIt::with_preset(crate::presets::Preset::MarkdownItDefault);
+        assert_eq!(
+            md.render("- x&#10;\n  a | b\n  --- | ---"),
+            concat!(
+                "<ul>\n<li>x\n\n<table>\n<thead>\n<tr>\n",
+                "<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n</table>\n</li>\n</ul>\n",
+            ),
+        );
+        assert_eq!(
+            md.render("- x&#10;\n  - nested"),
+            "<ul>\n<li>x\n\n<ul>\n<li>nested</li>\n</ul>\n</li>\n</ul>\n",
+        );
+        assert_eq!(md.render("- x&#10;"), "<ul>\n<li>x\n</li>\n</ul>\n");
+    }
+
+    #[test]
+    fn tight_paragraph_separator_skips_self_laying_out_blocks() {
+        let mut md = crate::MarkdownIt::with_preset(crate::presets::Preset::MarkdownItDefault);
+        crate::plugins::html::add(&mut md);
+        // Fences, indented code and raw HTML replace markdown-it's default block
+        // shell, so they never receive the separator line.
+        for (source, expected) in [
+            (
+                "- x&#10;\n  ```js\n  code\n  ```",
+                concat!(
+                    "<ul>\n<li>x\n<pre><code class=\"language-js\">code\n",
+                    "</code></pre>\n</li>\n</ul>\n",
+                ),
+            ),
+            (
+                "- x&#10;\n      indented",
+                "<ul>\n<li>x\n\nindented</li>\n</ul>\n",
+            ),
+            (
+                "- x&#10;\n  <div>raw</div>",
+                "<ul>\n<li>x\n<div>raw</div></li>\n</ul>\n",
+            ),
+        ] {
+            assert_eq!(md.render(source), expected, "{source:?}");
+        }
+
+        // Starting an item with such a block still needs the `<li>` line break.
+        for (source, expected) in [
+            (
+                "- ```js\n  code\n  ```",
+                concat!(
+                    "<ul>\n<li>\n<pre><code class=\"language-js\">code\n",
+                    "</code></pre>\n</li>\n</ul>\n",
+                ),
+            ),
+            (
+                "- <div>raw</div>",
+                "<ul>\n<li>\n<div>raw</div></li>\n</ul>\n",
+            ),
+        ] {
+            assert_eq!(md.render(source), expected, "{source:?}");
+        }
+    }
+
+    #[cfg(feature = "syntect")]
+    #[test]
+    fn highlighted_fence_preserves_tight_paragraph_spacing() {
+        let mut md = crate::MarkdownIt::with_preset(crate::presets::Preset::MarkdownItDefault);
+        crate::plugins::extra::syntect::add(&mut md);
+
+        for (suffix, newline) in [("", ""), ("&#10;", "\n")] {
+            let html = md.render(&format!("- x{suffix}\n  ```rust\n  let x = 1;\n  ```"));
+            let prefix = format!(
+                "<ul>\n<li>x{newline}<pre><code class=\"language-rust\"><span class=\"syntect-line\">",
+            );
+            assert!(html.starts_with(&prefix), "{html:?}");
+        }
+    }
+
     #[test]
     fn paragraph_and_setext_content_keep_list_interrupt_restrictions() {
         for preset in [
