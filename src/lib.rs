@@ -1,3 +1,5 @@
+// show readme in doc
+#![doc = include_str!("../README.md")]
 // for bragging rights
 #![forbid(unsafe_code)]
 //
