@@ -303,9 +303,7 @@ impl EmphMarker {
     /// Convert unmatched delimiters into a text payload.
     fn into_text(self) -> Text {
         let mut encoded = [0; 4];
-        Text {
-            content: self.marker.encode_utf8(&mut encoded).repeat(self.remaining),
-        }
+        Text::new(self.marker.encode_utf8(&mut encoded).repeat(self.remaining))
     }
 }
 
@@ -525,7 +523,7 @@ fn needs_cleanup(document: &Document, parent: NodeId) -> bool {
         }
 
         let text = node.cast::<Text>();
-        if text.is_some_and(|text| text.content.is_empty() || previous_is_text) {
+        if text.is_some_and(|text| text.as_str().is_empty() || previous_is_text) {
             return true;
         }
 
@@ -549,7 +547,7 @@ fn fragments_join_children(document: &mut Document, nodes: &mut Vec<NodeId>) {
         if document
             .node(id)
             .cast::<Text>()
-            .is_some_and(|text| text.content.is_empty())
+            .is_some_and(|text| text.as_str().is_empty())
             || marker.is_some_and(|marker| marker.is_empty())
         {
             document.discard_node(id);
@@ -565,33 +563,28 @@ fn fragments_join_children(document: &mut Document, nodes: &mut Vec<NodeId>) {
 
             if let Some(marker) = marker {
                 // Append directly to avoid a temporary String.
-                let content = &mut document
-                    .node_mut(previous)
-                    .cast_mut::<Text>()
-                    .unwrap()
-                    .content;
+                let content = document.materialize_text(previous).unwrap();
                 marker.append_to(content);
             } else {
-                let content =
-                    std::mem::take(&mut document.node_mut(id).cast_mut::<Text>().unwrap().content);
+                let content = std::mem::take(document.materialize_text(id).unwrap());
                 document
-                    .node_mut(previous)
-                    .cast_mut::<Text>()
+                    .materialize_text(previous)
                     .unwrap()
-                    .content += &content;
+                    .push_str(&content);
             }
 
-            // Extend the source map to include this node.
             #[cfg(feature = "sourcemap")]
             if let (Some(first), Some(last)) =
                 (document.node(previous).srcmap(), document.node(id).srcmap())
             {
-                document.node_mut(previous).set_srcmap(Some(
-                    crate::common::sourcemap::SourcePos::new(
-                        first.get_byte_offsets().0,
-                        last.get_byte_offsets().1,
-                    ),
-                ));
+                let (start, _) = first.get_byte_offsets();
+                let (_, end) = last.get_byte_offsets();
+                // Extend the source map when ordered; consumers tolerate out-of-range hints.
+                if start <= end {
+                    document
+                        .node_mut(previous)
+                        .set_srcmap(Some(crate::common::sourcemap::SourcePos::new(start, end)));
+                }
             }
 
             document.discard_node(id);
@@ -623,11 +616,25 @@ fn update_pair_sourcemaps(
     };
     let (open_start, open_end) = opener_map.get_byte_offsets();
     let (close_start, close_end) = closer_map.get_byte_offsets();
-    for (node, start, end) in [
-        (opener, open_start, open_end - mark_bytes),
-        (closer, close_start + mark_bytes, close_end),
-        (pair, open_end - mark_bytes, close_start + mark_bytes),
-    ] {
+    // Skip invalid or overflowing source-map hints instead of panicking.
+    let Some((open_marker_end, close_marker_start)) = open_end
+        .checked_sub(mark_bytes)
+        .zip(close_start.checked_add(mark_bytes))
+    else {
+        return;
+    };
+    let ranges = [
+        (opener, open_start, open_marker_end),
+        (closer, close_marker_start, close_end),
+        (pair, open_marker_end, close_marker_start),
+    ];
+    if ranges
+        .iter()
+        .any(|&(_, start, end)| document.source().get(start..end).is_none())
+    {
+        return;
+    }
+    for (node, start, end) in ranges {
         document
             .node_mut(node)
             .set_srcmap(Some(crate::common::sourcemap::SourcePos::new(start, end)));
@@ -643,15 +650,9 @@ mod tests {
     fn cleanup_preflight_preserves_all_fragment_mutations() {
         let mut document = Document::new("", crate::document::Root::new(""));
         let root = document.root();
-        let text = document.create_node(Text {
-            content: "a".into(),
-        });
-        let other_text = document.create_node(Text {
-            content: "b".into(),
-        });
-        let empty = document.create_node(Text {
-            content: String::new(),
-        });
+        let text = document.create_node(Text::new("a"));
+        let other_text = document.create_node(Text::new("b"));
+        let empty = document.create_node(Text::new(""));
         let other = document.create_node(());
         let marker = document.create_node(EmphMarker {
             marker: '*',
@@ -693,7 +694,7 @@ mod tests {
         let children = document.children(paragraph);
         assert_eq!(children.len(), 2);
         assert_eq!(
-            document.node(children[0]).cast::<Text>().unwrap().content,
+            document.node(children[0]).cast::<Text>().unwrap().as_str(),
             "a_ ".repeat(10_000)
         );
         #[cfg(feature = "sourcemap")]
@@ -796,12 +797,8 @@ mod tests {
             .attrs_mut()
             .push(("class".into(), "kept".into()));
         document.node_mut(first).ext_mut().insert(42_u8);
-        let empty = document.create_node(Text {
-            content: String::new(),
-        });
-        let text = document.create_node(Text {
-            content: "雪".into(),
-        });
+        let empty = document.create_node(Text::new(""));
+        let text = document.create_node(Text::new("雪"));
         document
             .node_mut(text)
             .set_srcmap(Some(crate::common::sourcemap::SourcePos::new(8, 11)));
@@ -829,7 +826,7 @@ mod tests {
 
         assert_eq!(nodes, vec![first, barrier, trailing]);
         assert_eq!(
-            document.node(first).cast::<Text>().unwrap().content,
+            document.node(first).cast::<Text>().unwrap().as_str(),
             "🦀🦀雪_"
         );
         assert_eq!(
@@ -839,7 +836,7 @@ mod tests {
         assert_eq!(document.node(first).attrs()[0].1, "kept");
         assert_eq!(document.node(first).ext().get::<u8>(), Some(&42));
         assert_eq!(
-            document.node(trailing).cast::<Text>().unwrap().content,
+            document.node(trailing).cast::<Text>().unwrap().as_str(),
             "🦀"
         );
         assert!(document.node(trailing).srcmap().is_none());
@@ -852,9 +849,7 @@ mod tests {
     #[cfg(feature = "sourcemap")]
     fn joining_markers_keeps_missing_source_map_and_discards_empty_markers() {
         let mut document = Document::new("", crate::document::Root::new(""));
-        let first = document.create_node(Text {
-            content: "a".into(),
-        });
+        let first = document.create_node(Text::new("a"));
         let marker = document.create_node(EmphMarker {
             marker: '_',
             length: 1,
@@ -875,7 +870,7 @@ mod tests {
         let mut nodes = vec![first, marker, empty];
         fragments_join_children(&mut document, &mut nodes);
         assert_eq!(nodes, vec![first]);
-        assert_eq!(document.node(first).cast::<Text>().unwrap().content, "a_");
+        assert_eq!(document.node(first).cast::<Text>().unwrap().as_str(), "a_");
         assert!(document.node(first).srcmap().is_none());
         assert!(document.get_node(empty).is_none());
     }
@@ -1010,5 +1005,78 @@ mod tests {
             #[cfg(feature = "sourcemap")]
             assert_eq!(text.srcmap().unwrap().get_byte_offsets(), (8, 11),);
         }
+    }
+
+    #[cfg(feature = "sourcemap")]
+    #[test]
+    fn pair_source_maps_skip_invalid_hints() {
+        use crate::common::sourcemap::SourcePos;
+
+        let source = "***";
+        let mut document = Document::new(source, crate::document::Root::new(source));
+        let root = document.root();
+        let marker = |open, close| EmphMarker {
+            marker: '*',
+            length: 3,
+            remaining: 3,
+            open,
+            close,
+        };
+        let opener = document.create_node(marker(true, false));
+        let closer = document.create_node(marker(false, true));
+        let pair = document.create_node(Text::new("x"));
+        document.push_child(root, opener);
+        document.push_child(root, closer);
+        document.push_child(root, pair);
+
+        // Too short for the marker bytes: leave all maps untouched instead of
+        // underflowing the subtraction.
+        document
+            .node_mut(opener)
+            .set_srcmap(Some(SourcePos::new(0, 1)));
+        document
+            .node_mut(closer)
+            .set_srcmap(Some(SourcePos::new(2, 3)));
+        update_pair_sourcemaps(&mut document, opener, closer, pair, 2);
+        assert_eq!(
+            document.node(opener).srcmap().unwrap().get_byte_offsets(),
+            (0, 1)
+        );
+        assert_eq!(
+            document.node(closer).srcmap().unwrap().get_byte_offsets(),
+            (2, 3)
+        );
+        assert!(document.node(pair).srcmap().is_none());
+
+        // Reversed hints are ignored instead of producing reversed ranges.
+        document
+            .node_mut(opener)
+            .set_srcmap(Some(SourcePos::new(2, 1)));
+        update_pair_sourcemaps(&mut document, opener, closer, pair, 0);
+        assert_eq!(
+            document.node(opener).srcmap().unwrap().get_byte_offsets(),
+            (2, 1)
+        );
+
+        // Well-formed hints are still updated as before.
+        document
+            .node_mut(opener)
+            .set_srcmap(Some(SourcePos::new(0, 2)));
+        document
+            .node_mut(closer)
+            .set_srcmap(Some(SourcePos::new(1, 3)));
+        update_pair_sourcemaps(&mut document, opener, closer, pair, 1);
+        assert_eq!(
+            document.node(opener).srcmap().unwrap().get_byte_offsets(),
+            (0, 1)
+        );
+        assert_eq!(
+            document.node(closer).srcmap().unwrap().get_byte_offsets(),
+            (2, 3)
+        );
+        assert_eq!(
+            document.node(pair).srcmap().unwrap().get_byte_offsets(),
+            (1, 2)
+        );
     }
 }

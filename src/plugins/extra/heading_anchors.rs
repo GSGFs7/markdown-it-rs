@@ -341,9 +341,9 @@ impl Heading {
 
 fn append_text(node: &Node, active_headings: &[usize], headings: &mut [Heading]) {
     let content = if let Some(text) = node.cast::<Text>() {
-        Some(text.content.as_str())
+        Some(text.as_str())
     } else if let Some(text) = node.cast::<TextSpecial>() {
-        Some(text.content.as_str())
+        Some(text.content())
     } else if node.is::<Softbreak>() {
         Some("\n")
     } else {
@@ -373,7 +373,7 @@ mod tests {
                     && root.children(node).iter().any(|&child| {
                         root.node(child)
                             .cast::<Text>()
-                            .is_some_and(|text| text.content == "Existing")
+                            .is_some_and(|text| text.as_str() == "Existing")
                     })
                 {
                     root.node_mut(node)

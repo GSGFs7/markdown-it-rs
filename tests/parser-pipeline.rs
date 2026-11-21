@@ -69,17 +69,15 @@ fn snapshot_outputs(
         .filter_map(|event| {
             let node = event.node();
             node.cast::<HtmlBlock>()
-                .filter(|value| !value.content.ends_with('\n'))
+                .filter(|value| !value.as_str().ends_with('\n'))
                 .map(|_| node.id())
         })
         .collect();
     for id in &html_without_newline {
-        document
-            .node_mut(*id)
-            .cast_mut::<HtmlBlock>()
-            .unwrap()
-            .content
-            .push('\n');
+        let block = document.node_mut(*id).cast_mut::<HtmlBlock>().unwrap();
+        let mut content = block.as_str().to_owned();
+        content.push('\n');
+        block.set_content(content);
     }
     let metadata = document
         .node(document.root())
@@ -87,7 +85,7 @@ fn snapshot_outputs(
         .unwrap()
         .ext
         .get::<markdown_it::plugins::extra::front_matter::FrontMatter>()
-        .map(|value| (value.kind, &value.raw, value.start_line, value.end_line));
+        .map(|value| (value.kind, value.raw(), value.start_line, value.end_line));
     let mut html = normalize_math_html(&md.render_document(document, "html"));
     // Preserve legacy whitespace in snapshots; unit tests check compact output.
     if document.events(document.root()).any(|event| {
@@ -104,12 +102,10 @@ fn snapshot_outputs(
         format!("{metadata:?}"),
     ];
     for id in html_without_newline {
-        document
-            .node_mut(id)
-            .cast_mut::<HtmlBlock>()
-            .unwrap()
-            .content
-            .pop();
+        let block = document.node_mut(id).cast_mut::<HtmlBlock>().unwrap();
+        let mut content = block.as_str().to_owned();
+        content.pop();
+        block.set_content(content);
     }
     outputs
 }
@@ -202,23 +198,11 @@ fn assert_document_structure(md: &MarkdownIt, source: &str) -> markdown_it::docu
     let normalized = source.replace('\0', "\u{FFFD}");
     let document = md.parse(source);
     assert_eq!(document.source(), normalized);
-    assert_eq!(
-        document
-            .node(document.root())
-            .cast::<Root>()
-            .unwrap()
-            .content
-            .as_ref(),
-        normalized.as_str()
-    );
+    let root = document.node(document.root()).cast::<Root>().unwrap();
+    assert_eq!(root.content(), normalized.as_str());
     assert!(std::ptr::eq(
-        document
-            .node(document.root())
-            .cast::<Root>()
-            .unwrap()
-            .content
-            .as_ref(),
-        document.source(),
+        root.content().as_ptr(),
+        document.source().as_ptr(),
     ));
     let mut stack = Vec::new();
     let mut visited = std::collections::HashSet::new();
@@ -446,7 +430,7 @@ fn direct_front_matter_matches_snapshots() {
         .get::<FrontMatter>()
         .unwrap();
     assert_eq!(value.kind, FrontMatterKind::Yaml);
-    assert_eq!(value.raw, "title: 雪");
+    assert_eq!(value.raw(), "title: 雪");
     assert_eq!((value.start_line, value.end_line), (0, 2));
     assert_eq!(
         value.parse_with(|_, raw| raw
@@ -702,7 +686,7 @@ fn trailing_space_removal_maps_inline_offsets_once() {
                 let node = event.node();
                 node.cast::<Text>().map(|text| {
                     (
-                        text.content.clone(),
+                        text.as_str().to_owned(),
                         node.srcmap().unwrap().get_byte_offsets(),
                     )
                 })
@@ -1657,13 +1641,11 @@ fn direct_linkify_matches_snapshots() {
                 assert_eq!(md.render_document(&document, "html"), expected);
                 #[cfg(feature = "sourcemap")]
                 for event in document.events(document.root()) {
-                    let (start, end) = event.node().srcmap().unwrap().get_byte_offsets();
+                    let Some(map) = event.node().srcmap() else {
+                        continue;
+                    };
+                    let (start, end) = map.get_byte_offsets();
                     assert!(source.get(start..end).is_some());
-                    if let Some(link) = event.node().cast::<linkify::Linkified>()
-                        && link.url == "mailto:+b@example.xn--o-bga"
-                    {
-                        assert_eq!(&source[start..end], "+b@example.oé");
-                    }
                 }
             }
             markdown_it::plugins::extra::beautify_links::add_with_char_limit(&mut md, 12);
@@ -1699,16 +1681,19 @@ fn direct_linkify_configuration_and_source_maps() {
                 }
                 let node = event.node();
                 node.is::<Linkified>()
-                    .then(|| node.srcmap().unwrap().get_byte_offsets())
+                    .then(|| node.srcmap().map(|map| map.get_byte_offsets()))
+                    .flatten()
             })
             .collect();
-        assert_eq!(ranges.len(), 3);
+        // Inline links keep their parse-time maps; the email is replaced in
+        // the postprocess and therefore claims no source range.
+        assert_eq!(ranges.len(), 2);
         assert_eq!(
             ranges
                 .iter()
                 .map(|&(start, end)| &source[start..end])
                 .collect::<Vec<_>>(),
-            vec!["https://example.com", "a@b.co", "www.example.org"]
+            vec!["https://example.com", "www.example.org"]
         );
     }
     assert_eq!(md.render_document(&direct, "text"), format!("{source}\n"));
@@ -2035,7 +2020,7 @@ fn direct_directive_callbacks_render_current_document_children() {
     struct CustomTextRenderer;
     impl NodeRenderer<Text> for CustomTextRenderer {
         fn render(&self, _: &Node, text: &Text, _: &mut RenderContext<'_>, output: &mut Writer) {
-            output.write_str(&format!("custom:{}", text.content));
+            output.write_str(&format!("custom:{}", text.as_str()));
         }
     }
 

@@ -120,9 +120,9 @@ fn main() {
             let name = node.name().rsplit("::").next().unwrap();
             print!("{}", "    ".repeat(depth));
             if let Some(text) = node.cast::<Text>() {
-                println!("{name}: {:?}", text.content);
+                println!("{name}: {:?}", text.as_str());
             } else if let Some(text) = node.cast::<TextSpecial>() {
-                println!("{name}: {:?}", text.content);
+                println!("{name}: {:?}", text.content());
             } else {
                 println!("{name}");
             }

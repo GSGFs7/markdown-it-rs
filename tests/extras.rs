@@ -156,9 +156,7 @@ mod markdown_it_rs_extras {
                 if !state.remaining().starts_with('@') {
                     return None;
                 }
-                let node = state.document.create_node(Text {
-                    content: "@".into(),
-                });
+                let node = state.document.create_node(Text::new("@"));
                 let err = state
                     .document
                     .node_mut(node)

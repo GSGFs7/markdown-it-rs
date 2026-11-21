@@ -182,7 +182,7 @@ fn collect_rewrites(document: &markdown_it::document::Document) -> Vec<Rewrite> 
         let Some(text) = document.value::<Text>(marker) else {
             return;
         };
-        let Some(kind) = AlertKind::from_marker(&text.content) else {
+        let Some(kind) = AlertKind::from_marker(text.as_str()) else {
             return;
         };
         // Only a break may follow the marker on its line; anything else means

@@ -71,7 +71,7 @@ fn partially_matched_strikethrough_keeps_source_offsets() {
     );
     let text = document.node(strike.children()[0]);
     assert_eq!(
-        text.cast::<markdown_it::document::Text>().unwrap().content,
+        text.cast::<markdown_it::document::Text>().unwrap().as_str(),
         ";"
     );
     #[cfg(feature = "sourcemap")]

@@ -212,7 +212,7 @@ impl From<&RustFrontMatter> for FrontMatter {
 
         Self {
             kind,
-            raw: value.raw.clone(),
+            raw: value.raw().to_owned(),
             start_line: value.start_line as u64,
             end_line: value.end_line as u64,
         }

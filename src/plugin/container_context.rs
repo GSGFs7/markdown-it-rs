@@ -47,10 +47,10 @@ impl<'a, 'b> ContainerHtml<'a, 'b> {
         self.node
     }
 
-    /// Original Markdown source covered by this node.
+    /// Best-effort original Markdown source covered by this node (`sourcemap` feature).
     ///
-    /// Available when the `sourcemap` Cargo feature is enabled. Returns `None`
-    /// if the node has no source map, for example after a transform replaced it.
+    /// Returns `None` if no source map is present or the range is not a valid slice of
+    /// [`Document::source`]. This is a hint and may not match the rendered content.
     #[cfg(feature = "sourcemap")]
     pub fn source_text(&self) -> Option<&'b str> {
         let document = self.context.document();
@@ -148,9 +148,10 @@ impl<'a, 'b> ContainerText<'a, 'b> {
         self.node
     }
 
-    /// Original Markdown source covered by this node.
+    /// Best-effort original Markdown source covered by this node.
     ///
-    /// See [`ContainerHtml::source_text`].
+    /// See [`ContainerHtml::source_text`]; the result is a hint and may not
+    /// match the rendered content.
     #[cfg(feature = "sourcemap")]
     pub fn source_text(&self) -> Option<&'b str> {
         let document = self.context.document();

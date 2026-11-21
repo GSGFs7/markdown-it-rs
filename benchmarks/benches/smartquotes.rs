@@ -11,15 +11,12 @@ fn synthetic(count: usize, split: bool) -> Document {
     let root = document.root();
     if split {
         for _ in 0..count {
-            let text = document.create_node(markdown_it::document::Text {
-                content: "\"word\" ".into(),
-            });
+            let text = document.create_node(markdown_it::document::Text::new("\"word\" "));
             document.push_child(root, text);
         }
     } else {
-        let text = document.create_node(markdown_it::document::Text {
-            content: "\"word\" ".repeat(count),
-        });
+        let text =
+            document.create_node(markdown_it::document::Text::new("\"word\" ".repeat(count)));
         document.push_child(root, text);
     }
     document

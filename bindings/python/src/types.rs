@@ -31,7 +31,7 @@ impl From<&FrontMatter> for PyFrontMatter {
 
         Self {
             kind: kind.to_owned(),
-            raw: front_matter.raw.clone(),
+            raw: front_matter.raw().to_owned(),
             start_line: front_matter.start_line,
             end_line: front_matter.end_line,
         }

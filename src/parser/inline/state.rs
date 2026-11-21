@@ -148,6 +148,14 @@ impl<'a> InlineState<'a> {
     ) -> Vec<NodeId> {
         #[cfg(not(feature = "sourcemap"))]
         let _ = mapping;
+        #[cfg(feature = "sourcemap")]
+        let mapping = if mapping.first().is_some_and(|&(offset, _)| offset != 0)
+            || !mapping.is_sorted_by_key(|&(offset, _)| offset)
+        {
+            Vec::new()
+        } else {
+            mapping
+        };
         let mut state = Self {
             pos: 0,
             pos_max: src.len(),
@@ -424,16 +432,23 @@ impl<'a> InlineState<'a> {
         let Some((start, end)) = self.pending_text.take() else {
             return;
         };
-        let text = self.document.create_node(Text {
-            content: self.src[start..end].to_owned(),
-        });
+
+        let text = self
+            .document
+            .create_node(Text::new(self.src[start..end].to_owned()));
         #[cfg(feature = "sourcemap")]
-        let srcmap = self.get_map(start, end);
-        #[cfg(feature = "sourcemap")]
-        self.document.node_mut(text).set_srcmap(srcmap);
+        {
+            let srcmap = self.get_map(start, end);
+            self.document.node_mut(text).set_srcmap(srcmap);
+        }
         self.nodes.push(text);
     }
 
+    /// Map an inline source range to best-effort document byte offsets.
+    ///
+    /// Returns `None` if an endpoint cannot be mapped, arithmetic overflows,
+    /// or the mapped range is reversed. Callers can use `str::get` to check
+    /// document bounds and UTF-8 boundaries before slicing.
     #[cfg(feature = "sourcemap")]
     pub(crate) fn get_map(
         &self,
@@ -443,14 +458,14 @@ impl<'a> InlineState<'a> {
         let source_pos = |pos| {
             let line = match self.mapping.binary_search_by(|entry| entry.0.cmp(&pos)) {
                 Ok(index) => index,
-                Err(index) => index - 1,
+                Err(index) => index.checked_sub(1)?,
             };
-            self.mapping[line].1 + (pos - self.mapping[line].0)
+            let (dst, src) = *self.mapping.get(line)?;
+            src.checked_add(pos.checked_sub(dst)?)
         };
-        Some(crate::common::sourcemap::SourcePos::new(
-            source_pos(start),
-            source_pos(end),
-        ))
+        let start = source_pos(start)?;
+        let end = source_pos(end)?;
+        (start <= end).then(|| crate::common::sourcemap::SourcePos::new(start, end))
     }
 
     /// Whether a source-wide special scan has been abandoned.
@@ -631,7 +646,7 @@ impl<'a> InlineState<'a> {
                     content.drain(..start);
                 }
 
-                let text = self.document.create_node(Text { content });
+                let text = self.document.create_node(Text::new(content));
                 #[cfg(feature = "sourcemap")]
                 self.document.node_mut(text).set_srcmap(srcmap);
                 self.nodes.push(text);

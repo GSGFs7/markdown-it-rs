@@ -52,7 +52,26 @@ fn special_html_scan_hook(state: &InlineState<'_>, start: usize, end: usize) -> 
 
 #[derive(Debug)]
 pub struct HtmlInline {
-    pub content: String,
+    content: String,
+}
+
+impl HtmlInline {
+    /// Create a raw inline HTML payload.
+    pub fn new(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+        }
+    }
+
+    /// Borrow the raw inline HTML.
+    pub fn as_str(&self) -> &str {
+        &self.content
+    }
+
+    /// Replace the raw inline HTML.
+    pub fn set_content(&mut self, content: impl Into<String>) {
+        self.content = content.into();
+    }
 }
 
 struct HtmlInlineRenderer;
@@ -93,9 +112,7 @@ impl InlineRule for HtmlInlineScanner {
         let (source, document) = state.remaining_and_document();
 
         Some((
-            Some(document.create_node(HtmlInline {
-                content: source[..matched.consumed].to_owned(),
-            })),
+            Some(document.create_node(HtmlInline::new(source[..matched.consumed].to_owned()))),
             matched.consumed,
         ))
     }

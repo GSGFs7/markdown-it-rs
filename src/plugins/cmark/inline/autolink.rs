@@ -76,11 +76,11 @@ impl InlineRule for AutolinkScanner {
         #[cfg(feature = "sourcemap")]
         let start = state.pos;
 
-        let child = state.document.create_node(TextSpecial {
-            content: matched.label.clone(),
-            markup: matched.label,
-            info: "autolink",
-        });
+        let child = state.document.create_node(TextSpecial::new(
+            matched.label.clone(),
+            matched.label,
+            "autolink",
+        ));
 
         #[cfg(feature = "sourcemap")]
         {
@@ -257,7 +257,7 @@ mod tests {
                 found = true;
                 assert_eq!(node.srcmap().unwrap().get_byte_offsets(), (start, end + 1));
             } else if let Some(text) = node.cast::<crate::document::TextSpecial>() {
-                assert_eq!(text.content, "ab:é�x");
+                assert_eq!(text.content(), "ab:é�x");
                 assert_eq!(node.srcmap().unwrap().get_byte_offsets(), (start + 1, end));
             }
         }
@@ -285,7 +285,7 @@ mod tests {
                     Some(("autolink", node.srcmap()?.get_byte_offsets()))
                 } else if node
                     .cast::<TextSpecial>()
-                    .is_some_and(|text| text.info == "autolink")
+                    .is_some_and(|text| text.info() == "autolink")
                 {
                     Some(("label", node.srcmap()?.get_byte_offsets()))
                 } else {

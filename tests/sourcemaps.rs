@@ -517,3 +517,131 @@ fn imglink() {
         );
     });
 }
+
+#[test]
+#[cfg(feature = "linkify")]
+fn linkify_does_not_guess_subrange_maps_for_split_text() {
+    use markdown_it::MarkdownIt;
+    use markdown_it::document::Text;
+    use markdown_it::parser::core::{CoreRule, CoreState};
+    use markdown_it::parser::inline::InlineParserRule;
+    use markdown_it::plugins::extra::linkify::{self, Linkified, LinkifyRule};
+
+    struct RewriteText(&'static str);
+
+    impl CoreRule for RewriteText {
+        fn run(&self, state: &mut CoreState<'_>) {
+            let document = &mut *state.document;
+            let paragraph = document.children(document.root())[0];
+            let text = document.children(paragraph)[0];
+            assert_eq!(document.text(text), Some("see a@b.co"));
+            document
+                .value_mut::<Text>(text)
+                .unwrap()
+                .set_content(self.0);
+        }
+    }
+
+    for (prefix, replacement) in [("see ", "see c@d.co"), ("xxx ", "xxx c@d.co")] {
+        let mut md = MarkdownIt::new();
+        linkify::add(&mut md);
+        md.add_rule_instance(RewriteText(replacement))
+            .after::<InlineParserRule>()
+            .before::<LinkifyRule>();
+        // Email candidates stay in the Text node until the core linkify rule.
+        let doc = md.parse("see a@b.co");
+        let paragraph = doc.children(doc.root())[0];
+        let [text, link] = doc.children(paragraph) else {
+            panic!("expected a text node followed by a link");
+        };
+        assert_eq!(doc.text(*text), Some(prefix));
+        // Splitting the text invalidates its map, so no sub-range is claimed.
+        assert!(doc.node(*text).srcmap().is_none());
+        assert_eq!(doc.value::<Linkified>(*link).unwrap().url, "mailto:c@d.co");
+        assert!(doc.node(*link).srcmap().is_none());
+    }
+}
+
+#[test]
+fn tasklist_keeps_original_srcmap_after_removing_marker() {
+    use markdown_it::MarkdownIt;
+    use markdown_it::document::Text;
+    use markdown_it::parser::core::{CoreRule, CoreState};
+    use markdown_it::parser::inline::InlineParserRule;
+    use markdown_it::plugins::extra::tasklist::{self, TaskListMarker, TaskListRule};
+
+    #[derive(Default)]
+    struct InsertTaskMarker;
+
+    impl CoreRule for InsertTaskMarker {
+        fn run(&self, state: &mut CoreState<'_>) {
+            let document = &mut *state.document;
+            let list = document.children(document.root())[0];
+            let item = document.children(list)[0];
+            let text = document.children(item)[0];
+            // Both versions have the same byte length.
+            assert_eq!(document.text(text), Some("abc task"));
+            document
+                .value_mut::<Text>(text)
+                .unwrap()
+                .set_content("[x] task");
+        }
+    }
+
+    let mut md = MarkdownIt::new();
+    tasklist::add(&mut md);
+    md.add_rule::<InsertTaskMarker>()
+        .after::<InlineParserRule>()
+        .before::<TaskListRule>();
+    let doc = md.parse("- abc task");
+    let list = doc.children(doc.root())[0];
+    let item = doc.children(list)[0];
+    assert!(doc.node(doc.children(item)[0]).is::<TaskListMarker>());
+    let text = doc.children(item)[1];
+    assert_eq!(doc.text(text), Some("task"));
+    // Kept the parse-time map (2..10); it still covers the removed marker.
+    assert_eq!(doc.node(text).srcmap().unwrap().get_byte_offsets(), (2, 10));
+}
+
+#[test]
+fn sourcepos_skips_hints_that_are_not_inside_the_source() {
+    use markdown_it::MarkdownIt;
+    use markdown_it::common::sourcemap::SourcePos;
+
+    let md = MarkdownIt::new();
+    let mut doc = md.parse("hello");
+    let paragraph = doc.children(doc.root())[0];
+    let text = doc.children(paragraph)[0];
+
+    // Out-of-bounds and reversed hints are accepted by the raw setter; the
+    // rendering plugin must drop them instead of formatting invalid positions.
+    doc.node_mut(text).set_srcmap(Some(SourcePos::new(0, 99)));
+    doc.node_mut(paragraph)
+        .set_srcmap(Some(SourcePos::new(3, 1)));
+
+    let edits = markdown_it::plugins::sourcepos::edits(&doc);
+    edits.commit(&mut doc);
+
+    let has_sourcepos = |id| {
+        doc.node(id)
+            .attrs()
+            .iter()
+            .any(|(name, _)| name == "data-sourcepos")
+    };
+    assert!(!has_sourcepos(text));
+    assert!(!has_sourcepos(paragraph));
+    assert!(has_sourcepos(doc.root()));
+}
+
+#[test]
+fn sourcepos_formats_empty_table_cell_as_a_point() {
+    let mut md = markdown_it::MarkdownIt::new();
+    markdown_it::plugins::extra::tables::add(&mut md);
+    markdown_it::plugins::sourcepos::add(&mut md);
+
+    let html = md.render("| a | b |\n| - | - |\n| x |   |\n");
+    assert!(
+        html.contains("<td data-sourcepos=\"3:9-3:9\"></td>"),
+        "{html}"
+    );
+}

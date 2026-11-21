@@ -72,20 +72,13 @@ impl PyNode {
     }
 
     fn append_text(&self, py: Python<'_>, text: &str) -> PyResult<()> {
-        self.append(
-            py,
-            Text {
-                content: text.to_owned(),
-            },
-        )
+        self.append(py, Text::new(text.to_owned()))
     }
 
     fn append_html(&self, py: Python<'_>, html: &str) -> PyResult<()> {
         self.append(
             py,
-            markdown_it::plugins::html::html_inline::HtmlInline {
-                content: html.to_owned(),
-            },
+            markdown_it::plugins::html::html_inline::HtmlInline::new(html.to_owned()),
         )
     }
 

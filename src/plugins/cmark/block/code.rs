@@ -18,7 +18,26 @@ const CODE_INDENT: i32 = 4;
 
 #[derive(Debug)]
 pub struct CodeBlock {
-    pub content: String,
+    content: String,
+}
+
+impl CodeBlock {
+    /// Create an indented code block payload.
+    pub fn new(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+        }
+    }
+
+    /// Borrow the decoded code text.
+    pub fn as_str(&self) -> &str {
+        &self.content
+    }
+
+    /// Replace the decoded code text.
+    pub fn set_content(&mut self, content: impl Into<String>) {
+        self.content = content.into();
+    }
 }
 
 struct CodeBlockRenderer;
@@ -105,7 +124,7 @@ impl BlockRule for CodeScanner {
         );
         content += "\n";
 
-        let node = state.document.create_node(CodeBlock { content });
+        let node = state.document.create_node(CodeBlock::new(content));
 
         Some((Some(node), last - state.line))
     }

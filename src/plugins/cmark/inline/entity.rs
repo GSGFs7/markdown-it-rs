@@ -74,11 +74,7 @@ impl EntityScanner {
             EntityValue::Named(value) => value.to_owned(),
         };
         Some((
-            TextSpecial {
-                content,
-                markup: src[..matched.len].to_owned(),
-                info: "entity",
-            },
+            TextSpecial::new(content, src[..matched.len].to_owned(), "entity"),
             matched.len,
         ))
     }

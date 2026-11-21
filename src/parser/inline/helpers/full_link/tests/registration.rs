@@ -170,7 +170,7 @@ fn direct_prefix_uses_utf8_byte_offsets() {
                     .filter_map(|event| {
                         let node = event.node();
                         node.cast::<crate::document::Text>()
-                            .filter(|text| text.content == "雪")
+                            .filter(|text| text.as_str() == "雪")
                             .map(|_| node.srcmap().unwrap().get_byte_offsets())
                     })
                     .collect();

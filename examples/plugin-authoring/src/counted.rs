@@ -57,9 +57,7 @@ impl InlineRule for Counted {
         };
         state.on_finish(|s| record(s, 1));
         state.on_finish(|s| record(s, 2));
-        let node = state.document.create_node(Text {
-            content: count.to_string(),
-        });
+        let node = state.document.create_node(Text::new(count.to_string()));
         Some((Some(node), len))
     }
 }

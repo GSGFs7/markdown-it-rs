@@ -9,9 +9,7 @@ fn arena_construction_preserves_tree_and_payloads() {
     let mut document = Document::new("hello", Root::new("hello"));
     let root = document.root();
     let paragraph = document.create_node(Paragraph);
-    let text = document.create_node(Text {
-        content: "hello".to_owned(),
-    });
+    let text = document.create_node(Text::new("hello"));
     document.push_child(paragraph, text);
     document.push_child(root, paragraph);
     let root_id = document.root();
@@ -23,7 +21,7 @@ fn arena_construction_preserves_tree_and_payloads() {
     assert_eq!(document.parent(root_id), None);
     assert_eq!(document.parent(text_id), Some(paragraph_id));
     assert_eq!(
-        document.node(text_id).cast::<Text>().unwrap().content,
+        document.node(text_id).cast::<Text>().unwrap().as_str(),
         "hello"
     );
 }
@@ -33,13 +31,9 @@ fn structural_events_are_ordered_and_balanced() {
     let mut document = Document::new("hello", Root::new("hello"));
     let root = document.root();
     let paragraph = document.create_node(Paragraph);
-    let text = document.create_node(Text {
-        content: "first".to_owned(),
-    });
+    let text = document.create_node(Text::new("first"));
     document.push_child(paragraph, text);
-    let text = document.create_node(Text {
-        content: "second".to_owned(),
-    });
+    let text = document.create_node(Text::new("second"));
     document.push_child(paragraph, text);
     document.push_child(root, paragraph);
     let root = document.root();
@@ -72,9 +66,7 @@ fn structural_events_can_start_at_a_subtree_or_leaf() {
     let mut document = Document::new("hello", Root::new("hello"));
     let root = document.root();
     let paragraph = document.create_node(Paragraph);
-    let text = document.create_node(Text {
-        content: "hello".to_owned(),
-    });
+    let text = document.create_node(Text::new("hello"));
     document.push_child(paragraph, text);
     document.push_child(root, paragraph);
     let paragraph = document.children(document.root())[0];
@@ -99,18 +91,14 @@ fn invalid_node_access_panics_in_all_builds() {
     let mut document = Document::new("", Root::new(""));
     let root = document.root();
     for content in ["old", "kept"] {
-        let text = document.create_node(Text {
-            content: content.into(),
-        });
+        let text = document.create_node(Text::new(content));
         document.push_child(root, text);
     }
     let old = document.children(document.root())[0];
     let kept = document.children(document.root())[1];
 
     document.remove_node(old);
-    let new = document.create_node(Text {
-        content: "new".into(),
-    });
+    let new = document.create_node(Text::new("new"));
     document.insert_before(kept, new);
     let new = document.children(document.root())[0];
     assert_eq!(old.slot(), new.slot());
@@ -160,7 +148,7 @@ fn invalid_node_access_panics_in_all_builds() {
             .is_err()
         );
     }
-    assert_eq!(document.node(new).cast::<Text>().unwrap().content, "new");
+    assert_eq!(document.node(new).cast::<Text>().unwrap().as_str(), "new");
 }
 
 #[test]
@@ -232,9 +220,7 @@ fn node_data_is_preserved_when_attaching_children() {
         .node_mut(root)
         .ext_mut()
         .insert(Metadata("metadata".into()));
-    let child = document.create_node(Text {
-        content: "abc".into(),
-    });
+    let child = document.create_node(Text::new("abc"));
     document.push_child(root, child);
 
     fn assert_document(document: &Document) {
@@ -248,7 +234,7 @@ fn node_data_is_preserved_when_attaching_children() {
         assert_eq!(root.children().len(), 1);
         let child = document.node(root.children()[0]);
         assert_eq!(child.parent(), Some(root.id()));
-        assert_eq!(child.cast::<Text>().unwrap().content, "abc");
+        assert_eq!(child.cast::<Text>().unwrap().as_str(), "abc");
     }
 
     assert_document(&document);
@@ -259,9 +245,7 @@ fn arena_builder_moves_ids_and_metadata_without_recreating_nodes() {
     let mut document = Document::new("hello", Root::new("hello"));
     let left = document.create_node(Paragraph);
     let right = document.create_node(Paragraph);
-    let text = document.create_node(Text {
-        content: "hello".into(),
-    });
+    let text = document.create_node(Text::new("hello"));
     #[cfg(feature = "sourcemap")]
     let map = crate::common::sourcemap::SourcePos::new(0, 5);
     #[cfg(feature = "sourcemap")]
@@ -315,9 +299,7 @@ fn walk_visits_root_and_descendants_in_preorder() {
     let root = document.root();
     let first = document.create_node(Paragraph);
     let second = document.create_node(Paragraph);
-    let nested = document.create_node(Text {
-        content: "nested".to_owned(),
-    });
+    let nested = document.create_node(Text::new("nested"));
     document.push_child(second, nested);
     document.push_child(root, first);
     document.push_child(root, second);
@@ -332,15 +314,9 @@ fn walk_visits_root_and_descendants_in_preorder() {
 fn wrap_children_preserves_order_and_updates_parents() {
     let mut document = Document::new("hello", Root::new("hello"));
     let root = document.root();
-    let first = document.create_node(Text {
-        content: "first".to_owned(),
-    });
-    let second = document.create_node(Text {
-        content: "second".to_owned(),
-    });
-    let third = document.create_node(Text {
-        content: "third".to_owned(),
-    });
+    let first = document.create_node(Text::new("first"));
+    let second = document.create_node(Text::new("second"));
+    let third = document.create_node(Text::new("third"));
     document.push_child(root, first);
     document.push_child(root, second);
     document.push_child(root, third);

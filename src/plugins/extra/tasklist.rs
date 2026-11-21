@@ -106,13 +106,7 @@ pub fn process(document: &mut Document) {
                 .materialize_text(plan.text)
                 .expect("task marker text must remain a Text node")
                 .replace_range(0..plan.marker_len, "");
-            #[cfg(feature = "sourcemap")]
-            if let Some(source_map) = document.node(plan.text).srcmap() {
-                let (start, end) = source_map.get_byte_offsets();
-                document.node_mut(plan.text).set_srcmap(Some(
-                    crate::common::sourcemap::SourcePos::new(start + plan.marker_len, end),
-                ));
-            }
+            // Keep the parse-time srcmap even though it still covers the removed marker.
         }
 
         let marker = document.create_node(TaskListMarker {
@@ -148,7 +142,7 @@ fn task_item_plan(document: &Document, list: NodeId, item: NodeId) -> Option<Tas
     };
     let text_node = document.node(text);
     let text_value = text_node.cast::<Text>()?;
-    let (checked, marker_len) = TaskListScanner::marker_len(&text_value.content)?;
+    let (checked, marker_len) = TaskListScanner::marker_len(text_value.as_str())?;
 
     Some(TaskItemPlan {
         list,
@@ -157,7 +151,7 @@ fn task_item_plan(document: &Document, list: NodeId, item: NodeId) -> Option<Tas
         marker_target,
         checked,
         marker_len,
-        text_len: text_value.content.len(),
+        text_len: text_value.as_str().len(),
     })
 }
 
@@ -412,7 +406,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "sourcemap")]
-    fn direct_processing_preserves_text_identity_and_advances_its_source_map() {
+    fn direct_processing_preserves_text_identity_and_original_source_map() {
         let md = MarkdownIt::new();
         let mut document = md.parse("- [x] 雪🦀");
         let list = document.children(document.root())[0];
@@ -426,11 +420,12 @@ mod tests {
 
         process(&mut document);
 
-        assert_eq!(document.value::<Text>(text).unwrap().content, "雪🦀");
+        assert_eq!(document.value::<Text>(text).unwrap().as_str(), "雪🦀");
         assert_eq!(document.node(text).attrs()[0].1, "yes");
+        // The map is left as parsed; it is a hint and still covers the marker.
         let map = document.node(text).srcmap().unwrap().get_byte_offsets();
-        assert_eq!(map, (start + 4, end));
-        assert_eq!(&document.source()[map.0..map.1], "雪🦀");
+        assert_eq!(map, (start, end));
+        assert_eq!(&document.source()[map.0..map.1], "[x] 雪🦀");
         let marker = document.children(item)[0];
         assert!(document.node(marker).is::<TaskListMarker>());
         assert_eq!(document.parent(marker), Some(item));

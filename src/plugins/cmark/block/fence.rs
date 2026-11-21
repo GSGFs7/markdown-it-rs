@@ -17,11 +17,44 @@ use crate::render::{
 
 #[derive(Debug)]
 pub struct CodeFence {
+    /// Info string after the opening marker.
     pub info: String,
+    /// Fence marker character.
     pub marker: char,
+    /// Number of marker characters.
     pub marker_len: usize,
-    pub content: String,
+    content: String,
+    /// Class prefix prepended to the language name.
     pub lang_prefix: String,
+}
+
+impl CodeFence {
+    /// Create a fenced code block payload.
+    pub fn new(
+        info: impl Into<String>,
+        marker: char,
+        marker_len: usize,
+        content: impl Into<String>,
+        lang_prefix: impl Into<String>,
+    ) -> Self {
+        Self {
+            info: info.into(),
+            marker,
+            marker_len,
+            content: content.into(),
+            lang_prefix: lang_prefix.into(),
+        }
+    }
+
+    /// Borrow the decoded code text.
+    pub fn as_str(&self) -> &str {
+        &self.content
+    }
+
+    /// Replace the decoded code text.
+    pub fn set_content(&mut self, content: impl Into<String>) {
+        self.content = content.into();
+    }
 }
 
 struct CodeFenceRenderer;
@@ -217,13 +250,10 @@ impl BlockRule for FenceScanner {
             .cloned()
             .unwrap_or_default()
             .0;
-        let node = state.document.create_node(CodeFence {
-            info: params,
-            marker,
-            marker_len: len,
-            content,
-            lang_prefix,
-        });
+        let node =
+            state
+                .document
+                .create_node(CodeFence::new(params, marker, len, content, lang_prefix));
         Some((
             Some(node),
             next_line - state.line + if have_end_marker { 1 } else { 0 },

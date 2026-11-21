@@ -17,9 +17,7 @@ fn document_with_attrs(md: &MarkdownIt, attrs: &[HtmlAttribute]) -> Document {
         .node_mut(paragraph)
         .attrs_mut()
         .extend_from_slice(attrs);
-    let text = document.create_node(markdown_it::document::Text {
-        content: "text".into(),
-    });
+    let text = document.create_node(markdown_it::document::Text::new("text"));
     document.push_child(paragraph, text);
     document.push_child(document.root(), paragraph);
     md.render_document(&document, "html");

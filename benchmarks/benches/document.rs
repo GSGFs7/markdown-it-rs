@@ -34,7 +34,7 @@ fn text_projection<'a>(document: &'a Document, node: &'a Node) -> TextProjection
     if let Some(text) = document.text(node.id()) {
         TextProjectionKind::Writable(text)
     } else if let Some(html) = node.cast::<HtmlInline>() {
-        TextProjectionKind::ReadOnly(&html.content)
+        TextProjectionKind::ReadOnly(html.as_str())
     } else if node.is::<Paragraph>() || node.is::<Hardbreak>() || node.is::<Softbreak>() {
         TextProjectionKind::Boundary(TextBoundary::Space)
     } else {
@@ -85,9 +85,7 @@ fn insert_before_top_level_nodes(document: &mut Document) {
     let old = document.children(root).to_vec();
     let mut children = Vec::with_capacity(old.len() * 2);
     for child in old {
-        let inserted = document.create_node(Text {
-            content: "generated".to_owned(),
-        });
+        let inserted = document.create_node(Text::new("generated"));
         children.extend([inserted, child]);
     }
     document.replace_children(root, children);
@@ -97,11 +95,7 @@ fn replace_top_level_subtrees(document: &mut Document) {
     let root = document.root();
     let count = document.children(root).len();
     let children = (0..count)
-        .map(|_| {
-            document.create_node(Text {
-                content: "generated".to_owned(),
-            })
-        })
+        .map(|_| document.create_node(Text::new("generated")))
         .collect();
     document.replace_children(root, children);
 }
@@ -277,7 +271,7 @@ fn benchmark(c: &mut Criterion) {
         for (pair, original) in pairs.iter().zip(original_children) {
             assert_eq!(pair[1], original);
             assert_eq!(
-                edited.node(pair[0]).cast::<Text>().unwrap().content,
+                edited.node(pair[0]).cast::<Text>().unwrap().as_str(),
                 "generated"
             );
         }
@@ -305,7 +299,7 @@ fn benchmark(c: &mut Criterion) {
             .all(|&node| edited.get_node(node).is_none()));
         for &node in edited.children(edited.root()) {
             assert_eq!(
-                edited.node(node).cast::<Text>().unwrap().content,
+                edited.node(node).cast::<Text>().unwrap().as_str(),
                 "generated"
             );
         }

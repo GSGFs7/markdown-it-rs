@@ -28,7 +28,7 @@ fn smartquotes_like<'a>(document: &'a Document, node: &'a Node) -> TextProjectio
     if let Some(text) = document.text(node.id()) {
         TextProjectionKind::Writable(text)
     } else if let Some(html) = node.cast::<HtmlInline>() {
-        TextProjectionKind::ReadOnly(&html.content)
+        TextProjectionKind::ReadOnly(html.as_str())
     } else if node.is::<Paragraph>() || node.is::<Hardbreak>() || node.is::<Softbreak>() {
         TextProjectionKind::Boundary(TextBoundary::Space)
     } else {
@@ -45,9 +45,7 @@ fn document() -> Document {
     let mut document = Document::new("a雪<q>", Root::new("a雪<q>"));
     let paragraph = document.create_node(Paragraph);
     document.push_child(document.root(), paragraph);
-    let text = document.create_node(Text {
-        content: "a雪".to_owned(),
-    });
+    let text = document.create_node(Text::new("a雪"));
     document.push_child(paragraph, text);
     let read_only = document.create_node(ReadOnlyText("<q>".to_owned()));
     document.push_child(paragraph, read_only);

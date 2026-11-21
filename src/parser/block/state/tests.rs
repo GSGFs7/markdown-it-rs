@@ -174,3 +174,19 @@ fn run_contract_allows_rewind_with_progress_and_consume_only() {
     assert_eq!(state.line, 2);
     assert!(state.document.children(state.node).is_empty());
 }
+
+#[cfg(feature = "sourcemap")]
+#[test]
+fn get_map_returns_none_instead_of_panicking_on_bad_lines() {
+    let md = MarkdownIt::empty();
+    let source = "a\nbbb\nc";
+    let mut document = Document::new(source, crate::document::Root::new(source));
+    let rules: [super::super::BlockRuleFns; 0] = [];
+    let state = BlockState::new(source, &md, &rules, &mut document);
+
+    assert_eq!(state.get_map(0, 0).unwrap().get_byte_offsets(), (0, 1));
+    assert_eq!(state.get_map(1, 2).unwrap().get_byte_offsets(), (2, 7));
+    assert!(state.get_map(2, 1).is_none());
+    assert!(state.get_map(0, 99).is_none());
+    assert!(state.get_map(99, 99).is_none());
+}

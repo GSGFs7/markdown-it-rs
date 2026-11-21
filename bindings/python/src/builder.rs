@@ -92,6 +92,6 @@ impl markdown_it::render::NodeRenderer<markdown_it::plugins::html::html_inline::
         _: &mut markdown_it::render::RenderContext<'_>,
         output: &mut markdown_it::render::Writer,
     ) {
-        output.write_str(&value.content);
+        output.write_str(value.as_str());
     }
 }

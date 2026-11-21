@@ -70,12 +70,9 @@ fn escaped_pipe_does_not_escape_the_next_cell_separator() {
             .filter_map(|event| {
                 let node = event.node();
                 let text = node.cast::<markdown_it::document::Text>()?;
-                text.content.starts_with("`x").then(|| {
-                    (
-                        text.content.as_str(),
-                        node.srcmap().unwrap().get_byte_offsets(),
-                    )
-                })
+                text.as_str()
+                    .starts_with("`x")
+                    .then(|| (text.as_str(), node.srcmap().unwrap().get_byte_offsets()))
             })
             .collect();
         let row_start = source.rfind('\n').unwrap() + 1;

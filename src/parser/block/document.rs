@@ -30,7 +30,7 @@ fn parse_text_fallback(source: &str, document: &mut Document) {
 
         let mut content = source[line.first_nonspace..line.line_end].to_owned();
         content.push('\n');
-        let text = document.create_node(Text { content });
+        let text = document.create_node(Text::new(content));
         #[cfg(feature = "sourcemap")]
         {
             let source_end = (line.line_end + 1).min(source.len());

@@ -10,7 +10,7 @@ struct LegacyHtmlTextRenderer;
 
 impl NodeRenderer<Text> for LegacyHtmlTextRenderer {
     fn render(&self, _: &Node, value: &Text, _: &mut RenderContext<'_>, output: &mut Writer) {
-        output.write_str(&markdown_it::common::utils::escape_html(&value.content));
+        output.write_str(&markdown_it::common::utils::escape_html(value.as_str()));
     }
 }
 
@@ -25,12 +25,12 @@ fn benchmark(c: &mut Criterion) {
         ("dense-escaping", "<&>\""),
     ] {
         let source = pattern.repeat((64_usize * 1024).div_ceil(pattern.len()));
-        let document = Document::new("", Text { content: source });
+        let document = Document::new("", Text::new(source));
         let text = &document
             .node(document.root())
             .cast::<Text>()
             .unwrap()
-            .content;
+            .as_str();
         // Verify the full output independently before timing document rendering.
         let expected = markdown_it::common::utils::escape_html(text);
         assert_eq!(md.render_document(&document, "html"), expected);
@@ -71,7 +71,7 @@ fn benchmark_sizes(c: &mut Criterion) {
             };
             assert_eq!(source.len(), len);
             let expected = markdown_it::common::utils::escape_html(&source).into_owned();
-            let document = Document::new("", Text { content: source });
+            let document = Document::new("", Text::new(source));
             assert_eq!(md.render_document(&document, "html"), expected);
             assert_eq!(legacy.render_document(&document, "html"), expected);
             group.throughput(Throughput::Bytes(len as u64));

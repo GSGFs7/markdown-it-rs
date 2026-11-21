@@ -43,7 +43,7 @@ impl Document {
     ///
     /// let mut document = MarkdownIt::new().parse("hello");
     /// let target = document.children(document.root())[0];
-    /// let node = document.create_node(Text { content: "prefix".into() });
+    /// let node = document.create_node(Text::new("prefix"));
     /// document.insert_before(target, node);
     /// assert_eq!(document.children(document.root()), &[node, target]);
     /// ```
@@ -115,7 +115,7 @@ impl Document {
     /// let middle = document.children(paragraph)[1];
     /// let last = document.children(paragraph)[2];
     ///
-    /// let wrapper = document.create_node(Text { content: String::new() });
+    /// let wrapper = document.create_node(Text::new(""));
     /// document.wrap_children(paragraph, 1..3, wrapper);
     ///
     /// assert_eq!(document.children(paragraph), &[first, wrapper]);
@@ -165,7 +165,7 @@ impl Document {
     /// let mut document = MarkdownIt::new().parse("first\n\nsecond");
     /// let root = document.root();
     /// let kept = document.children(root)[1];
-    /// let added = document.create_node(Text { content: "prefix".into() });
+    /// let added = document.create_node(Text::new("prefix"));
     /// document.replace_children(root, vec![added, kept]);
     /// assert_eq!(document.children(root), &[added, kept]);
     /// document.replace_children(root, Vec::new());

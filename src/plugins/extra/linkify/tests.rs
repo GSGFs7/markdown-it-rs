@@ -43,7 +43,7 @@ fn warmed_parser_refreshes_linkify_postpass_configuration() {
 
 #[test]
 #[cfg(feature = "sourcemap")]
-fn inline_and_postpass_links_preserve_source_ranges() {
+fn inline_links_keep_source_ranges_and_postpass_links_do_not() {
     let mut md = crate::MarkdownIt::new();
     super::add(&mut md);
     for source in [
@@ -59,25 +59,24 @@ fn inline_and_postpass_links_preserve_source_ranges() {
             {
                 continue;
             }
-            let map = node.srcmap().unwrap();
-            let (start, end) = map.get_byte_offsets();
-            ranges.push(&source[start..end]);
             let children = document.children(node.id());
             assert_eq!(children.len(), 1);
             let inner = document.node(children[0]);
+            let Some(map) = node.srcmap() else {
+                // Postprocess-split links (emails, protocol-relative) carry no srcmap.
+                assert!(inner.srcmap().is_none());
+                continue;
+            };
+            let (start, end) = map.get_byte_offsets();
+            ranges.push(&source[start..end]);
             assert_eq!(inner.srcmap().unwrap().get_byte_offsets(), (start, end));
             assert_eq!(
-                inner.cast::<crate::document::TextSpecial>().unwrap().info,
+                inner.cast::<crate::document::TextSpecial>().unwrap().info(),
                 "autolink"
             );
         }
-        // Explicit schemes are built inline; emails and // URLs are replaced
-        // after emphasis. Container prefixes must not shift either path's map.
-        assert_eq!(
-            ranges,
-            ["https://example.org", "a@b.co", "//example.net"],
-            "{source}"
-        );
+        // Only explicit schemes are built inline; postprocess links carry no srcmap.
+        assert_eq!(ranges, ["https://example.org"], "{source}");
     }
 }
 
@@ -197,10 +196,13 @@ fn run(input: &str, output: &str) {
     markdown_it::plugins::extra::linkify::add(md);
     let node = md.parse(&(input.to_owned() + "\n"));
 
-    // make sure we have sourcemaps for everything
+    // Present srcmaps must be valid slices; postprocess-split nodes carry none.
     #[cfg(feature = "sourcemap")]
     for event in node.events(node.root()) {
-        assert!(event.node().srcmap().is_some());
+        if let Some(map) = event.node().srcmap() {
+            let (start, end) = map.get_byte_offsets();
+            assert!(node.source().get(start..end).is_some());
+        }
     }
 
     let result = md.render_document(&node, "html");
@@ -491,10 +493,9 @@ fn protocol_relative_links_without_emphasis_plugin() {
         assert_eq!(md.render_document(&document, "html"), output);
         #[cfg(feature = "sourcemap")]
         for event in document.events(document.root()) {
-            let node = event.node();
-            if let Some(link) = node.cast::<super::Linkified>() {
-                let (start, end) = node.srcmap().unwrap().get_byte_offsets();
-                assert_eq!(&input[start..end], link.url);
+            if event.node().is::<super::Linkified>() {
+                // Protocol-relative links are split in postprocess and carry no srcmap.
+                assert!(event.node().srcmap().is_none());
             }
         }
     }

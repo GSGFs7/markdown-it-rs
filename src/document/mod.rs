@@ -40,7 +40,7 @@ impl Document {
     /// use markdown_it::document::{Document, Root, Text};
     ///
     /// let mut document = Document::new("hello", Root::new("hello"));
-    /// let text = document.create_node(Text { content: "hello".into() });
+    /// let text = document.create_node(Text::new("hello"));
     /// document.push_child(document.root(), text);
     /// assert_eq!(document.parent(text), Some(document.root()));
     /// ```
@@ -60,6 +60,9 @@ impl Document {
     }
 
     /// Allocate a detached node. Attach it with `push_child` before exposing the document.
+    ///
+    /// The returned ID belongs to this document and becomes stale if the node
+    /// is removed, discarded, or replaced.
     pub fn create_node<T: NodeValue>(&mut self, value: T) -> NodeId {
         self.arena.insert_with(|id| Node {
             id,
@@ -84,13 +87,14 @@ impl Document {
         self.arena.len() == 0
     }
 
-    /// Return a node if its slot and generation are still valid.
-    /// The ID must originate from this document.
+    /// Return a node if its slot and generation are still valid in this document.
+    ///
+    /// IDs are document-local; see [`NodeId`].
     pub fn get_node(&self, id: NodeId) -> Option<&Node> {
         self.arena.get(id)
     }
 
-    /// Access a node whose ID must be valid in this document.
+    /// Access a node by its [`NodeId`] in this document.
     ///
     /// # Panics
     /// Panics if the slot is unknown or the generation is stale.
@@ -102,7 +106,7 @@ impl Document {
         }
     }
 
-    /// Mutably access a node whose ID must be valid in this document.
+    /// Mutably access a node by its [`NodeId`] in this document.
     ///
     /// # Panics
     /// Panics if the slot is unknown or the generation is stale.

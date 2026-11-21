@@ -175,22 +175,15 @@ fn edits_with<
         let text = document.node(node).cast::<TextSpecial>().unwrap();
         replacements.sort_unstable_by_key(|&(offset, _)| offset);
 
-        let mut content = String::with_capacity(text.content.len());
+        let mut content = String::with_capacity(text.content().len());
         let mut end = 0;
         for (offset, replacement) in replacements {
-            content.push_str(&text.content[end..offset]);
+            content.push_str(&text.content()[end..offset]);
             content.push(replacement);
             end = offset + 1;
         }
-        content.push_str(&text.content[end..]);
-        edits.replace_value(
-            node,
-            TextSpecial {
-                content,
-                markup: text.markup.clone(),
-                info: text.info,
-            },
-        );
+        content.push_str(&text.content()[end..]);
+        edits.replace_value(node, TextSpecial::new(content, text.markup(), text.info()));
     }
     edits
 }
@@ -458,16 +451,16 @@ fn smartquotes_projection<'a>(document: &'a Document, node: &'a Node) -> TextPro
         // normal text, editable
         TextProjectionKind::Writable(text)
     } else if let Some(text) = document.value::<TextSpecial>(node.id()) {
-        if text.info == "autolink" {
+        if text.info() == "autolink" {
             // JS smartquotes processes automatic link labels as normal text.
-            TextProjectionKind::Writable(&text.content)
+            TextProjectionKind::Writable(text.content())
         } else {
             // Escapes and entities provide context but remain literal.
-            TextProjectionKind::ReadOnly(&text.content)
+            TextProjectionKind::ReadOnly(text.content())
         }
     } else if let Some(html) = document.value::<HtmlInline>(node.id()) {
         // HTML, not editable (protect quotes for <a href="...">)
-        TextProjectionKind::ReadOnly(&html.content)
+        TextProjectionKind::ReadOnly(html.as_str())
     } else if node.is::<Paragraph>()
         || node.is::<ATXHeading>()
         || node.is::<SetextHeader>()

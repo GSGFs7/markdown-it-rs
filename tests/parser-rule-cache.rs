@@ -21,9 +21,9 @@ impl<const MARKER: char, const SECOND: bool> InlineRule for Replace<MARKER, SECO
         if ch != '%' && ch != '雪' {
             return None;
         }
-        let node = state.document.create_node(Text {
-            content: if SECOND { "second" } else { "first" }.into(),
-        });
+        let node = state
+            .document
+            .create_node(Text::new(if SECOND { "second" } else { "first" }));
         Some((Some(node), ch.len_utf8()))
     }
 }

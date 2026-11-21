@@ -1,4 +1,9 @@
 /// Stable handle to a node stored in a [`Document`](super::Document).
+///
+/// IDs are document-local (slot + generation only): using an ID with another document
+/// is a logic error that may panic or silently match an unrelated node. Removing,
+/// discarding, or replacing a node invalidates its ID and its entire subtree.
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId {
     pub(super) slot: u32,

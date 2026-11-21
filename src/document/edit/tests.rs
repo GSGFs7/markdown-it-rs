@@ -7,16 +7,14 @@ use crate::plugins::cmark::block::paragraph::Paragraph;
 fn document(texts: &[&str]) -> Document {
     let mut document = Document::new(texts.join(""), Root::new(texts.join("")));
     for content in texts {
-        let text = document.create_node(Text {
-            content: (*content).to_owned(),
-        });
+        let text = document.create_node(Text::new((*content).to_owned()));
         document.push_child(document.root(), text);
     }
     document
 }
 
 fn content(document: &Document, node: NodeId) -> &str {
-    &document.node(node).cast::<Text>().unwrap().content
+    document.node(node).cast::<Text>().unwrap().as_str()
 }
 
 #[cfg(debug_assertions)]
@@ -25,9 +23,7 @@ fn branched_document() -> Document {
     for content in ["a", "b"] {
         let paragraph = document.create_node(Paragraph);
         document.push_child(document.root(), paragraph);
-        let text = document.create_node(Text {
-            content: content.to_owned(),
-        });
+        let text = document.create_node(Text::new(content.to_owned()));
         document.push_child(paragraph, text);
     }
     document
@@ -49,19 +45,12 @@ fn payload_replacement_preserves_identity_children_and_metadata() {
         .attrs
         .push(("id".into(), "keep".into()));
     document.node_mut(paragraph).data.ext.insert(Marker(42));
-    let text = document.create_node(Text {
-        content: "abc".into(),
-    });
+    let text = document.create_node(Text::new("abc"));
     document.push_child(paragraph, text);
     document.push_child(document.root(), paragraph);
     let child = document.children(paragraph)[0];
     let mut batch = EditBatch::new();
-    batch.replace_value(
-        paragraph,
-        Text {
-            content: "replacement".into(),
-        },
-    );
+    batch.replace_value(paragraph, Text::new("replacement"));
     batch.set_attribute(paragraph, "title", "new");
     assert_eq!(batch.len(), 2);
     batch.commit(&mut document);
@@ -147,9 +136,7 @@ fn empty_batch_is_a_no_op() {
 #[test]
 fn sets_removes_and_normalizes_attributes() {
     let mut document = Document::new("text", Root::new("text"));
-    let text = document.create_node(Text {
-        content: "text".to_owned(),
-    });
+    let text = document.create_node(Text::new("text"));
     document.node_mut(text).data.attrs = vec![
         ("class".to_owned(), "old".to_owned()),
         ("id".to_owned(), "remove-me".to_owned()),

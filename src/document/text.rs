@@ -5,10 +5,46 @@ use std::str::CharIndices;
 
 use crate::document::{Document, Node, NodeId};
 
-#[derive(Debug)]
 /// Plain text AST node.
+///
+/// ```rust
+/// use markdown_it::document::{Document, Root, Text};
+///
+/// let mut document = Document::new("", Root::new(""));
+/// let id = document.create_node(Text::new("hello"));
+/// assert_eq!(document.value::<Text>(id).unwrap().as_str(), "hello");
+///
+/// document.value_mut::<Text>(id).unwrap().set_content("world");
+/// assert_eq!(document.text(id), Some("world"));
+/// ```
+#[derive(Debug)]
 pub struct Text {
-    pub content: String,
+    content: String,
+}
+
+impl Text {
+    /// Create a text payload that owns `content`.
+    #[inline]
+    pub fn new(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+        }
+    }
+
+    /// Borrow the decoded UTF-8 content without allocating.
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.content
+    }
+
+    /// Replace the content while preserving source map, attributes, and extensions.
+    ///
+    /// Prefer [`EditBatch::replace_text`](crate::document::edit::EditBatch::replace_text)
+    /// for byte-range edits collected during traversal.
+    #[inline]
+    pub fn set_content(&mut self, content: impl Into<String>) {
+        self.content = content.into();
+    }
 }
 
 impl Document {
@@ -22,7 +58,10 @@ impl Document {
         self.value::<Text>(id).map(|text| text.content.as_str())
     }
 
-    /// Obtain owned, writable content for a built-in [`Text`] node.
+    /// Obtain mutable owned content for a built-in [`Text`] node (may allocate).
+    ///
+    /// Prefer [`Document::text`] for reads and [`Text::set_content`] or
+    /// [`EditBatch`](crate::document::edit::EditBatch) for ordinary edits. Leaves `srcmap` unchanged.
     ///
     /// # Panics
     /// Panics if the ID is invalid or stale. It must originate from this document.
@@ -33,12 +72,57 @@ impl Document {
     }
 }
 
-#[derive(Debug)]
 /// Escaped text AST node (backslash escapes and entities).
+///
+/// ```rust
+/// use markdown_it::document::TextSpecial;
+///
+/// let amp = TextSpecial::new("&", "&amp;", "entity");
+/// assert_eq!((amp.content(), amp.markup(), amp.info()), ("&", "&amp;", "entity"));
+/// ```
+#[derive(Debug)]
 pub struct TextSpecial {
-    pub content: String,
-    pub markup: String,
-    pub info: &'static str,
+    content: String,
+    markup: String,
+    info: &'static str,
+}
+
+impl TextSpecial {
+    /// Create an escaped text payload from decoded `content`, original `markup`, and escape `info`.
+    #[inline]
+    pub fn new(content: impl Into<String>, markup: impl Into<String>, info: &'static str) -> Self {
+        Self {
+            content: content.into(),
+            markup: markup.into(),
+            info,
+        }
+    }
+
+    /// Borrow the decoded content. This never allocates.
+    #[inline]
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// Borrow the original markup that produced this node.
+    #[inline]
+    pub fn markup(&self) -> &str {
+        &self.markup
+    }
+
+    /// The kind of escape that produced this node.
+    #[inline]
+    pub fn info(&self) -> &'static str {
+        self.info
+    }
+
+    /// Replace the decoded content, keeping markup and info.
+    ///
+    /// The node's source map, attributes, and extensions are left unchanged.
+    #[inline]
+    pub fn set_content(&mut self, content: impl Into<String>) {
+        self.content = content.into();
+    }
 }
 
 /// A semantic boundary between projected text regions.

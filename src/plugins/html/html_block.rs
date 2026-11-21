@@ -14,7 +14,26 @@ use crate::render::{NodeRenderer, RenderContext};
 
 #[derive(Debug)]
 pub struct HtmlBlock {
-    pub content: String,
+    content: String,
+}
+
+impl HtmlBlock {
+    /// Create a raw HTML block payload.
+    pub fn new(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+        }
+    }
+
+    /// Borrow the raw HTML.
+    pub fn as_str(&self) -> &str {
+        &self.content
+    }
+
+    /// Replace the raw HTML.
+    pub fn set_content(&mut self, content: impl Into<String>) {
+        self.content = content.into();
+    }
 }
 
 struct HtmlBlockRenderer;
@@ -199,7 +218,7 @@ impl BlockRule for HtmlBlockScanner {
         let (content, _) = state.get_lines(start_line, next_line, state.blk_indent, keep_last_lf);
         // The block tokenizer assigns the source map for the consumed lines.
         Some((
-            Some(state.document.create_node(HtmlBlock { content })),
+            Some(state.document.create_node(HtmlBlock::new(content))),
             next_line - start_line,
         ))
     }

@@ -103,12 +103,13 @@ impl EditBatch {
             };
 
             let mut previous: Option<&ReplaceText> = None;
-            let mut final_len = text.content.len();
+            let text = text.as_str();
+            let mut final_len = text.len();
             for edit in edits {
                 if edit.range.start > edit.range.end
-                    || edit.range.end > text.content.len()
-                    || !text.content.is_char_boundary(edit.range.start)
-                    || !text.content.is_char_boundary(edit.range.end)
+                    || edit.range.end > text.len()
+                    || !text.is_char_boundary(edit.range.start)
+                    || !text.is_char_boundary(edit.range.end)
                 {
                     return Err(ValidationError::InvalidTextRange {
                         node: node_id,

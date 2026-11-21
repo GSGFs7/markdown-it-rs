@@ -96,9 +96,9 @@ impl PythonHeadingAnchors {
                     }
                     let node = event.node();
                     if let Some(text) = node.cast::<markdown_it::document::Text>() {
-                        Some(text.content.clone())
+                        Some(text.as_str().to_owned())
                     } else if let Some(text) = node.cast::<markdown_it::document::TextSpecial>() {
-                        Some(text.content.clone())
+                        Some(text.content().to_owned())
                     } else if node.is::<markdown_it::plugins::cmark::inline::newline::Softbreak>() {
                         Some("\n".into())
                     } else {

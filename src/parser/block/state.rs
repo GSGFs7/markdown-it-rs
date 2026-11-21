@@ -280,6 +280,9 @@ impl<'a> BlockState<'a> {
     }
 
     /// Create a placeholder node for inline content parsed after the block pass.
+    ///
+    /// See [`InlineMapping`](crate::parser::inline::InlineMapping) for the mapping
+    /// requirements. Source offsets on the resulting inline nodes are hints.
     pub fn pending_inline(
         &mut self,
         source: String,
@@ -291,7 +294,8 @@ impl<'a> BlockState<'a> {
         })
     }
 
-    /// Return the source span covering lines `start_line..=end_line`.
+    /// Return the best-effort source span covering lines `start_line..=end_line`.
+    /// Returns `None` if the range is out of bounds or out of order.
     #[must_use]
     #[cfg(feature = "sourcemap")]
     pub fn get_map(
@@ -299,11 +303,19 @@ impl<'a> BlockState<'a> {
         start_line: usize,
         end_line: usize,
     ) -> Option<crate::common::sourcemap::SourcePos> {
-        debug_assert!(start_line <= end_line);
+        if start_line > end_line {
+            return None;
+        }
+
+        let start = self.line_offsets.get(start_line)?;
+        let end = self.line_offsets.get(end_line)?;
+        if start.first_nonspace > end.line_end {
+            return None;
+        }
 
         Some(crate::common::sourcemap::SourcePos::new(
-            self.line_offsets[start_line].first_nonspace,
-            self.line_offsets[end_line].line_end,
+            start.first_nonspace,
+            end.line_end,
         ))
     }
 }

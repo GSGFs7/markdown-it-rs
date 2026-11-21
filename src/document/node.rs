@@ -27,11 +27,18 @@ impl Node {
         &self.children
     }
 
+    /// Best-effort source offsets for this node.
+    ///
+    /// This is an unvalidated hint that may refer to a stale or invalid range.
+    /// Use `document.source().get(start..end)` to check the bounds and UTF-8
+    /// boundaries before reading the source text.
     #[cfg(feature = "sourcemap")]
     pub fn srcmap(&self) -> Option<crate::common::sourcemap::SourcePos> {
         self.data.srcmap
     }
 
+    /// Set or clear the unvalidated source hint. Prefer
+    /// [`EditBatch::set_source_map`](crate::document::edit::EditBatch::set_source_map) in edit batches.
     #[cfg(feature = "sourcemap")]
     pub fn set_srcmap(&mut self, srcmap: Option<crate::common::sourcemap::SourcePos>) {
         self.data.srcmap = srcmap;

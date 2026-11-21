@@ -52,6 +52,7 @@ impl CoreRule for SourcePosRule {
 }
 
 /// Build source-position attribute edits for a finished document.
+/// Invalid or out-of-range source maps are skipped.
 pub fn edits(document: &Document) -> EditBatch {
     let mapping = SourceWithLineStarts::new(document.source());
     let mut edits = EditBatch::new();
@@ -61,7 +62,10 @@ pub fn edits(document: &Document) -> EditBatch {
             StructuralEvent::Enter(node) | StructuralEvent::Leaf(node) => node,
             StructuralEvent::Exit(_) => continue,
         };
-        if let Some(map) = node.srcmap() {
+        if let Some(map) = node.srcmap()
+            && let (start, end) = map.get_byte_offsets()
+            && document.source().get(start..end).is_some()
+        {
             edits.set_attribute(
                 node.id(),
                 SOURCEPOS_ATTRIBUTE,

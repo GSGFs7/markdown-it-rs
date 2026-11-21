@@ -264,7 +264,7 @@ fn highlight_node(
 ) -> Option<SyntectSnippet> {
     let (content, meta, lang_prefix) = if let Some(code) = code {
         (
-            code.content.as_str(),
+            code.as_str(),
             FenceMeta {
                 language: None,
                 highlighted_lines: HashSet::new(),
@@ -274,7 +274,7 @@ fn highlight_node(
     } else {
         let fence = fence?;
         (
-            fence.content.as_str(),
+            fence.as_str(),
             FenceMeta::parse_fence_meta(fence),
             fence.lang_prefix.clone(),
         )

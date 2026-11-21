@@ -14,12 +14,37 @@ pub enum FrontMatterKind {
 #[derive(Debug, Clone)]
 pub struct FrontMatter {
     pub kind: FrontMatterKind,
-    pub raw: String,
+    raw: String,
     pub start_line: usize,
     pub end_line: usize,
 }
 
 impl FrontMatter {
+    /// Create a front-matter payload.
+    pub fn new(
+        kind: FrontMatterKind,
+        raw: impl Into<String>,
+        start_line: usize,
+        end_line: usize,
+    ) -> Self {
+        Self {
+            kind,
+            raw: raw.into(),
+            start_line,
+            end_line,
+        }
+    }
+
+    /// Borrow the raw front-matter text.
+    pub fn raw(&self) -> &str {
+        &self.raw
+    }
+
+    /// Replace the raw front-matter text.
+    pub fn set_raw(&mut self, raw: impl Into<String>) {
+        self.raw = raw.into();
+    }
+
     pub fn parse_with<T, E>(
         &self,
         parser: impl FnOnce(FrontMatterKind, &str) -> Result<T, E>,
@@ -44,12 +69,9 @@ impl BlockRule for FrontMatterScanner {
             (state.get_line(line), state.line_indent(line))
         })?;
         let (raw, _) = state.get_lines(1, end_line, 0, false);
-        state.root_ext.insert(FrontMatter {
-            kind,
-            raw,
-            start_line: 0,
-            end_line,
-        });
+        state
+            .root_ext
+            .insert(FrontMatter::new(kind, raw, 0, end_line));
         // root extensions only, no rendered node
         Some((None, end_line + 1))
     }
@@ -112,7 +134,7 @@ mod tests {
         let front_matter = root.ext.get::<FrontMatter>().unwrap();
 
         assert_eq!(front_matter.kind, FrontMatterKind::Yaml);
-        assert_eq!(front_matter.raw, "title: Hello\ntags:\n  - rust");
+        assert_eq!(front_matter.raw(), "title: Hello\ntags:\n  - rust");
         assert_eq!(front_matter.start_line, 0);
         assert_eq!(front_matter.end_line, 4);
         assert_eq!(md.render_document(&ast, "html"), "<h1>Post</h1>\n");
@@ -132,7 +154,7 @@ mod tests {
         let front_matter = root.ext.get::<FrontMatter>().unwrap();
 
         assert_eq!(front_matter.kind, FrontMatterKind::Toml);
-        assert_eq!(front_matter.raw, "title = \"Hello\"");
+        assert_eq!(front_matter.raw(), "title = \"Hello\"");
         assert_eq!(md.render_document(&ast, "html"), "<p>Body</p>\n");
     }
 

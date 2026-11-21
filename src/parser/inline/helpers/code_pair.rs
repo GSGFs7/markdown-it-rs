@@ -100,9 +100,7 @@ impl<const MARKER: char> InlineRule for CodePairScanner<MARKER> {
             .unwrap()
             .0;
         let node = f(state.document, matched.marker_len);
-        let text = state.document.create_node(Text {
-            content: matched.content,
-        });
+        let text = state.document.create_node(Text::new(matched.content));
         #[cfg(feature = "sourcemap")]
         {
             let srcmap = state.get_map(matched.content_start, matched.content_end);

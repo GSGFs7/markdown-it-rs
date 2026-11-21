@@ -98,9 +98,7 @@ mod tests {
         let ruleset = md.inline.rules();
         let mut state = InlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
         check_inline(&mut state, 0, |state| {
-            let node = state.document.create_node(Text {
-                content: "bad".into(),
-            });
+            let node = state.document.create_node(Text::new("bad"));
             state.push_node(node);
             Some(1)
         });
@@ -114,9 +112,7 @@ mod tests {
         let ruleset = md.inline.rules();
         let mut state = InlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
         check_inline(&mut state, 0, |state| {
-            state.document.create_node(Text {
-                content: "leaked".into(),
-            });
+            state.document.create_node(Text::new("leaked"));
             None
         });
     }
@@ -128,9 +124,7 @@ mod tests {
         let md = MarkdownIt::empty();
         let ruleset = md.inline.rules();
         let mut state = InlineState::new(&mut document, "x", 0, 1, &md, ruleset, 0, 0);
-        let text = state.document.create_node(Text {
-            content: "kept".into(),
-        });
+        let text = state.document.create_node(Text::new("kept"));
         state.push_node(text);
         check_inline(&mut state, 0, |state| {
             let text = state.nodes()[0];
@@ -139,7 +133,7 @@ mod tests {
                 .node_mut(text)
                 .cast_mut::<Text>()
                 .unwrap()
-                .content = "changed".into();
+                .set_content("changed");
             None
         });
     }

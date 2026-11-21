@@ -10,14 +10,10 @@ impl InlineRule for RunOnly {
     const MARKER: char = '%';
 
     fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
-        state.remaining().starts_with("%]%").then(|| {
-            (
-                Some(state.document.create_node(Text {
-                    content: "opaque".into(),
-                })),
-                3,
-            )
-        })
+        state
+            .remaining()
+            .starts_with("%]%")
+            .then(|| (Some(state.document.create_node(Text::new("opaque"))), 3))
     }
 }
 
@@ -45,12 +41,7 @@ impl InlineRule for ExplicitCheck {
     fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
         let len = Self::check(state)?;
         RUNS.fetch_add(1, Ordering::SeqCst);
-        Some((
-            Some(state.document.create_node(Text {
-                content: "opaque".into(),
-            })),
-            len,
-        ))
+        Some((Some(state.document.create_node(Text::new("opaque"))), len))
     }
 }
 
@@ -76,12 +67,7 @@ impl InlineRule for PanicCheck {
     }
 
     fn run(state: &mut InlineState<'_>) -> Option<(Option<NodeId>, usize)> {
-        Some((
-            Some(state.document.create_node(Text {
-                content: "X".into(),
-            })),
-            1,
-        ))
+        Some((Some(state.document.create_node(Text::new("X"))), 1))
     }
 }
 

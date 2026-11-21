@@ -1165,9 +1165,7 @@ fn transform_runs_after_inline_and_can_rewrite_document() {
         assert!(document.node(first).is::<Em>());
         flag.store(true, Ordering::SeqCst);
 
-        let prefix = document.create_node(Text {
-            content: "> ".into(),
-        });
+        let prefix = document.create_node(Text::new("> "));
         document.insert_before(first, prefix);
     });
 

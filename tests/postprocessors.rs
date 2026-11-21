@@ -31,7 +31,7 @@ fn sourcepos_runs_after_tasklist_in_reverse_registration_order() {
         .find_map(|event| {
             if let StructuralEvent::Leaf(node) = event {
                 node.cast::<Text>()
-                    .filter(|text| text.content == "雪")
+                    .filter(|text| text.as_str() == "雪")
                     .map(|_| node)
             } else {
                 None
@@ -39,7 +39,9 @@ fn sourcepos_runs_after_tasklist_in_reverse_registration_order() {
         })
         .unwrap();
 
-    assert_eq!(text.srcmap().unwrap().get_byte_offsets(), (6, 9));
+    // Tasklist no longer advances the map past the removed marker; the text
+    // keeps the parse-time range, which still covers the marker.
+    assert_eq!(text.srcmap().unwrap().get_byte_offsets(), (2, 9));
     let html = md.render_document(&doc, "html");
     assert!(
         html.contains("type=\"checkbox\" checked=\"\" /> 雪"),
@@ -66,9 +68,7 @@ fn sourcepos_deduplicates_existing_attributes_and_skips_generated_nodes() {
         ("data-sourcepos".into(), "duplicate".into()),
     ]);
 
-    let text = doc.create_node(Text {
-        content: "雪".into(),
-    });
+    let text = doc.create_node(Text::new("雪"));
     doc.push_child(heading, text);
     doc.push_child(root, heading);
 
@@ -104,9 +104,7 @@ fn arena_construction_traversal_and_drop_handle_deep_generated_trees() {
         parent = child;
     }
 
-    let leaf = doc.create_node(Text {
-        content: "leaf".into(),
-    });
+    let leaf = doc.create_node(Text::new("leaf"));
     doc.push_child(parent, leaf);
 
     assert_eq!(doc.len(), 50_001);
@@ -126,9 +124,7 @@ fn appended_subtrees_keep_parent_links_and_existing_node_ids() {
     let mut doc = md.parse("first");
     let root = doc.root();
     let first = doc.children(root)[0];
-    let appended = doc.create_node(Text {
-        content: "second".into(),
-    });
+    let appended = doc.create_node(Text::new("second"));
     doc.push_child(root, appended);
 
     assert_eq!(doc.children(root), &[first, appended]);

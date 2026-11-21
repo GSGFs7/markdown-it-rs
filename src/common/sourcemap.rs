@@ -128,9 +128,13 @@ impl SourcePos {
         self.byte_offset
     }
 
-    /// Returns (line_start, column_start, line_end, column_end) from given positions
+    /// Returns (line_start, column_start, line_end, column_end) from given positions.
+    /// An empty range is reported as a single point.
     pub fn get_positions(&self, map: &SourceWithLineStarts) -> ((u32, u32), (u32, u32)) {
         let start = map.get_position(self.byte_offset.0);
+        if self.byte_offset.0 == self.byte_offset.1 {
+            return (start, start);
+        }
         let end_off = if self.byte_offset.1 > 0 {
             self.byte_offset.1 - 1
         } else {

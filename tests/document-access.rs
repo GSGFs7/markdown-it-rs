@@ -120,9 +120,7 @@ fn external_classifier_can_borrow_document_source_as_read_only_context() {
     let mut doc = Document::new("前雪尾", Root::new("前雪尾"));
     let context = doc.create_node(SourceContext(3..6));
     doc.push_child(doc.root(), context);
-    let text = doc.create_node(Text {
-        content: "edited".into(),
-    });
+    let text = doc.create_node(Text::new("edited"));
     doc.push_child(doc.root(), text);
     let context = doc.children(doc.root())[0];
     let text = doc.children(doc.root())[1];
@@ -206,9 +204,7 @@ fn external_payload_mutation_replacement_and_removal_preserve_ownership() {
     let root = doc.root();
     let id = doc.create_node(badge());
     doc.push_child(root, id);
-    let child = doc.create_node(Text {
-        content: "!".into(),
-    });
+    let child = doc.create_node(Text::new("!"));
     doc.push_child(id, child);
     doc.node_mut(id)
         .attrs_mut()
@@ -276,37 +272,207 @@ fn borrowed_unicode_text_can_produce_edits_without_copying_the_input() {
 #[test]
 fn owned_text_snapshot_and_generated_node_outlive_the_source_document() {
     let snapshot = {
-        let doc = Document::new(
-            "unrelated source",
-            Text {
-                content: "decoded & edited 雪".into(),
-            },
-        );
+        let doc = Document::new("unrelated source", Text::new("decoded & edited 雪"));
         doc.text(doc.root()).unwrap().to_owned()
     };
-    let mut doc = Document::new("", Text { content: snapshot });
+    let mut doc = Document::new("", Text::new(snapshot));
     let id = doc.root();
     assert_eq!(doc.text(id), Some("decoded & edited 雪"));
     let md = MarkdownIt::empty();
     assert_eq!(md.render_document(&doc, "html"), "decoded &amp; edited 雪");
     assert_eq!(md.render_document(&doc, "text"), "decoded & edited 雪");
     let mut edits = EditBatch::new();
-    edits.replace_value(
-        id,
-        TextSpecial {
-            content: "&".into(),
-            markup: "&amp;".into(),
-            info: "entity",
-        },
-    );
+    edits.replace_value(id, TextSpecial::new("&", "&amp;", "entity"));
     edits.commit(&mut doc);
     assert!(doc.text(id).is_none());
     assert!(doc.materialize_text(id).is_none());
     assert!(doc.value::<Text>(id).is_none());
-    assert_eq!(doc.value::<TextSpecial>(id).unwrap().content, "&");
+    assert_eq!(doc.value::<TextSpecial>(id).unwrap().content(), "&");
     assert_eq!(md.render_document(&doc, "html"), "&amp;");
     assert_eq!(md.render_document(&doc, "text"), "&");
-    doc.value_mut::<TextSpecial>(id).unwrap().content = "雪<&amp;>".into();
+    doc.value_mut::<TextSpecial>(id)
+        .unwrap()
+        .set_content("雪<&amp;>");
     assert_eq!(md.render_document(&doc, "html"), "雪&lt;&amp;amp;&gt;");
     assert_eq!(md.render_document(&doc, "text"), "雪<&amp;>");
+}
+
+#[test]
+fn set_content_preserves_metadata_and_read_access_covers_normalized_text() {
+    let md = MarkdownIt::new();
+    let source = ">   hello &amp; \\*world\\*\r\n>   next";
+    let mut doc = md.parse(source);
+
+    let mut plain_texts = Vec::new();
+    let mut specials = Vec::new();
+    for event in doc.events(doc.root()) {
+        let StructuralEvent::Leaf(node) = event else {
+            continue;
+        };
+        if let Some(text) = node.cast::<Text>() {
+            assert_eq!(doc.text(node.id()), Some(text.as_str()));
+            plain_texts.push((node.id(), text.as_str().to_owned()));
+        } else if let Some(special) = node.cast::<TextSpecial>() {
+            assert!(doc.text(node.id()).is_none());
+            specials.push((
+                node.id(),
+                special.content().to_owned(),
+                special.markup().to_owned(),
+                special.info(),
+            ));
+        }
+    }
+
+    assert!(plain_texts.iter().any(|(_, text)| text == "hello "));
+    assert!(plain_texts.iter().any(|(_, text)| text == "next"));
+    assert!(
+        specials
+            .iter()
+            .any(|(_, content, markup, info)| content == "&"
+                && markup == "&amp;"
+                && *info == "entity")
+    );
+    assert!(
+        specials
+            .iter()
+            .any(|(_, content, markup, info)| content == "*"
+                && markup == "\\*"
+                && *info == "escape")
+    );
+
+    let text_id = plain_texts[0].0;
+    doc.node_mut(text_id)
+        .attrs_mut()
+        .push(("data-k".into(), "v".into()));
+    doc.node_mut(text_id).ext_mut().insert(7_u32);
+    #[cfg(feature = "sourcemap")]
+    let text_srcmap = doc.node(text_id).srcmap();
+
+    doc.value_mut::<Text>(text_id)
+        .unwrap()
+        .set_content("replaced");
+    assert_eq!(doc.text(text_id), Some("replaced"));
+    assert_eq!(doc.node(text_id).attrs()[0].1, "v");
+    assert_eq!(doc.node(text_id).ext().get::<u32>(), Some(&7));
+    #[cfg(feature = "sourcemap")]
+    assert_eq!(doc.node(text_id).srcmap(), text_srcmap);
+
+    let special_id = specials[0].0;
+    doc.node_mut(special_id)
+        .attrs_mut()
+        .push(("data-s".into(), "1".into()));
+    doc.node_mut(special_id).ext_mut().insert(9_u32);
+    #[cfg(feature = "sourcemap")]
+    let special_srcmap = doc.node(special_id).srcmap();
+
+    doc.value_mut::<TextSpecial>(special_id)
+        .unwrap()
+        .set_content("and");
+    assert_eq!(
+        doc.value::<TextSpecial>(special_id).unwrap().content(),
+        "and"
+    );
+    assert_eq!(
+        doc.value::<TextSpecial>(special_id).unwrap().markup(),
+        "&amp;"
+    );
+    assert_eq!(
+        doc.value::<TextSpecial>(special_id).unwrap().info(),
+        "entity"
+    );
+    assert_eq!(doc.node(special_id).attrs()[0].1, "1");
+    assert_eq!(doc.node(special_id).ext().get::<u32>(), Some(&9));
+    #[cfg(feature = "sourcemap")]
+    assert_eq!(doc.node(special_id).srcmap(), special_srcmap);
+}
+
+#[test]
+fn built_in_text_payloads_expose_accessors_instead_of_storage_fields() {
+    use markdown_it::plugins::cmark::block::code::CodeBlock;
+    use markdown_it::plugins::cmark::block::fence::CodeFence;
+    use markdown_it::plugins::extra::front_matter::{FrontMatter, FrontMatterKind};
+    use markdown_it::plugins::html::html_block::HtmlBlock;
+    use markdown_it::plugins::html::html_inline::HtmlInline;
+
+    let mut html_inline = HtmlInline::new("<b>");
+    assert_eq!(html_inline.as_str(), "<b>");
+    html_inline.set_content("<i>");
+    assert_eq!(html_inline.as_str(), "<i>");
+
+    let mut html_block = HtmlBlock::new("<div>\n");
+    assert_eq!(html_block.as_str(), "<div>\n");
+    html_block.set_content("<p>\n");
+    assert_eq!(html_block.as_str(), "<p>\n");
+
+    let mut code_block = CodeBlock::new("    x\n");
+    assert_eq!(code_block.as_str(), "    x\n");
+    code_block.set_content("y\n");
+    assert_eq!(code_block.as_str(), "y\n");
+
+    let mut fence = CodeFence::new("rust", '`', 3, "fn main() {}\n", "language-");
+    assert_eq!(fence.as_str(), "fn main() {}\n");
+    assert_eq!(
+        (
+            fence.info.as_str(),
+            fence.marker,
+            fence.marker_len,
+            fence.lang_prefix.as_str()
+        ),
+        ("rust", '`', 3, "language-")
+    );
+    fence.set_content("let x = 1;\n");
+    assert_eq!(fence.as_str(), "let x = 1;\n");
+
+    let mut front_matter = FrontMatter::new(FrontMatterKind::Yaml, "a: b", 0, 2);
+    assert_eq!(front_matter.raw(), "a: b");
+    assert_eq!(
+        front_matter.parse_with(|kind, raw| Ok::<_, ()>((kind, raw.to_owned()))),
+        Ok((FrontMatterKind::Yaml, "a: b".to_owned()))
+    );
+    front_matter.set_raw("c: d");
+    assert_eq!(front_matter.raw(), "c: d");
+    assert_eq!(front_matter.kind, FrontMatterKind::Yaml);
+    assert_eq!((front_matter.start_line, front_matter.end_line), (0, 2));
+
+    let doc = markdown_it::MarkdownIt::new().parse("source");
+    let root = doc.value::<Root>(doc.root()).unwrap();
+    assert_eq!(root.content(), "source");
+}
+
+#[test]
+fn image_alt_is_derived_from_children_and_text_edits_keep_metadata() {
+    let md = MarkdownIt::new();
+    let mut doc = md.parse("![old](/img)");
+    let paragraph = doc.children(doc.root())[0];
+    let image = doc.children(paragraph)[0];
+    let text = doc.children(image)[0];
+    #[cfg(feature = "sourcemap")]
+    let text_srcmap = doc.node(text).srcmap();
+    #[cfg(feature = "sourcemap")]
+    let image_srcmap = doc.node(image).srcmap();
+
+    let mut edits = EditBatch::new();
+    edits.replace_text(text, 0..3, "new");
+    edits.commit(&mut doc);
+
+    assert_eq!(doc.text(text), Some("new"));
+    assert_eq!(doc.children(image), &[text]);
+    #[cfg(feature = "sourcemap")]
+    {
+        // Text edits keep the original map instead of shifting it.
+        assert_eq!(doc.node(text).srcmap(), text_srcmap);
+        assert_eq!(doc.node(image).srcmap(), image_srcmap);
+    }
+    assert_eq!(
+        md.render_document(&doc, "html"),
+        "<p><img src=\"/img\" alt=\"new\"></p>\n"
+    );
+
+    // Alt is not cached: removing the children updates it on the next render.
+    doc.remove_node(text);
+    assert!(doc.children(image).is_empty());
+    assert_eq!(
+        md.render_document(&doc, "html"),
+        "<p><img src=\"/img\" alt=\"\"></p>\n"
+    );
 }

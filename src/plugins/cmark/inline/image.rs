@@ -12,9 +12,15 @@ use crate::plugins::cmark::inline::newline::{Hardbreak, Softbreak};
 use crate::plugins::html::html_inline::HtmlInline;
 use crate::render::{NodeRenderer, RenderContext, TransparentRenderer, write_html_attrs_with};
 
+/// Image node.
+///
+/// `alt` text is not stored; it is derived from the node's children at render time
+/// (matching markdown-it's `text_join`).
 #[derive(Debug)]
 pub struct Image {
+    /// Image destination.
     pub url: String,
+    /// Optional image title.
     pub title: Option<String>,
 }
 
@@ -62,7 +68,7 @@ fn collect_alt_text<'a>(context: &RenderContext<'a>, image: &Node) -> Cow<'a, st
             if child.children().is_empty()
                 && let Some(text) = child.cast::<Text>()
             {
-                return Cow::Borrowed(&text.content);
+                return Cow::Borrowed(text.as_str());
             }
         }
         _ => {}
@@ -84,17 +90,17 @@ fn collect_alt_text<'a>(context: &RenderContext<'a>, image: &Node) -> Cow<'a, st
 
 fn append_alt_node(result: &mut String, node: &Node, nested_image: bool) {
     if let Some(text) = node.cast::<Text>() {
-        result.push_str(&text.content);
+        result.push_str(text.as_str());
     } else if let Some(text) = node.cast::<TextSpecial>() {
         // JS text_join converts text_special only in the outer image's
         // children. Its alt renderer ignores escapes/entities still marked
         // as text_special inside nested images. Autolinks use ordinary text
         // tokens in JS and must remain visible at every depth.
-        if !nested_image || text.info == "autolink" {
-            result.push_str(&text.content);
+        if !nested_image || text.info() == "autolink" {
+            result.push_str(text.content());
         }
     } else if let Some(html) = node.cast::<HtmlInline>() {
-        result.push_str(&html.content);
+        result.push_str(html.as_str());
     } else if node.is::<Softbreak>() || node.is::<Hardbreak>() {
         result.push('\n');
     }

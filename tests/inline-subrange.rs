@@ -123,9 +123,9 @@ fn core_linkify_ignores_subrange_nodes_discarded_by_the_parent_rule() {
             for child in children {
                 state.document.discard_node(child);
             }
-            let node = state.document.create_node(markdown_it::document::Text {
-                content: "gone".into(),
-            });
+            let node = state
+                .document
+                .create_node(markdown_it::document::Text::new("gone"));
             Some((Some(node), close + 1))
         }
     }

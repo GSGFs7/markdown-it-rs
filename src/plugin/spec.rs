@@ -448,9 +448,7 @@ impl PluginSpec {
     /// let plugin = PluginSpec::new("prefix").transform("prefix", |document, _md| {
     ///     let paragraph = document.children(document.root())[0];
     ///     let first = document.children(paragraph)[0];
-    ///     let prefix = document.create_node(Text {
-    ///         content: "> ".into(),
-    ///     });
+    ///     let prefix = document.create_node(Text::new("> "));
     ///     document.insert_before(first, prefix);
     /// });
     ///

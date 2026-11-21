@@ -11,9 +11,7 @@ fn document() -> Document {
 }
 
 fn text(document: &mut Document, content: &str) -> NodeId {
-    document.create_node(Text {
-        content: content.into(),
-    })
+    document.create_node(Text::new(content))
 }
 
 #[test]
@@ -192,7 +190,7 @@ fn content_batches_can_commit_before_structural_changes() {
     edits.commit(&mut doc);
     doc.insert_before(target, inserted);
 
-    assert_eq!(doc.node(target).cast::<Text>().unwrap().content, "Target");
+    assert_eq!(doc.node(target).cast::<Text>().unwrap().as_str(), "Target");
     assert_eq!(doc.node(target).attrs()[0].1, "edited");
     assert_eq!(doc.children(root), &[inserted, target]);
 }
@@ -361,4 +359,22 @@ fn bulk_replacement_handles_wide_and_deep_removed_subtrees_iteratively() {
     assert!(doc.get_node(leaf).is_none());
     doc.replace_children(root, Vec::new());
     assert_eq!(doc.len(), 1);
+}
+
+#[test]
+fn node_ids_have_no_document_identity() {
+    let mut first = document();
+    let mut second = document();
+
+    // Both documents allocate their root in slot 0 with generation 0, so the
+    // IDs compare equal. get_node only inspects slot/generation and accepts the
+    // foreign ID; there is no document identity to check against.
+    assert_eq!(first.root(), second.root());
+    assert_eq!(second.get_node(first.root()).unwrap().id(), second.root());
+
+    // Detached nodes follow the same allocation order, so IDs collide too.
+    let first_text = first.create_node(Text::new("first"));
+    let second_text = second.create_node(Text::new("second"));
+    assert_eq!(first_text, second_text);
+    assert!(second.get_node(first_text).is_some());
 }

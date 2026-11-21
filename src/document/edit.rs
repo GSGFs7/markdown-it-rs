@@ -108,7 +108,7 @@ impl EditBatch {
         self.node_patches.is_empty()
     }
 
-    /// Replace a node's payload, preserving its ID, children and metadata.
+    /// Replace a node's payload, preserving its ID, children, metadata, and existing source map.
     pub fn replace_value<T: NodeValue>(&mut self, node: NodeId, value: T) {
         self.node_patches.values.push(ReplaceValue {
             node,
@@ -116,7 +116,7 @@ impl EditBatch {
         });
     }
 
-    /// Replace one byte range in a built-in `Text` node.
+    /// Replace one byte range in a built-in `Text` node, preserving its metadata and source map.
     pub fn replace_text(
         &mut self,
         node: NodeId,
@@ -126,8 +126,7 @@ impl EditBatch {
         self.push(node, range, TextReplacement::String(replacement.into()));
     }
 
-    /// Replace one byte range without allocating a temporary replacement
-    /// string. This is useful for character-oriented edits.
+    /// Replace one byte range with a single `char` without allocating (same metadata behavior as [`EditBatch::replace_text`]).
     pub fn replace_char(&mut self, node: NodeId, range: Range<usize>, replacement: char) {
         self.push(node, range, TextReplacement::Char(replacement));
     }
@@ -156,7 +155,9 @@ impl EditBatch {
         });
     }
 
-    /// Set or clear a node's source mapping.
+    /// Set or clear a node's best-effort source mapping.
+    ///
+    /// Validates ordering, source bounds, and UTF-8 boundaries, not payload consistency.
     #[cfg(feature = "sourcemap")]
     pub fn set_source_map(
         &mut self,

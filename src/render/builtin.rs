@@ -22,7 +22,7 @@ pub(crate) struct HtmlTextRenderer;
 
 impl NodeRenderer<Text> for HtmlTextRenderer {
     fn render(&self, _: &Node, value: &Text, _: &mut RenderContext<'_>, output: &mut Writer) {
-        output.write_escaped_html(&value.content);
+        output.write_escaped_html(value.as_str());
     }
 }
 
@@ -34,7 +34,7 @@ impl NodeRenderer<TextSpecial> for HtmlTextRenderer {
         _: &mut RenderContext<'_>,
         output: &mut Writer,
     ) {
-        output.write_escaped_html(&value.content);
+        output.write_escaped_html(value.content());
     }
 }
 
@@ -42,7 +42,7 @@ pub(crate) struct PlainTextRenderer;
 
 impl NodeRenderer<Text> for PlainTextRenderer {
     fn render(&self, _: &Node, value: &Text, _: &mut RenderContext<'_>, output: &mut Writer) {
-        output.write_str(&value.content);
+        output.write_str(value.as_str());
     }
 }
 
@@ -54,7 +54,7 @@ impl NodeRenderer<TextSpecial> for PlainTextRenderer {
         _: &mut RenderContext<'_>,
         output: &mut Writer,
     ) {
-        output.write_str(&value.content);
+        output.write_str(value.content());
     }
 }
 
